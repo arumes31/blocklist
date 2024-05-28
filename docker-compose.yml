@@ -3,9 +3,6 @@ version: '3.8'
 services:
   webserver:
     image: "registry.reitetschlaeger.com/blocklist-webserver:latest"
-#    build:
-#      context: .
-#      dockerfile: dockerfile.app
     ports:
       - "5000:5000"
     environment:
