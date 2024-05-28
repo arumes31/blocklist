@@ -29,4 +29,8 @@ COPY ./js/aether.js /app/static/js/aether.js
 COPY ./js/simplex-noise.min.js /app/static/js/simplex-noise.min.js
 COPY ./js/codepen-util.js /app/static/js/codepen-util.js
 
+#Copy StaticContent
+COPY ./cd/logo.png /app/static/cd/logo.png
+COPY ./cd/favicon-color.png /app/static/cd/favicon-color.png
+
 CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:5000", "--access-logfile", "-", "app:app"]

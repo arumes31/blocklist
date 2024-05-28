@@ -8,6 +8,8 @@ services:
     environment:
       TZ: "Europe/Vienna"
       REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_DB: 0
       LOGWEB: "true"
       SECRET_KEY: "XXXXXXXX---SECRET_KEY----"
       #Webhook Block Range // Whitelist
@@ -48,7 +50,7 @@ services:
     image: ghcr.io/maxmind/geoipupdate
     restart: unless-stopped
     environment:
-      - GEOIPUPDATE_ACCOUNT_ID=671928
+      - GEOIPUPDATE_ACCOUNT_ID=XXXXXX
       - GEOIPUPDATE_LICENSE_KEY=XXXXXXXX---SECRET_LICENSEKEY----
       - 'GEOIPUPDATE_EDITION_IDS=GeoLite2-ASN GeoLite2-City GeoLite2-Country'
       - GEOIPUPDATE_FREQUENCY=72

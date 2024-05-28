@@ -24,12 +24,12 @@ log_level = logging.DEBUG
 # Configure Flask logging
 app.logger.setLevel(log_level)
 
-logger.info(" ____    ____   ")
-logger.info("|  _ \  |  _ \  ╔═════════════════════════╗")
-logger.info("| | | | | |_) | ║    blocklist            ║")
-logger.info("| |_| | |  _ <  ║    app                  ║")
-logger.info("|____/  |_| \_\ ╚═════════════════════════╝")
-logger.info("starting.....")
+app.logger.info(" ____    ____   ")
+app.logger.info("|  _ \  |  _ \  ╔═════════════════════════╗")
+app.logger.info("| | | | | |_) | ║    blocklist            ║")
+app.logger.info("| |_| | |  _ <  ║    app                  ║")
+app.logger.info("|____/  |_| \_\ ╚═════════════════════════╝")
+app.logger.info("starting.....")
 
 # Connect to Redis
 redis_host = os.getenv('REDIS_HOST', 'redis')
@@ -319,6 +319,10 @@ def get_ips():
 @app.route('/js/<path:filename>')
 def serve_js(filename):
     return send_from_directory('static/js', filename)
-
+    
+@app.route('/cd/<path:filename>')
+def serve_cd(filename):
+    return send_from_directory('static/cd', filename)
+    
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
