@@ -283,7 +283,8 @@ def block():
 def webhook():
     data = request.get_json()
     ip = data.get('ip')
-    reason = data.get('reason')
+    reason = data.get('reason', 'none')
+    act = data.get('act', 'ban')
 
     client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
 
@@ -291,15 +292,24 @@ def webhook():
         app.logger.info(f"Incoming webhook from {client_ip}: {json.dumps(data)}")
 
     if ip and is_valid_ip(ip):
-        current_time = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')
-        geo_data = get_geoip_data(ip)
-        entry_data = {
-            'timestamp': current_time,
-            'geolocation': geo_data,
-            'reason': reason
-        }
-        r.hset('ips', ip, json.dumps(entry_data))
-        return jsonify({'status': 'received'}), 200
+        if act == 'ban':
+            current_time = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')
+            geo_data = get_geoip_data(ip)
+            entry_data = {
+                'timestamp': current_time,
+                'geolocation': geo_data,
+                'reason': reason
+            }
+            r.hset('ips', ip, json.dumps(entry_data))
+            return jsonify({'status': 'IP banned', 'ip': ip}), 200
+        elif act == 'unban':
+            if r.hexists('ips', ip):
+                r.hdel('ips', ip)
+                return jsonify({'status': 'IP unbanned', 'ip': ip}), 200
+            else:
+                return jsonify({'status': 'IP not found', 'ip': ip}), 404
+        else:
+            return jsonify({'status': 'action not implemented', 'action': act}), 501
     else:
         return jsonify({'status': 'invalid IP'}), 400
 
