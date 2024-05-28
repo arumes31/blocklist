@@ -1,0 +1,17 @@
+# Dockerfile for scheduler
+FROM python:3.10-slim
+
+# Set environment variables
+ENV TZ="Europe/Vienna"
+
+WORKDIR /app
+
+#Install Core
+RUN pip install --no-cache-dir Flask redis APScheduler
+
+# Copy the scheduler script
+COPY scheduler.py scheduler.py
+
+# Command to run the scheduler script
+CMD ["python", "scheduler.py"]
+

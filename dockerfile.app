@@ -1,0 +1,32 @@
+FROM python:3.10-slim
+
+# Set environment variables
+ENV BLOCKED_RANGES="127.0.0.1/32,0.0.0.0/32,192.168.0.0/16,10.0.0.0/8,172.12.0.0/12"
+ENV TZ="Europe/Vienna"
+
+WORKDIR /app
+
+#Core
+RUN pip install --no-cache-dir Flask Werkzeug redis gunicorn
+
+#GeoIp
+RUN pip install --no-cache-dir geoip2
+
+#ToTp
+RUN pip install --no-cache-dir pyotp
+
+#Limiter
+RUN pip install --no-cache-dir Flask-Limiter
+
+COPY app.py /app
+
+# Copy the .html file into the container
+COPY dashboard.html /app/templates/dashboard.html
+COPY login.html /app/templates/login.html
+
+#Copy JS
+COPY ./js/aether.js /app/static/js/aether.js
+COPY ./js/simplex-noise.min.js /app/static/js/simplex-noise.min.js
+COPY ./js/codepen-util.js /app/static/js/codepen-util.js
+
+CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:5000", "--access-logfile", "-", "app:app"]
