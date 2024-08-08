@@ -292,7 +292,7 @@ def webhook():
         app.logger.info(f"Incoming webhook from {client_ip}: {json.dumps(data)}")
 
     if ip and is_valid_ip(ip):
-        if act == 'ban':
+        if act in ['ban', 'ban-ip']:
             current_time = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')
             geo_data = get_geoip_data(ip)
             entry_data = {
@@ -302,7 +302,7 @@ def webhook():
             }
             r.hset('ips', ip, json.dumps(entry_data))
             return jsonify({'status': 'IP banned', 'ip': ip}), 200
-        elif act == 'unban':
+        elif act in ['unban', 'delete-ban']:
             if r.hexists('ips', ip):
                 r.hdel('ips', ip)
                 return jsonify({'status': 'IP unbanned', 'ip': ip}), 200
@@ -312,6 +312,7 @@ def webhook():
             return jsonify({'status': 'action not implemented', 'action': act}), 501
     else:
         return jsonify({'status': 'invalid IP'}), 400
+
 
 @app.route('/raw', methods=['GET'])
 @limiter.limit("3 per minute")
@@ -327,12 +328,10 @@ def get_ips():
     return jsonify([ip.decode('utf-8') for ip in ips])
 
 @app.route('/js/<path:filename>')
-@limiter.limit("20 per minute")
 def serve_js(filename):
     return send_from_directory('static/js', filename)
     
 @app.route('/cd/<path:filename>')
-@limiter.limit("20 per minute")
 def serve_cd(filename):
     return send_from_directory('static/cd', filename)
     
