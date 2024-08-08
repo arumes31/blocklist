@@ -25,8 +25,6 @@ services:
       - '/<path>/geoipupdate_data:/usr/share/GeoIP'
     depends_on:
       - redis
-    networks:
-      - free1_default
     restart: unless-stopped
   scheduler:
     image: "registry.reitetschlaeger.com/blocklist-scheduler:latest"
@@ -38,13 +36,9 @@ services:
       LOGWEB: true
     depends_on:
       - redis
-    networks:
-      - free1_default
     restart: unless-stopped
   redis:
     image: "redis:alpine"
-    networks:
-      - free1_default
     restart: unless-stopped
   geoipupdate:
     image: ghcr.io/maxmind/geoipupdate
@@ -54,11 +48,5 @@ services:
       - GEOIPUPDATE_LICENSE_KEY=XXXXXXXX---SECRET_LICENSEKEY----
       - 'GEOIPUPDATE_EDITION_IDS=GeoLite2-ASN GeoLite2-City GeoLite2-Country'
       - GEOIPUPDATE_FREQUENCY=72
-    networks:
-      - free1_default
     volumes:
       - '/<path>/geoipupdate_data:/usr/share/GeoIP'
-
-networks:
-  free1_default:
-    external: true
