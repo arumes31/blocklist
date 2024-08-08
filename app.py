@@ -328,10 +328,12 @@ def get_ips():
     return jsonify([ip.decode('utf-8') for ip in ips])
 
 @app.route('/js/<path:filename>')
+@limiter.limit("20 per minute")
 def serve_js(filename):
     return send_from_directory('static/js', filename)
-    
+
 @app.route('/cd/<path:filename>')
+@limiter.limit("20 per minute")
 def serve_cd(filename):
     return send_from_directory('static/cd', filename)
     
