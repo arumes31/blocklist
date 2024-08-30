@@ -347,8 +347,7 @@ def webhook2():
             geo_data = get_geoip_data(ip)
             entry_data = {
                 'timestamp': current_time,
-                'geolocation': geo_data,
-                'reason': reason
+                'geolocation': geo_data
             }
             r.hset('ips_webhook2_whitelist', ip, json.dumps(entry_data))
             return jsonify({'status': 'IP added', 'ip': ip}), 200
