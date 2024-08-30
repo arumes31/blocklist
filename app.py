@@ -333,10 +333,10 @@ def webhook():
 @webhook_requires_auth
 def webhook2():
     data = request.get_json()
-    ip = data.get('ip')
     act = data.get('act', 'add')
 
     client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+    ip = client_ip
 
     if os.getenv('LOGWEB', 'false').lower() == 'true':
         app.logger.info(f"Incoming webhook2 from {client_ip}: {json.dumps(data)}")
