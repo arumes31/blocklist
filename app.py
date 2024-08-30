@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, render_template, Response, redirect, url_for, session, send_from_directory
+from flask import Flask, request, jsonify, render_template, Response, redirect, url_for, session, send_from_directory, abort
 from datetime import datetime, timedelta
 import os
 import json
@@ -76,10 +76,17 @@ formatted_blocked_ranges = ", ".join([f"'{range}'" for range in blocked_ranges])
 for range in blocked_ranges:
     app.logger.info("Valid IP range: '%s'", range)
 
-####---USER WEBHOOK LOGIN
 # Output the loaded blocked_ranges to Flask logger
 app.logger.info("Loaded webhook blocked_ranges: %s", blocked_ranges)
 
+# Load allowed IPs for webhook2 from the environment variable
+webhook2_allowed_ips_str = os.getenv('WEBHOOK2_ALLOWED_IPS', '127.0.0.1,127.0.0.1')
+webhook2_allowed_ips = set(ip.strip() for ip in webhook2_allowed_ips_str.split(','))
+
+# Output the loaded blocked_ranges to Flask logger
+app.logger.info("Loaded webhook2_allowed_ips: %s", webhook2_allowed_ips)
+
+####---USER WEBHOOK LOGIN
 # Load usernames and passwords from environment variables
 USERS = {}
 user_count = 1
@@ -152,12 +159,21 @@ limiter = Limiter(
     default_limits=["100 per minute"]
 )
 
+#Validate-BlockedIPs
 def is_valid_ip(ip):
     try:
         ip_obj = ipaddress.ip_address(ip)
         for range in blocked_ranges:
             if ip_obj in ipaddress.ip_network(range):
                 return False
+        return True
+    except ValueError:
+        return False
+
+#Ignore-BlockedIPs
+def is_valid_ip_webhook2(ip):
+    try:
+        ipaddress.ip_address(ip)
         return True
     except ValueError:
         return False
@@ -313,11 +329,49 @@ def webhook():
     else:
         return jsonify({'status': 'invalid IP'}), 400
 
+@app.route('/webhook2_whitelist', methods=['POST'])
+@webhook_requires_auth
+def webhook2():
+    data = request.get_json()
+    ip = data.get('ip')
+    act = data.get('act', 'add')
+
+    client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+
+    if os.getenv('LOGWEB', 'false').lower() == 'true':
+        app.logger.info(f"Incoming webhook2 from {client_ip}: {json.dumps(data)}")
+
+    if ip and is_valid_ip_webhook2(ip):
+        if act in ['add']:
+            current_time = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')
+            geo_data = get_geoip_data(ip)
+            entry_data = {
+                'timestamp': current_time,
+                'geolocation': geo_data,
+                'reason': reason
+            }
+            r.hset('ips_webhook2_whitelist', ip, json.dumps(entry_data))
+            return jsonify({'status': 'IP added', 'ip': ip}), 200
+        else:
+            return jsonify({'status': 'action not implemented', 'action': act}), 501
+    else:
+        return jsonify({'status': 'invalid IP'}), 400
 
 @app.route('/raw', methods=['GET'])
 @limiter.limit("3 per minute")
 def raw_ips():
     ips = r.hkeys('ips')
+    ip_list = "\n".join(ip.decode('utf-8') for ip in ips)
+    return Response(ip_list, mimetype='text/plain')
+    
+@app.route('/raw_whitelist', methods=['GET'])
+@limiter.limit("3 per minute")
+def raw_ips_whitelist():
+    client_ip = request.remote_addr
+    if client_ip not in webhook2_allowed_ips:
+        app.logger.warning(f"Unauthorized access attempt from IP: {client_ip}")
+        abort(403)  # Forbidden
+    ips = r.hkeys('ips_webhook2_whitelist')
     ip_list = "\n".join(ip.decode('utf-8') for ip in ips)
     return Response(ip_list, mimetype='text/plain')
 

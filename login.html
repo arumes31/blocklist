@@ -125,7 +125,7 @@
             <input type="text" id="token" name="token" required>
             <input type="submit" value="Login">
         </form>
-        <p id="errorMessage" class="error-message"></p> <!-- Error message -->
+        <p id="errorMessage" class="error-message"></p> <!-- Error message will be displayed here -->
     </div>
         <div class="buttons-container">
 		     <button class="small-button" onclick="window.location.href='/ips'">IP</button>
@@ -137,17 +137,17 @@
     <script src="js/aether.js"></script>
     <script>
         let idleTime = 0;
-        const idleLimit = 0.1 * 60 * 1000; // 6sec
+        const idleLimit = 0.1 * 60 * 1000; // 5 minutes
 
         function resetIdleTimer() {
             idleTime = 0;
             const loginContainer = document.getElementById('loginContainer');
-            loginContainer.style.opacity = '1';
+            loginContainer.style.opacity = '1'; // Reset opacity to fully visible
         }
 
         function setFormTransparent() {
             const loginContainer = document.getElementById('loginContainer');
-            loginContainer.style.opacity = '0.01';
+            loginContainer.style.opacity = '0.05'; // Make the login form 90% transparent
         }
 
         document.addEventListener('mousemove', resetIdleTimer, false);
@@ -171,30 +171,30 @@
             })
             .then(response => {
                 if (response.redirected) {
-                    window.location.href = response.url;
+                    window.location.href = response.url; // Redirect to the URL provided by the server
                 } else {
-                    return response.text();
+                    return response.text(); // Read the HTML content
                 }
             })
             .then(data => {
-                // Check if the response
+                // Check if the response contains the specific success message
                 if (data.includes('Redirecting')) {
                     errorMessageElement.textContent = 'Login success. Redirecting.. Please try again..';
-                    errorMessageElement.style.display = 'block';
+                    errorMessageElement.style.display = 'block'; // Display error message
                     const redirectURL = window.location.protocol + '//' + window.location.hostname + (window.location.port ? ':' + window.location.port : '') + '/dashboard';
-                    window.location.href = redirectURL;
+                    window.location.href = redirectURL; // Redirect to dashboard
                 } else {
-                    // Display error message
+                    // Display error message from the server response
                     const errorMessageElement = document.getElementById('errorMessage');
                     errorMessageElement.textContent = 'Login failed. Please try again.';
-                    errorMessageElement.style.display = 'block';
+                    errorMessageElement.style.display = 'block'; // Display error message
                 }
             })
             .catch(error => {
                 console.error('Error:', error);
                 const errorMessageElement = document.getElementById('errorMessage');
                 errorMessageElement.textContent = 'An error occurred. Please try again later.';
-                errorMessageElement.style.display = 'block';
+                errorMessageElement.style.display = 'block'; // Display error message
             });
         });
     </script>
