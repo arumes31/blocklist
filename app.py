@@ -357,14 +357,14 @@ def webhook2():
         return jsonify({'status': 'invalid IP'}), 400
 
 @app.route('/raw', methods=['GET'])
-@limiter.limit("3 per minute")
+@limiter.limit("5 per minute")
 def raw_ips():
     ips = r.hkeys('ips')
     ip_list = "\n".join(ip.decode('utf-8') for ip in ips)
     return Response(ip_list, mimetype='text/plain')
     
 @app.route('/raw_whitelist', methods=['GET'])
-@limiter.limit("3 per minute")
+@limiter.limit("5 per minute")
 def raw_ips_whitelist():
     client_ip = request.remote_addr
     if client_ip not in webhook2_allowed_ips:
@@ -373,6 +373,14 @@ def raw_ips_whitelist():
     ips = r.hkeys('ips_webhook2_whitelist')
     ip_list = "\n".join(ip.decode('utf-8') for ip in ips)
     return Response(ip_list, mimetype='text/plain')
+    
+@app.route('/benchmark', methods=['GET'])
+def benchmark():
+    client_ip = request.remote_addr
+    if client_ip not in webhook2_allowed_ips:
+        app.logger.warning(f"Unauthorized access attempt from IP: {client_ip}")
+        abort(403)  # Forbidden
+    return "ok", 200
 
 @app.route('/ips', methods=['GET'])
 @limiter.limit("3 per minute")
