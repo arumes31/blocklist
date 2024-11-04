@@ -6,6 +6,7 @@ import logging
 import ipaddress
 import redis
 import geoip2.database
+import requests
 from pyotp import TOTP
 from functools import wraps
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -164,7 +165,7 @@ limiter = Limiter(
 
 def get_whitelisted_ips():
     try:
-        response = requests.get('http://localhost/raw_whitelist')
+        response = requests.get('http://localhost:5000/raw_whitelist')
         response.raise_for_status()  # Raise an error for bad HTTP status
         # Assume the response is a plain-text list of IPs, one per line
         return set(line.strip() for line in response.text.splitlines() if line.strip())
@@ -337,16 +338,21 @@ def webhook():
                 'reason': reason
             }
             r.hset('ips', ip, json.dumps(entry_data))
+            app.logger.info(f"IP banned: {ip}")
             return jsonify({'status': 'IP banned', 'ip': ip}), 200
         elif act in ['unban', 'delete-ban']:
             if r.hexists('ips', ip):
                 r.hdel('ips', ip)
+                app.logger.info(f"IP unbanned: {ip}")
                 return jsonify({'status': 'IP unbanned', 'ip': ip}), 200
             else:
+                app.logger.info(f"IP unbanned failed, ip not found in database: {ip}")
                 return jsonify({'status': 'IP not found', 'ip': ip}), 404
         else:
+            app.logger.info(f"action not implemented")
             return jsonify({'status': 'action not implemented', 'action': act}), 501
     else:
+        app.logger.info(f"invalid IP")
         return jsonify({'status': 'invalid IP'}), 400
 
 @app.route('/webhook2_whitelist', methods=['POST'])
