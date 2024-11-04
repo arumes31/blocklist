@@ -24,6 +24,9 @@ log_level = logging.DEBUG
 # Configure Flask logging
 app.logger.setLevel(log_level)
 
+#Version
+app.logger.info("V1.3")
+app.logger.info("----------------")
 app.logger.info(" ____    ____   ")
 app.logger.info("|  _ \  |  _ \  ╔═════════════════════════╗")
 app.logger.info("| | | | | |_) | ║    blocklist            ║")
@@ -159,10 +162,27 @@ limiter = Limiter(
     default_limits=["100 per minute"]
 )
 
+def get_whitelisted_ips():
+    try:
+        response = requests.get('http://localhost/raw_whitelist')
+        response.raise_for_status()  # Raise an error for bad HTTP status
+        # Assume the response is a plain-text list of IPs, one per line
+        return set(line.strip() for line in response.text.splitlines() if line.strip())
+    except requests.RequestException as e:
+        app.logger.error(f"Error loading whitelist from /raw_whitelist: {e}")
+        return set()
+
 #Validate-BlockedIPs
 def is_valid_ip(ip):
     try:
         ip_obj = ipaddress.ip_address(ip)
+        # Reload whitelist
+        whitelisted_ips = get_whitelisted_ips()
+        
+        # Check if IP is in the whitelist --> Deny Blocklist Entry
+        if ip in whitelisted_ips:
+            return False
+            
         for range in blocked_ranges:
             if ip_obj in ipaddress.ip_network(range):
                 return False
