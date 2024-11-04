@@ -26,7 +26,7 @@ log_level = logging.DEBUG
 app.logger.setLevel(log_level)
 
 #Version
-app.logger.info("V1.3")
+app.logger.info("V1.4")
 app.logger.info("----------------")
 app.logger.info(" ____    ____   ")
 app.logger.info("|  _ \  |  _ \  ╔═════════════════════════╗")
@@ -167,7 +167,6 @@ def get_whitelisted_ips():
     try:
         response = requests.get('http://localhost:5000/raw_whitelist')
         response.raise_for_status()  # Raise an error for bad HTTP status
-        # Assume the response is a plain-text list of IPs, one per line
         return set(line.strip() for line in response.text.splitlines() if line.strip())
     except requests.RequestException as e:
         app.logger.error(f"Error loading whitelist from /raw_whitelist: {e}")
