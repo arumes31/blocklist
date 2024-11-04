@@ -186,7 +186,7 @@ def is_valid_ip(ip):
             
         for range in blocked_ranges:
             if ip_obj in ipaddress.ip_network(range):
-                 app.logger.info(f"IP banned FAILED - IP RANGE IS BLACKLISTED: {ip}")
+                app.logger.info(f"IP banned FAILED - IP RANGE IS BLACKLISTED: {ip}")
                 return False
         return True
     except ValueError:
