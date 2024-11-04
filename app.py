@@ -26,7 +26,7 @@ log_level = logging.DEBUG
 app.logger.setLevel(log_level)
 
 #Version
-app.logger.info("V1.4")
+app.logger.info("V1.4a")
 app.logger.info("----------------")
 app.logger.info(" ____    ____   ")
 app.logger.info("|  _ \  |  _ \  ╔═════════════════════════╗")
@@ -181,10 +181,12 @@ def is_valid_ip(ip):
         
         # Check if IP is in the whitelist --> Deny Blocklist Entry
         if ip in whitelisted_ips:
+            app.logger.info(f"IP banned FAILED - IP IS WHITELISTED: {ip}")
             return False
             
         for range in blocked_ranges:
             if ip_obj in ipaddress.ip_network(range):
+                 app.logger.info(f"IP banned FAILED - IP RANGE IS BLACKLISTED: {ip}")
                 return False
         return True
     except ValueError:
