@@ -46,6 +46,20 @@
             border-radius: 5px;
             margin-left: 15px;
         }
+        .whitelist-button {
+            background-color: #052745;
+            border: none;
+            color: white;
+            padding: 10px 20px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 4px 2px;
+            cursor: pointer;
+            border-radius: 5px;
+            margin-left: 15px;
+        }
         .filter-input {
             margin-bottom: 10px;
             padding: 8px;
@@ -135,6 +149,8 @@
     <h2>
         Dashboard 
         <button onclick="blockIP()" class="block-button">Block IP</button>
+		<button onclick="window.location.href='/whitelist'" class="whitelist-button">Manage Whitelist</button>
+
     </h2>
     <div class="button-container">
         <p>Total IPs: {{ total_ips }}</p>

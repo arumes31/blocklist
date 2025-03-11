@@ -26,7 +26,7 @@ log_level = logging.DEBUG
 app.logger.setLevel(log_level)
 
 #Version
-app.logger.info("V1.4a")
+app.logger.info("V1.5b")
 app.logger.info("----------------")
 app.logger.info(" ____    ____   ")
 app.logger.info("|  _ \  |  _ \  ╔═════════════════════════╗")
@@ -374,7 +374,8 @@ def webhook2():
             geo_data = get_geoip_data(ip)
             entry_data = {
                 'timestamp': current_time,
-                'geolocation': geo_data
+                'geolocation': geo_data,
+                'added_by': 'Auto Added (Webhook)'
             }
             r.hset('ips_webhook2_whitelist', ip, json.dumps(entry_data))
             return jsonify({'status': 'IP added', 'ip': ip}), 200
@@ -400,6 +401,91 @@ def raw_ips_whitelist():
     ips = r.hkeys('ips_webhook2_whitelist')
     ip_list = "\n".join(ip.decode('utf-8') for ip in ips)
     return Response(ip_list, mimetype='text/plain')
+    
+@app.route('/whitelist', methods=['GET'])
+@login_required
+def whitelist():
+    whitelisted_ips_raw = r.hgetall('ips_webhook2_whitelist')
+    whitelisted_ips = {}
+    now = datetime.utcnow()
+
+    for ip, data in whitelisted_ips_raw.items():
+        ip_str = ip.decode('utf-8')
+        try:
+            entry = json.loads(data.decode('utf-8'))
+            timestamp_str = entry.get('timestamp')
+            expires_in = 'Unknown'
+
+            if timestamp_str:
+                try:
+                    timestamp = datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S UTC")
+                    expire_time = timestamp + timedelta(hours=24)
+                    remaining_time = expire_time - now
+                    if remaining_time.total_seconds() > 0:
+                        hours = int(remaining_time.total_seconds() // 3600)
+                        minutes = int((remaining_time.total_seconds() % 3600) // 60)
+                        expires_in = f"{hours}h {minutes}m"
+                    else:
+                        expires_in = "Expired"
+                except ValueError:
+                    app.logger.error(f"Invalid timestamp format for IP {ip_str}: {timestamp_str}")
+
+            whitelisted_ips[ip_str] = {
+                'timestamp': timestamp_str,
+                'added_by': entry.get('added_by', 'Unknown'),
+                'reason': entry.get('reason', 'No reason provided'),
+                'geolocation': entry.get('geolocation', {'country': 'N/A', 'city': 'N/A'}),
+                'expires_in': expires_in
+            }
+        except json.JSONDecodeError:
+            app.logger.error(f"Error decoding JSON for IP {ip_str}")
+            whitelisted_ips[ip_str] = {'added_by': 'Manually Added', 'reason': 'No reason provided', 'expires_in': 'Unknown'}
+
+    # Load blocked subnets from environment variable
+    blocked_subnets = os.getenv('BLOCKED_RANGES', '').split(',')
+    blocked_subnets = [subnet.strip() for subnet in blocked_subnets if subnet.strip()]
+
+    return render_template('whitelist.html', whitelisted_ips=whitelisted_ips, blocked_subnets=blocked_subnets)
+
+@app.route('/add_whitelist', methods=['POST'])
+@login_required
+def add_whitelist():
+    data = request.get_json()
+    ip_to_whitelist = data.get('ip')
+    reason = data.get('reason', 'No reason provided')
+
+    if ip_to_whitelist and is_valid_ip(ip_to_whitelist):
+        current_time = datetime.utcnow() + timedelta(days=70000)
+        geo_data = get_geoip_data(ip_to_whitelist)
+        entry_data = {
+            'timestamp': current_time.strftime('%Y-%m-%d %H:%M:%S UTC'),
+            'geolocation': geo_data,
+            'added_by': 'Manually Added',
+            'reason': reason
+        }
+        r.hset('ips_webhook2_whitelist', ip_to_whitelist, json.dumps(entry_data))
+
+        # Log whitelisted IP, reason, and geolocation data
+        if geo_data:
+            app.logger.info(f"IP Whitelisted: {ip_to_whitelist}, Country: {geo_data.get('country', 'N/A')}, City: {geo_data.get('city', 'N/A')}, Reason: {reason}")
+        else:
+            app.logger.info(f"IP Whitelisted: {ip_to_whitelist}, GeoIP Data: Not Found, Reason: {reason}")
+
+        return jsonify({'status': 'success'}), 200
+    else:
+        return jsonify({'status': 'invalid IP'}), 400
+
+@app.route('/remove_whitelist', methods=['POST'])
+@login_required
+def remove_whitelist():
+    data = request.get_json()
+    ip_to_remove = data.get('ip')
+
+    if ip_to_remove and r.hexists('ips_webhook2_whitelist', ip_to_remove):
+        r.hdel('ips_webhook2_whitelist', ip_to_remove)
+        return jsonify({'status': 'success'}), 200
+    else:
+        return jsonify({'status': 'IP not found'}), 404
     
 @app.route('/benchmark', methods=['GET'])
 def benchmark():

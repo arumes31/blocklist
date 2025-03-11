@@ -24,6 +24,7 @@ COPY app.py /app
 # Copy the .html file into the container
 COPY dashboard.html /app/templates/dashboard.html
 COPY login.html /app/templates/login.html
+COPY whitelist.html /app/templates/whitelist.html
 
 #Copy JS
 COPY ./js/aether.js /app/static/js/aether.js
