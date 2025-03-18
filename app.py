@@ -26,7 +26,7 @@ log_level = logging.DEBUG
 app.logger.setLevel(log_level)
 
 #Version
-app.logger.info("V1.5b")
+app.logger.info("V1.6a")
 app.logger.info("----------------")
 app.logger.info(" ____    ____   ")
 app.logger.info("|  _ \  |  _ \  ╔═════════════════════════╗")
@@ -39,7 +39,9 @@ app.logger.info("starting.....")
 redis_host = os.getenv('REDIS_HOST', 'redis')
 redis_port = int(os.getenv('REDIS_PORT', 6379))
 redis_db = int(os.getenv('REDIS_DB', 0))
-r = redis.StrictRedis(host=redis_host, port=redis_port, db=redis_db)
+#r = redis.StrictRedis(host=redis_host, port=redis_port, db=redis_db)
+pool = redis.ConnectionPool(host=redis_host, port=redis_port, db=redis_db, decode_responses=False)
+r = redis.Redis(connection_pool=pool)
 
 # Connect to Redis for rate limiter storage
 limiter_redis = redis.StrictRedis(host=os.getenv('REDIS_HOST', 'redis'),
@@ -165,11 +167,10 @@ limiter = Limiter(
 
 def get_whitelisted_ips():
     try:
-        response = requests.get('http://localhost:5000/raw_whitelist')
-        response.raise_for_status()  # Raise an error for bad HTTP status
-        return set(line.strip() for line in response.text.splitlines() if line.strip())
-    except requests.RequestException as e:
-        app.logger.error(f"Error loading whitelist from /raw_whitelist: {e}")
+        whitelisted_ips = r.hkeys('ips_webhook2_whitelist')
+        return set(ip.decode('utf-8') for ip in whitelisted_ips)
+    except redis.RedisError as e:
+        app.logger.error(f"Error fetching whitelist from Redis: {e}")
         return set()
 
 #Validate-BlockedIPs
