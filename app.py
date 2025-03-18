@@ -392,14 +392,22 @@ def raw_ips():
     return Response(ip_list, mimetype='text/plain')
     
 @app.route('/raw_whitelist', methods=['GET'])
-@limiter.limit("5 per minute")
 def raw_ips_whitelist():
     client_ip = request.remote_addr
     if client_ip not in webhook2_allowed_ips:
         app.logger.warning(f"Unauthorized access attempt from IP: {client_ip}")
         abort(403)  # Forbidden
+
+    # Bypass rate limiting for allowed IPs
+    if client_ip in webhook2_allowed_ips:
+        limiter.enabled = False
+
     ips = r.hkeys('ips_webhook2_whitelist')
     ip_list = "\n".join(ip.decode('utf-8') for ip in ips)
+    
+    if client_ip in webhook2_allowed_ips:
+        limiter.enabled = True  # Re-enable limiter for other requests
+
     return Response(ip_list, mimetype='text/plain')
     
 @app.route('/whitelist', methods=['GET'])
