@@ -14,6 +14,9 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from redis import Redis
+from gevent import monkey
+#PatchAll
+monkey.patch_all()
 
 app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY', 'supersecretkey')
@@ -26,7 +29,7 @@ log_level = logging.DEBUG
 app.logger.setLevel(log_level)
 
 #Version
-app.logger.info("V1.6a")
+app.logger.info("V1.6c")
 app.logger.info("----------------")
 app.logger.info(" ____    ____   ")
 app.logger.info("|  _ \  |  _ \  ╔═════════════════════════╗")
@@ -497,6 +500,7 @@ def remove_whitelist():
         return jsonify({'status': 'IP not found'}), 404
     
 @app.route('/benchmark', methods=['GET'])
+@limiter.limit("100000 per minute")
 def benchmark():
     client_ip = request.remote_addr
     if client_ip not in webhook2_allowed_ips:

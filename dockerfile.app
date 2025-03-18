@@ -8,7 +8,7 @@ ENV TZ="Europe/Vienna"
 WORKDIR /app
 
 #Core
-RUN pip install --no-cache-dir Flask Werkzeug redis gunicorn
+RUN pip install --no-cache-dir Flask Werkzeug redis gunicorn gevent
 
 #GeoIp
 RUN pip install --no-cache-dir geoip2
