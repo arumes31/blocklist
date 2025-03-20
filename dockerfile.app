@@ -7,17 +7,20 @@ ENV TZ="Europe/Vienna"
 
 WORKDIR /app
 
-#Core
+# Core
 RUN pip install --no-cache-dir Flask Werkzeug redis gunicorn gevent
 
-#GeoIp
+# GeoIp
 RUN pip install --no-cache-dir geoip2
 
-#ToTp
+# ToTp
 RUN pip install --no-cache-dir pyotp
 
-#Limiter
+# Limiter
 RUN pip install --no-cache-dir Flask-Limiter
+
+# QR Code
+RUN pip install --no-cache-dir qrcode[pil]
 
 COPY app.py /app
 
@@ -25,14 +28,15 @@ COPY app.py /app
 COPY dashboard.html /app/templates/dashboard.html
 COPY login.html /app/templates/login.html
 COPY whitelist.html /app/templates/whitelist.html
+COPY admin_management.html /app/templates/admin_management.html
 
-#Copy JS
+# Copy JS
 COPY ./js/aether.js /app/static/js/aether.js
 COPY ./js/simplex-noise.min.js /app/static/js/simplex-noise.min.js
 COPY ./js/codepen-util.js /app/static/js/codepen-util.js
 
-#Copy StaticContent
+# Copy StaticContent
 COPY ./cd/logo.png /app/static/cd/logo.png
 COPY ./cd/favicon-color.png /app/static/cd/favicon-color.png
 
-CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:5000", "--access-logfile", "-", "app:app"]
+CMD ["gunicorn", "-k", "gevent", "-w", "4", "-b", "0.0.0.0:5000", "--access-logfile", "-", "app:app"]

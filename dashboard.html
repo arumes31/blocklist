@@ -149,8 +149,10 @@
     <h2>
         Dashboard 
         <button onclick="blockIP()" class="block-button">Block IP</button>
-		<button onclick="window.location.href='/whitelist'" class="whitelist-button">Manage Whitelist</button>
-
+        <button onclick="window.location.href='/whitelist'" class="whitelist-button">Manage Whitelist</button>
+        {% if session.username == 'admin' %}
+        <button onclick="window.location.href='/admin_management'" class="whitelist-button">Manage Admins</button>
+        {% endif %}
     </h2>
     <div class="button-container">
         <p>Total IPs: {{ total_ips }}</p>
@@ -178,6 +180,7 @@
         <th>IP Address</th>
         <th>Date Added</th>
         <th>Reason</th>
+        <th>Blocked By</th>
         <th>Country</th>
         <th>City</th>
         <th>Action</th>
@@ -187,6 +190,7 @@
             <td>{{ ip }}</td>
             <td><span class="utc-timestamp">{{ data.timestamp }}</span></td>
             <td>{{ data.reason if data.reason else 'N/A' }}</td>
+            <td>{{ data.added_by if data.added_by else 'Unknown' }}</td>
             <td>
                 {% if data.geolocation %}
                     <span class="flag-icon flag-icon-{{ data.geolocation.country|lower }}"></span>
@@ -211,7 +215,7 @@
             timestamp.innerText = localTime;
         });
     });
-	
+    
     function filterTable() {
         var input, filter, table, tr, td, i, txtValue;
         input = document.getElementById("filterInput");
@@ -255,6 +259,7 @@
                 if (data.status === 'success') {
                     alert('IP blocked successfully!');
                     closeModal();
+                    location.reload();  // Reload page to show updated list
                 } else {
                     alert('Failed to block IP!');
                 }
@@ -292,7 +297,7 @@
     }
 
     setTimeout(function() {
-        document.querySelector('.overlay').style.display = 'none';
+        document.querySelector('.overlay') ? document.querySelector('.overlay').style.display = 'none' : null;
     }, 3000);
 </script>
 

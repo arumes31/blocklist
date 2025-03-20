@@ -84,7 +84,7 @@
             box-sizing: border-box;
             font-size: 16px;
         }
-    .whitelist-button {
+        .whitelist-button {
             background-color: #28a745;
             color: white;
             padding: 10px 15px;
@@ -139,7 +139,7 @@
                     {% endif %}
                 </td>
                 <td>{{ data.geolocation.city if data.geolocation else 'N/A' }}</td>
-                <td>{{ data.added_by }}</td>
+                <td>{{ data.added_by if data.added_by else 'Unknown' }}</td>
                 <td>{{ data.reason if data.reason else 'No reason provided' }}</td>
                 <td>{{ data.expires_in }}</td>
                 <td><button class="delete-button" onclick="removeWhitelist('{{ ip }}')">Delete</button></td>
@@ -150,7 +150,7 @@
                 <td>{{ subnet }}</td>
                 <td>N/A</td>
                 <td>N/A</td>
-                <td>System Whitelisted</td>
+                <td>System</td>
                 <td>Docker ENV</td>
                 <td>NEVER</td>
                 <td>NOT ALLOWED</td>
