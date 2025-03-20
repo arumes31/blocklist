@@ -24,6 +24,7 @@ import base64
 
 app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY', 'supersecretkey')
+app.permanent_session_lifetime = timedelta(hours=1)
 
 # Configure logging level based on the LOGWEB environment variable
 log_level = logging.INFO if os.getenv('LOGWEB', 'false').lower() == 'true' else logging.WARNING
@@ -165,11 +166,40 @@ def authenticate():
     return redirect(url_for('login'))
 
 def login_required(f):
-    """Decorator function to enforce login."""
+    """Decorator function to enforce login, session timeout, and IP consistency."""
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if 'logged_in' not in session:
             return authenticate()
+
+        # Check session age
+        login_time_str = session.get('login_time')
+        if not login_time_str:
+            session.clear()
+            return authenticate()
+
+        try:
+            login_time = datetime.fromisoformat(login_time_str)
+            current_time = datetime.utcnow()
+            session_age = current_time - login_time
+            if session_age > timedelta(hours=1):
+                app.logger.info("Session expired for user %s due to 1-hour timeout", session.get('username', 'unknown'))
+                session.clear()
+                return authenticate()
+        except ValueError:
+            app.logger.error("Invalid login_time format in session for user %s", session.get('username', 'unknown'))
+            session.clear()
+            return authenticate()
+
+        # Check client IP
+        current_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+        stored_ip = session.get('client_ip')
+        if not stored_ip or current_ip != stored_ip:
+            app.logger.info("Session invalidated for user %s due to IP change (stored: %s, current: %s)",
+                           session.get('username', 'unknown'), stored_ip, current_ip)
+            session.clear()
+            return authenticate()
+
         return f(*args, **kwargs)
     return decorated_function
 
@@ -253,8 +283,11 @@ def login():
         client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
 
         if check_auth(username, password, totp):
+            session.permanent = True
             session['logged_in'] = True
             session['username'] = username
+            session['login_time'] = datetime.utcnow().isoformat()
+            session['client_ip'] = client_ip
             app.logger.info("Admin User %s logged in successfully from IP: %s", username, client_ip)
             redirect_url = request.url_root + 'dashboard'
             return redirect(redirect_url)
@@ -266,8 +299,7 @@ def login():
 
 @app.route('/logout')
 def logout():
-    session.pop('logged_in', None)
-    session.pop('username', None)
+    session.clear()
     return redirect(url_for('login'))
 
 @app.route('/dashboard', methods=['GET'])
