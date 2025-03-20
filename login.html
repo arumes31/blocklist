@@ -16,7 +16,6 @@
             align-items: center;
             height: 100vh;
         }
-
         canvas {
             position: absolute;
             top: 0;
@@ -25,7 +24,6 @@
             height: 100%;
             z-index: -1;
         }
-
         .container {
             background-color: #fff;
             padding: 20px;
@@ -34,21 +32,13 @@
             max-width: 400px;
             width: 100%;
         }
-
-        h2 {
-            text-align: center;
-        }
-
-        form {
-            margin-top: 20px;
-        }
-
+        h2 { text-align: center; }
+        form { margin-top: 20px; }
         label {
             display: block;
             margin-bottom: 5px;
             font-weight: bold;
         }
-
         input[type="text"],
         input[type="password"] {
             width: 100%;
@@ -58,79 +48,65 @@
             border-radius: 5px;
             box-sizing: border-box;
         }
-
         input[type="submit"] {
             width: 100%;
             padding: 10px;
             margin-top: 10px;
-            background-color: red; /* Changed to red */
+            background-color: red;
             color: #fff;
             border: none;
             border-radius: 5px;
             cursor: pointer;
             transition: background-color 0.3s ease;
         }
-
-        input[type="submit"]:hover {
-            background-color: #0056b3;
-        }
-
+        input[type="submit"]:hover { background-color: #0056b3; }
         .error-message {
             color: red;
             display: none;
             margin-top: 10px;
         }
-
-.buttons-container {
-    position: absolute;
-    top: 10px;
-    right: 10px;
-    display: flex;
-    flex-direction: row-reverse; /* Stack buttons from right to left */
-    z-index: 10; /* Ensure buttons are above other elements */
-	background-color: transparent;
-}
-
-.small-button {
-    display: block;
-    padding: 5px 10px;
-    background-color: red;
-    color: white;
-    text-decoration: none;
-    border: none;
-	border-radius: none;
-    margin-left: 15px; /* Add margin left for spacing */
-}
-
-.small-button:first-child {
-    margin-left: 0; /* Remove margin left from the first button */
-}
-
-.small-button:hover {
-    background-color: darkred;
-}
-
+        .buttons-container {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            display: flex;
+            flex-direction: row-reverse;
+            z-index: 10;
+            background-color: transparent;
+        }
+        .small-button {
+            display: block;
+            padding: 5px 10px;
+            background-color: red;
+            color: white;
+            text-decoration: none;
+            border: none;
+            border-radius: none;
+            margin-left: 15px;
+        }
+        .small-button:first-child { margin-left: 0; }
+        .small-button:hover { background-color: darkred; }
     </style>
 </head>
 <body>
     <canvas id="canvas"></canvas>
     <div class="container" id="loginContainer">
         <h2><img src="/cd/logo.png" alt="banner image" style="height: 55px; width: auto;"><br><br>Login</h2>
-        <form id="loginForm" action="/login" method="POST">
+        <form id="loginForm" action="/login" method="POST" autocomplete="on">
             <label for="username">Username:</label>
-            <input type="text" id="username" name="username" required>
+            <input type="text" id="username" name="username" required autocomplete="username">
             <label for="password">Password:</label>
-            <input type="password" id="password" name="password" required>
-            <label for="token">Token:</label>
-            <input type="text" id="token" name="token" required>
+            <input type="password" id="password" name="password" required autocomplete="current-password">
+            <label for="totp">TOTP:</label>
+            <input type="text" id="totp" name="totp" required autocomplete="one-time-code" inputmode="numeric" placeholder="">
             <input type="submit" value="Login">
         </form>
-        <p id="errorMessage" class="error-message"></p> <!-- Error message will be displayed here -->
+        <p id="errorMessage" class="error-message"></p>
     </div>
-        <div class="buttons-container">
-		     <button class="small-button" onclick="window.location.href='/ips'">IP</button>
-             <button class="small-button" onclick="window.location.href='/raw'">RAW</button>
-        </div>
+    <div class="buttons-container">
+        <button class="small-button" onclick="window.location.href='/ips'">IP</button>
+        <button class="small-button" onclick="window.location.href='/raw'">RAW</button>
+    </div>
 
     <script src="js/simplex-noise.min.js"></script>
     <script src="js/codepen-util.js"></script>
@@ -142,12 +118,12 @@
         function resetIdleTimer() {
             idleTime = 0;
             const loginContainer = document.getElementById('loginContainer');
-            loginContainer.style.opacity = '1'; // Reset opacity to fully visible
+            loginContainer.style.opacity = '1';
         }
 
         function setFormTransparent() {
             const loginContainer = document.getElementById('loginContainer');
-            loginContainer.style.opacity = '0.05'; // Make the login form 90% transparent
+            loginContainer.style.opacity = '0.05';
         }
 
         document.addEventListener('mousemove', resetIdleTimer, false);
@@ -165,38 +141,47 @@
         document.getElementById('loginForm').addEventListener('submit', function(event) {
             event.preventDefault();
             const formData = new FormData(event.target);
+            const totp = formData.get('totp');
+
+            if (!/^\d{6}$/.test(totp)) {
+                const errorMessageElement = document.getElementById('errorMessage');
+                errorMessageElement.textContent = 'TOTP must be a 6-digit number.';
+                errorMessageElement.style.display = 'block';
+                return;
+            }
+
             fetch('/login', {
                 method: 'POST',
                 body: formData
             })
             .then(response => {
                 if (response.redirected) {
-                    window.location.href = response.url; // Redirect to the URL provided by the server
+                    window.location.href = response.url;
                 } else {
-                    return response.text(); // Read the HTML content
+                    return response.text();
                 }
             })
             .then(data => {
-                // Check if the response contains the specific success message
-                if (data.includes('Redirecting')) {
+                if (data && data.includes('Redirecting')) {
+                    const errorMessageElement = document.getElementById('errorMessage');
                     errorMessageElement.textContent = 'Login success. Redirecting.. Please try again..';
-                    errorMessageElement.style.display = 'block'; // Display error message
+                    errorMessageElement.style.display = 'block';
                     const redirectURL = window.location.protocol + '//' + window.location.hostname + (window.location.port ? ':' + window.location.port : '') + '/dashboard';
-                    window.location.href = redirectURL; // Redirect to dashboard
+                    window.location.href = redirectURL;
                 } else {
-                    // Display error message from the server response
                     const errorMessageElement = document.getElementById('errorMessage');
                     errorMessageElement.textContent = 'Login failed. Please try again.';
-                    errorMessageElement.style.display = 'block'; // Display error message
+                    errorMessageElement.style.display = 'block';
                 }
             })
             .catch(error => {
                 console.error('Error:', error);
                 const errorMessageElement = document.getElementById('errorMessage');
                 errorMessageElement.textContent = 'An error occurred. Please try again later.';
-                errorMessageElement.style.display = 'block'; // Display error message
+                errorMessageElement.style.display = 'block';
             });
         });
     </script>
+    <script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'92385e720b54bad1',t:'MTc0MjUwNjgzNi4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script>
 </body>
 </html>

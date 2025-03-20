@@ -248,13 +248,13 @@ def login():
     if request.method == 'POST':
         username = request.form.get('username')
         password = request.form.get('password')
-        token = request.form.get('token')
+        totp = request.form.get('totp')
 
         client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
 
-        if check_auth(username, password, token):
+        if check_auth(username, password, totp):
             session['logged_in'] = True
-            session['username'] = username  # Store username in session
+            session['username'] = username
             app.logger.info("Admin User %s logged in successfully from IP: %s", username, client_ip)
             redirect_url = request.url_root + 'dashboard'
             return redirect(redirect_url)
