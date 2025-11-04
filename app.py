@@ -562,6 +562,41 @@ def get_ips():
     ips = r.hkeys('ips')
     return jsonify([ip.decode('utf-8') for ip in ips])
 
+@app.route('/ips_automate', methods=['GET'])
+@limiter.limit("300 per minute")
+def get_ips_automate():
+    cache_key = 'cached_ips_automate'
+    cached = r.get(cache_key)
+    if cached:
+        app.logger.debug("Serving cached /ips_automate")
+        return jsonify(json.loads(cached.decode('utf-8')))
+
+    app.logger.debug("Computing fresh /ips_automate")
+    ips = r.hkeys('ips')
+    now = datetime.utcnow()
+    filtered_ips = []
+    delta_high = timedelta(hours=24, minutes=1)
+    delta_low = timedelta(hours=23, minutes=54)
+    for ip_bytes in ips:
+        ip = ip_bytes.decode('utf-8')
+        data_bytes = r.hget('ips', ip_bytes)
+        if data_bytes:
+            try:
+                entry = json.loads(data_bytes.decode('utf-8'))
+                timestamp_str = entry.get('timestamp')
+                if timestamp_str:
+                    timestamp = datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S UTC")
+                    expire_time = timestamp + timedelta(hours=24)
+                    remaining = expire_time - now
+                    if remaining >= delta_high or remaining <= delta_low:
+                        filtered_ips.append(ip)
+            except (json.JSONDecodeError, ValueError) as e:
+                app.logger.error(f"Error processing IP {ip}: {e}")
+
+    cached_data = json.dumps(filtered_ips)
+    r.setex(cache_key, 60, cached_data)
+    return jsonify(filtered_ips)
+
 @app.route('/js/<path:filename>')
 @limiter.limit("20 per minute")
 def serve_js(filename):
