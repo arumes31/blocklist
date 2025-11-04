@@ -34,7 +34,7 @@ log_level = logging.DEBUG
 app.logger.setLevel(log_level)
 
 # Version
-app.logger.info("V1.8a")
+app.logger.info("V1.8b")
 app.logger.info("----------------")
 app.logger.info(" ____    ____   ")
 app.logger.info("|  _ \  |  _ \  ╔═════════════════════════╗")
@@ -158,7 +158,7 @@ def check_auth(username, password, token):
     if username not in admin_accounts:
         return False
     admin_data = admin_accounts[username]
-    return (check_password_hash(admin_data['password_hash'], password) and 
+    return (check_password_hash(admin_data['password_hash'], password) and
             TOTP(admin_data['token']).verify(token))
 
 def authenticate():
@@ -212,7 +212,7 @@ limiter = Limiter(
     key_func=get_client_ip,
     app=app,
     storage_uri=f"redis://{os.getenv('REDIS_HOST', 'localhost')}:{os.getenv('REDIS_PORT', 6379)}/{os.getenv('REDIS_LIM_DB', 1)}",
-    default_limits=["100 per minute"]
+    default_limits=["200 per minute"]
 )
 
 def get_whitelisted_ips():
@@ -229,12 +229,12 @@ def is_valid_ip(ip):
         ip_obj = ipaddress.ip_address(ip)
         # Reload whitelist
         whitelisted_ips = get_whitelisted_ips()
-        
+
         # Check if IP is in the whitelist --> Deny Blocklist Entry
         if ip in whitelisted_ips:
             app.logger.info(f"IP banned FAILED - IP IS WHITELISTED: {ip}")
             return False
-            
+
         for range in blocked_ranges:
             if ip_obj in ipaddress.ip_network(range):
                 app.logger.info(f"IP banned FAILED - IP RANGE IS BLACKLISTED: {ip}")
@@ -436,12 +436,12 @@ def webhook2():
         return jsonify({'status': 'invalid IP'}), 400
 
 @app.route('/raw', methods=['GET'])
-@limiter.limit("5 per minute")
+@limiter.limit("50 per minute")
 def raw_ips():
     ips = r.hkeys('ips')
     ip_list = "\n".join(ip.decode('utf-8') for ip in ips)
     return Response(ip_list, mimetype='text/plain')
-    
+
 @app.route('/raw_whitelist', methods=['GET'])
 def raw_ips_whitelist():
     client_ip = request.remote_addr
@@ -455,12 +455,12 @@ def raw_ips_whitelist():
 
     ips = r.hkeys('ips_webhook2_whitelist')
     ip_list = "\n".join(ip.decode('utf-8') for ip in ips)
-    
+
     if client_ip in webhook2_allowed_ips:
         limiter.enabled = True  # Re-enable limiter for other requests
 
     return Response(ip_list, mimetype='text/plain')
-    
+
 @app.route('/whitelist', methods=['GET'])
 @login_required
 def whitelist():
@@ -546,7 +546,7 @@ def remove_whitelist():
         return jsonify({'status': 'success'}), 200
     else:
         return jsonify({'status': 'IP not found'}), 404
-    
+
 @app.route('/benchmark', methods=['GET'])
 @limiter.limit("100000 per minute")
 def benchmark():
@@ -557,7 +557,7 @@ def benchmark():
     return "ok", 200
 
 @app.route('/ips', methods=['GET'])
-@limiter.limit("3 per minute")
+@limiter.limit("200 per minute")
 def get_ips():
     ips = r.hkeys('ips')
     return jsonify([ip.decode('utf-8') for ip in ips])
@@ -578,7 +578,7 @@ def serve_cd(filename):
 def admin_management():
     if session.get('username') != ADMIN_USERNAME:
         return jsonify({'error': 'Only GUIAdmin can manage accounts'}), 403
-        
+
     admin_accounts = get_admin_accounts()
     admin_list = {k: {'token': '******'} for k in admin_accounts.keys()}
     return render_template('admin_management.html', admins=admin_list)
@@ -588,29 +588,29 @@ def admin_management():
 def create_admin():
     if session.get('username') != ADMIN_USERNAME:
         return jsonify({'error': 'Only GUIAdmin can create accounts'}), 403
-        
+
     data = request.get_json()
     new_username = data.get('username')
     new_password = data.get('password')
-    
+
     if not new_username or not new_password:
         return jsonify({'error': 'Username and password are required'}), 400
-        
+
     admin_accounts = get_admin_accounts()
     if new_username in admin_accounts:
         return jsonify({'error': 'Username already exists'}), 400
-        
+
     new_token = random_base32()
     new_password_hash = generate_password_hash(new_password)
-    
+
     admin_data = {
         'password_hash': new_password_hash,
         'token': new_token
     }
-    
+
     # Store in Redis
     r.hset('admin_accounts', new_username, json.dumps(admin_data))
-    
+
     return jsonify({'status': 'success', 'username': new_username}), 200
 
 @app.route('/get_qr/<username>', methods=['GET'])
@@ -618,19 +618,19 @@ def create_admin():
 def get_qr(username):
     if session.get('username') != ADMIN_USERNAME:
         return jsonify({'error': 'Only GUIAdmin can view QR codes'}), 403
-        
+
     admin_accounts = get_admin_accounts()
     if username not in admin_accounts:
         return jsonify({'error': 'Admin not found'}), 404
-        
+
     totp = TOTP(admin_accounts[username]['token'])
     qr_uri = totp.provisioning_uri(username, issuer_name="Blocklist App")
-    
+
     img = qrcode.make(qr_uri)
     buf = BytesIO()
     img.save(buf, format="PNG")
     buf.seek(0)
-    
+
     return send_file(buf, mimetype='image/png')
 
 @app.route('/delete_admin', methods=['POST'])
@@ -638,19 +638,19 @@ def get_qr(username):
 def delete_admin():
     if session.get('username') != ADMIN_USERNAME:
         return jsonify({'error': 'Only GUIAdmin can delete accounts'}), 403
-        
+
     data = request.get_json()
     username_to_delete = data.get('username')
-    
+
     if username_to_delete == ADMIN_USERNAME:
         return jsonify({'error': 'Cannot delete GUIAdmin'}), 400
-        
+
     admin_accounts = get_admin_accounts()
     if username_to_delete not in admin_accounts:
         return jsonify({'error': 'Admin not found'}), 404
-        
+
     r.hdel('admin_accounts', username_to_delete)
-    
+
     return jsonify({'status': 'success'}), 200
 
 @app.route('/change_admin_password', methods=['POST'])
@@ -658,26 +658,26 @@ def delete_admin():
 def change_admin_password():
     if session.get('username') != ADMIN_USERNAME:
         return jsonify({'error': 'Only GUIAdmin can change passwords'}), 403
-        
+
     data = request.get_json()
     username = data.get('username')
     new_password = data.get('new_password')
-    
+
     if not username or not new_password:
         return jsonify({'error': 'Username and new password are required'}), 400
-        
+
     admin_accounts = get_admin_accounts()
     if username not in admin_accounts:
         return jsonify({'error': 'Admin not found'}), 404
-    
+
     if username == ADMIN_USERNAME:
         return jsonify({'error': 'Cannot change GUIAdmin password via this endpoint'}), 400
-        
+
     # Update password
     admin_data = admin_accounts[username]
     admin_data['password_hash'] = generate_password_hash(new_password)
     r.hset('admin_accounts', username, json.dumps(admin_data))
-    
+
     app.logger.info(f"Password changed for admin: {username}")
     return jsonify({'status': 'success'}), 200
 
@@ -686,26 +686,26 @@ def change_admin_password():
 def change_admin_totp():
     if session.get('username') != ADMIN_USERNAME:
         return jsonify({'error': 'Only GUIAdmin can change TOTP'}), 403
-        
+
     data = request.get_json()
     username = data.get('username')
-    
+
     if not username:
         return jsonify({'error': 'Username is required'}), 400
-        
+
     admin_accounts = get_admin_accounts()
     if username not in admin_accounts:
         return jsonify({'error': 'Admin not found'}), 404
-    
+
     if username == ADMIN_USERNAME:
         return jsonify({'error': 'Cannot change GUIAdmin TOTP via this endpoint'}), 400
-        
+
     # Generate new TOTP token
     admin_data = admin_accounts[username]
     new_token = random_base32()
     admin_data['token'] = new_token
     r.hset('admin_accounts', username, json.dumps(admin_data))
-    
+
     # Generate QR code image
     totp = TOTP(new_token)
     qr_uri = totp.provisioning_uri(username, issuer_name="Blocklist App")
@@ -714,7 +714,7 @@ def change_admin_totp():
     img.save(buf, format="PNG")
     qr_image_base64 = base64.b64encode(buf.getvalue()).decode('utf-8')
     buf.close()
-    
+
     app.logger.info(f"TOTP changed for admin: {username}")
     return jsonify({'status': 'success', 'qr_image': f'data:image/png;base64,{qr_image_base64}'})
 
