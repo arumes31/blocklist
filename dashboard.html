@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>IP Dashboard</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.5.0/css/flag-icon.min.css">
+    <link rel="stylesheet" href="/cd/flag-icon.min.css">
     <link rel="icon" type="image/x-icon" href="/cd/favicon-color.png" />
     <style>
         table {
@@ -138,6 +138,10 @@
         .banner pre {
             margin: 0;
         }
+        .loading {
+            opacity: 0.5;
+            pointer-events: none;
+        }
     </style>
 </head>
 <body>
@@ -173,7 +177,7 @@
     </div>
 </div>
 
-<input type="text" id="filterInput" class="filter-input" onkeyup="filterTable()" placeholder="Search for IP addresses...">
+<input type="text" id="filterInput" class="filter-input" placeholder="Search for IP addresses..." oninput="debouncedFilterTable()">
 
 <table id="ipTable">
     <tr>
@@ -206,16 +210,15 @@
 </table>
 
 <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        var utcTimestamps = document.querySelectorAll('.utc-timestamp');
-        utcTimestamps.forEach(function(timestamp) {
-            var utcString = timestamp.innerText;
-            var date = new Date(utcString);
-            var localTime = date.toLocaleString();
-            timestamp.innerText = localTime;
-        });
-    });
-    
+    let debounceTimeout;
+    let conversionBatch = [];
+    let isConverting = false;
+
+    function debouncedFilterTable() {
+        clearTimeout(debounceTimeout);
+        debounceTimeout = setTimeout(filterTable, 300);
+    }
+
     function filterTable() {
         var input, filter, table, tr, td, i, txtValue;
         input = document.getElementById("filterInput");
@@ -234,6 +237,38 @@
             }
         }
     }
+
+    function convertTimestampsBatch() {
+        if (conversionBatch.length === 0) {
+            isConverting = false;
+            return;
+        }
+
+        const batchSize = 50; // Process 50 at a time
+        const batch = conversionBatch.splice(0, batchSize);
+
+        batch.forEach(function(timestamp) {
+            var utcString = timestamp.innerText;
+            var date = new Date(utcString);
+            var localTime = date.toLocaleString();
+            timestamp.innerText = localTime;
+        });
+
+        // Schedule next batch
+        if (conversionBatch.length > 0) {
+            setTimeout(convertTimestampsBatch, 0);
+        }
+    }
+
+    function convertTimestamps() {
+        var utcTimestamps = document.querySelectorAll('.utc-timestamp');
+        conversionBatch = Array.from(utcTimestamps);
+        isConverting = true;
+        convertTimestampsBatch();
+    }
+
+    // Start conversion after a short delay to allow initial render
+    setTimeout(convertTimestamps, 100);
 
     function blockIP() {
         document.getElementById('blockModal').style.display = 'block';
