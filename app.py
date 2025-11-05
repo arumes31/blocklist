@@ -21,6 +21,8 @@ import secrets
 from io import BytesIO
 import qrcode
 import base64
+import time
+import threading
 
 app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY', 'supersecretkey')
@@ -34,7 +36,7 @@ log_level = logging.DEBUG
 app.logger.setLevel(log_level)
 
 # Version
-app.logger.info("V1.8b")
+app.logger.info("V1.8c")
 app.logger.info("----------------")
 app.logger.info(" ____    ____   ")
 app.logger.info("|  _ \  |  _ \  ╔═════════════════════════╗")
@@ -59,7 +61,12 @@ limiter_redis = redis.StrictRedis(host=os.getenv('REDIS_HOST', 'redis'),
 geoip_db_path = '/usr/share/GeoIP/GeoLite2-City.mmdb'
 
 # Initialize GeoIP reader
-geoip_reader = geoip2.database.Reader(geoip_db_path)
+geoip_reader = None
+try:
+    geoip_reader = geoip2.database.Reader(geoip_db_path)
+    app.logger.info("GeoIP database loaded successfully.")
+except Exception as e:
+    app.logger.warning(f"Failed to load GeoIP database: {e}. GeoIP features will be disabled.")
 
 # Apply ProxyFix middleware to handle reverse proxy headers
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1, x_prefix=1)
@@ -253,6 +260,9 @@ def is_valid_ip_webhook2(ip):
 
 def get_geoip_data(ip):
     """Get geolocation data for an IP address."""
+    if geoip_reader is None:
+        app.logger.debug(f"GeoIP reader not available for IP: {ip}")
+        return None
     try:
         response = geoip_reader.city(ip)
         return {
@@ -267,6 +277,55 @@ def get_geoip_data(ip):
     except Exception as e:
         app.logger.error(f"Error fetching GeoIP data for IP {ip}: {e}")
         return None
+
+def compute_filtered_ips():
+    """Compute the list of filtered IPs based on expiration windows."""
+    ips = r.hkeys('ips')
+    now = datetime.utcnow()
+    filtered_ips = []
+    delta_high = timedelta(hours=24, minutes=1)
+    delta_low = timedelta(hours=23, minutes=54)
+    for ip_bytes in ips:
+        ip = ip_bytes.decode('utf-8')
+        data_bytes = r.hget('ips', ip_bytes)
+        if data_bytes:
+            try:
+                entry = json.loads(data_bytes.decode('utf-8'))
+                timestamp_str = entry.get('timestamp')
+                if timestamp_str:
+                    timestamp = datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S UTC")
+                    expire_time = timestamp + timedelta(hours=24)
+                    remaining = expire_time - now
+                    if remaining >= delta_high or remaining <= delta_low:
+                        filtered_ips.append(ip)
+            except (json.JSONDecodeError, ValueError) as e:
+                app.logger.error(f"Error processing IP {ip}: {e}")
+    return filtered_ips
+
+# Background cache update for /ips_automate
+def update_ips_automate_cache():
+    cache_key = 'cached_ips_automate'
+    lock_key = 'lock_ips_automate_update'
+    while True:
+        time.sleep(30)  # Update every 30 seconds
+        lock = r.lock(lock_key, timeout=60, blocking_timeout=10)
+        acquired = False
+        try:
+            acquired = lock.acquire()
+            if acquired:
+                filtered_ips = compute_filtered_ips()
+                cached_data = json.dumps(filtered_ips)
+                r.setex(cache_key, 300, cached_data)  # Cache for 5 minutes
+                app.logger.debug("Updated cache for /ips_automate")
+        except Exception as e:
+            app.logger.error(f"Error updating /ips_automate cache: {e}")
+        finally:
+            if acquired:
+                lock.release()
+
+# Start the background thread
+cache_update_thread = threading.Thread(target=update_ips_automate_cache, daemon=True)
+cache_update_thread.start()
 
 @app.route('/')
 def index():
@@ -570,32 +629,9 @@ def get_ips_automate():
     if cached:
         app.logger.debug("Serving cached /ips_automate")
         return jsonify(json.loads(cached.decode('utf-8')))
-
-    app.logger.debug("Computing fresh /ips_automate")
-    ips = r.hkeys('ips')
-    now = datetime.utcnow()
-    filtered_ips = []
-    delta_high = timedelta(hours=24, minutes=1)
-    delta_low = timedelta(hours=23, minutes=54)
-    for ip_bytes in ips:
-        ip = ip_bytes.decode('utf-8')
-        data_bytes = r.hget('ips', ip_bytes)
-        if data_bytes:
-            try:
-                entry = json.loads(data_bytes.decode('utf-8'))
-                timestamp_str = entry.get('timestamp')
-                if timestamp_str:
-                    timestamp = datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S UTC")
-                    expire_time = timestamp + timedelta(hours=24)
-                    remaining = expire_time - now
-                    if remaining >= delta_high or remaining <= delta_low:
-                        filtered_ips.append(ip)
-            except (json.JSONDecodeError, ValueError) as e:
-                app.logger.error(f"Error processing IP {ip}: {e}")
-
-    cached_data = json.dumps(filtered_ips)
-    r.setex(cache_key, 60, cached_data)
-    return jsonify(filtered_ips)
+    else:
+        app.logger.debug("Cache miss on /ips_automate, returning empty list")
+        return jsonify([])
 
 @app.route('/js/<path:filename>')
 @limiter.limit("20 per minute")
