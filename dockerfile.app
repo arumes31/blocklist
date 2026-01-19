@@ -1,4 +1,4 @@
-FROM python:3.10-slim
+FROM python:3.13-slim
 
 # Set environment variables
 ENV BLOCKED_RANGES="127.0.0.1/32,0.0.0.0/32,192.168.0.0/16,10.0.0.0/8,172.12.0.0/12"
