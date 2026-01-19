@@ -1,0 +1,54 @@
+name: Daily Security Scan
+
+on:
+  schedule:
+    - cron: '0 0 * * *'
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  security-scan:
+    name: Security Scan and Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner (FS)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'table'
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Build Webserver Image
+        run: docker build -t blocklist-webserver:latest -f dockerfile.app .
+
+      - name: Build Scheduler Image
+        run: docker build -t blocklist-scheduler:latest -f dockerfile.scheduler .
+
+      - name: Run Trivy vulnerability scanner (Webserver Image)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'blocklist-webserver:latest'
+          format: 'table'
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Run Trivy vulnerability scanner (Scheduler Image)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'blocklist-scheduler:latest'
+          format: 'table'
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
