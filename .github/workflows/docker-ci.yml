@@ -17,6 +17,9 @@ jobs:
       - name: Build Webserver Image
         run: docker build -t blocklist-webserver:latest -f dockerfile.app .
 
+      - name: Debug - List installed packages
+        run: docker run --rm blocklist-webserver:latest pip list
+
       - name: Build Scheduler Image
         run: docker build -t blocklist-scheduler:latest -f dockerfile.scheduler .
 
