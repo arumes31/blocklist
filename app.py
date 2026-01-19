@@ -25,12 +25,13 @@ import time
 import threading
 
 app = Flask(__name__)
-app.secret_key = os.getenv('SECRET_KEY', 'supersecretkey')
+app.secret_key = os.getenv('SECRET_KEY')
+if not app.secret_key:
+    raise RuntimeError("SECRET_KEY environment variable is not set")
 app.permanent_session_lifetime = timedelta(hours=1)
 
 # Configure logging level based on the LOGWEB environment variable
-log_level = logging.INFO if os.getenv('LOGWEB', 'false').lower() == 'true' else logging.WARNING
-log_level = logging.DEBUG
+log_level = logging.DEBUG if os.getenv('LOGWEB', 'false').lower() == 'true' else logging.WARNING
 
 # Configure Flask logging
 app.logger.setLevel(log_level)
@@ -69,7 +70,7 @@ except Exception as e:
     app.logger.warning(f"Failed to load GeoIP database: {e}. GeoIP features will be disabled.")
 
 # Apply ProxyFix middleware to handle reverse proxy headers
-app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1, x_prefix=1)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1)
 
 def is_valid_ip_range(ip_range):
     """Check if a given IP range is valid."""
@@ -377,7 +378,7 @@ def dashboard():
             decoded_ips_with_dates[ip_str] = {"error": "invalid JSON format", "data": date_str}
 
     total_ips = len(decoded_ips_with_dates)  # Get the total number of IPs
-    return render_template('dashboard.html', ips_with_dates=decoded_ips_with_dates, total_ips=total_ips)
+    return render_template('dashboard.html', ips_with_dates=decoded_ips_with_dates, total_ips=total_ips, admin_username=ADMIN_USERNAME)
 
 @app.route('/unblock', methods=['POST'])
 @login_required

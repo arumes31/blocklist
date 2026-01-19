@@ -154,7 +154,7 @@
         Dashboard 
         <button onclick="blockIP()" class="block-button">Block IP</button>
         <button onclick="window.location.href='/whitelist'" class="whitelist-button">Manage Whitelist</button>
-        {% if session.username == 'admin' %}
+        {% if session.username == admin_username %}
         <button onclick="window.location.href='/admin_management'" class="whitelist-button">Manage Admins</button>
         {% endif %}
     </h2>
@@ -204,7 +204,7 @@
                 {% endif %}
             </td>
             <td>{{ data.geolocation.city if data.geolocation else 'N/A' }}</td>
-            <td><button class="unblock-button" onclick="unblock('{{ ip }}')">Unblock</button></td>
+            <td><button class="unblock-button" onclick="unblock({{ ip | tojson }})">Unblock</button></td>
         </tr>
     {% endfor %}
 </table>

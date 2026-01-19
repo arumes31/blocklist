@@ -142,7 +142,7 @@
                 <td>{{ data.added_by if data.added_by else 'Unknown' }}</td>
                 <td>{{ data.reason if data.reason else 'No reason provided' }}</td>
                 <td>{{ data.expires_in }}</td>
-                <td><button class="delete-button" onclick="removeWhitelist('{{ ip }}')">Delete</button></td>
+                <td><button class="delete-button" onclick="removeWhitelist({{ ip | tojson }})">Delete</button></td>
             </tr>
         {% endfor %}
         {% for subnet in blocked_subnets %}
