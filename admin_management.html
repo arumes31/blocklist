@@ -130,10 +130,10 @@
             <td>{{ data.token }}</td>
             <td>
                 {% if username != 'admin' %}
-                <button class="qr-button" onclick="showQR('{{ username }}')">Show QR</button>
-                <button class="password-button" onclick="openPasswordModal('{{ username }}')">Change Password</button>
-                <button class="totp-button" onclick="openTotpModal('{{ username }}')">Change TOTP</button>
-                <button class="delete-button" onclick="deleteAdmin('{{ username }}')">Delete</button>
+                <button class="qr-button" onclick="showQR({{ username | tojson }})">Show QR</button>
+                <button class="password-button" onclick="openPasswordModal({{ username | tojson }})">Change Password</button>
+                <button class="totp-button" onclick="openTotpModal({{ username | tojson }})">Change TOTP</button>
+                <button class="delete-button" onclick="deleteAdmin({{ username | tojson }})">Delete</button>
                 {% endif %}
             </td>
         </tr>
