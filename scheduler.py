@@ -1,7 +1,7 @@
 import os
 import logging
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import redis
 from apscheduler.schedulers.blocking import BlockingScheduler
 
@@ -24,7 +24,7 @@ logger.info("starting.....")
 
 def clean_old_ips():
     """Function to clean IPs older than 24 hours from Redis."""
-    threshold_time_utc = datetime.utcnow() - timedelta(hours=24)
+    threshold_time_utc = datetime.now(timezone.utc) - timedelta(hours=24)
     ips_with_dates = r.hgetall('ips')
     
     for ip, data_str in ips_with_dates.items():
@@ -32,7 +32,7 @@ def clean_old_ips():
         try:
             data = json.loads(data_str.decode('utf-8'))
             timestamp_str = data['timestamp'].replace(' UTC', '')
-            date_added = datetime.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S')
+            date_added = datetime.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S').replace(tzinfo=timezone.utc)
             
             if date_added < threshold_time_utc:
                 r.hdel('ips', ip)
@@ -42,7 +42,7 @@ def clean_old_ips():
 
 def clean_old_ips_webhook2_whitelist():
     """Function to clean IPs older than 24 hours from Redis in ips_webhook2_whitelist."""
-    threshold_time_utc = datetime.utcnow() - timedelta(hours=24)
+    threshold_time_utc = datetime.now(timezone.utc) - timedelta(hours=24)
     ips_with_dates = r.hgetall('ips_webhook2_whitelist')
     
     for ip, data_str in ips_with_dates.items():
@@ -50,7 +50,7 @@ def clean_old_ips_webhook2_whitelist():
         try:
             data = json.loads(data_str.decode('utf-8'))
             timestamp_str = data['timestamp'].replace(' UTC', '')
-            date_added = datetime.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S')
+            date_added = datetime.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S').replace(tzinfo=timezone.utc)
             
             if date_added < threshold_time_utc:
                 r.hdel('ips_webhook2_whitelist', ip)

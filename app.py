@@ -2,7 +2,7 @@ from gevent import monkey
 monkey.patch_all()
 
 from flask import Flask, request, jsonify, render_template, Response, redirect, url_for, session, send_from_directory, abort, send_file
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import os
 import json
 import logging
@@ -36,7 +36,7 @@ log_level = logging.DEBUG
 app.logger.setLevel(log_level)
 
 # Version
-app.logger.info("V1.8c")
+app.logger.info("V1.9a")
 app.logger.info("----------------")
 app.logger.info(" ____    ____   ")
 app.logger.info("|  _ \  |  _ \  ╔═════════════════════════╗")
@@ -187,7 +187,7 @@ def login_required(f):
 
         try:
             login_time = datetime.fromisoformat(login_time_str)
-            current_time = datetime.utcnow()
+            current_time = datetime.now(timezone.utc)
             session_age = current_time - login_time
             if session_age > timedelta(hours=1):
                 app.logger.info("Session expired for user %s due to 1-hour timeout", session.get('username', 'unknown'))
@@ -281,7 +281,7 @@ def get_geoip_data(ip):
 def compute_filtered_ips():
     """Compute the list of filtered IPs based on expiration windows."""
     ips = r.hkeys('ips')
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     filtered_ips = []
     delta_high = timedelta(hours=24, minutes=1)
     delta_low = timedelta(hours=23, minutes=54)
@@ -293,7 +293,7 @@ def compute_filtered_ips():
                 entry = json.loads(data_bytes.decode('utf-8'))
                 timestamp_str = entry.get('timestamp')
                 if timestamp_str:
-                    timestamp = datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S UTC")
+                    timestamp = datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S UTC").replace(tzinfo=timezone.utc)
                     expire_time = timestamp + timedelta(hours=24)
                     remaining = expire_time - now
                     if remaining >= delta_high or remaining <= delta_low:
@@ -345,7 +345,7 @@ def login():
             session.permanent = True
             session['logged_in'] = True
             session['username'] = username
-            session['login_time'] = datetime.utcnow().isoformat()
+            session['login_time'] = datetime.now(timezone.utc).isoformat()
             session['client_ip'] = client_ip
             app.logger.info("Admin User %s logged in successfully from IP: %s", username, client_ip)
             redirect_url = request.url_root + 'dashboard'
@@ -404,9 +404,9 @@ def block():
         app.logger.info(f"Blocking IP: {ip_to_block} by {added_by}")
 
     if ip_to_block and is_valid_ip(ip_to_block):
-        current_time = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')
+        current_time = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')
         if persist:
-            current_time = datetime.utcnow()
+            current_time = datetime.now(timezone.utc)
             current_time += timedelta(days=70000)
             current_time = current_time.strftime('%Y-%m-%d %H:%M:%S UTC')
             reason = '~~manually-added--persist'
@@ -438,7 +438,7 @@ def webhook():
 
     if ip and is_valid_ip(ip):
         if act in ['ban', 'ban-ip']:
-            current_time = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')
+            current_time = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')
             geo_data = get_geoip_data(ip)
             entry_data = {
                 'timestamp': current_time,
@@ -479,7 +479,7 @@ def webhook2():
 
     if ip and is_valid_ip_webhook2(ip):
         if act in ['add']:
-            current_time = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')
+            current_time = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')
             geo_data = get_geoip_data(ip)
             entry_data = {
                 'timestamp': current_time,
@@ -525,7 +525,7 @@ def raw_ips_whitelist():
 def whitelist():
     whitelisted_ips_raw = r.hgetall('ips_webhook2_whitelist')
     whitelisted_ips = {}
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     for ip, data in whitelisted_ips_raw.items():
         ip_str = ip.decode('utf-8')
@@ -536,7 +536,7 @@ def whitelist():
 
             if timestamp_str:
                 try:
-                    timestamp = datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S UTC")
+                    timestamp = datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S UTC").replace(tzinfo=timezone.utc)
                     expire_time = timestamp + timedelta(hours=24)
                     remaining_time = expire_time - now
                     if remaining_time.total_seconds() > 0:
@@ -574,7 +574,7 @@ def add_whitelist():
     added_by = session.get('username', 'Manually Added')  # Use logged-in username if available
 
     if ip_to_whitelist and is_valid_ip(ip_to_whitelist):
-        current_time = datetime.utcnow() + timedelta(days=70000)
+        current_time = datetime.now(timezone.utc) + timedelta(days=70000)
         geo_data = get_geoip_data(ip_to_whitelist)
         entry_data = {
             'timestamp': current_time.strftime('%Y-%m-%d %H:%M:%S UTC'),
