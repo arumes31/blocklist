@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   webserver:
-    image: "registry.reitetschlaeger.com/blocklist-webserver:latest"
+    image: "ghcr.io/arumes31/blocklist-webserver:latest"
     ports:
       - "5000:5000"
     environment:
@@ -27,7 +27,7 @@ services:
       - redis
     restart: unless-stopped
   scheduler:
-    image: "registry.reitetschlaeger.com/blocklist-scheduler:latest"
+    image: "ghcr.io/arumes31/blocklist-scheduler:latest"
     environment:
       TZ: "Europe/Vienna"
       REDIS_HOST: redis
