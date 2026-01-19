@@ -25,6 +25,9 @@ RUN pip install --no-cache-dir Flask-Limiter
 # QR Code
 RUN pip install --no-cache-dir qrcode[pil]
 
+# Cleanup setuptools and wheel to remove vendored vulnerabilities
+RUN pip uninstall -y setuptools wheel
+
 COPY app.py /app
 
 # Copy the .html file into the container
