@@ -7,6 +7,9 @@ ENV TZ="Europe/Vienna"
 
 WORKDIR /app
 
+# Upgrade pip and setuptools
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel
+
 # Core
 RUN pip install --no-cache-dir Flask Werkzeug redis gunicorn gevent
 
