@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 
 	"blocklist/internal/config"
@@ -59,7 +60,8 @@ func TestFunctional_BlockUnblock(t *testing.T) {
 	mr, _ := miniredis.Run()
 	defer mr.Close()
 
-	rRepo := repository.NewRedisRepository(mr.Host(), mr.Port(), 0)
+	port, _ := strconv.Atoi(mr.Port())
+	rRepo := repository.NewRedisRepository(mr.Host(), port, 0)
 	router := setupTestRouter(rRepo)
 
 	// 1. Test Block
@@ -104,7 +106,8 @@ func TestFunctional_Webhook(t *testing.T) {
 	mr, _ := miniredis.Run()
 	defer mr.Close()
 
-	rRepo := repository.NewRedisRepository(mr.Host(), mr.Port(), 0)
+	port, _ := strconv.Atoi(mr.Port())
+	rRepo := repository.NewRedisRepository(mr.Host(), port, 0)
 	router := setupTestRouter(rRepo)
 
 	webhookReq := map[string]string{

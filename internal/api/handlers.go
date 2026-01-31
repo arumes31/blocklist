@@ -98,8 +98,10 @@ func (h *APIHandler) WS(c *gin.Context) {
 		return nil
 	})
 
+	done := make(chan struct{})
 	// Read loop in a goroutine
 	go func() {
+		defer close(done)
 		for {
 			_, _, err := conn.ReadMessage()
 			if err != nil {
@@ -109,8 +111,15 @@ func (h *APIHandler) WS(c *gin.Context) {
 	}()
 
 	// Write loop for keep-alive
-	for range pingTicker.C {
-		if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+	for {
+		select {
+		case <-pingTicker.C:
+			if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+				return
+			}
+		case <-done:
+			return
+		case <-c.Request.Context().Done():
 			return
 		}
 	}

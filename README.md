@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="cd/logo.png" alt="Blocklist" width="500" />
+  <img src="cd/logo.png" alt="Blocklist" width="800" />
 </p>
 
 <p align="center">
@@ -16,37 +16,23 @@ A high-performance, security-hardened IP management platform with GeoIP enrichme
 
 ## 🔄 Project Flow
 
-<p align="center">
-  <svg width="600" height="150" viewBox="0 0 600 150" xmlns="http://www.w3.org/2000/svg">
-    <rect x="10" y="40" width="100" height="60" rx="10" fill="#8b0000" stroke="#ff0000" stroke-width="2">
-      <animate attributeName="opacity" values="0.7;1;0.7" dur="3s" repeatCount="indefinite" />
-    </rect>
-    <text x="60" y="75" font-family="Arial" font-size="14" fill="white" text-anchor="middle">Sources</text>
+```mermaid
+graph LR
+    Sources[Firewall/WAF/App] -->|Webhook| API[Blocklist API]
+    API -->|Index| Redis[(Redis Cache)]
+    API -->|Persist| PG[(Postgres DB)]
+    API -->|Live| WS((WebSockets))
+    WS -->|Update| UI[Dashboard UI]
+    Firewall[Edge Firewall] -->|Fetch| API
     
-    <path d="M 115 70 L 165 70" stroke="#ff0000" stroke-width="2" marker-end="url(#arrow)" />
-    
-    <rect x="175" y="40" width="120" height="60" rx="10" fill="#333" stroke="#ff0000" stroke-width="2" />
-    <text x="235" y="75" font-family="Arial" font-size="14" fill="white" text-anchor="middle">Blocklist API</text>
-    
-    <path d="M 300 70 L 350 70" stroke="#ff0000" stroke-width="2" marker-end="url(#arrow)" />
-    
-    <rect x="360" y="40" width="100" height="60" rx="10" fill="#333" stroke="#ff0000" stroke-width="2" />
-    <text x="410" y="75" font-family="Arial" font-size="14" fill="white" text-anchor="middle">Storage</text>
-    
-    <path d="M 465 70 L 515 70" stroke="#ff0000" stroke-width="2" marker-end="url(#arrow)" />
-    
-    <rect x="525" y="40" width="65" height="60" rx="10" fill="#28a745" stroke="#fff" stroke-width="2">
-      <animate attributeName="stroke" values="#fff;#28a745;#fff" dur="2s" repeatCount="indefinite" />
-    </rect>
-    <text x="557" y="75" font-family="Arial" font-size="12" fill="white" text-anchor="middle">Firewall</text>
-    
-    <defs>
-      <marker id="arrow" markerWidth="10" markerHeight="10" refX="0" refY="3" orient="auto" markerUnits="strokeWidth">
-        <path d="M0,0 L0,6 L9,3 z" fill="#ff0000" />
-      </marker>
-    </defs>
-  </svg>
-</p>
+    style Sources fill:#8b0000,stroke:#ff0000,color:#fff
+    style API fill:#333,stroke:#ff0000,color:#fff
+    style Redis fill:#333,stroke:#ff0000,color:#fff
+    style PG fill:#333,stroke:#ff0000,color:#fff
+    style WS fill:#333,stroke:#ff0000,color:#fff
+    style UI fill:#333,stroke:#ff0000,color:#fff
+    style Firewall fill:#28a745,stroke:#fff,color:#fff
+```
 
 ## Key Features
 
@@ -109,13 +95,17 @@ A high-performance, security-hardened IP management platform with GeoIP enrichme
 - `WEBHOOK_SECRET`: HMAC secret for signing outbound webhook payloads.
 
 ## Testing
-Comprehensive unit and integration tests using `miniredis` and `testcontainers-go`.
+Comprehensive unit, functional, and integration tests using `miniredis` and `testcontainers-go`.
 ```bash
+# Run all tests
 go test ./...
+
+# Run unit/functional tests only (fast)
+go test -short ./...
 ```
 
-## GitHub Repository About (Suggested)
-**Description:**
+## GitHub Repository Settings
+**About:**
 Hardened Go-based IP Blocklist manager with GeoIP (ASN/Country), real-time WebSocket dashboard, RBAC, and automated webhooks.
 
 **Topics:**
