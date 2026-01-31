@@ -61,10 +61,8 @@ func TestFunctional_BlockUnblock(t *testing.T) {
 	defer mr.Close()
 
 	port, _ := strconv.Atoi(mr.Port())
-	rRepo := repository.NewRedisRepository(mr.Host(), port, 0)
+	rRepo := repository.NewRedisRepository(mr.Host(), port, "", 0)
 	router := setupTestRouter(rRepo)
-
-	// 1. Test Block
 	blockReq := map[string]interface{}{
 		"ip":      "1.2.3.4",
 		"reason":  "functional-test",
@@ -107,7 +105,7 @@ func TestFunctional_Webhook(t *testing.T) {
 	defer mr.Close()
 
 	port, _ := strconv.Atoi(mr.Port())
-	rRepo := repository.NewRedisRepository(mr.Host(), port, 0)
+	rRepo := repository.NewRedisRepository(mr.Host(), port, "", 0)
 	router := setupTestRouter(rRepo)
 
 	webhookReq := map[string]string{

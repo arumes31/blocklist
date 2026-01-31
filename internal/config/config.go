@@ -9,6 +9,7 @@ type Config struct {
 	SecretKey              string
 	RedisHost              string
 	RedisPort              int
+	RedisPassword          string
 	RedisDB                int
 	RedisLimDB             int
 	PostgresURL            string
@@ -33,6 +34,7 @@ func Load() *Config {
 		SecretKey:              getEnv("SECRET_KEY", "change-me"),
 		RedisHost:              getEnv("REDIS_HOST", "localhost"),
 		RedisPort:              getEnvInt("REDIS_PORT", 6379),
+		RedisPassword:          getEnv("REDIS_PASSWORD", ""),
 		RedisDB:                getEnvInt("REDIS_DB", 0),
 		RedisLimDB:             getEnvInt("REDIS_LIM_DB", 1),
 		PostgresURL:            getEnv("POSTGRES_URL", "postgres://postgres:password@localhost:5432/blocklist?sslmode=disable"),

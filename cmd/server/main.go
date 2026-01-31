@@ -81,7 +81,7 @@ func main() {
 	}
 
 	// 1. Initialize Repositories
-	redisRepo := repository.NewRedisRepository(cfg.RedisHost, cfg.RedisPort, cfg.RedisDB)
+	redisRepo := repository.NewRedisRepository(cfg.RedisHost, cfg.RedisPort, cfg.RedisPassword, cfg.RedisDB)
 	pgRepo, err := repository.NewPostgresRepository(cfg.PostgresURL)
 	if err != nil {
 		zlog.Warn().Err(err).Msg("Failed to connect to Postgres. Persistent features may be limited.")
@@ -132,7 +132,7 @@ func main() {
 	}
 
 	// Sessions
-	store, err := redis.NewStore(10, "tcp", fmt.Sprintf("%s:%d", cfg.RedisHost, cfg.RedisPort), "", cfg.SecretKey)
+	store, err := redis.NewStore(10, "tcp", fmt.Sprintf("%s:%d", cfg.RedisHost, cfg.RedisPort), "", cfg.RedisPassword, []byte(cfg.SecretKey))
 	if err != nil {
 		zlog.Fatal().Err(err).Msg("Failed to create session store")
 	}
@@ -151,8 +151,9 @@ func main() {
 		Limit:  200,
 	}
 	limiterClient := rdb.NewClient(&rdb.Options{
-		Addr: fmt.Sprintf("%s:%d", cfg.RedisHost, cfg.RedisPort),
-		DB:   cfg.RedisLimDB,
+		Addr:     fmt.Sprintf("%s:%d", cfg.RedisHost, cfg.RedisPort),
+		Password: cfg.RedisPassword,
+		DB:       cfg.RedisLimDB,
 	})
 	limitStore, err := sredis.NewStoreWithOptions(limiterClient, limiter.StoreOptions{
 		Prefix: "limiter_go",

@@ -19,7 +19,7 @@ func TestIPService_Enhanced(t *testing.T) {
 	defer mr.Close()
 
 	port, _ := strconv.Atoi(mr.Port())
-	rRepo := repository.NewRedisRepository(mr.Host(), port, 0)
+	rRepo := repository.NewRedisRepository(mr.Host(), port, "", 0)
 	cfg := &config.Config{
 		BlockedRanges: "10.0.0.0/8",
 	}

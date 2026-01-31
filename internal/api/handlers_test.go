@@ -35,7 +35,7 @@ func TestAPIHandler_Ready(t *testing.T) {
 	defer mr.Close()
 	
 	port, _ := strconv.Atoi(mr.Port())
-	rRepo := repository.NewRedisRepository(mr.Host(), port, 0)
+	rRepo := repository.NewRedisRepository(mr.Host(), port, "", 0)
 	h := NewAPIHandler(&config.Config{}, rRepo, nil, nil, nil, nil, nil)
 
 	r := gin.New()

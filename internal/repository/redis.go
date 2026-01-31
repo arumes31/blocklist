@@ -23,10 +23,11 @@ func (r *RedisRepository) trackDuration(op string, start time.Time) {
 	metrics.MetricRedisDuration.WithLabelValues(op).Observe(time.Since(start).Seconds())
 }
 
-func NewRedisRepository(host string, port int, db int) *RedisRepository {
+func NewRedisRepository(host string, port int, password string, db int) *RedisRepository {
 	rdb := redis.NewClient(&redis.Options{
-		Addr: fmt.Sprintf("%s:%d", host, port),
-		DB:   db,
+		Addr:     fmt.Sprintf("%s:%d", host, port),
+		Password: password,
+		DB:       db,
 	})
 	return &RedisRepository{
 		client: rdb,
