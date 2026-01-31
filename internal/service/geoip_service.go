@@ -24,7 +24,7 @@ func NewGeoIPService(cfg *config.Config) *GeoIPService {
 }
 
 func (s *GeoIPService) getDBPath() string {
-	path := "/home/blocklist/GeoLite2-City.mmdb"
+	path := "/home/blocklist/geoip/GeoLite2-City.mmdb"
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return "/tmp/GeoLite2-City.mmdb"

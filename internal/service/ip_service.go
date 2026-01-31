@@ -29,6 +29,7 @@ type IPService struct {
 
 func findGeoIPPath(filename string) string {
 	paths := []string{
+		filepath.Join("/home/blocklist/geoip", filename),
 		filepath.Join("/home/blocklist", filename),
 		filepath.Join("/usr/share/GeoIP", filename),
 		filepath.Join("/tmp", filename),
