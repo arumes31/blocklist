@@ -13,6 +13,8 @@
             --glass-bg: rgba(20, 20, 20, 0.85);
             --border-red: rgba(255, 0, 0, 0.3);
             --secondary-color: #b3b3b3;
+            --success-color: #28a745;
+            --danger-color: #dc3545;
         }
         body {
             font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
@@ -33,53 +35,92 @@
             backdrop-filter: blur(8px);
             border-bottom: 1px solid var(--border-red);
         }
-        .header-container img { height: 40px; filter: drop-shadow(0 0 6px rgba(255,0,0,0.4)); }
-        h2 { text-align: center; color: var(--vibrant-red); flex-grow: 1; }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            background: rgba(20,20,20,0.85);
-            border: 1px solid var(--border-red);
-            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+        .header-container h2 {
+            margin: 0;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
             color: #fff;
+            text-align: left;
         }
-        th, td { border: 1px solid rgba(255,255,255,0.06); padding: 12px; text-align: left; }
-        th { background-color: rgba(255,255,255,0.04); color: var(--secondary-color); }
-        .delete-button, .qr-button, .password-button, .totp-button {
-            color: white;
-            padding: 8px;
-            border: 1px solid var(--border-red);
+        .header-container img { height: 40px; filter: drop-shadow(0 0 6px rgba(255,0,0,0.4)); }
+        
+        .main-content { padding: 2rem; }
+
+        .btn {
+            padding: 0.6rem 1.2rem;
+            border: 1px solid rgba(255,255,255,0.15);
             border-radius: 6px;
             cursor: pointer;
-            background: rgba(255,255,255,0.08);
+            font-weight: 600;
+            transition: all 0.2s;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(255,255,255,0.05);
+            color: #fff;
+            box-shadow: 0 0 10px rgba(255,0,0,0.08);
         }
-        .delete-button { background: linear-gradient(45deg, var(--dark-red), var(--primary-red)); }
-        .qr-button { background: rgba(40, 167, 69, 0.2); }
-        .password-button { background: rgba(255,255,255,0.08); }
-        .totp-button { background: #ff980033; }
+        .btn-danger { background: linear-gradient(45deg, var(--dark-red), var(--primary-red)); border-color: var(--border-red); }
+        .btn-success { background: rgba(40, 167, 69, 0.2); }
+        .btn-dark { background: rgba(255,255,255,0.08); }
+        .btn:hover { transform: translateY(-1px); box-shadow: 0 0 16px rgba(255,0,0,0.2); }
+
+        .filter-input {
+            padding: 0.8rem 1rem;
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 8px;
+            font-size: 1rem;
+            background: rgba(255,255,255,0.05);
+            color: #fff;
+            outline: none;
+        }
+        .filter-input:focus { border-color: var(--primary-red); box-shadow: 0 0 0 2px rgba(255,0,0,0.2); }
+
+        .table-card {
+            background: rgba(20,20,20,0.85);
+            border: 1px solid var(--border-red);
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+            backdrop-filter: blur(8px);
+        }
+        table { border-collapse: collapse; width: 100%; color: #fff; }
+        th, td { text-align: left; padding: 0.75rem; border-bottom: 1px solid rgba(255,255,255,0.06); }
+        th {
+            background-color: rgba(255,255,255,0.04);
+            font-weight: 600;
+            color: var(--secondary-color);
+            text-transform: uppercase;
+            font-size: 0.85rem;
+            letter-spacing: 0.05em;
+        }
+        tr:hover { background-color: rgba(255,255,255,0.02); }
+
         .modal {
             display: none;
             position: fixed;
-            z-index: 1;
+            z-index: 1000;
             left: 0;
             top: 0;
             width: 100%;
             height: 100%;
-            overflow: auto;
             background-color: rgba(0,0,0,0.5);
             backdrop-filter: blur(4px);
         }
         .modal-content {
             background: rgba(20,20,20,0.95);
             margin: 10% auto;
-            padding: 20px;
-            border: 1px solid var(--border-red);
-            width: 80%;
-            max-width: 500px;
-            color: #fff;
+            padding: 2rem;
             border-radius: 12px;
+            width: 420px;
             box-shadow: 0 10px 25px rgba(0,0,0,0.6);
+            border: 1px solid var(--border-red);
+            color: #fff;
         }
+        .modal h3 { margin-top: 0; }
         .close {
             color: #aaaaaa;
             float: right;
@@ -87,53 +128,71 @@
             font-weight: bold;
             cursor: pointer;
         }
-        .close:hover,
-        .close:focus { color: #fff; text-decoration: none; }
+        .close:hover { color: #fff; }
     </style>
 </head>
 <body>
     <div class="header-container">
-        <img src="/cd/logo.png" alt="Logo">
-        <h2>Admin Management</h2>
-        <button onclick="window.location.href='/dashboard'" style="padding: 10px;">Back to Dashboard</button>
+        <div style="display: flex; align-items: center; gap: 2rem;">
+            <img src="/cd/logo.png" alt="Logo">
+            <h2>Admin Management</h2>
+        </div>
+        <div style="display: flex; align-items: center; gap: 1rem;">
+            <a href="/dashboard" class="btn btn-dark">Back to Dashboard</a>
+            <a href="/logout" class="btn" style="background: rgba(255,255,255,0.08);">Logout</a>
+        </div>
     </div>
 
-    <div style="margin-bottom: 15px;">
-        <input type="text" id="newUsername" placeholder="New Username">
-        <input type="password" id="newPassword" placeholder="New Password">
-        <button onclick="createAdmin()">Create Admin</button>
-    </div>
+    <div class="main-content">
+        <div class="table-card" style="padding: 1.5rem; margin-bottom: 2rem; display: flex; gap: 10px; align-items: center; justify-content: center;">
+            <input type="text" id="newUsername" class="filter-input" style="flex: 1; max-width: 250px;" placeholder="New Username">
+            <input type="password" id="newPassword" class="filter-input" style="flex: 1; max-width: 250px;" placeholder="New Password">
+            <button class="btn btn-danger" onclick="createAdmin()">Create Admin</button>
+        </div>
 
-    <table>
-        <tr>
-            <th>Username</th>
-            <th>Token</th>
-            <th>Actions</th>
-        </tr>
-        {{ range $username, $data := .admins }}
-        <tr>
-            <td>{{ $username }}</td>
-            <td>{{ $data.Token }}</td>
-            <td>
-                {{ if ne $username "admin" }}
-                <button class="qr-button" onclick="showQR('{{ $username }}')">Show QR</button>
-                <button class="password-button" onclick="openPasswordModal('{{ $username }}')">Change Password</button>
-                <button class="totp-button" onclick="openTotpModal('{{ $username }}')">Change TOTP</button>
-                <button class="delete-button" onclick="deleteAdmin('{{ $username }}')">Delete</button>
-                {{ end }}
-            </td>
-        </tr>
-        {{ end }}
-    </table>
+        <div class="table-card">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Username</th>
+                        <th>Token</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{ range $username, $data := .admins }}
+                    <tr>
+                        <td style="font-weight: 600;">{{ $username }}</td>
+                        <td style="font-family: monospace; color: var(--secondary-color);">{{ $data.Token }}</td>
+                        <td>
+                            <div style="display: flex; gap: 8px;">
+                                {{ if ne $username "admin" }}
+                                <button class="btn btn-success" style="padding: 0.4rem 0.8rem; font-size: 0.8rem;" onclick="showQR('{{ $username }}')">Show QR</button>
+                                <button class="btn btn-dark" style="padding: 0.4rem 0.8rem; font-size: 0.8rem;" onclick="openPasswordModal('{{ $username }}')">Password</button>
+                                <button class="btn btn-dark" style="padding: 0.4rem 0.8rem; font-size: 0.8rem; background: #ff980033;" onclick="openTotpModal('{{ $username }}')">TOTP</button>
+                                <button class="btn btn-danger" style="padding: 0.4rem 0.8rem; font-size: 0.8rem;" onclick="deleteAdmin('{{ $username }}')">Delete</button>
+                                {{ else }}
+                                <span style="font-size: 0.8rem; color: var(--secondary-color); font-style: italic;">System Root (Protected)</span>
+                                {{ end }}
+                            </div>
+                        </td>
+                    </tr>
+                    {{ end }}
+                </tbody>
+            </table>
+        </div>
+    </div>
 
     <!-- Password Change Modal -->
     <div id="passwordModal" class="modal">
         <div class="modal-content">
             <span class="close" onclick="closePasswordModal()">×</span>
-            <h3>Change Password</h3>
+            <h3 style="margin-top: 0;">Change Password</h3>
             <input type="hidden" id="passwordUsername">
-            <input type="password" id="newPasswordInput" placeholder="New Password">
-            <button onclick="changePassword()">Save</button>
+            <div style="margin-bottom: 1.5rem;">
+                <input type="password" id="newPasswordInput" class="filter-input" style="width: 100%; box-sizing: border-box;" placeholder="New Password">
+            </div>
+            <button class="btn btn-danger" style="width: 100%;" onclick="changePassword()">Save Password</button>
         </div>
     </div>
 
@@ -141,11 +200,11 @@
     <div id="totpModal" class="modal">
         <div class="modal-content">
             <span class="close" onclick="closeTotpModal()">×</span>
-            <h3>Change TOTP</h3>
+            <h3 style="margin-top: 0;">Change TOTP</h3>
             <input type="hidden" id="totpUsername">
-            <p>Click "Generate" to create a new TOTP token and QR code.</p>
-            <button onclick="changeTotp()">Generate</button>
-            <div id="newQrCode"></div>
+            <p style="color: var(--secondary-color); margin-bottom: 1.5rem;">Click "Generate" to create a new TOTP token and QR code. This will invalidate the previous token.</p>
+            <button class="btn btn-danger" style="width: 100%; margin-bottom: 1.5rem;" onclick="changeTotp()">Generate New Secret</button>
+            <div id="newQrCode" style="text-align: center; background: white; padding: 1rem; border-radius: 8px; display: none;"></div>
         </div>
     </div>
 
@@ -248,6 +307,7 @@
                 if (data.status === 'success') {
                     alert('TOTP changed successfully! Scan the new QR code below.');
                     const qrCodeDiv = document.getElementById('newQrCode');
+                    qrCodeDiv.style.display = 'block';
                     qrCodeDiv.innerHTML = `<img src="${data.qr_image}" alt="New QR Code" style="max-width: 100%;">`;
                 } else {
                     alert(data.error || 'Failed to change TOTP');

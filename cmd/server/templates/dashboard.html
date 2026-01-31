@@ -250,10 +250,10 @@
         <h2>
             Blocklist Dashboard 
             <button onclick="openModal('blockModal')" class="btn btn-danger">Block IP</button>
-            <a href="/whitelist" class="btn btn-dark">Whitelist</a>
-            <a href="/settings" class="btn btn-dark">Settings</a>
+            <a href="/whitelist" class="btn btn-dark" style="min-width: 100px;">Whitelist</a>
+            <a href="/settings" class="btn btn-dark" style="min-width: 100px;">Settings</a>
             {{ if eq .username .admin_username }}
-            <a href="/admin_management" class="btn btn-dark">Admins</a>
+            <a href="/admin_management" class="btn btn-dark" style="min-width: 100px;">Admins</a>
             {{ end }}
         </h2>
     </div>
