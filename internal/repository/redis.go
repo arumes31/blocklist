@@ -149,6 +149,11 @@ func (r *RedisRepository) ZPageByScoreDesc(limit int, cursor string) ([]redis.Z,
 }
 
 // Stats counters
+func (r *RedisRepository) ZRangeArgsWithScores(ctx context.Context, args redis.ZRangeArgs) ([]redis.Z, error) {
+	defer r.trackDuration("ZRangeArgsWithScores", time.Now())
+	return r.client.ZRangeArgsWithScores(ctx, args).Result()
+}
+
 func (r *RedisRepository) IncrTotal(delta int64) error {
 	return r.client.IncrBy(r.ctx, "stats:total", delta).Err()
 }

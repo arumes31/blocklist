@@ -130,16 +130,48 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 		v1.GET("/stats", h.Stats)
 	}
 	r.GET("/openapi.json", h.OpenAPI)
-...
+
+	// Protected UI routes
+	auth := r.Group("/")
+	auth.Use(h.AuthMiddleware())
+	{
+		auth.GET("/dashboard", h.Dashboard)
+		auth.GET("/dashboard/table", h.DashboardTable) // For HTMX polling
+		
+		operator := auth.Group("/")
+		operator.Use(h.RBACMiddleware("operator"))
+		{
+			operator.POST("/block", h.BlockIP)
+			operator.POST("/unblock", h.UnblockIP)
+			operator.GET("/whitelist", h.Whitelist)
+			operator.POST("/add_whitelist", h.AddWhitelist)
+			operator.POST("/remove_whitelist", h.RemoveWhitelist)
+		}
+
+		// Admin management
+		admin := auth.Group("/admin_management")
+		admin.Use(h.AdminOnlyMiddleware())
+		{
+			admin.GET("", h.AdminManagement)
+			admin.POST("/create", h.CreateAdmin)
+			admin.POST("/delete", h.DeleteAdmin)
+			admin.POST("/change_password", h.ChangeAdminPassword)
+			admin.POST("/change_totp", h.ChangeAdminTOTP)
+			admin.GET("/get_qr/:username", h.GetQR)
+		}
+	}
+
+	// Legacy / Compatibility routes
+	r.POST("/webhook", h.Webhook)
+	r.GET("/raw", h.RawIPs)
 	r.GET("/ips", h.JSONIPs)
 	r.GET("/ips_automate", h.AutomateIPs)
 	r.GET("/api/ips", h.IPsPaginated)
-
 	r.GET("/api/stats", h.Stats)
 	r.GET("/health", h.Health)
 	r.GET("/ready", h.Ready)
 	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
-	}
+}
 
 // Improvement 3: Cache persistent blocks in Redis
 func (h *APIHandler) getCombinedIPs() map[string]models.IPEntry {
