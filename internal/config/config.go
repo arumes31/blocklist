@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"strconv"
+	"strings"
 )
 
 type Config struct {
@@ -57,7 +58,7 @@ func Load() *Config {
 
 func getEnv(key, fallback string) string {
 	if value, ok := os.LookupEnv(key); ok && value != "" {
-		return value
+		return strings.TrimSpace(value)
 	}
 	return fallback
 }

@@ -68,16 +68,29 @@ func main() {
 	zlog.Logger = zerolog.New(cw).With().Timestamp().Logger()
 
 	cfg := config.Load()
+	
+	// Ensure SECRET_KEY is exactly 32 bytes for AES-256
+	// (gorilla/sessions/securecookie can be finicky with key lengths)
+	finalKey := []byte(cfg.SecretKey)
+	if len(finalKey) < 32 {
+		// Pad with zeros
+		newKey := make([]byte, 32)
+		copy(newKey, finalKey)
+		finalKey = newKey
+	} else if len(finalKey) > 32 {
+		finalKey = finalKey[:32]
+	}
+
 	if !cfg.LogWeb {
 		zerolog.SetGlobalLevel(zerolog.InfoLevel)
 	} else {
 		zerolog.SetGlobalLevel(zerolog.DebugLevel)
 	}
 
-	zlog.Info().Msg("Starting Blocklist Go Server")
+	zlog.Info().Int("key_len", len(finalKey)).Msg("Starting Blocklist Go Server")
 
-	if cfg.SecretKey == "change-me" || len(cfg.SecretKey) < 32 {
-		zlog.Warn().Msg("SECRET_KEY is insecure or using default. Please set a 32-byte string via environment variable.")
+	if cfg.SecretKey == "change-me" {
+		zlog.Warn().Msg("SECRET_KEY is using default. Please set a 32-byte string via environment variable.")
 	}
 
 	// Run Migrations
@@ -180,7 +193,7 @@ func main() {
 	}
 
 	// Sessions
-	store, err := redis.NewStore(10, "tcp", fmt.Sprintf("%s:%d", cfg.RedisHost, cfg.RedisPort), "", cfg.RedisPassword, []byte(cfg.SecretKey))
+	store, err := redis.NewStore(10, "tcp", fmt.Sprintf("%s:%d", cfg.RedisHost, cfg.RedisPort), "", cfg.RedisPassword, finalKey)
 	if err != nil {
 		zlog.Fatal().Err(err).Msg("Failed to create session store")
 	}

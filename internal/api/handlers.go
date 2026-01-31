@@ -27,6 +27,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/pquerna/otp/totp"
 	"github.com/skip2/go-qrcode"
+	zlog "github.com/rs/zerolog/log"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -388,6 +389,7 @@ func (h *APIHandler) AuthMiddleware() gin.HandlerFunc {
 		
 		// If session is invalid (e.g. key mismatch after restart), clear it
 		if loggedIn := session.Get("logged_in"); loggedIn == nil {
+			zlog.Debug().Str("path", c.Request.URL.Path).Msg("Session missing or invalid")
 			if strings.HasPrefix(c.Request.URL.Path, "/api/") {
 				c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 			} else {
