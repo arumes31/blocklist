@@ -11,6 +11,7 @@ let center;
 let tick;
 let simplex;
 let particleProps;
+let isPaused = false;
 
 function setup() {
 	tick = 0;
@@ -132,7 +133,9 @@ function draw() {
 	ctx.drawImage(buffer.canvas, 0, 0);
 	ctx.restore();
 	
-	window.requestAnimationFrame(draw);
+	if (!isPaused) {
+		window.requestAnimationFrame(draw);
+	}
 }
 
 window.addEventListener("load", setup);

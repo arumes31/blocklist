@@ -44,7 +44,12 @@
             z-index: 10;
             backdrop-filter: blur(10px);
             border: 1px solid var(--border-red);
-            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            transition: transform 0.3s ease, box-shadow 0.3s ease, opacity 0.8s ease, visibility 0.8s ease;
+        }
+        .container.idle {
+            opacity: 0;
+            visibility: hidden;
+            transform: translateY(20px) scale(0.95);
         }
         .container:hover {
             transform: translateY(-5px);
@@ -204,5 +209,50 @@
     <script src="/js/simplex-noise.min.js"></script>
     <script src="/js/codepen-util.js"></script>
     <script src="/js/aether.js"></script>
+    <script>
+        // Idle Detection
+        let idleTimer;
+        const idleTime = 30000; // 30 seconds
+        const loginCard = document.getElementById('loginContainer');
+
+        function resetIdleTimer() {
+            loginCard.classList.remove('idle');
+            clearTimeout(idleTimer);
+            idleTimer = setTimeout(goIdle, idleTime);
+        }
+
+        function goIdle() {
+            // Only go idle if inputs are not focused
+            const activeElement = document.activeElement;
+            const isInput = activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA');
+            if (!isInput) {
+                loginCard.classList.add('idle');
+            } else {
+                // Check again in 10 seconds
+                idleTimer = setTimeout(goIdle, 10000);
+            }
+        }
+
+        // Event listeners for user activity
+        ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'].forEach(name => {
+            document.addEventListener(name, resetIdleTimer, true);
+        });
+
+        // Initialize idle timer
+        resetIdleTimer();
+
+        // Page Visibility / Background detection
+        document.addEventListener('visibilitychange', function() {
+            if (document.hidden) {
+                if (typeof isPaused !== 'undefined') isPaused = true;
+            } else {
+                if (typeof isPaused !== 'undefined') {
+                    isPaused = false;
+                    if (typeof draw === 'function') requestAnimationFrame(draw);
+                }
+                resetIdleTimer();
+            }
+        });
+    </script>
 </body>
 </html>
