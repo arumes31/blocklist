@@ -90,9 +90,9 @@ func (h *APIHandler) WS(c *gin.Context) {
 		h.hub.unregister <- conn
 	}()
 
-	conn.SetReadDeadline(time.Now().Add(70 * time.Second))
+	_ = conn.SetReadDeadline(time.Now().Add(70 * time.Second))
 	conn.SetPongHandler(func(string) error {
-		conn.SetReadDeadline(time.Now().Add(70 * time.Second))
+		_ = conn.SetReadDeadline(time.Now().Add(70 * time.Second))
 		return nil
 	})
 
@@ -107,12 +107,9 @@ func (h *APIHandler) WS(c *gin.Context) {
 	}()
 
 	// Write loop for keep-alive
-	for {
-		select {
-		case <-pingTicker.C:
-			if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
-				return
-			}
+	for range pingTicker.C {
+		if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+			return
 		}
 	}
 }
@@ -209,7 +206,7 @@ func (h *APIHandler) getCombinedIPs() map[string]models.IPEntry {
 			// Cache miss, fetch from DB
 			pIps, _ = h.pgRepo.GetPersistentBlocks()
 			// Set cache for 1 minute
-			h.redisRepo.SetCache("persistent_ips_cache", pIps, 1*time.Minute)
+			_ = h.redisRepo.SetCache("persistent_ips_cache", pIps, 1*time.Minute)
 		}
 		
 		for ip, data := range pIps {
@@ -297,7 +294,7 @@ func (h *APIHandler) AuthMiddleware() gin.HandlerFunc {
 						return
 					}
 				}
-				h.pgRepo.UpdateTokenLastUsed(token.ID)
+				_ = h.pgRepo.UpdateTokenLastUsed(token.ID)
 				c.Set("username", token.Username)
 				c.Set("role", token.Role)
 				c.Next()
@@ -318,7 +315,7 @@ func (h *APIHandler) AuthMiddleware() gin.HandlerFunc {
 		clientIP := c.ClientIP()
 		if storedIP := session.Get("client_ip"); storedIP == nil || storedIP.(string) != clientIP {
 			session.Clear()
-			session.Save()
+			_ = session.Save()
 			c.Redirect(http.StatusFound, "/login")
 			c.Abort()
 			return
@@ -334,7 +331,7 @@ func (h *APIHandler) AuthMiddleware() gin.HandlerFunc {
 			if admin != nil {
 				role = admin.Role
 				session.Set("role", role)
-				session.Save()
+				_ = session.Save()
 			} else {
 				role = "viewer"
 			}
@@ -429,7 +426,7 @@ func (h *APIHandler) Login(c *gin.Context) {
 		session.Set("username", username)
 		session.Set("client_ip", c.ClientIP())
 		session.Set("login_time", time.Now().UTC().Format(time.RFC3339))
-		session.Save()
+		_ = session.Save()
 		c.Redirect(http.StatusFound, "/dashboard")
 		return
 	}
@@ -439,7 +436,7 @@ func (h *APIHandler) Login(c *gin.Context) {
 func (h *APIHandler) Logout(c *gin.Context) {
 	session := sessions.Default(c)
 	session.Clear()
-	session.Save()
+	_ = session.Save()
 	c.Redirect(http.StatusFound, "/login")
 }
 
@@ -495,12 +492,12 @@ func (h *APIHandler) BlockIP(c *gin.Context) {
 	}
 
 	if req.Persist && h.pgRepo != nil {
-		h.pgRepo.CreatePersistentBlock(req.IP, entry)
-		h.pgRepo.LogAction(username, "BLOCK_PERSISTENT", req.IP, req.Reason)
+		_ = h.pgRepo.CreatePersistentBlock(req.IP, entry)
+		_ = h.pgRepo.LogAction(username, "BLOCK_PERSISTENT", req.IP, req.Reason)
 	} else {
-		h.redisRepo.BlockIP(req.IP, entry)
+		_ = h.redisRepo.BlockIP(req.IP, entry)
 		if h.pgRepo != nil {
-			h.pgRepo.LogAction(username, "BLOCK_EPHEMERAL", req.IP, req.Reason)
+			_ = h.pgRepo.LogAction(username, "BLOCK_EPHEMERAL", req.IP, req.Reason)
 		}
 	}
 	// stats + index (non-persistent tracked in Redis)
@@ -537,10 +534,10 @@ func (h *APIHandler) UnblockIP(c *gin.Context) {
 		return
 	}
 
-	h.redisRepo.UnblockIP(req.IP)
+	_ = h.redisRepo.UnblockIP(req.IP)
 	if h.pgRepo != nil {
-		h.pgRepo.DeletePersistentBlock(req.IP)
-		h.pgRepo.LogAction(username, "UNBLOCK", req.IP, "")
+		_ = h.pgRepo.DeletePersistentBlock(req.IP)
+		_ = h.pgRepo.LogAction(username, "UNBLOCK", req.IP, "")
 	}
 	// decrement counters where applicable
 	if e, err := h.redisRepo.GetIPEntry(req.IP); err == nil && e != nil {
@@ -598,7 +595,7 @@ func (h *APIHandler) AddWhitelist(c *gin.Context) {
 		AddedBy:     "GUI",
 		Reason:      req.Reason,
 	}
-	h.redisRepo.WhitelistIP(req.IP, entry)
+	_ = h.redisRepo.WhitelistIP(req.IP, entry)
 	c.JSON(200, gin.H{"status": "success"})
 }
 
@@ -610,7 +607,7 @@ func (h *APIHandler) RemoveWhitelist(c *gin.Context) {
 		c.JSON(400, gin.H{"status": "error"})
 		return
 	}
-	h.redisRepo.RemoveFromWhitelist(req.IP)
+	_ = h.redisRepo.RemoveFromWhitelist(req.IP)
 	c.JSON(200, gin.H{"status": "success"})
 }
 
@@ -675,7 +672,7 @@ func (h *APIHandler) Webhook(c *gin.Context) {
 	}
 
 	if data.Act == "ban" || data.Act == "ban-ip" {
-		h.redisRepo.BlockIP(data.IP, entry)
+		_ = h.redisRepo.BlockIP(data.IP, entry)
 		_ = h.redisRepo.IndexIPTimestamp(data.IP, now)
 		_ = h.redisRepo.IncrTotal(1)
 		cc := ""
@@ -690,7 +687,7 @@ func (h *APIHandler) Webhook(c *gin.Context) {
 		})
 		c.JSON(200, gin.H{"status": "IP banned", "ip": data.IP})
 	} else if data.Act == "unban" || data.Act == "delete-ban" {
-		h.redisRepo.UnblockIP(data.IP)
+		_ = h.redisRepo.UnblockIP(data.IP)
 		// adjust counters if present
 		if e, err := h.redisRepo.GetIPEntry(data.IP); err == nil && e != nil {
 			cc := ""
@@ -716,7 +713,7 @@ func (h *APIHandler) Webhook2(c *gin.Context) {
 		AddedBy:     "WebhookAuto",
 		Reason:      "Automated Whitelist",
 	}
-	h.redisRepo.WhitelistIP(clientIP, entry)
+	_ = h.redisRepo.WhitelistIP(clientIP, entry)
 	c.JSON(http.StatusOK, gin.H{"status": "IP added", "ip": clientIP})
 }
 
@@ -799,7 +796,7 @@ func (h *APIHandler) ChangeAdminTOTP(c *gin.Context) {
 		AccountName: req.Username,
 	})
 
-	h.pgRepo.UpdateAdminToken(req.Username, key.Secret())
+	_ = h.pgRepo.UpdateAdminToken(req.Username, key.Secret())
 
 	var png []byte
 	png, _ = qrcode.Encode(key.URL(), qrcode.Medium, 256)
@@ -880,8 +877,8 @@ func (h *APIHandler) ExportIPs(c *gin.Context) {
 		c.Header("Content-Type", "application/x-ndjson")
 		for _, item := range items {
 			line, _ := json.Marshal(item)
-			c.Writer.Write(line)
-			c.Writer.Write([]byte("\n"))
+			_, _ = c.Writer.Write(line)
+			_, _ = c.Writer.Write([]byte("\n"))
 		}
 		return
 	}
@@ -894,7 +891,7 @@ func (h *APIHandler) ExportIPs(c *gin.Context) {
 	defer writer.Flush()
 
 	// Header
-	writer.Write([]string{"IP", "Timestamp", "Reason", "AddedBy", "Country", "City", "Lat", "Lon"})
+	_ = writer.Write([]string{"IP", "Timestamp", "Reason", "AddedBy", "Country", "City", "Lat", "Lon"})
 
 	for _, item := range items {
 		ip := item["ip"].(string)
@@ -911,7 +908,7 @@ func (h *APIHandler) ExportIPs(c *gin.Context) {
 			lon = fmt.Sprintf("%f", data.Geolocation.Longitude)
 		}
 
-		writer.Write([]string{
+		_ = writer.Write([]string{
 			ip,
 			data.Timestamp,
 			data.Reason,

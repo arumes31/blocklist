@@ -109,7 +109,9 @@ func (p *PostgresRepository) GetPersistentBlocks() (map[string]models.IPEntry, e
 	ips := make(map[string]models.IPEntry)
 	for _, r := range results {
 		var geo models.GeoData
-		json.Unmarshal(r.GeoJSON, &geo)
+		if err := json.Unmarshal(r.GeoJSON, &geo); err != nil {
+			continue
+		}
 		ips[r.IP] = models.IPEntry{
 			Timestamp:   r.Timestamp,
 			Geolocation: &geo,

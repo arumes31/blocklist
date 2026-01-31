@@ -22,7 +22,7 @@ func (s *SchedulerService) Start() {
 			if acquired, _ := s.redisRepo.AcquireLock("lock_cleanup", 10*time.Minute); acquired {
 				s.CleanOldIPs("ips")
 				s.CleanOldIPs("ips_webhook2_whitelist")
-				s.redisRepo.ReleaseLock("lock_cleanup")
+				_ = s.redisRepo.ReleaseLock("lock_cleanup")
 			}
 		}
 	}()
@@ -33,7 +33,7 @@ func (s *SchedulerService) Start() {
 		for range cacheTicker.C {
 			if acquired, _ := s.redisRepo.AcquireLock("lock_ips_automate_update", 25*time.Second); acquired {
 				s.UpdateAutomateCache()
-				s.redisRepo.ReleaseLock("lock_ips_automate_update")
+				_ = s.redisRepo.ReleaseLock("lock_ips_automate_update")
 			}
 		}
 	}()
@@ -71,9 +71,13 @@ func (s *SchedulerService) CleanOldIPs(hashKey string) {
 		if !expireTime.IsZero() && now.After(expireTime) {
 			if hashKey == "ips" {
 				// Atomically remove from hash and ZSET
-				s.redisRepo.ExecUnblockAtomic(ip)
+				if err := s.redisRepo.ExecUnblockAtomic(ip); err != nil {
+					log.Printf("Error during atomic unblock of %s: %v", ip, err)
+				}
 			} else {
-				s.redisRepo.HDel(hashKey, ip)
+				if err := s.redisRepo.HDel(hashKey, ip); err != nil {
+					log.Printf("Error deleting %s from %s: %v", ip, hashKey, err)
+				}
 			}
 			log.Printf("Deleted %s from %s (expired at %s)", ip, hashKey, expireTime.Format(time.RFC3339))
 		}
@@ -122,5 +126,7 @@ func (s *SchedulerService) UpdateAutomateCache() {
 			filteredIPs = append(filteredIPs, ip)
 		}
 	}
-	s.redisRepo.SetCache("cached_ips_automate", filteredIPs, 5*time.Minute)
+	if err := s.redisRepo.SetCache("cached_ips_automate", filteredIPs, 5*time.Minute); err != nil {
+		log.Printf("Error updating automate cache: %v", err)
+	}
 }

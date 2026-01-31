@@ -122,17 +122,11 @@ func (r *RedisRepository) ZPageByScoreDesc(limit int, cursor string) ([]redis.Z,
 
 	// If we have a lastMember, we need to filter out items until we find it
 	if lastMember != "" {
-		found := false
 		for i, z := range res {
 			if z.Member.(string) == lastMember {
 				res = res[i+1:]
-				found = true
 				break
 			}
-		}
-		if !found {
-			// If not found, it might have been unblocked. 
-			// We just continue from the score.
 		}
 	}
 

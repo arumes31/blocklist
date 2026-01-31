@@ -95,7 +95,9 @@ func (s *GeoIPService) Download() error {
 		if strings.HasSuffix(header.Name, ".mmdb") {
 			destPath := "/usr/share/GeoIP/GeoLite2-City.mmdb"
 			// Ensure directory exists
-			os.MkdirAll(filepath.Dir(destPath), 0755)
+			if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
+				return err
+			}
 
 			outFile, err := os.Create(destPath)
 			if err != nil {
