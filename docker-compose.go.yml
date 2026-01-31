@@ -18,6 +18,7 @@ services:
       GUIAdmin: admin
       GUIPassword: "XXXXXXXX---SECRET_PASSWORD----"
       GUIToken: XXXXXXXX---SECRET_TOKEN----
+      REDIS_PASSWORD: "CHANGE_ME_REDIS_PASS"
       METRICS_ALLOWED_IPS: "127.0.0.1"
       GEOIPUPDATE_ACCOUNT_ID: "XXXXXX"
       GEOIPUPDATE_LICENSE_KEY: "XXXXXXXX---SECRET_LICENSEKEY----"
@@ -33,6 +34,9 @@ services:
 
   redis:
     image: "redis:alpine"
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "CHANGE_ME_REDIS_PASS"]
+    volumes:
+      - ./redis_data:/data
     restart: unless-stopped
 
   postgres:
