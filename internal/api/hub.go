@@ -12,6 +12,7 @@ type Hub struct {
 	broadcast  chan []byte
 	register   chan *websocket.Conn
 	unregister chan *websocket.Conn
+	stop       chan struct{}
 	mu         sync.Mutex
 }
 
@@ -21,12 +22,15 @@ func NewHub() *Hub {
 		broadcast:  make(chan []byte),
 		register:   make(chan *websocket.Conn),
 		unregister: make(chan *websocket.Conn),
+		stop:       make(chan struct{}),
 	}
 }
 
 func (h *Hub) Run() {
 	for {
 		select {
+		case <-h.stop:
+			return
 		case client := <-h.register:
 			h.mu.Lock()
 			h.clients[client] = true
@@ -58,5 +62,14 @@ func (h *Hub) BroadcastEvent(action string, data interface{}) {
 		"data":   data,
 	}
 	msg, _ := json.Marshal(event)
-	h.broadcast <- msg
+	select {
+	case h.broadcast <- msg:
+	case <-h.stop:
+	default:
+		// Drop if no one is listening or hub stopped
+	}
+}
+
+func (h *Hub) Stop() {
+	close(h.stop)
 }

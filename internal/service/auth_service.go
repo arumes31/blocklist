@@ -20,6 +20,7 @@ func NewAuthService(pg *repository.PostgresRepository, r *repository.RedisReposi
 }
 
 func (s *AuthService) CheckAuth(username, password, token string) bool {
+	if s.pgRepo == nil { return false }
 	admin, err := s.pgRepo.GetAdmin(username)
 	if err != nil {
 		return false
@@ -41,6 +42,7 @@ func (s *AuthService) HashPassword(password string) (string, error) {
 }
 
 func (s *AuthService) CreateAdmin(username, password, role string) (*models.AdminAccount, error) {
+	if s.pgRepo == nil { return nil, nil }
 	hash, err := s.HashPassword(password)
 	if err != nil {
 		return nil, err

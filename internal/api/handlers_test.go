@@ -6,7 +6,10 @@ import (
 	"testing"
 
 	"blocklist/internal/config"
+	"blocklist/internal/repository"
 	"github.com/gin-gonic/gin"
+	"github.com/alicebob/miniredis/v2"
+	"strconv"
 )
 
 func TestAPIHandler_Health(t *testing.T) {
@@ -18,6 +21,27 @@ func TestAPIHandler_Health(t *testing.T) {
 	r.GET("/health", h.Health)
 
 	req, _ := http.NewRequest("GET", "/health", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", w.Code)
+	}
+}
+
+func TestAPIHandler_Ready(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	mr, _ := miniredis.Run()
+	defer mr.Close()
+	
+	port, _ := strconv.Atoi(mr.Port())
+	rRepo := repository.NewRedisRepository(mr.Host(), port, 0)
+	h := NewAPIHandler(&config.Config{}, rRepo, nil, nil, nil, nil, nil)
+
+	r := gin.New()
+	r.GET("/ready", h.Ready)
+
+	req, _ := http.NewRequest("GET", "/ready", nil)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 
