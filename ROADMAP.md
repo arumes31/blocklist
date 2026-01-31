@@ -40,12 +40,12 @@ UX and UI
 - [x] Advanced filters UI (chips, URL state, country/added_by/date range)
 - [x] Exports (CSV/NDJSON)
 - [ ] Saved views per user, bulk actions
-- [ ] Accessibility enhancements
+- [x] Accessibility enhancements (ARIA labels, tooltips)
 
 Data enrichment and analytics
 - [x] ASN enrichment and top ASNs
 - [x] Reason taxonomy and top reasons
-- [ ] Correlation/deduplication and TTL visibility/editing
+- [x] Correlation/deduplication and TTL visibility/editing
 
 API and integrations
 - [x] OpenAPI scaffolding (/openapi.json) and readiness (/ready)
@@ -59,7 +59,7 @@ Observability and operations
 - [x] Readiness endpoint with dependency detail
 
 Reliability and retention
-- [x] TTL sweepers/retention policies (24h default)
+- [x] TTL sweepers/retention policies (custom TTL support)
 - [ ] HA options documentation
 
 Deployment and supply chain

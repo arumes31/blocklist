@@ -14,6 +14,8 @@ type IPEntry struct {
 	Geolocation *GeoData `json:"geolocation"`
 	Reason      string   `json:"reason"`
 	AddedBy     string   `json:"added_by"`
+	TTL         int      `json:"ttl,omitempty"`        // TTL in seconds
+	ExpiresAt   string   `json:"expires_at,omitempty"` // Absolute expiration time
 }
 
 type WhitelistEntry struct {

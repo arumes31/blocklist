@@ -253,9 +253,9 @@
     </div>
     <div style="display: flex; align-items: center; gap: 1rem;">
         <div class="controls" style="display:flex; align-items:center; gap:0.5rem;">
-            <button id="togglePause" class="btn">Pause</button>
-            <button id="toggleDensity" class="btn">Compact</button>
-            <button id="toggleGeo" class="btn">Geo</button>
+            <button id="togglePause" class="btn" aria-label="Toggle live update pause">Pause</button>
+            <button id="toggleDensity" class="btn" aria-label="Toggle table row density">Compact</button>
+            <button id="toggleGeo" class="btn" aria-label="Toggle Geolocation column visibility">Geo</button>
             <span id="live-status" class="status-chip live">LIVE</span>
         </div>
         <div style="text-align: right;">
@@ -341,6 +341,7 @@
                 <tr>
                     <th>IP Address</th>
                     <th>Date Added</th>
+                    <th>Expires At</th>
                     <th>Reason</th>
                     <th>By</th>
                     <th>Geo</th>
@@ -363,6 +364,10 @@
         <div class="form-group">
             <label>Reason</label>
             <input type="text" id="blockReason" class="form-control" placeholder="e.g. Brute force">
+        </div>
+        <div class="form-group">
+            <label>TTL (seconds, default 86400)</label>
+            <input type="number" id="blockTTL" class="form-control" placeholder="86400">
         </div>
         <div class="form-group">
             <label style="display: inline-flex; align-items: center; cursor: pointer;">
@@ -399,16 +404,19 @@
         const reason = data && data.reason ? data.reason : 'N/A';
         const addedBy = data && data.added_by ? data.added_by : 'Unknown';
         const ts = data && data.timestamp ? data.timestamp : '';
+        const expires = data && data.expires_at ? data.expires_at : 'Never';
+        const expiresHTML = expires === 'Never' ? 'Never' : `<span class="utc-timestamp">${expires}</span>`;
         return `<tr id="row-${ip.toLowerCase().replace(/\./g,'-').replace(/:/g,'-')}">
             <td style="font-family: monospace; font-weight: 600;">${ip}</td>
             <td><span class="utc-timestamp">${ts}</span></td>
+            <td>${expiresHTML}</td>
             <td><span style="font-size: 0.9rem; color: var(--secondary-color);">${reason}</span></td>
             <td>${addedBy}</td>
             <td>${geo}</td>
             <td>
                 <button class="btn btn-success" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;"
                         hx-post="/unblock" hx-ext="json-enc" hx-vals='{"ip": "${ip}"}'
-                        hx-target="closest tr" hx-swap="outerHTML swap:0.5s">Unblock</button>
+                        hx-target="closest tr" hx-swap="outerHTML swap:0.5s" title="Unblock this IP">Unblock</button>
             </td>
         </tr>`;
     }
@@ -737,17 +745,19 @@
         const ip = document.getElementById('ipToBlock').value;
         const reason = document.getElementById('blockReason').value;
         const persist = document.getElementById('persistCheckbox').checked;
+        const ttl = parseInt(document.getElementById('blockTTL').value) || 0;
         if (!ip) return showToast('Enter an IP', 'danger');
 
         fetch('/block', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ip, reason, persist })
+            body: JSON.stringify({ ip, reason, persist, ttl })
         }).then(r => r.json()).then(data => {
             if (data.status === 'success') {
                 closeModal('blockModal');
                 document.getElementById('ipToBlock').value = '';
                 document.getElementById('blockReason').value = '';
+                document.getElementById('blockTTL').value = '';
             } else {
                 showToast(data.status || 'Failed to block', 'danger');
             }

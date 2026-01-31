@@ -406,6 +406,7 @@ func (h *APIHandler) BlockIP(c *gin.Context) {
 		IP      string `json:"ip"`
 		Persist bool   `json:"persist"`
 		Reason  string `json:"reason"`
+		TTL     int    `json:"ttl"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"status": "error"})
@@ -421,6 +422,15 @@ func (h *APIHandler) BlockIP(c *gin.Context) {
 	now := time.Now().UTC()
 	timestamp := now.Format("2006-01-02 15:04:05 UTC")
 	
+	expiresAt := ""
+	if !req.Persist {
+		ttl := 86400 // 24h default
+		if req.TTL > 0 {
+			ttl = req.TTL
+		}
+		expiresAt = now.Add(time.Duration(ttl) * time.Second).Format("2006-01-02 15:04:05 UTC")
+	}
+
 	reason := req.Reason
 	if reason == "" {
 		if req.Persist {
@@ -435,6 +445,8 @@ func (h *APIHandler) BlockIP(c *gin.Context) {
 		Geolocation: geo,
 		Reason:      reason,
 		AddedBy:     username,
+		TTL:         req.TTL,
+		ExpiresAt:   expiresAt,
 	}
 
 	if req.Persist && h.pgRepo != nil {
@@ -453,6 +465,10 @@ func (h *APIHandler) BlockIP(c *gin.Context) {
 		_ = h.redisRepo.IncrCountry(country, 1)
 		_ = h.redisRepo.IncrHourBucket(now, 1)
 		_ = h.redisRepo.IncrDayBucket(now, 1)
+		_ = h.redisRepo.IncrReason(entry.Reason, 1)
+		if geo != nil && geo.ASN != 0 {
+			_ = h.redisRepo.IncrASN(geo.ASN, geo.ASNOrg, 1)
+		}
 	}
 	metrics.MetricBlocksTotal.WithLabelValues("gui").Inc()
 

@@ -47,30 +47,35 @@ func (s *SchedulerService) CleanOldIPs(hashKey string) {
 	}
 
 	now := time.Now().UTC()
-	threshold := now.Add(-24 * time.Hour)
 
 	for ip, jsonStr := range data {
 		var entry struct {
 			Timestamp string `json:"timestamp"`
+			ExpiresAt string `json:"expires_at"`
 		}
 		if err := json.Unmarshal([]byte(jsonStr), &entry); err != nil {
 			continue
 		}
 
-		// Parse "2026-01-31 17:00:00 UTC"
-		t, err := time.Parse("2006-01-02 15:04:05 UTC", entry.Timestamp)
-		if err != nil {
-			continue
+		expireTime := time.Time{}
+		if entry.ExpiresAt != "" {
+			expireTime, _ = time.Parse("2006-01-02 15:04:05 UTC", entry.ExpiresAt)
+		} else if entry.Timestamp != "" {
+			// Fallback to 24h from timestamp
+			t, _ := time.Parse("2006-01-02 15:04:05 UTC", entry.Timestamp)
+			if !t.IsZero() {
+				expireTime = t.Add(24 * time.Hour)
+			}
 		}
 
-		if t.Before(threshold) {
+		if !expireTime.IsZero() && now.After(expireTime) {
 			if hashKey == "ips" {
 				// Atomically remove from hash and ZSET
 				s.redisRepo.ExecUnblockAtomic(ip)
 			} else {
 				s.redisRepo.HDel(hashKey, ip)
 			}
-			log.Printf("Deleted %s from %s (added at %s)", ip, hashKey, entry.Timestamp)
+			log.Printf("Deleted %s from %s (expired at %s)", ip, hashKey, expireTime.Format(time.RFC3339))
 		}
 	}
 }
@@ -83,26 +88,37 @@ func (s *SchedulerService) UpdateAutomateCache() {
 
 	now := time.Now().UTC()
 	filteredIPs := []string{}
-	deltaHigh := 24*time.Hour + 1*time.Minute
-	deltaLow := 23*time.Hour + 54*time.Minute
+	// Rule for automate: newly added (last 1 min) or expiring soon (next 6 mins)
+	// (Matching original Python logic roughly)
 
 	for ip, jsonStr := range data {
 		var entry struct {
 			Timestamp string `json:"timestamp"`
+			ExpiresAt string `json:"expires_at"`
 		}
 		if err := json.Unmarshal([]byte(jsonStr), &entry); err != nil {
 			continue
 		}
 
-		t, err := time.Parse("2006-01-02 15:04:05 UTC", entry.Timestamp)
-		if err != nil {
+		startTime, _ := time.Parse("2006-01-02 15:04:05 UTC", entry.Timestamp)
+		
+		expireTime := time.Time{}
+		if entry.ExpiresAt != "" {
+			expireTime, _ = time.Parse("2006-01-02 15:04:05 UTC", entry.ExpiresAt)
+		} else if !startTime.IsZero() {
+			expireTime = startTime.Add(24 * time.Hour)
+		}
+
+		if startTime.IsZero() || expireTime.IsZero() { continue }
+
+		// newly added
+		if now.Sub(startTime) <= 1*time.Minute {
+			filteredIPs = append(filteredIPs, ip)
 			continue
 		}
 
-		expireTime := t.Add(24 * time.Hour)
-		remaining := expireTime.Sub(now)
-
-		if remaining >= deltaHigh || remaining <= deltaLow {
+		// expiring soon
+		if expireTime.Sub(now) <= 6*time.Minute {
 			filteredIPs = append(filteredIPs, ip)
 		}
 	}
