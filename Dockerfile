@@ -3,8 +3,8 @@ FROM golang:1.24-alpine AS builder
 
 WORKDIR /app
 
-# Install build dependencies
-RUN apk add --no-cache git
+# Install build dependencies and patch OS
+RUN apk update && apk upgrade --no-cache && apk add --no-cache git
 
 # Copy dependency files
 COPY go.mod go.sum ./
@@ -25,7 +25,8 @@ LABEL org.opencontainers.image.description="Hardened Blocklist API with GeoIP an
 # Create a non-root user
 RUN addgroup -S blocklist && adduser -S blocklist -G blocklist
 
-RUN apk add --no-cache ca-certificates tzdata
+# Patch OS and install core utilities
+RUN apk update && apk upgrade --no-cache && apk add --no-cache ca-certificates tzdata
 
 WORKDIR /home/blocklist/
 
