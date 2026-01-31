@@ -98,26 +98,24 @@ func (r *RedisRepository) RemoveIPTimestamp(ip string) error {
 func (r *RedisRepository) ZPageByScoreDesc(limit int, cursor string) ([]redis.Z, string, error) {
 	defer r.trackDuration("ZPageByScoreDesc", time.Now())
 	
-	start := "+inf"
+	max := "+inf"
 	var lastMember string
 	if cursor != "" {
 		parts := strings.SplitN(cursor, ":", 2)
-		start = "(" + parts[0]
+		max = parts[0]
 		if len(parts) > 1 {
 			lastMember = parts[1]
 		}
 	}
 
-	args := &redis.ZRangeArgs{
-		Key:     "ips_by_ts",
-		Start:   start,
-		Stop:    "-inf",
-		ByScore: true,
-		Rev:     true,
-		Count:   int64(limit + 50), // Fetch slightly more to handle member-level offset
+	opt := &redis.ZRangeBy{
+		Min:    "-inf",
+		Max:    max,
+		Offset: 0,
+		Count:  int64(limit + 50),
 	}
 	
-	res, err := r.client.ZRangeArgsWithScores(r.ctx, *args).Result()
+	res, err := r.client.ZRevRangeByScoreWithScores(r.ctx, "ips_by_ts", opt).Result()
 	if err != nil { return nil, "", err }
 
 	// If we have a lastMember, we need to filter out items until we find it

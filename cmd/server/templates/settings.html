@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Settings - Blocklist</title>
+    <link rel="icon" type="image/x-icon" href="/cd/favicon-color.png" />
+    <script src="/js/htmx.min.js"></script>
+    <style>
+        :root { --primary-red: #ff0000; --dark-red: #8b0000; --border-red: rgba(255, 0, 0, 0.3); }
+        body { font-family: 'Segoe UI', sans-serif; background: #000; color: #fff; margin: 0; padding: 2rem; }
+        .card { background: rgba(20,20,20,0.85); border: 1px solid var(--border-red); border-radius: 12px; padding: 1.5rem; margin-bottom: 2rem; }
+        h2 { border-bottom: 1px solid var(--border-red); padding-bottom: 0.5rem; }
+        .btn { padding: 0.6rem 1.2rem; border-radius: 6px; cursor: pointer; font-weight: 600; border: 1px solid rgba(255,255,255,0.15); background: rgba(255,255,255,0.05); color: #fff; text-decoration: none; }
+        .btn-danger { background: var(--dark-red); }
+        .form-group { margin-bottom: 1rem; }
+        label { display: block; margin-bottom: 0.4rem; }
+        input, select { width: 100%; padding: 0.6rem; background: #111; border: 1px solid #333; color: #fff; border-radius: 4px; box-sizing: border-box; }
+        table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+        th, td { text-align: left; padding: 0.75rem; border-bottom: 1px solid #222; }
+        code { background: #222; padding: 0.2rem 0.4rem; border-radius: 4px; font-family: monospace; }
+    </style>
+</head>
+<body>
+    <a href="/dashboard" class="btn">Back to Dashboard</a>
+    <h1>Settings & Integrations</h1>
+
+    <div class="card">
+        <h2>Outbound Webhooks</h2>
+        <p>Configure external services to be notified of block/unblock events.</p>
+        <form hx-post="/api/v1/settings/webhooks" hx-target="#webhook-list" hx-swap="afterbegin">
+            <div style="display: grid; grid-template-columns: 2fr 1fr 1fr auto; gap: 10px; align-items: end;">
+                <div class="form-group">
+                    <label>URL</label>
+                    <input type="url" name="url" placeholder="https://example.com/webhook" required>
+                </div>
+                <div class="form-group">
+                    <label>Secret (HMAC)</label>
+                    <input type="text" name="secret" placeholder="optional signature key">
+                </div>
+                <div class="form-group">
+                    <label>Events</label>
+                    <input type="text" name="events" value="block,unblock" placeholder="comma separated">
+                </div>
+                <button type="submit" class="btn" style="margin-bottom: 1rem;">Add Webhook</button>
+            </div>
+        </form>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>URL</th>
+                    <th>Events</th>
+                    <th>Status</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody id="webhook-list">
+                {{ range $i, $w := .webhooks }}
+                <tr>
+                    <td>{{ $w.URL }}</td>
+                    <td>{{ $w.Events }}</td>
+                    <td>{{ if $w.Active }}✅ Active{{ else }}❌ Inactive{{ end }}</td>
+                    <td>
+                        <button class="btn btn-danger" hx-delete="/api/v1/settings/webhooks/{{ $w.ID }}" hx-target="closest tr" hx-swap="outerHTML">Delete</button>
+                    </td>
+                </tr>
+                {{ end }}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="card">
+        <h2>Source Adapters</h2>
+        <h3>Fail2ban</h3>
+        <p>Configure Fail2ban to push bans to this app. Add an action file <code>/etc/fail2ban/action.d/blocklist.conf</code>:</p>
+        <pre><code>[Definition]
+actionban = curl -X POST -H "Content-Type: application/json" -d '{"ip":"&lt;ip&gt;","act":"ban","reason":"fail2ban-&lt;name&gt;","username":"{{ .admin_user }}","password":"YOUR_PASSWORD"}' {{ .base_url }}/webhook
+actionunban = curl -X POST -H "Content-Type: application/json" -d '{"ip":"&lt;ip&gt;","act":"unban","username":"{{ .admin_user }}","password":"YOUR_PASSWORD"}' {{ .base_url }}/webhook
+</code></pre>
+
+        <h3>Suricata / IDS</h3>
+        <p>Ingest Suricata alerts via custom script or file beat pushing to <code>/api/v1/webhook</code>.</p>
+    </div>
+
+    <div class="card">
+        <h2>API Access</h2>
+        <p>Your base API URL is: <code>{{ .base_url }}/api/v1</code></p>
+        <p>Use Bearer tokens for authentication. Tokens can be managed in the Admin panel.</p>
+    </div>
+</body>
+</html>

@@ -246,6 +246,7 @@
             Blocklist Dashboard 
             <button onclick="openModal('blockModal')" class="btn btn-danger">Block IP</button>
             <a href="/whitelist" class="btn btn-dark">Whitelist</a>
+            <a href="/settings" class="btn btn-dark">Settings</a>
             {{ if eq .username .admin_username }}
             <a href="/admin_management" class="btn btn-dark">Admins</a>
             {{ end }}
@@ -253,6 +254,7 @@
     </div>
     <div style="display: flex; align-items: center; gap: 1rem;">
         <div class="controls" style="display:flex; align-items:center; gap:0.5rem;">
+            <button id="bulkUnblockBtn" class="btn btn-danger" style="display:none;" onclick="confirmBulkUnblock()">Bulk Unblock</button>
             <button id="togglePause" class="btn" aria-label="Toggle live update pause">Pause</button>
             <button id="toggleDensity" class="btn" aria-label="Toggle table row density">Compact</button>
             <button id="toggleGeo" class="btn" aria-label="Toggle Geolocation column visibility">Geo</button>
@@ -290,6 +292,13 @@
                 <button onclick="exportData('csv')" class="btn btn-dark" style="height: 42px;" title="Export CSV">CSV</button>
                 <button onclick="exportData('ndjson')" class="btn btn-dark" style="height: 42px;" title="Export NDJSON">JSON</button>
             </div>
+            <select id="savedViews" class="filter-input" style="flex: 1; min-width: 150px;" onchange="loadView(this.value)">
+                <option value="">Saved Views</option>
+                {{ range $i, $v := .views }}
+                    <option value="{{ $v.Filters }}">{{ $v.Name }}</option>
+                {{ end }}
+            </select>
+            <button onclick="saveCurrentView()" class="btn btn-dark" style="height: 42px;" title="Save Current Filters as View">Save View</button>
         </div>
         <div id="filter-chips" style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 15px;"></div>
     </div>
@@ -339,6 +348,7 @@
         <table id="ipTable">
             <thead>
                 <tr>
+                    <th style="width: 40px;"><input type="checkbox" id="selectAll" onclick="toggleSelectAll(this)"></th>
                     <th>IP Address</th>
                     <th>Date Added</th>
                     <th>Expires At</th>
@@ -407,6 +417,7 @@
         const expires = data && data.expires_at ? data.expires_at : 'Never';
         const expiresHTML = expires === 'Never' ? 'Never' : `<span class="utc-timestamp">${expires}</span>`;
         return `<tr id="row-${ip.toLowerCase().replace(/\./g,'-').replace(/:/g,'-')}">
+            <td><input type="checkbox" class="ip-checkbox" value="${ip}" onclick="updateBulkUI()"></td>
             <td style="font-family: monospace; font-weight: 600;">${ip}</td>
             <td><span class="utc-timestamp">${ts}</span></td>
             <td>${expiresHTML}</td>
@@ -690,6 +701,41 @@
         window.location.href = `/api/v1/ips/export?${params.toString()}`;
     }
 
+    window.loadView = function(filterJson) {
+        if (!filterJson) return;
+        const filters = JSON.parse(filterJson);
+        currentFilters = filters;
+        
+        document.getElementById('filterInput').value = filters.query || "";
+        document.getElementById('countryFilter').value = filters.country || "";
+        document.getElementById('addedByFilter').value = filters.addedBy || "";
+        document.getElementById('fromDateFilter').value = filters.from || "";
+        document.getElementById('toDateFilter').value = filters.to || "";
+        
+        applyServerSearch();
+    }
+
+    window.saveCurrentView = function() {
+        const name = prompt("Enter a name for this view:");
+        if (!name) return;
+
+        fetch('/api/v1/views', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                name: name,
+                filters: JSON.stringify(currentFilters)
+            })
+        }).then(r => r.json()).then(data => {
+            if (data.status === 'success') {
+                showToast("View saved successfully", "success");
+                setTimeout(() => window.location.reload(), 1000);
+            } else {
+                showToast(data.error || "Failed to save view", "danger");
+            }
+        });
+    }
+
     // UI Helpers
     function openModal(id) { document.getElementById(id).style.display = 'block'; }
     function closeModal(id) { document.getElementById(id).style.display = 'none'; }
@@ -712,6 +758,46 @@
             const date = new Date(timestamp.innerText);
             timestamp.innerText = date.toLocaleString();
             timestamp.setAttribute('data-converted', 'true');
+        });
+    }
+
+    window.toggleSelectAll = function(el) {
+        const checkboxes = document.querySelectorAll('.ip-checkbox');
+        checkboxes.forEach(c => c.checked = el.checked);
+        updateBulkUI();
+    }
+
+    window.updateBulkUI = function() {
+        const selected = document.querySelectorAll('.ip-checkbox:checked').length;
+        const btn = document.getElementById('bulkUnblockBtn');
+        if (selected > 0) {
+            btn.style.display = 'inline-flex';
+            btn.textContent = `Unblock ${selected} IPs`;
+        } else {
+            btn.style.display = 'none';
+        }
+    }
+
+    window.confirmBulkUnblock = function() {
+        const selected = Array.from(document.querySelectorAll('.ip-checkbox:checked')).map(c => c.value);
+        if (selected.length === 0) return;
+        
+        if (!confirm(`Are you sure you want to unblock ${selected.length} IPs?`)) return;
+
+        fetch('/bulk_unblock', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ips: selected })
+        }).then(r => r.json()).then(data => {
+            if (data.status === 'success') {
+                showToast(`Successfully unblocked ${selected.length} IPs`, 'success');
+                // We could reload or manually remove rows. 
+                // Since WS will trigger unblock events, they should disappear automatically.
+                document.getElementById('selectAll').checked = false;
+                updateBulkUI();
+            } else {
+                showToast(data.error || 'Bulk unblock failed', 'danger');
+            }
         });
     }
 

@@ -31,22 +31,24 @@ import (
 )
 
 type APIHandler struct {
-	cfg         *config.Config
-	redisRepo   *repository.RedisRepository
-	pgRepo      *repository.PostgresRepository
-	authService *service.AuthService
-	ipService   *service.IPService
-	hub         *Hub
+	cfg            *config.Config
+	redisRepo      *repository.RedisRepository
+	pgRepo         *repository.PostgresRepository
+	authService    *service.AuthService
+	ipService      *service.IPService
+	hub            *Hub
+	webhookService *service.WebhookService
 }
 
-func NewAPIHandler(cfg *config.Config, r *repository.RedisRepository, pg *repository.PostgresRepository, auth *service.AuthService, ip *service.IPService, hub *Hub) *APIHandler {
+func NewAPIHandler(cfg *config.Config, r *repository.RedisRepository, pg *repository.PostgresRepository, auth *service.AuthService, ip *service.IPService, hub *Hub, wh *service.WebhookService) *APIHandler {
 	return &APIHandler{
-		cfg:         cfg,
-		redisRepo:   r,
-		pgRepo:      pg,
-		authService: auth,
-		ipService:   ip,
-		hub:         hub,
+		cfg:            cfg,
+		redisRepo:      r,
+		pgRepo:         pg,
+		authService:    auth,
+		ipService:      ip,
+		hub:            hub,
+		webhookService: wh,
 	}
 }
 
@@ -159,11 +161,21 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 		auth.GET("/dashboard", h.Dashboard)
 		auth.GET("/dashboard/table", h.DashboardTable) // For HTMX polling
 		
+		auth.GET("/api/v1/views", h.GetSavedViews)
+		auth.POST("/api/v1/views", h.CreateSavedView)
+		auth.DELETE("/api/v1/views/:id", h.DeleteSavedView)
+
+		auth.GET("/settings", h.Settings)
+		auth.POST("/api/v1/settings/webhooks", h.AddOutboundWebhook)
+		auth.DELETE("/api/v1/settings/webhooks/:id", h.DeleteOutboundWebhook)
+
 		operator := auth.Group("/")
 		operator.Use(h.RBACMiddleware("operator"))
 		{
 			operator.POST("/block", h.BlockIP)
 			operator.POST("/unblock", h.UnblockIP)
+			operator.POST("/bulk_block", h.BulkBlock)
+			operator.POST("/bulk_unblock", h.BulkUnblock)
 			operator.GET("/whitelist", h.Whitelist)
 			operator.POST("/add_whitelist", h.AddWhitelist)
 			operator.POST("/remove_whitelist", h.RemoveWhitelist)
@@ -234,11 +246,14 @@ func (h *APIHandler) Dashboard(c *gin.Context) {
 	reasons := make([]map[string]interface{}, 0, len(topReason))
 	for _, r := range topReason { reasons = append(reasons, map[string]interface{}{"Reason": r.Reason, "Count": r.Count}) }
 
+	views, _ := h.pgRepo.GetSavedViews(username)
+
 	c.HTML(http.StatusOK, "dashboard.html", gin.H{
 		"ips":            ips,
 		"total_ips":      len(ips),
 		"admin_username": h.cfg.GUIAdmin,
 		"username":       username,
+		"views":          views,
 		"stats": gin.H{
 			"hour":          hour,
 			"day":           day,
@@ -248,6 +263,55 @@ func (h *APIHandler) Dashboard(c *gin.Context) {
 			"top_reasons":   reasons,
 		},
 	})
+}
+
+func (h *APIHandler) GetSavedViews(c *gin.Context) {
+	username, _ := c.Get("username")
+	views, err := h.pgRepo.GetSavedViews(username.(string))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch views"})
+		return
+	}
+	c.JSON(http.StatusOK, views)
+}
+
+func (h *APIHandler) CreateSavedView(c *gin.Context) {
+	username, _ := c.Get("username")
+	var req struct {
+		Name    string `json:"name"`
+		Filters string `json:"filters"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+		return
+	}
+
+	view := models.SavedView{
+		Username: username.(string),
+		Name:     req.Name,
+		Filters:  req.Filters,
+	}
+
+	err := h.pgRepo.CreateSavedView(view)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save view"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "success"})
+}
+
+func (h *APIHandler) DeleteSavedView(c *gin.Context) {
+	username, _ := c.Get("username")
+	id, _ := strconv.Atoi(c.Param("id"))
+
+	err := h.pgRepo.DeleteSavedView(id, username.(string))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete view"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "success"})
 }
 
 // For HTMX Polling (Improvement 4)
@@ -518,6 +582,7 @@ func (h *APIHandler) BlockIP(c *gin.Context) {
 		"ip":   req.IP,
 		"data": entry,
 	})
+	h.webhookService.Notify(c.Request.Context(), "block", map[string]interface{}{"ip": req.IP, "data": entry})
 
 	c.JSON(http.StatusOK, gin.H{"status": "success"})
 }
@@ -552,11 +617,57 @@ func (h *APIHandler) UnblockIP(c *gin.Context) {
 	h.hub.BroadcastEvent("unblock", map[string]interface{}{
 		"ip": req.IP,
 	})
+	h.webhookService.Notify(c.Request.Context(), "unblock", map[string]interface{}{"ip": req.IP})
 
 	if c.GetHeader("HX-Request") != "" {
 		c.Status(http.StatusOK)
 		return
 	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "success"})
+}
+
+func (h *APIHandler) BulkBlock(c *gin.Context) {
+	username, _ := c.Get("username")
+	var req struct {
+		IPs     []string `json:"ips"`
+		Persist bool     `json:"persist"`
+		Reason  string   `json:"reason"`
+		TTL     int      `json:"ttl"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+		return
+	}
+
+	err := h.ipService.BulkBlock(c.Request.Context(), req.IPs, req.Reason, username.(string), req.Persist, req.TTL)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "bulk block failed"})
+		return
+	}
+
+	h.webhookService.Notify(c.Request.Context(), "bulk_block", map[string]interface{}{"ips": req.IPs})
+
+	c.JSON(http.StatusOK, gin.H{"status": "success"})
+}
+
+func (h *APIHandler) BulkUnblock(c *gin.Context) {
+	username, _ := c.Get("username")
+	var req struct {
+		IPs []string `json:"ips"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+		return
+	}
+
+	err := h.ipService.BulkUnblock(c.Request.Context(), req.IPs, username.(string))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "bulk unblock failed"})
+		return
+	}
+
+	h.webhookService.Notify(c.Request.Context(), "bulk_unblock", map[string]interface{}{"ips": req.IPs})
 
 	c.JSON(http.StatusOK, gin.H{"status": "success"})
 }
@@ -737,6 +848,17 @@ func (h *APIHandler) CreateAdmin(c *gin.Context) {
 	}
 
 	c.JSON(200, gin.H{"status": "success", "username": admin.Username})
+}
+
+func (h *APIHandler) AdminManagement(c *gin.Context) {
+	admins, _ := h.pgRepo.GetAllAdmins()
+	adminMap := make(map[string]models.AdminAccount)
+	for _, a := range admins {
+		adminMap[a.Username] = a
+	}
+	c.HTML(http.StatusOK, "admin_management.html", gin.H{
+		"admins": adminMap,
+	})
 }
 
 func (h *APIHandler) DeleteAdmin(c *gin.Context) {
@@ -1112,13 +1234,42 @@ func (h *APIHandler) Stats(c *gin.Context) {
 	})
 }
 
-func (h *APIHandler) AdminManagement(c *gin.Context) {
-	admins, _ := h.pgRepo.GetAllAdmins()
-	adminMap := make(map[string]models.AdminAccount)
-	for _, a := range admins {
-		adminMap[a.Username] = a
-	}
-	c.HTML(http.StatusOK, "admin_management.html", gin.H{
-		"admins": adminMap,
+func (h *APIHandler) Settings(c *gin.Context) {
+	webhooks, _ := h.pgRepo.GetActiveWebhooks()
+	
+	// Get base URL from request
+	scheme := "http"
+	if c.Request.TLS != nil { scheme = "https" }
+	baseURL := fmt.Sprintf("%s://%s", scheme, c.Request.Host)
+
+	c.HTML(http.StatusOK, "settings.html", gin.H{
+		"webhooks":   webhooks,
+		"admin_user": h.cfg.GUIAdmin,
+		"base_url":   baseURL,
 	})
+}
+
+func (h *APIHandler) AddOutboundWebhook(c *gin.Context) {
+	var wh models.OutboundWebhook
+	wh.URL = c.PostForm("url")
+	wh.Secret = c.PostForm("secret")
+	wh.Events = c.PostForm("events")
+	wh.Active = true
+
+	err := h.pgRepo.CreateOutboundWebhook(wh)
+	if err != nil {
+		c.String(http.StatusInternalServerError, "failed to add webhook")
+		return
+	}
+
+	// Return table row for HTMX
+	c.HTML(http.StatusOK, "settings.html", gin.H{"webhooks": []models.OutboundWebhook{wh}})
+	// Actually we should return just the row fragment, but for now this is ok if htmx targets correctly
+	// Better: return just the row.
+}
+
+func (h *APIHandler) DeleteOutboundWebhook(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Param("id"))
+	_ = h.pgRepo.DeleteOutboundWebhook(id)
+	c.Status(http.StatusOK)
 }

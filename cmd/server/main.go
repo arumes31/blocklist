@@ -80,7 +80,8 @@ func main() {
 
 	// 2. Initialize Services
 	authService := service.NewAuthService(pgRepo, redisRepo)
-	ipService := service.NewIPService(cfg, redisRepo)
+	ipService := service.NewIPService(cfg, redisRepo, pgRepo)
+	webhookService := service.NewWebhookService(pgRepo)
 	scheduler := service.NewSchedulerService(redisRepo)
 	geoUpdater := service.NewGeoIPService(cfg)
 
@@ -203,7 +204,7 @@ func main() {
 	r.StaticFS("/cd", http.FS(cdRoot))
 
 	// 6. Initialize API Handler
-	handler := api.NewAPIHandler(cfg, redisRepo, pgRepo, authService, ipService, hub)
+	handler := api.NewAPIHandler(cfg, redisRepo, pgRepo, authService, ipService, hub, webhookService)
 	handler.RegisterRoutes(r)
 
 	// 7. Run Server with Graceful Shutdown

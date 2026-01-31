@@ -19,12 +19,13 @@ import (
 
 type IPService struct {
 	redisRepo     *repository.RedisRepository
+	pgRepo        *repository.PostgresRepository
 	blockedRanges []netip.Prefix
 	geoipReader   *geoip2.Reader
 	asnReader     *geoip2.Reader
 }
 
-func NewIPService(cfg *config.Config, rRepo *repository.RedisRepository) *IPService {
+func NewIPService(cfg *config.Config, rRepo *repository.RedisRepository, pgRepo *repository.PostgresRepository) *IPService {
 	ranges := []netip.Prefix{}
 	for _, rStr := range strings.Split(cfg.BlockedRanges, ",") {
 		rStr = strings.TrimSpace(rStr)
@@ -50,6 +51,7 @@ func NewIPService(cfg *config.Config, rRepo *repository.RedisRepository) *IPServ
 
 	return &IPService{
 		redisRepo:     rRepo,
+		pgRepo:        pgRepo,
 		blockedRanges: ranges,
 		geoipReader:   reader,
 		asnReader:     aReader,
@@ -279,6 +281,56 @@ func (s *IPService) ExportIPs(ctx context.Context, query string, country string,
 	}
 
 	return items, nil
+}
+
+// BulkBlock blocks multiple IPs at once.
+func (s *IPService) BulkBlock(ctx context.Context, ips []string, reason string, addedBy string, persist bool, ttl int) error {
+	now := time.Now().UTC()
+	timestamp := now.Format("2006-01-02 15:04:05 UTC")
+	
+	expiresAt := ""
+	if !persist {
+		tVal := 86400
+		if ttl > 0 { tVal = ttl }
+		expiresAt = now.Add(time.Duration(tVal) * time.Second).Format("2006-01-02 15:04:05 UTC")
+	}
+
+	for _, ip := range ips {
+		if !s.IsValidIP(ip) { continue }
+		geo := s.GetGeoIP(ip)
+		entry := models.IPEntry{
+			Timestamp:   timestamp,
+			Geolocation: geo,
+			Reason:      reason,
+			AddedBy:     addedBy,
+			TTL:         ttl,
+			ExpiresAt:   expiresAt,
+		}
+		
+		if persist && s.pgRepo != nil {
+			_ = s.pgRepo.CreatePersistentBlock(ip, entry)
+			_ = s.pgRepo.LogAction(addedBy, "BLOCK_PERSISTENT", ip, reason)
+		} else {
+			_ = s.redisRepo.BlockIP(ip, entry)
+			if s.pgRepo != nil {
+				_ = s.pgRepo.LogAction(addedBy, "BLOCK_EPHEMERAL", ip, reason)
+			}
+		}
+		_ = s.redisRepo.ExecBlockAtomic(ip, entry, now)
+	}
+	return nil
+}
+
+// BulkUnblock unblocks multiple IPs at once.
+func (s *IPService) BulkUnblock(ctx context.Context, ips []string, actor string) error {
+	for _, ip := range ips {
+		_ = s.redisRepo.ExecUnblockAtomic(ip)
+		if s.pgRepo != nil {
+			_ = s.pgRepo.DeletePersistentBlock(ip)
+			_ = s.pgRepo.LogAction(actor, "UNBLOCK", ip, "bulk action")
+		}
+	}
+	return nil
 }
 
 // ListIPsPaginatedAdvanced provides server-side pagination and search across all records with advanced filters.

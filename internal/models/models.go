@@ -43,3 +43,32 @@ type APIToken struct {
 	ExpiresAt *string  `json:"expires_at" db:"expires_at"`
 	LastUsed  *string  `json:"last_used" db:"last_used"`
 }
+
+type SavedView struct {
+	ID        int    `json:"id" db:"id"`
+	Username  string `json:"username" db:"username"`
+	Name      string `json:"name" db:"name"`
+	Filters   string `json:"filters" db:"filters"` // JSON string of filters
+	CreatedAt string `json:"created_at" db:"created_at"`
+}
+
+type OutboundWebhook struct {
+	ID        int    `json:"id" db:"id"`
+	URL       string `json:"url" db:"url"`
+	Events    string `json:"events" db:"events"`
+	Secret    string `json:"secret" db:"secret"`
+	Active    bool   `json:"active" db:"active"`
+	CreatedAt string `json:"created_at" db:"created_at"`
+}
+
+type WebhookLog struct {
+	ID           int    `json:"id" db:"id"`
+	WebhookID    int    `json:"webhook_id" db:"webhook_id"`
+	Event        string `json:"event" db:"event"`
+	Payload      string `json:"payload" db:"payload"`
+	StatusCode   int    `json:"status_code" db:"status_code"`
+	ResponseBody string `json:"response_body" db:"response_body"`
+	Error        string `json:"error" db:"error"`
+	Attempt      int    `json:"attempt" db:"attempt"`
+	Timestamp    string `json:"timestamp" db:"timestamp"`
+}

@@ -81,6 +81,43 @@ func (p *PostgresRepository) UpdateTokenLastUsed(id int) error {
 	return err
 }
 
+func (p *PostgresRepository) CreateSavedView(view models.SavedView) error {
+	_, err := p.db.NamedExec("INSERT INTO saved_views (username, name, filters) VALUES (:username, :name, :filters)", view)
+	return err
+}
+
+func (p *PostgresRepository) GetSavedViews(username string) ([]models.SavedView, error) {
+	var views []models.SavedView
+	err := p.db.Select(&views, "SELECT id, username, name, filters, created_at FROM saved_views WHERE username = $1 ORDER BY created_at DESC", username)
+	return views, err
+}
+
+func (p *PostgresRepository) DeleteSavedView(id int, username string) error {
+	_, err := p.db.Exec("DELETE FROM saved_views WHERE id = $1 AND username = $2", id, username)
+	return err
+}
+
+func (p *PostgresRepository) GetActiveWebhooks() ([]models.OutboundWebhook, error) {
+	var webhooks []models.OutboundWebhook
+	err := p.db.Select(&webhooks, "SELECT id, url, events, secret, active, created_at FROM outbound_webhooks WHERE active = TRUE")
+	return webhooks, err
+}
+
+func (p *PostgresRepository) LogWebhookDelivery(logEntry models.WebhookLog) error {
+	_, err := p.db.NamedExec("INSERT INTO webhook_logs (webhook_id, event, payload, status_code, response_body, error, attempt) VALUES (:webhook_id, :event, :payload, :status_code, :response_body, :error, :attempt)", logEntry)
+	return err
+}
+
+func (p *PostgresRepository) CreateOutboundWebhook(wh models.OutboundWebhook) error {
+	_, err := p.db.NamedExec("INSERT INTO outbound_webhooks (url, events, secret, active) VALUES (:url, :events, :secret, :active)", wh)
+	return err
+}
+
+func (p *PostgresRepository) DeleteOutboundWebhook(id int) error {
+	_, err := p.db.Exec("DELETE FROM outbound_webhooks WHERE id = $1", id)
+	return err
+}
+
 func (p *PostgresRepository) CreatePersistentBlock(ip string, entry models.IPEntry) error {
 	geoJSON, _ := json.Marshal(entry.Geolocation)
 	_, err := p.db.Exec("INSERT INTO persistent_blocks (ip, timestamp, reason, added_by, geo_json) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (ip) DO UPDATE SET timestamp = $2, reason = $3, added_by = $4, geo_json = $5",
