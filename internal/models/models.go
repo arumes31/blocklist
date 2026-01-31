@@ -5,6 +5,8 @@ type GeoData struct {
 	City      string  `json:"city"`
 	Latitude  float64 `json:"latitude"`
 	Longitude float64 `json:"longitude"`
+	ASN       uint    `json:"asn,omitempty"`
+	ASNOrg    string  `json:"asn_org,omitempty"`
 }
 
 type IPEntry struct {

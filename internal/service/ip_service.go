@@ -14,12 +14,14 @@ import (
 	"blocklist/internal/models"
 	"blocklist/internal/repository"
 	"github.com/oschwald/geoip2-golang"
+	"github.com/redis/go-redis/v9"
 )
 
 type IPService struct {
 	redisRepo     *repository.RedisRepository
 	blockedRanges []netip.Prefix
 	geoipReader   *geoip2.Reader
+	asnReader     *geoip2.Reader
 }
 
 func NewIPService(cfg *config.Config, rRepo *repository.RedisRepository) *IPService {
@@ -35,17 +37,22 @@ func NewIPService(cfg *config.Config, rRepo *repository.RedisRepository) *IPServ
 		}
 	}
 
-	var reader *geoip2.Reader
+	var reader, aReader *geoip2.Reader
 	// Path from the original dockerfile
 	gReader, err := geoip2.Open("/usr/share/GeoIP/GeoLite2-City.mmdb")
 	if err == nil {
 		reader = gReader
+	}
+	gaReader, err := geoip2.Open("/usr/share/GeoIP/GeoLite2-ASN.mmdb")
+	if err == nil {
+		aReader = gaReader
 	}
 
 	return &IPService{
 		redisRepo:     rRepo,
 		blockedRanges: ranges,
 		geoipReader:   reader,
+		asnReader:     aReader,
 	}
 }
 
@@ -77,21 +84,41 @@ func (s *IPService) GetGeoIP(ipStr string) *models.GeoData {
 		reader, err := geoip2.Open("/usr/share/GeoIP/GeoLite2-City.mmdb")
 		if err == nil {
 			s.geoipReader = reader
-		} else {
-			return nil
 		}
 	}
+	if s.asnReader == nil {
+		aReader, err := geoip2.Open("/usr/share/GeoIP/GeoLite2-ASN.mmdb")
+		if err == nil {
+			s.asnReader = aReader
+		}
+	}
+
 	ip := net.ParseIP(ipStr)
-	record, err := s.geoipReader.City(ip)
-	if err != nil {
+	data := &models.GeoData{}
+
+	if s.geoipReader != nil {
+		record, err := s.geoipReader.City(ip)
+		if err == nil {
+			data.Country = record.Country.IsoCode
+			data.City = record.City.Names["en"]
+			data.Latitude = record.Location.Latitude
+			data.Longitude = record.Location.Longitude
+		}
+	}
+
+	if s.asnReader != nil {
+		asnRecord, err := s.asnReader.ASN(ip)
+		if err == nil {
+			data.ASN = asnRecord.AutonomousSystemNumber
+			data.ASNOrg = asnRecord.AutonomousSystemOrganization
+		}
+	}
+
+	if data.Country == "" && data.ASN == 0 {
 		return nil
 	}
-	return &models.GeoData{
-		Country:   record.Country.IsoCode,
-		City:      record.City.Names["en"],
-		Latitude:  record.Location.Latitude,
-		Longitude: record.Location.Longitude,
-	}
+
+	return data
 }
 
 // ListIPsPaginated returns items ordered by recency with cursor-based pagination and optional query filter.
@@ -156,26 +183,106 @@ func (s *IPService) ListIPsPaginated(ctx context.Context, limit int, cursor stri
 	return itemsOut, nextCursor, len(list), nil
 }
 
-// Stats computes counts for last hour/day/total and top countries.
-func (s *IPService) Stats(ctx context.Context) (hour int, day int, total int, top []struct{ Country string; Count int }, err error) {
+// Stats computes counts for last hour/day/total and top countries, ASNs, and reasons.
+func (s *IPService) Stats(ctx context.Context) (hour int, day int, total int, top []struct{ Country string; Count int }, topASN []struct{ ASN uint; ASNOrg string; Count int }, topReason []struct{ Reason string; Count int }, err error) {
 	h, err := s.redisRepo.CountLastHour()
-	if err != nil { return 0,0,0,nil, err }
+	if err != nil { return 0,0,0,nil, nil, nil, err }
 	d, err := s.redisRepo.CountLastDay()
-	if err != nil { return 0,0,0,nil, err }
+	if err != nil { return 0,0,0,nil, nil, nil, err }
 	t, err := s.redisRepo.GetTotal()
-	if err != nil { return 0,0,0,nil, err }
+	if err != nil { return 0,0,0,nil, nil, nil, err }
+	
 	tc, err := s.redisRepo.TopCountries(3)
-	if err != nil { return 0,0,0,nil, err }
+	if err != nil { return 0,0,0,nil, nil, nil, err }
 	top = make([]struct{ Country string; Count int }, 0, len(tc))
 	for _, v := range tc { top = append(top, struct{ Country string; Count int }{v.Country, v.Count}) }
-	return h, d, t, top, nil
+
+	ta, err := s.redisRepo.TopASNs(3)
+	if err == nil {
+		topASN = make([]struct{ ASN uint; ASNOrg string; Count int }, 0, len(ta))
+		for _, v := range ta { topASN = append(topASN, struct{ ASN uint; ASNOrg string; Count int }{v.ASN, v.ASNOrg, v.Count}) }
+	}
+
+	tr, err := s.redisRepo.TopReasons(3)
+	if err == nil {
+		topReason = make([]struct{ Reason string; Count int }, 0, len(tr))
+		for _, v := range tr { topReason = append(topReason, struct{ Reason string; Count int }{v.Reason, v.Count}) }
+	}
+
+	return h, d, t, top, topASN, topReason, nil
+}
+
+// ExportIPs returns all IPs matching the filters for export purposes.
+func (s *IPService) ExportIPs(ctx context.Context, query string, country string, addedBy string, from string, to string) ([]map[string]interface{}, error) {
+	// For export, we fetch a large batch or iterate.
+	// Simple implementation: fetch up to 10k items.
+	
+	var fromTime, toTime time.Time
+	if from != "" {
+		fromTime, _ = time.Parse(time.RFC3339, from)
+	}
+	if to != "" {
+		toTime, _ = time.Parse(time.RFC3339, to)
+	}
+
+	// We use ZRange to get all members if possible, or iterate in batches
+	// For now, let's fetch the last 10000 entries
+	args := &redis.ZRangeArgs{
+		Key:     "ips_by_ts",
+		Start:   "+inf",
+		Stop:    "-inf",
+		ByScore: true,
+		Rev:     true,
+		Count:   10000,
+	}
+	
+	zs, err := s.redisRepo.ZRangeArgsWithScores(ctx, *args)
+	if err != nil { return nil, err }
+
+	items := make([]map[string]interface{}, 0)
+	q := strings.ToLower(strings.TrimSpace(query))
+	country = strings.ToLower(strings.TrimSpace(country))
+	addedBy = strings.ToLower(strings.TrimSpace(addedBy))
+
+	for _, z := range zs {
+		ip := z.Member.(string)
+		entry, err := s.redisRepo.GetIPEntry(ip)
+		if err != nil || entry == nil { continue }
+
+		if q != "" {
+			if !strings.Contains(strings.ToLower(ip), q) &&
+				!strings.Contains(strings.ToLower(entry.Reason), q) &&
+				!strings.Contains(strings.ToLower(entry.AddedBy), q) &&
+				!(entry.Geolocation != nil && strings.Contains(strings.ToLower(entry.Geolocation.Country), q)) {
+				continue
+			}
+		}
+		if country != "" {
+			if entry.Geolocation == nil || !strings.EqualFold(entry.Geolocation.Country, country) {
+				continue
+			}
+		}
+		if addedBy != "" {
+			if !strings.EqualFold(entry.AddedBy, addedBy) {
+				continue
+			}
+		}
+		if !fromTime.IsZero() || !toTime.IsZero() {
+			ts, err := time.Parse("2006-01-02 15:04:05 UTC", entry.Timestamp)
+			if err == nil {
+				if !fromTime.IsZero() && ts.Before(fromTime) { continue }
+				if !toTime.IsZero() && ts.After(toTime) { continue }
+			}
+		}
+
+		items = append(items, map[string]interface{}{"ip": ip, "data": entry})
+	}
+
+	return items, nil
 }
 
 // ListIPsPaginatedAdvanced provides server-side pagination and search across all records with advanced filters.
 func (s *IPService) ListIPsPaginatedAdvanced(ctx context.Context, limit int, cursor string, query string, country string, addedBy string, from string, to string) ([]map[string]interface{}, string, int, error) {
-	// For now, we'll use a simplified implementation that fetches more and filters.
-	// In a real production environment with millions of IPs, we'd use Redis search or similar.
-	
 	// Parse dates if provided
 	var fromTime, toTime time.Time
 	if from != "" {
@@ -202,9 +309,6 @@ func (s *IPService) ListIPsPaginatedAdvanced(ctx context.Context, limit int, cur
 
 		for _, z := range zs {
 			if len(items) >= limit {
-				// We reached the limit, but we need to adjust 'next' to the score of the LAST ADDED item
-				// Actually, 'next' from ZPageByScoreDesc is the score of the last item in the FETCHED batch.
-				// If we stop early, we should update 'next'.
 				break 
 			}
 
@@ -241,10 +345,6 @@ func (s *IPService) ListIPsPaginatedAdvanced(ctx context.Context, limit int, cur
 
 			items = append(items, map[string]interface{}{"ip": ip, "data": entry})
 		}
-		
-		// If we finished the whole batch but items < limit, we might have more to fetch.
-		// But for a simple implementation, returning what we have is okay.
-		
 		return items, next, tot, nil
 	}
 

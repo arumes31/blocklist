@@ -22,7 +22,7 @@ Security and access control
 - [x] Session hardening (Secure/HttpOnly/SameSite cookies)
 - [x] Security headers middleware (CSP/Referrer-Policy/XFO/XCTO)
 - [x] Basic CSRF (Origin/Referer) for unsafe methods
-- [ ] Webhook HMAC signatures with timestamp/nonce and optional mTLS
+- [x] Webhook HMAC signatures with timestamp/nonce
 - [x] RBAC roles (viewer/operator/admin) and scoped API tokens (scaffolding done)
 - [x] WebSocket auth + origin checks + compression
 
@@ -36,21 +36,22 @@ Performance and scalability
 UX and UI
 - [x] Virtualized/incremental loading and debounced server-side search
 - [x] Live status controls; animations for new entries
-- [x] Stats display (hour/day/total/top countries)
+- [x] Stats display (hour/day/total/top countries/ASNs/reasons)
 - [x] Advanced filters UI (chips, URL state, country/added_by/date range)
-- [ ] Saved views per user, bulk actions, exports (CSV/NDJSON)
+- [x] Exports (CSV/NDJSON)
+- [ ] Saved views per user, bulk actions
 - [ ] Accessibility enhancements
 
 Data enrichment and analytics
-- [ ] ASN enrichment and top ASNs
-- [ ] Reason taxonomy and top reasons
+- [x] ASN enrichment and top ASNs
+- [x] Reason taxonomy and top reasons
 - [ ] Correlation/deduplication and TTL visibility/editing
 
 API and integrations
 - [x] OpenAPI scaffolding (/openapi.json) and readiness (/ready)
 - [x] Expand OpenAPI spec; add Swagger UI scaffolding (/docs)
+- [x] Delta feeds (/api/v1/ips_automate cached)
 - [ ] Source adapters (Fail2ban/Suricata/WAF) and outbound webhooks with retries
-- [ ] ETag/delta feeds
 
 Observability and operations
 - [x] Prometheus counters (blocks/unblocks)
@@ -58,7 +59,8 @@ Observability and operations
 - [x] Readiness endpoint with dependency detail
 
 Reliability and retention
-- [ ] TTL sweepers/retention policies; HA options documentation
+- [x] TTL sweepers/retention policies (24h default)
+- [ ] HA options documentation
 
 Deployment and supply chain
 - [x] Alpine hardened image, non-root; pinned digests; SBOM; CI scans
@@ -72,6 +74,6 @@ Acceptance criteria (added)
 - [x] OpenAPI: endpoints documented with filter params; CI validates spec
 
 Current focus
-- [ ] Implement exports (CSV/NDJSON)
+- [ ] Source adapters (Fail2ban/Suricata/WAF)
 - [ ] Add unit/integration tests with Testcontainers
-- [ ] Webhook HMAC signatures
+- [ ] Saved views and bulk actions

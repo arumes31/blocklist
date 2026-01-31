@@ -177,6 +177,47 @@ func (r *RedisRepository) TopCountries(limit int) ([]struct{ Country string; Cou
 	return arr, nil
 }
 
+func (r *RedisRepository) IncrASN(asn uint, asnOrg string, delta int64) error {
+	if asn == 0 { return nil }
+	key := fmt.Sprintf("%d|%s", asn, asnOrg)
+	return r.client.HIncrBy(r.ctx, "stats:asn", key, delta).Err()
+}
+
+func (r *RedisRepository) TopASNs(limit int) ([]struct{ ASN uint; ASNOrg string; Count int }, error) {
+	res, err := r.client.HGetAll(r.ctx, "stats:asn").Result()
+	if err != nil { return nil, err }
+	arr := make([]struct{ ASN uint; ASNOrg string; Count int }, 0, len(res))
+	for k, v := range res {
+		parts := strings.SplitN(k, "|", 2)
+		asn, _ := strconv.Atoi(parts[0])
+		org := ""
+		if len(parts) > 1 { org = parts[1] }
+		iv, _ := strconv.Atoi(v)
+		arr = append(arr, struct{ ASN uint; ASNOrg string; Count int }{uint(asn), org, iv})
+	}
+	sort.Slice(arr, func(i,j int) bool { return arr[i].Count > arr[j].Count })
+	if limit > 0 && len(arr) > limit { arr = arr[:limit] }
+	return arr, nil
+}
+
+func (r *RedisRepository) IncrReason(reason string, delta int64) error {
+	if reason == "" { return nil }
+	return r.client.HIncrBy(r.ctx, "stats:reason", reason, delta).Err()
+}
+
+func (r *RedisRepository) TopReasons(limit int) ([]struct{ Reason string; Count int }, error) {
+	res, err := r.client.HGetAll(r.ctx, "stats:reason").Result()
+	if err != nil { return nil, err }
+	arr := make([]struct{ Reason string; Count int }, 0, len(res))
+	for k, v := range res {
+		iv, _ := strconv.Atoi(v)
+		arr = append(arr, struct{ Reason string; Count int }{k, iv})
+	}
+	sort.Slice(arr, func(i,j int) bool { return arr[i].Count > arr[j].Count })
+	if limit > 0 && len(arr) > limit { arr = arr[:limit] }
+	return arr, nil
+}
+
 // Time-bucketed counters (hour/day)
 func (r *RedisRepository) IncrHourBucket(ts time.Time, delta int64) error {
 	key := fmt.Sprintf("stats:hour:%s", ts.UTC().Format("2006010215"))
@@ -275,11 +316,19 @@ local ts = tonumber(ARGV[3])
 local country = ARGV[4]
 local hourKey = ARGV[5]
 local dayKey = ARGV[6]
+local reason = ARGV[7]
+local asnKey = ARGV[8]
 redis.call('HSET','ips',ip,entry)
 redis.call('ZADD','ips_by_ts',ts,ip)
 redis.call('INCR','stats:total')
 if country ~= nil and country ~= '' then
   redis.call('HINCRBY','stats:country', country, 1)
+end
+if reason ~= nil and reason ~= '' then
+  redis.call('HINCRBY','stats:reason', reason, 1)
+end
+if asnKey ~= nil and asnKey ~= '' then
+  redis.call('HINCRBY','stats:asn', asnKey, 1)
 end
 redis.call('INCR',hourKey)
 redis.call('INCR',dayKey)
@@ -300,10 +349,16 @@ func (r *RedisRepository) ExecBlockAtomic(ip string, entry models.IPEntry, now t
 	data, err := json.Marshal(entry)
 	if err != nil { return err }
 	country := ""
-	if entry.Geolocation != nil { country = entry.Geolocation.Country }
+	asnKey := ""
+	if entry.Geolocation != nil {
+		country = entry.Geolocation.Country
+		if entry.Geolocation.ASN != 0 {
+			asnKey = fmt.Sprintf("%d|%s", entry.Geolocation.ASN, entry.Geolocation.ASNOrg)
+		}
+	}
 	hourKey := fmt.Sprintf("stats:hour:%s", now.UTC().Format("2006010215"))
 	dayKey := fmt.Sprintf("stats:day:%s", now.UTC().Format("20060102"))
-	_, err = r.client.Eval(r.ctx, blockAtomicScript, []string{}, ip, string(data), fmt.Sprintf("%d", now.Unix()), country, hourKey, dayKey).Result()
+	_, err = r.client.Eval(r.ctx, blockAtomicScript, []string{}, ip, string(data), fmt.Sprintf("%d", now.Unix()), country, hourKey, dayKey, entry.Reason, asnKey).Result()
 	return err
 }
 

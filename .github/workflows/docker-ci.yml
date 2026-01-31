@@ -4,11 +4,13 @@ on:
   push:
     branches:
       - main
+      - test
+      - v2_test
   workflow_dispatch:
 
 jobs:
   build-and-check:
-    name: Build and Scan Docker Images
+    name: Build and Scan Docker Image
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -25,38 +27,21 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push Webserver Image
+      - name: Build and push Blocklist Image
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: dockerfile.app
+          file: Dockerfile
           push: true
           tags: |
-            ghcr.io/${{ github.repository }}-webserver:latest
+            ghcr.io/${{ github.repository }}:latest
+            ghcr.io/${{ github.repository }}:${{ github.ref_name }}
+            ghcr.io/${{ github.repository }}:${{ github.sha }}
 
-      - name: Build and push Scheduler Image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: dockerfile.scheduler
-          push: true
-          tags: |
-            ghcr.io/${{ github.repository }}-scheduler:latest
-
-      - name: Run Trivy scanner (Webserver Image)
+      - name: Run Trivy scanner
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: 'ghcr.io/${{ github.repository }}-webserver:latest'
-          format: 'table'
-          exit-code: '1'
-          ignore-unfixed: true
-          vuln-type: 'os,library'
-          severity: 'CRITICAL,HIGH'
-
-      - name: Run Trivy scanner (Scheduler Image)
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: 'ghcr.io/${{ github.repository }}-scheduler:latest'
+          image-ref: 'ghcr.io/${{ github.repository }}:latest'
           format: 'table'
           exit-code: '1'
           ignore-unfixed: true

@@ -64,7 +64,12 @@ func (s *SchedulerService) CleanOldIPs(hashKey string) {
 		}
 
 		if t.Before(threshold) {
-			s.redisRepo.HDel(hashKey, ip)
+			if hashKey == "ips" {
+				// Atomically remove from hash and ZSET
+				s.redisRepo.ExecUnblockAtomic(ip)
+			} else {
+				s.redisRepo.HDel(hashKey, ip)
+			}
 			log.Printf("Deleted %s from %s (added at %s)", ip, hashKey, entry.Timestamp)
 		}
 	}

@@ -286,6 +286,10 @@
             <input type="datetime-local" id="fromDateFilter" class="filter-input" style="flex: 1; min-width: 160px;" onchange="applyServerSearch()" title="From Date">
             <input type="datetime-local" id="toDateFilter" class="filter-input" style="flex: 1; min-width: 160px;" onchange="applyServerSearch()" title="To Date">
             <button id="clearFilter" class="btn btn-dark" style="height: 42px;" title="Clear All Filters">Clear</button>
+            <div style="display: flex; gap: 5px;">
+                <button onclick="exportData('csv')" class="btn btn-dark" style="height: 42px;" title="Export CSV">CSV</button>
+                <button onclick="exportData('ndjson')" class="btn btn-dark" style="height: 42px;" title="Export NDJSON">JSON</button>
+            </div>
         </div>
         <div id="filter-chips" style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 15px;"></div>
     </div>
@@ -300,16 +304,32 @@
             <div id="stat-day" style="font-size:1.6rem; font-weight:700; color:#fff;">{{ .stats.day }}</div>
         </div>
         <div class="table-card" style="padding:1rem;">
-            <div style="font-size:0.85rem; color:var(--secondary-color);">IPs banned (total)</div>
-            <div id="stat-total" style="font-size:1.6rem; font-weight:700; color:#fff;">{{ .stats.total }}</div>
-        </div>
-        <div class="table-card" style="padding:1rem;">
             <div style="font-size:0.85rem; color:var(--secondary-color);">Top countries</div>
             <div id="stat-countries" style="display:flex; gap:0.75rem; align-items:center; margin-top:0.4rem;">
                 {{ range $i, $c := .stats.top_countries }}
                     <span title="{{ $c.Country }}" style="display:inline-flex; align-items:center; gap:6px;">
                         <span class="flag-icon flag-icon-{{ lower $c.Country }}"></span><span style="color:#fff; font-weight:600;">{{ $c.Count }}</span>
                     </span>
+                {{ end }}
+            </div>
+        </div>
+        <div class="table-card" style="padding:1rem;">
+            <div style="font-size:0.85rem; color:var(--secondary-color);">Top ASNs</div>
+            <div id="stat-asns" style="display:flex; flex-direction:column; gap:4px; margin-top:0.4rem;">
+                {{ range $i, $a := .stats.top_asns }}
+                    <div style="font-size:0.85rem; color:#fff; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="{{ $a.ASNOrg }}">
+                        <span style="color:var(--secondary-color);">{{ $a.ASN }}:</span> {{ $a.Count }}
+                    </div>
+                {{ end }}
+            </div>
+        </div>
+        <div class="table-card" style="padding:1rem;">
+            <div style="font-size:0.85rem; color:var(--secondary-color);">Top Reasons</div>
+            <div id="stat-reasons" style="display:flex; flex-direction:column; gap:4px; margin-top:0.4rem;">
+                {{ range $i, $r := .stats.top_reasons }}
+                    <div style="font-size:0.85rem; color:#fff; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="{{ $r.Reason }}">
+                        <span style="color:var(--secondary-color);">{{ $r.Reason }}:</span> {{ $r.Count }}
+                    </div>
                 {{ end }}
             </div>
         </div>
@@ -472,13 +492,28 @@
             const s = await r.json();
             if (typeof s.hour === 'number') document.getElementById('stat-hour').textContent = s.hour;
             if (typeof s.day === 'number') document.getElementById('stat-day').textContent = s.day;
-            if (typeof s.total === 'number') document.getElementById('stat-total').textContent = s.total;
             if (Array.isArray(s.top_countries)) {
                 const wrap = document.getElementById('stat-countries');
                 wrap.innerHTML = s.top_countries.slice(0,3).map(c => `
                     <span title="${c.country}" style="display:inline-flex; align-items:center; gap:6px;">
                         <span class="flag-icon flag-icon-${(c.country||'').toLowerCase()}"></span><span style="color:#fff; font-weight:600;">${c.count||0}</span>
                     </span>
+                `).join('');
+            }
+            if (Array.isArray(s.top_asns)) {
+                const wrap = document.getElementById('stat-asns');
+                wrap.innerHTML = s.top_asns.slice(0,3).map(a => `
+                    <div style="font-size:0.85rem; color:#fff; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${a.asn_org||''}">
+                        <span style="color:var(--secondary-color);">${a.asn}:</span> ${a.count}
+                    </div>
+                `).join('');
+            }
+            if (Array.isArray(s.top_reasons)) {
+                const wrap = document.getElementById('stat-reasons');
+                wrap.innerHTML = s.top_reasons.slice(0,3).map(r => `
+                    <div style="font-size:0.85rem; color:#fff; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${r.reason}">
+                        <span style="color:var(--secondary-color);">${r.reason}:</span> ${r.count}
+                    </div>
                 `).join('');
             }
         } catch (_) {}
@@ -630,6 +665,21 @@
         };
         document.getElementById(idMap[key]).value = "";
         applyServerSearch();
+    }
+
+    window.exportData = function(format) {
+        let params = new URLSearchParams();
+        params.append('format', format);
+        Object.entries(currentFilters).forEach(([key, val]) => {
+            if (val) {
+                if (key === 'from' || key === 'to') {
+                    params.append(key, new Date(val).toISOString());
+                } else {
+                    params.append(key, val);
+                }
+            }
+        });
+        window.location.href = `/api/v1/ips/export?${params.toString()}`;
     }
 
     // UI Helpers

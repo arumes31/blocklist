@@ -6,8 +6,15 @@ import (
 	"blocklist/internal/models"
 	"blocklist/internal/repository"
 	"blocklist/internal/service"
+	"bytes"
+	"crypto/hmac"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/csv"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -117,47 +124,17 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 		v1.POST("/webhook", h.Webhook)
 		v1.POST("/webhook2_whitelist", h.Webhook2)
 		v1.GET("/raw", h.RawIPs)
-		v1.GET("/ips", h.IPsPaginated) // server-side pagination + search
-		v1.GET("/stats", h.Stats)       // stats endpoint for dashboard
+		v1.GET("/ips", h.IPsPaginated)
+		v1.GET("/ips/export", h.ExportIPs)
+		v1.GET("/ips_automate", h.AutomateIPs)
+		v1.GET("/stats", h.Stats)
 	}
-	// OpenAPI and readiness
 	r.GET("/openapi.json", h.OpenAPI)
-
-	// Protected UI routes
-	auth := r.Group("/")
-	auth.Use(h.AuthMiddleware())
-	{
-		auth.GET("/dashboard", h.Dashboard)
-		auth.GET("/dashboard/table", h.DashboardTable) // For HTMX polling
-		
-		operator := auth.Group("/")
-		operator.Use(h.RBACMiddleware("operator"))
-		{
-			operator.POST("/block", h.BlockIP)
-			operator.POST("/unblock", h.UnblockIP)
-			operator.GET("/whitelist", h.Whitelist)
-			operator.POST("/add_whitelist", h.AddWhitelist)
-			operator.POST("/remove_whitelist", h.RemoveWhitelist)
-		}
-
-		// Admin management
-		admin := auth.Group("/admin_management")
-		admin.Use(h.AdminOnlyMiddleware())
-		{
-			admin.GET("", h.AdminManagement)
-			admin.POST("/create", h.CreateAdmin)
-			admin.POST("/delete", h.DeleteAdmin)
-			admin.POST("/change_password", h.ChangeAdminPassword)
-			admin.POST("/change_totp", h.ChangeAdminTOTP)
-			admin.GET("/get_qr/:username", h.GetQR)
-		}
-	}
-
-	// Legacy / Compatibility routes
-	r.POST("/webhook", h.Webhook)
-	r.GET("/raw", h.RawIPs)
+...
 	r.GET("/ips", h.JSONIPs)
+	r.GET("/ips_automate", h.AutomateIPs)
 	r.GET("/api/ips", h.IPsPaginated)
+
 	r.GET("/api/stats", h.Stats)
 	r.GET("/health", h.Health)
 	r.GET("/ready", h.Ready)
@@ -193,16 +170,30 @@ func (h *APIHandler) Dashboard(c *gin.Context) {
 	ips := h.getCombinedIPs()
 
 	// Preload stats for initial render
-	hour, day, total, top, _ := h.ipService.Stats(c.Request.Context())
+	hour, day, total, top, topASN, topReason, _ := h.ipService.Stats(c.Request.Context())
+	
 	tops := make([]map[string]interface{}, 0, len(top))
 	for _, t := range top { tops = append(tops, map[string]interface{}{"Country": t.Country, "Count": t.Count}) }
+
+	asns := make([]map[string]interface{}, 0, len(topASN))
+	for _, a := range topASN { asns = append(asns, map[string]interface{}{"ASN": a.ASN, "ASNOrg": a.ASNOrg, "Count": a.Count}) }
+
+	reasons := make([]map[string]interface{}, 0, len(topReason))
+	for _, r := range topReason { reasons = append(reasons, map[string]interface{}{"Reason": r.Reason, "Count": r.Count}) }
 
 	c.HTML(http.StatusOK, "dashboard.html", gin.H{
 		"ips":            ips,
 		"total_ips":      len(ips),
 		"admin_username": h.cfg.GUIAdmin,
 		"username":       username,
-		"stats":          gin.H{"hour": hour, "day": day, "total": total, "top_countries": tops},
+		"stats": gin.H{
+			"hour":          hour,
+			"day":           day,
+			"total":         total,
+			"top_countries": tops,
+			"top_asns":      asns,
+			"top_reasons":   reasons,
+		},
 	})
 }
 
@@ -530,14 +521,30 @@ func (h *APIHandler) RemoveWhitelist(c *gin.Context) {
 	c.JSON(200, gin.H{"status": "success"})
 }
 
-func (h *APIHandler) WebhookAuth(c *gin.Context) bool {
-	// Simple Basic Auth or JSON body auth as in Python
-	// For now, let's replicate the JSON body auth from app.py
-	// simplified for now:
-	return true 
+func (h *APIHandler) verifyHMAC(body []byte, signature string) bool {
+	if h.cfg.WebhookSecret == "" {
+		return false
+	}
+	mac := hmac.New(sha256.New, []byte(h.cfg.WebhookSecret))
+	mac.Write(body)
+	expectedMAC := hex.EncodeToString(mac.Sum(nil))
+	return hmac.Equal([]byte(signature), []byte(expectedMAC))
 }
 
 func (h *APIHandler) Webhook(c *gin.Context) {
+	// Read body for HMAC verification
+	body, _ := io.ReadAll(c.Request.Body)
+	c.Request.Body = io.NopCloser(bytes.NewBuffer(body))
+
+	signature := c.GetHeader("X-Webhook-Signature")
+	authenticated := false
+
+	if signature != "" && h.cfg.WebhookSecret != "" {
+		if h.verifyHMAC(body, signature) {
+			authenticated = true
+		}
+	}
+
 	var data struct {
 		IP       string `json:"ip"`
 		Reason   string `json:"reason"`
@@ -551,11 +558,12 @@ func (h *APIHandler) Webhook(c *gin.Context) {
 		return
 	}
 
-	// Verify Auth (replicate USERS env var check if needed)
-	// For simplicity, checking against GUIAdmin if others not set
-	if data.Username != h.cfg.GUIAdmin || data.Password != h.cfg.GUIPassword {
-		c.JSON(401, gin.H{"error": "Unauthorized"})
-		return
+	if !authenticated {
+		// Fallback to basic credentials in body
+		if data.Username != h.cfg.GUIAdmin || data.Password != h.cfg.GUIPassword {
+			c.JSON(401, gin.H{"error": "Unauthorized"})
+			return
+		}
 	}
 
 	if data.IP == "" || !h.ipService.IsValidIP(data.IP) {
@@ -743,26 +751,101 @@ func (h *APIHandler) JSONIPs(c *gin.Context) {
 // Query params: limit (int), cursor (opaque string), query (string)
 // Response: { items: [{ip, data}], next: "cursor", total: N }
 func (h *APIHandler) IPsPaginated(c *gin.Context) {
-limit := 500
-if v := c.Query("limit"); v != "" {
-if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 5000 { limit = n }
+	limit := 500
+	if v := c.Query("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 5000 { limit = n }
+	}
+	q := strings.TrimSpace(c.Query("query"))
+	cursor := c.Query("cursor")
+	country := strings.TrimSpace(c.Query("country"))
+	addedBy := strings.TrimSpace(c.Query("added_by"))
+	from := strings.TrimSpace(c.Query("from"))
+	to := strings.TrimSpace(c.Query("to"))
+	items, next, total, err := h.ipService.ListIPsPaginatedAdvanced(c.Request.Context(), limit, cursor, q, country, addedBy, from, to)
+	if err != nil { c.JSON(http.StatusInternalServerError, gin.H{"error": "pagination error"}); return }
+	c.JSON(http.StatusOK, gin.H{"items": items, "next": next, "total": total})
 }
-q := strings.TrimSpace(c.Query("query"))
-cursor := c.Query("cursor")
-country := strings.TrimSpace(c.Query("country"))
-addedBy := strings.TrimSpace(c.Query("added_by"))
-from := strings.TrimSpace(c.Query("from"))
-to := strings.TrimSpace(c.Query("to"))
-// Delegate to service/repository: prefer time-ordered ZSET with cursor
-items, next, total, err := h.ipService.ListIPsPaginatedAdvanced(c.Request.Context(), limit, cursor, q, country, addedBy, from, to)
-if err != nil {
-c.JSON(http.StatusInternalServerError, gin.H{"error": "pagination error"})
-return
-}
-c.JSON(http.StatusOK, gin.H{"items": items, "next": next, "total": total})
+
+func (h *APIHandler) ExportIPs(c *gin.Context) {
+	format := c.DefaultQuery("format", "csv")
+	q := strings.TrimSpace(c.Query("query"))
+	country := strings.TrimSpace(c.Query("country"))
+	addedBy := strings.TrimSpace(c.Query("added_by"))
+	from := strings.TrimSpace(c.Query("from"))
+	to := strings.TrimSpace(c.Query("to"))
+
+	items, err := h.ipService.ExportIPs(c.Request.Context(), q, country, addedBy, from, to)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "export error"})
+		return
+	}
+
+	filename := fmt.Sprintf("blocklist_export_%s.%s", time.Now().Format("20060102_150405"), format)
+
+	if format == "ndjson" {
+		c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filename))
+		c.Header("Content-Type", "application/x-ndjson")
+		for _, item := range items {
+			line, _ := json.Marshal(item)
+			c.Writer.Write(line)
+			c.Writer.Write([]byte("\n"))
+		}
+		return
+	}
+
+	// Default to CSV
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filename))
+	c.Header("Content-Type", "text/csv")
+	
+	writer := csv.NewWriter(c.Writer)
+	defer writer.Flush()
+
+	// Header
+	writer.Write([]string{"IP", "Timestamp", "Reason", "AddedBy", "Country", "City", "Lat", "Lon"})
+
+	for _, item := range items {
+		ip := item["ip"].(string)
+		data := item["data"].(*models.IPEntry)
+		
+		countryCode := ""
+		city := ""
+		lat := ""
+		lon := ""
+		if data.Geolocation != nil {
+			countryCode = data.Geolocation.Country
+			city = data.Geolocation.City
+			lat = fmt.Sprintf("%f", data.Geolocation.Latitude)
+			lon = fmt.Sprintf("%f", data.Geolocation.Longitude)
+		}
+
+		writer.Write([]string{
+			ip,
+			data.Timestamp,
+			data.Reason,
+			data.AddedBy,
+			countryCode,
+			city,
+			lat,
+			lon,
+		})
+	}
 }
 
 // Stats returns hour/day/total and top countries.
+func (h *APIHandler) AutomateIPs(c *gin.Context) {
+	var ips []string
+	err := h.redisRepo.GetCache("cached_ips_automate", &ips)
+	if err != nil {
+		// Fallback to all raw IPs if cache is empty
+		combined := h.getCombinedIPs()
+		ips = make([]string, 0, len(combined))
+		for ip := range combined {
+			ips = append(ips, ip)
+		}
+	}
+	c.JSON(http.StatusOK, ips)
+}
+
 func (h *APIHandler) Ready(c *gin.Context) {
     dep := map[string]interface{}{"redis": true, "geoip": "unknown"}
     if _, err := h.redisRepo.HGetAllRaw("ips"); err != nil {
@@ -904,22 +987,38 @@ func (h *APIHandler) OpenAPI(c *gin.Context) {
 }
 
 func (h *APIHandler) Stats(c *gin.Context) {
-	hour, day, total, top, err := h.ipService.Stats(c.Request.Context())
+	hour, day, total, top, topASN, topReason, err := h.ipService.Stats(c.Request.Context())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "stats error"})
 		return
 	}
+	
 	// shape to match frontend expectations
 	tops := make([]gin.H, 0, len(top))
 	for i, t := range top {
 		if i >= 3 { break }
 		tops = append(tops, gin.H{"country": t.Country, "count": t.Count})
 	}
+
+	asns := make([]gin.H, 0, len(topASN))
+	for i, a := range topASN {
+		if i >= 3 { break }
+		asns = append(asns, gin.H{"asn": a.ASN, "asn_org": a.ASNOrg, "count": a.Count})
+	}
+
+	reasons := make([]gin.H, 0, len(topReason))
+	for i, r := range topReason {
+		if i >= 3 { break }
+		reasons = append(reasons, gin.H{"reason": r.Reason, "count": r.Count})
+	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"hour": hour,
-		"day": day,
-		"total": total,
+		"hour":          hour,
+		"day":           day,
+		"total":         total,
 		"top_countries": tops,
+		"top_asns":      asns,
+		"top_reasons":   reasons,
 	})
 }
 
