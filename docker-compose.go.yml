@@ -26,7 +26,7 @@ services:
       USE_CLOUDFLARE: "false"
       PORT: "5000"
     volumes:
-      - './geoip_data:/usr/share/GeoIP'
+      - './geoip_data:/home/blocklist'
     depends_on:
       redis:
         condition: service_healthy
