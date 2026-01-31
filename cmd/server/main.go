@@ -292,6 +292,9 @@ func main() {
 	cdRoot, _ := fs.Sub(staticFS, "static/cd")
 	r.StaticFS("/cd", http.FS(cdRoot))
 
+	flagsRoot, _ := fs.Sub(staticFS, "static/flags")
+	r.StaticFS("/flags", http.FS(flagsRoot))
+
 	// 6. Initialize API Handler
 	handler := api.NewAPIHandler(cfg, redisRepo, pgRepo, authService, ipService, hub, webhookService)
 	handler.RegisterRoutes(r)
