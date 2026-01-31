@@ -20,10 +20,27 @@ function setup() {
 	tick = 0;
 	center = [];
 	resize();
-	createParticles();
+	
+	const savedTick = sessionStorage.getItem('aether_tick');
+	const savedProps = sessionStorage.getItem('aether_props');
+	
+	if (savedTick && savedProps) {
+		tick = parseInt(savedTick);
+		const propsArray = JSON.parse(savedProps);
+		particleProps = new Float32Array(propsArray);
+		simplex = new SimplexNoise();
+	} else {
+		createParticles();
+	}
+	
 	lastFrameTime = performance.now();
 	window.requestAnimationFrame(draw);
 }
+
+window.addEventListener("pagehide", () => {
+	sessionStorage.setItem('aether_tick', tick.toString());
+	sessionStorage.setItem('aether_props', JSON.stringify(Array.from(particleProps)));
+});
 
 function createParticles() {
 	simplex = new SimplexNoise();

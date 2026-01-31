@@ -7,6 +7,9 @@
     <link rel="stylesheet" href="/cd/flag-icon.min.css">
     <link rel="icon" type="image/x-icon" href="/cd/favicon-color.png" />
     <script src="/js/htmx.min.js"></script>
+    <script src="/js/simplex-noise.min.js"></script>
+    <script src="/js/codepen-util.js"></script>
+    <script src="/js/aether.js"></script>
     <script src="/js/json-enc.js"></script>
     <style>
         :root {
@@ -24,6 +27,16 @@
             margin: 0;
             background-color: #000;
             color: #fff;
+            overflow-x: hidden;
+        }
+        canvas#canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            pointer-events: none;
         }
         .header-container {
             background: var(--glass-bg);
@@ -234,7 +247,7 @@
     </style>
 </head>
 <body>
-
+<canvas id="canvas"></canvas>
 <div id="toast-container"></div>
 
 <div class="header-container">
