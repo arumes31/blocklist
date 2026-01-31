@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"io"
 	"net/http"
@@ -69,17 +70,15 @@ func main() {
 
 	cfg := config.Load()
 	
-	// Ensure SECRET_KEY is exactly 32 bytes for AES-256
-	// (gorilla/sessions/securecookie can be finicky with key lengths)
-	finalKey := []byte(cfg.SecretKey)
-	if len(finalKey) < 32 {
-		// Pad with zeros
-		newKey := make([]byte, 32)
-		copy(newKey, finalKey)
-		finalKey = newKey
-	} else if len(finalKey) > 32 {
-		finalKey = finalKey[:32]
-	}
+	// Ensure SECRET_KEY is stable and correctly sized for AES-256 (32 bytes)
+	// We use SHA-256 to derive two distinct keys from the single input secret.
+	hash := sha256.New()
+	hash.Write([]byte(cfg.SecretKey))
+	authKey := hash.Sum(nil) // 32 bytes for signing
+	
+	hash.Reset()
+	hash.Write([]byte(cfg.SecretKey + "_encryption"))
+	blockKey := hash.Sum(nil) // 32 bytes for encryption
 
 	if !cfg.LogWeb {
 		zerolog.SetGlobalLevel(zerolog.InfoLevel)
@@ -87,7 +86,7 @@ func main() {
 		zerolog.SetGlobalLevel(zerolog.DebugLevel)
 	}
 
-	zlog.Info().Int("key_len", len(finalKey)).Msg("Starting Blocklist Go Server")
+	zlog.Info().Int("auth_key_len", len(authKey)).Int("block_key_len", len(blockKey)).Msg("Starting Blocklist Go Server")
 
 	if cfg.SecretKey == "change-me" {
 		zlog.Warn().Msg("SECRET_KEY is using default. Please set a 32-byte string via environment variable.")
@@ -170,14 +169,16 @@ func main() {
 	r := gin.Default()
 
 	// Improvement: Reverse Proxy & Cloudflare Support
+	// Add common internal ranges: 127.0.0.1, Docker (172.16.0.0/12), Tailscale (100.64.0.0/10), Private (10.0.0.0/8, 192.168.0.0/16)
+	trustedProxies := []string{"127.0.0.1", "172.16.0.0/12", "100.64.0.0/10", "10.0.0.0/8", "192.168.0.0/16"}
 	if cfg.TrustedProxies != "" {
-		proxies := strings.Split(cfg.TrustedProxies, ",")
-		for i := range proxies {
-			proxies[i] = strings.TrimSpace(proxies[i])
+		p := strings.Split(cfg.TrustedProxies, ",")
+		for i := range p {
+			trustedProxies = append(trustedProxies, strings.TrimSpace(p[i]))
 		}
-		if err := r.SetTrustedProxies(proxies); err != nil {
-			zlog.Error().Err(err).Msg("Failed to set trusted proxies")
-		}
+	}
+	if err := r.SetTrustedProxies(trustedProxies); err != nil {
+		zlog.Error().Err(err).Msg("Failed to set trusted proxies")
 	}
 
 	// Optional Cloudflare Support
@@ -193,7 +194,7 @@ func main() {
 	}
 
 	// Sessions
-	store, err := redis.NewStore(10, "tcp", fmt.Sprintf("%s:%d", cfg.RedisHost, cfg.RedisPort), "", cfg.RedisPassword, finalKey)
+	store, err := redis.NewStore(10, "tcp", fmt.Sprintf("%s:%d", cfg.RedisHost, cfg.RedisPort), "", cfg.RedisPassword, authKey, blockKey)
 	if err != nil {
 		zlog.Fatal().Err(err).Msg("Failed to create session store")
 	}
@@ -201,8 +202,9 @@ func main() {
 	store.Options(sessions.Options{
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   true,
+		Secure:   false, // Temporarily false to debug proxy/TLS issues
 		SameSite: http.SameSiteLaxMode,
+		MaxAge:   86400 * 7, // 1 week
 	})
 	r.Use(sessions.Sessions("blocklist_session", store))
 
