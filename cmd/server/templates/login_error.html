@@ -1,16 +1,16 @@
 <div class="form-group">
-    <label for="username">Operator ID</label>
+    <label for="username">Username</label>
     <input type="text" id="username" name="username" required placeholder="Enter username" value="{{ .username }}">
 </div>
 <div class="form-group">
-    <label for="password">Security Key</label>
+    <label for="password">Password</label>
     <input type="password" id="password" name="password" required placeholder="Enter password">
 </div>
 <button type="button" class="authorize-btn" 
         hx-post="/login/verify" 
         hx-target="#loginForm" 
         hx-swap="innerHTML" 
-        hx-include="[name='username'], [name='password']">Continue</button>
+        hx-include="[name='username'], [name='password']">LOGIN</button>
 
 <div class="error-message" style="display: block; margin-top: 20px;">
     <strong>Access Denied:</strong> {{ .error }}

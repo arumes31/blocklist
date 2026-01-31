@@ -3,10 +3,12 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
 	"os/signal"
+	"regexp"
 	"strings"
 	"syscall"
 	"time"
@@ -41,10 +43,28 @@ var staticFS embed.FS
 //go:embed migrations/*
 var migrationsFS embed.FS
 
+type CensorWriter struct {
+	io.Writer
+	re *regexp.Regexp
+}
+
+func (w *CensorWriter) Write(p []byte) (n int, err error) {
+	// Simple regex to mask common sensitive keys in JSON/Text logs
+	// matches: "password":"...", "secret":"...", etc.
+	censored := w.re.ReplaceAll(p, []byte(`${1}${2}[CENSORED]`))
+	return w.Writer.Write(censored)
+}
+
 func main() {
 	// 0. Setup Structured Logging
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
-	zlog.Logger = zlog.Output(zerolog.ConsoleWriter{Out: os.Stderr})
+	
+	censorRE := regexp.MustCompile(`(?i)(password|secret|token)(["':\s]+)([^"'\s,{}]+)`)
+	cw := &CensorWriter{
+		Writer: zerolog.ConsoleWriter{Out: os.Stderr},
+		re:     censorRE,
+	}
+	zlog.Logger = zerolog.New(cw).With().Timestamp().Logger()
 
 	cfg := config.Load()
 	if !cfg.LogWeb {

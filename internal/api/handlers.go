@@ -151,15 +151,19 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 
 	// API Versioning (Improvement 5)
 	v1 := r.Group("/api/v1")
-	v1.Use(h.AuthMiddleware())
 	{
-		v1.POST("/webhook", h.Webhook)
-		v1.POST("/webhook2_whitelist", h.Webhook2)
-		v1.GET("/raw", h.RawIPs)
-		v1.GET("/ips", h.IPsPaginated)
-		v1.GET("/ips/export", h.ExportIPs)
-		v1.GET("/ips_automate", h.AutomateIPs)
-		v1.GET("/stats", h.Stats)
+		v1.GET("/raw", h.RawIPs) // Public
+	}
+
+	v1auth := v1.Group("/")
+	v1auth.Use(h.AuthMiddleware())
+	{
+		v1auth.POST("/webhook", h.Webhook)
+		v1auth.POST("/webhook2_whitelist", h.Webhook2)
+		v1auth.GET("/ips", h.IPsPaginated)
+		v1auth.GET("/ips/export", h.ExportIPs)
+		v1auth.GET("/ips_automate", h.AutomateIPs)
+		v1auth.GET("/stats", h.Stats)
 	}
 	r.GET("/openapi.json", h.OpenAPI)
 
