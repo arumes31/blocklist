@@ -54,8 +54,10 @@ func (s *GeoIPService) Download() error {
 		return fmt.Errorf("GEOIPUPDATE_ACCOUNT_ID or GEOIPUPDATE_LICENSE_KEY not set")
 	}
 
-	// MaxMind direct download URL for GeoLite2-City
-	url := "https://download.maxmind.com/app/geoip_download?edition_id=GeoLite2-City&suffix=tar.gz"
+	// MaxMind modern permalink URL for GeoLite2-City
+	url := "https://download.maxmind.com/geoip/databases/GeoLite2-City/download?suffix=tar.gz"
+	
+	log.Printf("Attempting GeoIP download from %s using AccountID: %s", url, accountID)
 	
 	client := &http.Client{}
 	req, err := http.NewRequest("GET", url, nil)

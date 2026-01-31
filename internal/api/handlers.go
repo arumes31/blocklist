@@ -385,10 +385,15 @@ func (h *APIHandler) AuthMiddleware() gin.HandlerFunc {
 		}
 
 		session := sessions.Default(c)
-		if loggedIn := session.Get("logged_in"); loggedIn == nil || !loggedIn.(bool) {
+		
+		// If session is invalid (e.g. key mismatch after restart), clear it
+		if loggedIn := session.Get("logged_in"); loggedIn == nil {
 			if strings.HasPrefix(c.Request.URL.Path, "/api/") {
 				c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 			} else {
+				// Clear any potentially corrupt cookies by clearing session
+				session.Clear()
+				_ = session.Save()
 				c.Redirect(http.StatusFound, "/login")
 			}
 			c.Abort()
@@ -472,6 +477,11 @@ func (h *APIHandler) AdminOnlyMiddleware() gin.HandlerFunc {
 }
 
 func (h *APIHandler) ShowLogin(c *gin.Context) {
+	session := sessions.Default(c)
+	if loggedIn := session.Get("logged_in"); loggedIn != nil && loggedIn.(bool) {
+		c.Redirect(http.StatusFound, "/dashboard")
+		return
+	}
 	c.HTML(http.StatusOK, "login.html", nil)
 }
 
