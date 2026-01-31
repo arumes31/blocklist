@@ -78,6 +78,11 @@
             background: rgba(255,255,255,0.05);
             color: #fff;
             outline: none;
+            appearance: none; /* Reset for custom styling if needed */
+        }
+        select.filter-input option {
+            background-color: #1a1a1a;
+            color: #fff;
         }
         .filter-input:focus { border-color: var(--primary-red); box-shadow: 0 0 0 2px rgba(255,0,0,0.2); }
 
@@ -460,12 +465,19 @@
     }
 
     function renderWindow(list){
+        const currentTbody = document.getElementById('ipTableBody');
+        if (!currentTbody) return;
+        
         const frag = document.createDocumentFragment();
         const container = document.createElement('tbody');
         container.id = 'ipTableBody';
         container.innerHTML = list.map(it => rowHTML(it.ip, it.data)).join('');
-        frag.appendChild(container);
-        tbody.parentNode.replaceChild(frag.firstChild, tbody);
+        
+        if (currentTbody.parentNode) {
+            currentTbody.parentNode.replaceChild(container, currentTbody);
+        } else {
+            currentTbody.innerHTML = container.innerHTML;
+        }
         convertTimestamps();
     }
 
