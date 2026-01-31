@@ -22,11 +22,11 @@ type Config struct {
 	GeoIPLicenseKey      string
 	TrustedProxies       string
 		UseCloudflare        bool
-		Port                 string
-		WebhookSecret        string
-	}
-	
-	func Load() *Config {
+			Port                 string
+			WebhookSecret        string
+			MetricsAllowedIPs    string
+		}
+			func Load() *Config {
 		return &Config{
 			SecretKey:          getEnv("SECRET_KEY", "change-me"),
 			RedisHost:          getEnv("REDIS_HOST", "localhost"),
@@ -44,10 +44,12 @@ type Config struct {
 			GeoIPLicenseKey:    getEnv("GEOIPUPDATE_LICENSE_KEY", ""),
 			TrustedProxies:     getEnv("TRUSTED_PROXIES", "127.0.0.1"),
 			UseCloudflare:      getEnvBool("USE_CLOUDFLARE", false),
-			Port:               getEnv("PORT", "5000"),
-			WebhookSecret:      getEnv("WEBHOOK_SECRET", ""),
-		}
-	}
+					Port:               getEnv("PORT", "5000"),
+					WebhookSecret:      getEnv("WEBHOOK_SECRET", ""),
+					MetricsAllowedIPs:  getEnv("METRICS_ALLOWED_IPS", "127.0.0.1"),
+				}
+			}
+			
 func getEnv(key, fallback string) string {
 	if value, ok := os.LookupEnv(key); ok {
 		return value

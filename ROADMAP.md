@@ -24,7 +24,8 @@ Security and access control
 - [x] Basic CSRF (Origin/Referer) for unsafe methods
 - [x] Webhook HMAC signatures with timestamp/nonce
 - [x] RBAC roles (viewer/operator/admin) and scoped API tokens (scaffolding done)
-- [x] WebSocket auth + origin checks + compression
+- [x] WebSocket auth + origin checks + compression + keep-alive
+- [x] Metrics endpoint protection (IP-based)
 
 Performance and scalability
 - [x] Server-side pagination & search (/api/ips)
@@ -64,6 +65,7 @@ Reliability and retention
 
 Deployment and supply chain
 - [x] Alpine hardened image, non-root; pinned digests; SBOM; CI scans
+- [x] Branch-based tagging (latest only on main)
 
 Testing
 - [ ] Unit/integration tests (Redis testcontainers), fuzz tests, load tests

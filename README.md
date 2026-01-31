@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="cd/logo.png" alt="Blocklist" width="180" />
+  <img src="cd/logo.png" alt="Blocklist" width="250" />
 </p>
 
 <p align="center">
@@ -79,6 +79,7 @@ A high-performance, security-hardened IP management platform with GeoIP enrichme
 - `DATABASE_URL`: PostgreSQL connection string.
 - `REDIS_HOST`/`REDIS_PORT`: Redis configuration.
 - `BLOCKED_RANGES`: CIDR list that cannot be added via webhook.
+- `METRICS_ALLOWED_IPS`: Comma-separated list of trusted IPs for `/metrics` access.
 
 ## Testing
 ```bash

@@ -80,15 +80,39 @@ func (h *APIHandler) WS(c *gin.Context) {
 	if err != nil {
 		return
 	}
+	
 	h.hub.register <- conn
+	
+	// Keep-alive setup
+	pingTicker := time.NewTicker(30 * time.Second)
 	defer func() {
+		pingTicker.Stop()
 		h.hub.unregister <- conn
 	}()
 
+	conn.SetReadDeadline(time.Now().Add(70 * time.Second))
+	conn.SetPongHandler(func(string) error {
+		conn.SetReadDeadline(time.Now().Add(70 * time.Second))
+		return nil
+	})
+
+	// Read loop in a goroutine
+	go func() {
+		for {
+			_, _, err := conn.ReadMessage()
+			if err != nil {
+				break
+			}
+		}
+	}()
+
+	// Write loop for keep-alive
 	for {
-		_, _, err := conn.ReadMessage()
-		if err != nil {
-			break
+		select {
+		case <-pingTicker.C:
+			if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+				return
+			}
 		}
 	}
 }
@@ -170,7 +194,7 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 	r.GET("/api/stats", h.Stats)
 	r.GET("/health", h.Health)
 	r.GET("/ready", h.Ready)
-	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
+	r.GET("/metrics", h.MetricsAuthMiddleware(), gin.WrapH(promhttp.Handler()))
 }
 
 // Improvement 3: Cache persistent blocks in Redis
@@ -337,6 +361,27 @@ func (h *APIHandler) RBACMiddleware(requiredRole string) gin.HandlerFunc {
 		if weights[roleStr] < weights[requiredRole] {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Insufficient permissions"})
 			c.Abort()
+			return
+		}
+		c.Next()
+	}
+}
+
+func (h *APIHandler) MetricsAuthMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		allowedIPs := strings.Split(h.cfg.MetricsAllowedIPs, ",")
+		clientIP := c.ClientIP()
+		
+		isAllowed := false
+		for _, ip := range allowedIPs {
+			if strings.TrimSpace(ip) == clientIP {
+				isAllowed = true
+				break
+			}
+		}
+
+		if !isAllowed {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 			return
 		}
 		c.Next()

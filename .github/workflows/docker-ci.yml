@@ -34,7 +34,7 @@ jobs:
           file: Dockerfile
           push: true
           tags: |
-            ghcr.io/${{ github.repository }}:latest
+            ${{ github.ref_name == 'main' && format('ghcr.io/{0}:latest', github.repository) || '' }}
             ghcr.io/${{ github.repository }}:${{ github.ref_name }}
             ghcr.io/${{ github.repository }}:${{ github.sha }}
 
