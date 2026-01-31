@@ -12,13 +12,17 @@ let tick;
 let simplex;
 let particleProps;
 let isPaused = false;
+let lastFrameTime = 0;
+const fps = 60;
+const frameInterval = 1000 / fps;
 
 function setup() {
 	tick = 0;
 	center = [];
 	resize();
 	createParticles();
-	draw();
+	lastFrameTime = performance.now();
+	window.requestAnimationFrame(draw);
 }
 
 function createParticles() {
@@ -109,7 +113,16 @@ function resize() {
   center[1] = 0.5 * innerHeight;
 }
 
-function draw() {
+function draw(currentTime) {
+	if (isPaused) return;
+
+	window.requestAnimationFrame(draw);
+
+	const deltaTime = currentTime - lastFrameTime;
+	if (deltaTime < frameInterval) return;
+
+	lastFrameTime = currentTime - (deltaTime % frameInterval);
+
 	tick++;
 	buffer.clearRect(0,0,buffer.canvas.width,buffer.canvas.height);
 	

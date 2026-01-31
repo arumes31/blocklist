@@ -23,6 +23,7 @@ import (
 
 	"blocklist/internal/api"
 	"blocklist/internal/config"
+	"blocklist/internal/models"
 	"blocklist/internal/repository"
 	"blocklist/internal/service"
 	"github.com/gin-contrib/sessions"
@@ -113,6 +114,29 @@ func main() {
 	webhookService := service.NewWebhookService(pgRepo, cfg)
 	scheduler := service.NewSchedulerService(redisRepo)
 	geoUpdater := service.NewGeoIPService(cfg)
+
+	// Seed Admin User if missing
+	if pgRepo != nil && cfg.GUIAdmin != "" {
+		admin, _ := pgRepo.GetAdmin(cfg.GUIAdmin)
+		if admin == nil {
+			zlog.Info().Str("username", cfg.GUIAdmin).Msg("Seeding initial admin user")
+			hash, _ := authService.HashPassword(cfg.GUIPassword)
+			token := cfg.GUIToken
+			if token == "" {
+				// Default token if not provided - better to fail or use a fixed one for first boot
+				token = "JBSWY3DPEBLW64TMMQ======" // example
+			}
+			err := pgRepo.CreateAdmin(models.AdminAccount{
+				Username:     cfg.GUIAdmin,
+				PasswordHash: hash,
+				Token:        token,
+				Role:         "admin",
+			})
+			if err != nil {
+				zlog.Error().Err(err).Msg("Failed to seed admin user")
+			}
+		}
+	}
 
 	// 3. Start Schedulers
 	scheduler.Start()

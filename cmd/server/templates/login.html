@@ -248,7 +248,10 @@
             } else {
                 if (typeof isPaused !== 'undefined') {
                     isPaused = false;
-                    if (typeof draw === 'function') requestAnimationFrame(draw);
+                    if (typeof draw === 'function') {
+                        lastFrameTime = performance.now();
+                        requestAnimationFrame(draw);
+                    }
                 }
                 resetIdleTimer();
             }
