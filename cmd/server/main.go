@@ -76,6 +76,10 @@ func main() {
 
 	zlog.Info().Msg("Starting Blocklist Go Server")
 
+	if cfg.SecretKey == "change-me" || len(cfg.SecretKey) < 32 {
+		zlog.Warn().Msg("SECRET_KEY is insecure or using default. Please set a 32-byte string via environment variable.")
+	}
+
 	// Run Migrations
 	d, err := iofs.New(migrationsFS, "migrations")
 	if err != nil {
