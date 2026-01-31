@@ -28,8 +28,10 @@ services:
     volumes:
       - './geoip_data:/usr/share/GeoIP'
     depends_on:
-      - redis
-      - postgres
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
 
   redis:
@@ -37,6 +39,11 @@ services:
     command: ["redis-server", "--appendonly", "yes", "--requirepass", "CHANGE_ME_REDIS_PASS"]
     volumes:
       - ./redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "CHANGE_ME_REDIS_PASS", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     restart: unless-stopped
 
   postgres:
@@ -46,4 +53,9 @@ services:
       POSTGRES_DB: blocklist
     volumes:
       - ./postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d blocklist"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     restart: unless-stopped
