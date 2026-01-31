@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IP Dashboard</title>
+    <link rel="stylesheet" href="/cd/flag-icon.min.css">
+    <link rel="icon" type="image/x-icon" href="/cd/favicon-color.png" />
+    <script src="/js/htmx.min.js"></script>
+    <script src="/js/json-enc.js"></script>
+    <style>
+        :root {
+            --primary-red: #ff0000;
+            --dark-red: #8b0000;
+            --vibrant-red: #ff4d4d;
+            --glass-bg: rgba(20, 20, 20, 0.85);
+            --border-red: rgba(255, 0, 0, 0.3);
+            --secondary-color: #b3b3b3;
+            --success-color: #28a745;
+            --danger-color: #dc3545;
+        }
+        body {
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            background-color: #000;
+            color: #fff;
+        }
+        .header-container {
+            background: var(--glass-bg);
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 12px rgba(255,0,0,0.15);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            backdrop-filter: blur(8px);
+            border-bottom: 1px solid var(--border-red);
+        }
+        .header-container h2 {
+            margin: 0;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+        .banner img { height: 40px; filter: drop-shadow(0 0 6px rgba(255,0,0,0.4)); }
+        .main-content { padding: 2rem; }
+        
+        .btn {
+            padding: 0.6rem 1.2rem;
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(255,255,255,0.05);
+            color: #fff;
+            box-shadow: 0 0 10px rgba(255,0,0,0.08);
+        }
+        .btn-danger { background: linear-gradient(45deg, var(--dark-red), var(--primary-red)); border-color: var(--border-red); }
+        .btn-success { background: rgba(40, 167, 69, 0.2); }
+        .btn-dark { background: rgba(255,255,255,0.08); }
+        .btn:hover { transform: translateY(-1px); box-shadow: 0 0 16px rgba(255,0,0,0.2); }
+
+        .search-container { margin-bottom: 1.5rem; position: relative; }
+        .filter-input {
+            width: 100%;
+            padding: 0.8rem 1rem;
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 8px;
+            font-size: 1rem;
+            background: rgba(255,255,255,0.05);
+            color: #fff;
+            outline: none;
+        }
+        .filter-input:focus { border-color: var(--primary-red); box-shadow: 0 0 0 2px rgba(255,0,0,0.2); }
+
+        .table-card {
+            background: rgba(20,20,20,0.85);
+            border: 1px solid var(--border-red);
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+            backdrop-filter: blur(8px);
+        }
+        table { border-collapse: collapse; width: 100%; color: #fff; table-layout: fixed; }
+        th, td { text-align: left; padding: 0.75rem; border-bottom: 1px solid rgba(255,255,255,0.06); }
+        th {
+            background-color: rgba(255,255,255,0.04);
+            font-weight: 600;
+            color: var(--secondary-color);
+            text-transform: uppercase;
+            font-size: 0.85rem;
+            letter-spacing: 0.05em;
+        }
+        tr:hover { background-color: rgba(255,255,255,0.02); }
+        
+        /* Modal Styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+            backdrop-filter: blur(4px);
+        }
+        .modal-content {
+            background: rgba(20,20,20,0.95);
+            margin: 10% auto;
+            padding: 2rem;
+            border-radius: 12px;
+            width: 420px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.6);
+            border: 1px solid var(--border-red);
+            color: #fff;
+        }
+        .modal h3 { margin-top: 0; }
+        .form-group { margin-bottom: 1rem; }
+        .form-group label { display: block; margin-bottom: 0.5rem; font-weight: 500; }
+        .form-control {
+            width: 100%;
+            padding: 0.6rem;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+
+        /* Toast Notifications */
+        #toast-container {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 2000;
+        }
+        .toast {
+            background: #333;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            margin-top: 10px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            animation: slideIn 0.3s ease-out;
+        }
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        .toast.success { border-left: 4px solid var(--success-color); }
+        .toast.danger { border-left: 4px solid var(--danger-color); }
+
+        .loading-row { opacity: 0.5; pointer-events: none; }
+        
+        tr.new-row {
+            animation: highlight 2s ease-out;
+        }
+        @keyframes highlight {
+            0% { background-color: #fff3cd; }
+            100% { background-color: transparent; }
+        }
+        /* New entry pulse animation */
+        .pulse-start {
+            position: relative;
+        }
+        .pulse-start::after {
+            content: '';
+            position: absolute;
+            left: -8px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 6px; height: 6px;
+            background: var(--vibrant-red);
+            border-radius: 50%;
+            box-shadow: 0 0 0 0 rgba(255,77,77, 0.7);
+            animation: pulse 1.8s ease-out 2;
+        }
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(255,77,77, 0.7); opacity: 1; }
+            70% { box-shadow: 0 0 0 10px rgba(255,77,77, 0); opacity: 1; }
+            100% { box-shadow: 0 0 0 0 rgba(255,77,77, 0); opacity: 0.6; }
+        }
+        .slide-in {
+            animation: slideInRow 300ms ease-out;
+        }
+        @keyframes slideInRow {
+            from { transform: translateY(-8px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        
+        /* Dashboard enhancements */
+        .status-chip {
+            padding: 0.2rem 0.6rem;
+            border-radius: 999px;
+            font-size: 0.75rem;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+        .status-chip.live { background: rgba(40,167,69,0.2); border-color: rgba(40,167,69,0.4); }
+        .status-chip.paused { background: rgba(255,193,7,0.2); border-color: rgba(255,193,7,0.5); }
+        .status-chip.offline { background: rgba(220,53,69,0.2); border-color: rgba(220,53,69,0.5); }
+        .clear-btn {
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: transparent;
+            border: 1px solid rgba(255,255,255,0.15);
+            color: #fff;
+            padding: 2px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .spinner {
+            width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.3);
+            border-top-color: #fff; border-radius: 50%; display: inline-block;
+            animation: spin 0.8s linear infinite; margin-right: 8px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .loading { text-align: center; color: #ccc; padding: 1rem; }
+        /* Compact density */
+        .compact table td, .compact table th { padding: 0.5rem; }
+        /* Hide Geo column */
+        .hide-geo #ipTable th:nth-child(5), .hide-geo #ipTable td:nth-child(5) { display: none; }
+    </style>
+</head>
+<body>
+
+<div id="toast-container"></div>
+
+<div class="header-container">
+    <div style="display: flex; align-items: center; gap: 2rem;">
+        <div class="banner">
+            <img src="/cd/logo.png" alt="logo">
+        </div> 
+        <h2>
+            Blocklist Dashboard 
+            <button onclick="openModal('blockModal')" class="btn btn-danger">Block IP</button>
+            <a href="/whitelist" class="btn btn-dark">Whitelist</a>
+            {{ if eq .username .admin_username }}
+            <a href="/admin_management" class="btn btn-dark">Admins</a>
+            {{ end }}
+        </h2>
+    </div>
+    <div style="display: flex; align-items: center; gap: 1rem;">
+        <div class="controls" style="display:flex; align-items:center; gap:0.5rem;">
+            <button id="togglePause" class="btn">Pause</button>
+            <button id="toggleDensity" class="btn">Compact</button>
+            <button id="toggleGeo" class="btn">Geo</button>
+            <span id="live-status" class="status-chip live">LIVE</span>
+        </div>
+        <div style="text-align: right;">
+            <div style="font-weight: 700; color: var(--vibrant-red);">Total IPs: <span id="total-ips-count">{{ .total_ips }}</span></div>
+            <div style="font-size: 0.8rem; color: var(--secondary-color);">Live Updates</div>
+        </div>
+        <a href="/logout" class="btn" style="background: rgba(255,255,255,0.08);">Logout</a>
+    </div>
+</div>
+
+<div class="main-content">
+    <div class="search-container">
+        <div style="display: flex; gap: 10px; margin-bottom: 10px; flex-wrap: wrap;">
+            <input type="text" id="filterInput" class="filter-input" style="flex: 2; min-width: 200px;" placeholder="Quick Search (IP, Reason...)" oninput="debouncedFilterTable()">
+            <select id="countryFilter" class="filter-input" style="flex: 1; min-width: 120px;" onchange="applyServerSearch()">
+                <option value="">All Countries</option>
+                <!-- This could be populated dynamically -->
+                <option value="US">United States</option>
+                <option value="CN">China</option>
+                <option value="RU">Russia</option>
+                <option value="DE">Germany</option>
+                <option value="FR">France</option>
+                <option value="GB">United Kingdom</option>
+                <option value="BR">Brazil</option>
+                <option value="IN">India</option>
+            </select>
+            <input type="text" id="addedByFilter" class="filter-input" style="flex: 1; min-width: 120px;" placeholder="Added By..." oninput="debouncedFilterTable()">
+            <input type="datetime-local" id="fromDateFilter" class="filter-input" style="flex: 1; min-width: 160px;" onchange="applyServerSearch()" title="From Date">
+            <input type="datetime-local" id="toDateFilter" class="filter-input" style="flex: 1; min-width: 160px;" onchange="applyServerSearch()" title="To Date">
+            <button id="clearFilter" class="btn btn-dark" style="height: 42px;" title="Clear All Filters">Clear</button>
+        </div>
+        <div id="filter-chips" style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 15px;"></div>
+    </div>
+
+    <div class="stats" style="display:grid; grid-template-columns: repeat(auto-fit,minmax(220px,1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+        <div class="table-card" style="padding:1rem;">
+            <div style="font-size:0.85rem; color:var(--secondary-color);">IPs banned (last hour)</div>
+            <div id="stat-hour" style="font-size:1.6rem; font-weight:700; color:#fff;">{{ .stats.hour }}</div>
+        </div>
+        <div class="table-card" style="padding:1rem;">
+            <div style="font-size:0.85rem; color:var(--secondary-color);">IPs banned (last 24h)</div>
+            <div id="stat-day" style="font-size:1.6rem; font-weight:700; color:#fff;">{{ .stats.day }}</div>
+        </div>
+        <div class="table-card" style="padding:1rem;">
+            <div style="font-size:0.85rem; color:var(--secondary-color);">IPs banned (total)</div>
+            <div id="stat-total" style="font-size:1.6rem; font-weight:700; color:#fff;">{{ .stats.total }}</div>
+        </div>
+        <div class="table-card" style="padding:1rem;">
+            <div style="font-size:0.85rem; color:var(--secondary-color);">Top countries</div>
+            <div id="stat-countries" style="display:flex; gap:0.75rem; align-items:center; margin-top:0.4rem;">
+                {{ range $i, $c := .stats.top_countries }}
+                    <span title="{{ $c.Country }}" style="display:inline-flex; align-items:center; gap:6px;">
+                        <span class="flag-icon flag-icon-{{ lower $c.Country }}"></span><span style="color:#fff; font-weight:600;">{{ $c.Count }}</span>
+                    </span>
+                {{ end }}
+            </div>
+        </div>
+    </div>
+
+    <div class="table-card">
+        <table id="ipTable">
+            <thead>
+                <tr>
+                    <th>IP Address</th>
+                    <th>Date Added</th>
+                    <th>Reason</th>
+                    <th>By</th>
+                    <th>Geo</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody id="ipTableBody"></tbody>
+        </table>
+    </div>
+    <div id="scroll-sentinel" class="loading" style="display:none;"><span class="spinner"></span> Loading...</div>
+</div>
+
+<div id="blockModal" class="modal">
+    <div class="modal-content">
+        <h3>Block New IP</h3>
+        <div class="form-group">
+            <label>IP Address</label>
+            <input type="text" id="ipToBlock" class="form-control" placeholder="e.g. 1.2.3.4">
+        </div>
+        <div class="form-group">
+            <label>Reason</label>
+            <input type="text" id="blockReason" class="form-control" placeholder="e.g. Brute force">
+        </div>
+        <div class="form-group">
+            <label style="display: inline-flex; align-items: center; cursor: pointer;">
+                <input type="checkbox" id="persistCheckbox" style="margin-right: 10px;"> Persistent Block
+            </label>
+        </div>
+        <div style="display: flex; gap: 10px; margin-top: 2rem;">
+            <button onclick="confirmBlock()" class="btn btn-danger" style="flex: 1;">Block IP</button>
+            <button onclick="closeModal('blockModal')" class="btn btn-secondary" style="flex: 1; background: #eee; color: #333;">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Virtualized dataset and pagination
+    const PAGE_SIZE = 500;
+    let items = [];
+    let total = parseInt(document.getElementById('total-ips-count').innerText || '0');
+    let cursor = null; // server-provided cursor for next page
+    let currentFilters = {
+        query: "",
+        country: "",
+        addedBy: "",
+        from: "",
+        to: ""
+    };
+    let inflight = null; // AbortController for in-flight fetch
+    let paused = false;
+    let updateQueue = [];
+    const tbody = document.getElementById('ipTableBody');
+
+    function rowHTML(ip, data){
+        const geo = data && data.geolocation ? `<span class="flag-icon flag-icon-${(data.geolocation.country||'').toLowerCase()}"></span> ${data.geolocation.city||''} (${data.geolocation.country||''})` : '<span style="color: #888;">N/A</span>';
+        const reason = data && data.reason ? data.reason : 'N/A';
+        const addedBy = data && data.added_by ? data.added_by : 'Unknown';
+        const ts = data && data.timestamp ? data.timestamp : '';
+        return `<tr id="row-${ip.toLowerCase().replace(/\./g,'-').replace(/:/g,'-')}">
+            <td style="font-family: monospace; font-weight: 600;">${ip}</td>
+            <td><span class="utc-timestamp">${ts}</span></td>
+            <td><span style="font-size: 0.9rem; color: var(--secondary-color);">${reason}</span></td>
+            <td>${addedBy}</td>
+            <td>${geo}</td>
+            <td>
+                <button class="btn btn-success" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;"
+                        hx-post="/unblock" hx-ext="json-enc" hx-vals='{"ip": "${ip}"}'
+                        hx-target="closest tr" hx-swap="outerHTML swap:0.5s">Unblock</button>
+            </td>
+        </tr>`;
+    }
+
+    async function fetchPage(nextCursor){
+        // cancel previous request if still in flight
+        if (inflight) inflight.abort();
+        inflight = new AbortController();
+        
+        let params = new URLSearchParams({
+            limit: PAGE_SIZE
+        });
+        if (nextCursor) params.append('cursor', nextCursor);
+        if (currentFilters.query) params.append('query', currentFilters.query);
+        if (currentFilters.country) params.append('country', currentFilters.country);
+        if (currentFilters.addedBy) params.append('added_by', currentFilters.addedBy);
+        if (currentFilters.from) params.append('from', new Date(currentFilters.from).toISOString());
+        if (currentFilters.to) params.append('to', new Date(currentFilters.to).toISOString());
+
+        const url = `/api/ips?${params.toString()}`;
+        const res = await fetch(url, { headers: { 'Accept': 'application/json' }, signal: inflight.signal }).catch(() => null);
+        if (!res || !res.ok) return { items: [], next: null };
+        const payload = await res.json();
+        // expected: { items: [{ip, data}], next: "cursor", total: N }
+        if (payload.total != null) {
+            total = payload.total;
+            document.getElementById('total-ips-count').innerText = total;
+        }
+        return { items: payload.items || [], next: payload.next || null };
+    }
+
+    function renderWindow(list){
+        const frag = document.createDocumentFragment();
+        const container = document.createElement('tbody');
+        container.id = 'ipTableBody';
+        container.innerHTML = list.map(it => rowHTML(it.ip, it.data)).join('');
+        frag.appendChild(container);
+        tbody.parentNode.replaceChild(frag.firstChild, tbody);
+        convertTimestamps();
+    }
+
+    async function init(){
+        loadFromURL();
+        renderChips();
+        const page = await fetchPage(null);
+        items = page.items;
+        cursor = page.next;
+        renderWindow(items);
+        if (cursor) observeScroll();
+    }
+
+    function observeScroll(){
+        let loading = false;
+        const sentinel = document.getElementById('scroll-sentinel');
+        sentinel.style.display = 'block';
+        const io = new IntersectionObserver(async (entries) => {
+            if (!entries[0].isIntersecting || loading || !cursor) return;
+            loading = true;
+            const page = await fetchPage(cursor);
+            cursor = page.next;
+            items = items.concat(page.items);
+            const frag = document.createDocumentFragment();
+            page.items.forEach(it => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = rowHTML(it.ip, it.data);
+                frag.appendChild(tr.firstChild);
+            });
+            document.getElementById('ipTableBody').appendChild(frag);
+            convertTimestamps();
+            loading = false;
+            if (!cursor) sentinel.style.display = 'none';
+        }, { rootMargin: '200px' });
+        io.observe(sentinel);
+    }
+
+    // Periodic stats refresh
+    async function refreshStats(){
+        try {
+            const r = await fetch('/api/stats', { headers: { 'Accept': 'application/json' } });
+            if (!r.ok) return;
+            const s = await r.json();
+            if (typeof s.hour === 'number') document.getElementById('stat-hour').textContent = s.hour;
+            if (typeof s.day === 'number') document.getElementById('stat-day').textContent = s.day;
+            if (typeof s.total === 'number') document.getElementById('stat-total').textContent = s.total;
+            if (Array.isArray(s.top_countries)) {
+                const wrap = document.getElementById('stat-countries');
+                wrap.innerHTML = s.top_countries.slice(0,3).map(c => `
+                    <span title="${c.country}" style="display:inline-flex; align-items:center; gap:6px;">
+                        <span class="flag-icon flag-icon-${(c.country||'').toLowerCase()}"></span><span style="color:#fff; font-weight:600;">${c.count||0}</span>
+                    </span>
+                `).join('');
+            }
+        } catch (_) {}
+    }
+    setInterval(refreshStats, 15000);
+    
+    // WebSocket differential updates
+    const socket = new WebSocket((window.location.protocol === 'https:' ? 'wss://' : 'ws://') + window.location.host + '/ws');
+    socket.onopen = function() { setStatus('live'); };
+    socket.onclose = function() { setStatus('offline'); };
+    socket.onmessage = function(event) {
+        const msg = JSON.parse(event.data);
+        if (paused) { updateQueue.push(msg); return; }
+        applyMessage(msg);
+    };
+
+    function setStatus(mode){
+        const chip = document.getElementById('live-status');
+        chip.classList.remove('live','paused','offline');
+        if (paused) { chip.classList.add('paused'); chip.textContent = 'PAUSED'; return; }
+        if (mode === 'offline') { chip.classList.add('offline'); chip.textContent = 'OFFLINE'; }
+        else { chip.classList.add('live'); chip.textContent = 'LIVE'; }
+    }
+
+    function applyMessage(msg){
+        if (msg.action === 'block') {
+            const ip = msg.data.ip;
+            const entry = { ip, data: msg.data.data };
+            // Check if it matches current filters
+            if (currentFilters.query && !ip.includes(currentFilters.query) && !entry.data.reason.includes(currentFilters.query)) return;
+            if (currentFilters.country && (!entry.data.geolocation || entry.data.geolocation.country !== currentFilters.country)) return;
+            if (currentFilters.addedBy && entry.data.added_by !== currentFilters.addedBy) return;
+            
+            items.unshift(entry);
+            const tbodyEl = document.getElementById('ipTableBody');
+            const temp = document.createElement('tbody');
+            temp.innerHTML = rowHTML(ip, entry.data);
+            const row = temp.firstChild;
+            // add animation classes
+            row.classList.add('slide-in');
+            const firstCell = row.querySelector('td');
+            if (firstCell) firstCell.classList.add('pulse-start');
+            tbodyEl.insertBefore(row, tbodyEl.firstChild);
+            convertTimestamps();
+            updateTotalCount(1);
+            // optional toast
+            showToast(`IP Blocked: ${ip}`, 'danger');
+            // bump hour/day/total counters optimistically
+            const h = document.getElementById('stat-hour'); if (h) h.textContent = (parseInt(h.textContent||'0')+1).toString();
+            const d = document.getElementById('stat-day'); if (d) d.textContent = (parseInt(d.textContent||'0')+1).toString();
+            const t = document.getElementById('stat-total'); if (t) t.textContent = (parseInt(t.textContent||'0')+1).toString();
+        } else if (msg.action === 'unblock') {
+            const ip = msg.data.ip;
+            const id = 'row-' + ip.toLowerCase().replace(/\./g,'-').replace(/:/g,'-');
+            const row = document.getElementById(id);
+            if (row) {
+                row.style.transition = 'opacity 250ms ease';
+                row.style.opacity = '0';
+                setTimeout(() => row.remove(), 250);
+            }
+            const idx = items.findIndex(it => it.ip === ip);
+            if (idx >= 0) items.splice(idx, 1);
+            updateTotalCount(-1);
+        }
+    }
+
+    function updateTotalCount(delta) {
+        const el = document.getElementById('total-ips-count');
+        el.innerText = Math.max(0, parseInt(el.innerText) + delta);
+    }
+
+    // Server-side search across all records
+    let debounceTimeout;
+    function debouncedFilterTable() {
+        clearTimeout(debounceTimeout);
+        debounceTimeout = setTimeout(applyServerSearch, 350);
+    }
+
+    async function applyServerSearch(){
+        currentFilters = {
+            query: document.getElementById('filterInput').value.trim(),
+            country: document.getElementById('countryFilter').value,
+            addedBy: document.getElementById('addedByFilter').value.trim(),
+            from: document.getElementById('fromDateFilter').value,
+            to: document.getElementById('toDateFilter').value
+        };
+        cursor = null;
+        updateURL();
+        renderChips();
+        const page = await fetchPage(null);
+        items = page.items;
+        renderWindow(items);
+    }
+
+    function updateURL() {
+        const params = new URLSearchParams();
+        Object.entries(currentFilters).forEach(([key, val]) => {
+            if (val) params.append(key, val);
+        });
+        const newurl = window.location.protocol + "//" + window.location.host + window.location.pathname + '?' + params.toString();
+        window.history.pushState({path:newurl},'',newurl);
+    }
+
+    function loadFromURL() {
+        const params = new URLSearchParams(window.location.search);
+        currentFilters.query = params.get('query') || "";
+        currentFilters.country = params.get('country') || "";
+        currentFilters.addedBy = params.get('addedBy') || "";
+        currentFilters.from = params.get('from') || "";
+        currentFilters.to = params.get('to') || "";
+
+        document.getElementById('filterInput').value = currentFilters.query;
+        document.getElementById('countryFilter').value = currentFilters.country;
+        document.getElementById('addedByFilter').value = currentFilters.addedBy;
+        document.getElementById('fromDateFilter').value = currentFilters.from;
+        document.getElementById('toDateFilter').value = currentFilters.to;
+    }
+
+    function renderChips() {
+        const container = document.getElementById('filter-chips');
+        container.innerHTML = "";
+        Object.entries(currentFilters).forEach(([key, val]) => {
+            if (val) {
+                const chip = document.createElement('div');
+                chip.className = 'status-chip live';
+                chip.style.display = 'inline-flex';
+                chip.style.alignItems = 'center';
+                chip.style.gap = '5px';
+                chip.style.cursor = 'default';
+                
+                let label = val;
+                if (key === 'from') label = 'From: ' + new Date(val).toLocaleDateString();
+                if (key === 'to') label = 'To: ' + new Date(val).toLocaleDateString();
+                
+                chip.innerHTML = `<span>${key}: ${label}</span> <span style="cursor:pointer; font-weight:bold;" onclick="removeFilter('${key}')">×</span>`;
+                container.appendChild(chip);
+            }
+        });
+    }
+
+    window.removeFilter = function(key) {
+        currentFilters[key] = "";
+        const idMap = {
+            query: 'filterInput',
+            country: 'countryFilter',
+            addedBy: 'addedByFilter',
+            from: 'fromDateFilter',
+            to: 'toDateFilter'
+        };
+        document.getElementById(idMap[key]).value = "";
+        applyServerSearch();
+    }
+
+    // UI Helpers
+    function openModal(id) { document.getElementById(id).style.display = 'block'; }
+    function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+
+    function showToast(message, type = 'success') {
+        const container = document.getElementById('toast-container');
+        const toast = document.createElement('div');
+        toast.className = `toast ${type}`;
+        toast.innerHTML = `<span>${message}</span>`;
+        container.appendChild(toast);
+        setTimeout(() => {
+            toast.style.opacity = '0';
+            setTimeout(() => toast.remove(), 500);
+        }, 4000);
+    }
+
+    function convertTimestamps() {
+        const utcTimestamps = document.querySelectorAll('.utc-timestamp:not([data-converted])');
+        utcTimestamps.forEach(function(timestamp) {
+            const date = new Date(timestamp.innerText);
+            timestamp.innerText = date.toLocaleString();
+            timestamp.setAttribute('data-converted', 'true');
+        });
+    }
+
+    // Wire controls
+    document.getElementById('togglePause').addEventListener('click', () => {
+        paused = !paused;
+        if (!paused) {
+            setStatus('live');
+            const q = updateQueue.splice(0, updateQueue.length);
+            q.forEach(applyMessage);
+        } else {
+            setStatus('paused');
+        }
+    });
+    document.getElementById('toggleDensity').addEventListener('click', () => {
+        document.body.classList.toggle('compact');
+    });
+    document.getElementById('toggleGeo').addEventListener('click', () => {
+        document.body.classList.toggle('hide-geo');
+    });
+    document.getElementById('clearFilter').addEventListener('click', () => {
+        const input = document.getElementById('filterInput');
+        input.value = '';
+        debouncedFilterTable();
+    });
+
+    setTimeout(() => { convertTimestamps(); init(); }, 100);
+    document.body.addEventListener('htmx:afterOnLoad', convertTimestamps);
+
+    function confirmBlock() {
+        const ip = document.getElementById('ipToBlock').value;
+        const reason = document.getElementById('blockReason').value;
+        const persist = document.getElementById('persistCheckbox').checked;
+        if (!ip) return showToast('Enter an IP', 'danger');
+
+        fetch('/block', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ip, reason, persist })
+        }).then(r => r.json()).then(data => {
+            if (data.status === 'success') {
+                closeModal('blockModal');
+                document.getElementById('ipToBlock').value = '';
+                document.getElementById('blockReason').value = '';
+            } else {
+                showToast(data.status || 'Failed to block', 'danger');
+            }
+        });
+    }
+</script>
+
+</body>
+</html>

@@ -5,104 +5,99 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Whitelist Management</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.5.0/css/flag-icon.min.css">
+    <link rel="stylesheet" href="/cd/flag-icon.min.css">
     <link rel="icon" type="image/x-icon" href="/cd/favicon-color.png" />
     <style>
+        :root {
+            --primary-red: #ff0000;
+            --dark-red: #8b0000;
+            --vibrant-red: #ff4d4d;
+            --glass-bg: rgba(20, 20, 20, 0.85);
+            --border-red: rgba(255, 0, 0, 0.3);
+            --secondary-color: #b3b3b3;
+        }
         body {
-            font-family: Arial, sans-serif;
-            margin: 20px;
-            background-color: #f8f9fa;
-            color: #333;
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            background-color: #000;
+            color: #fff;
         }
         .header-container {
+            background: var(--glass-bg);
+            padding: 1rem 2rem;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 20px;
+            box-shadow: 0 2px 12px rgba(255,0,0,0.15);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            backdrop-filter: blur(8px);
+            border-bottom: 1px solid var(--border-red);
         }
-        .header-container img {
-            height: 50px;
-        }
-        h2 {
-            text-align: center;
-            color: #0056b3;
-            flex-grow: 1;
-        }
-        .button-group {
-            display: flex;
-            gap: 10px;
-        }
+        .header-container img { height: 40px; filter: drop-shadow(0 0 6px rgba(255,0,0,0.4)); }
+        h2 { text-align: center; color: var(--vibrant-red); flex-grow: 1; }
+        .button-group { display: flex; gap: 10px; }
         .logout-button, .dashboard-button {
-            background-color: #007bff;
+            background: rgba(255,255,255,0.08);
             color: white;
             padding: 10px 15px;
-            border: none;
-            border-radius: 5px;
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 6px;
             cursor: pointer;
         }
-        .logout-button {
-            background-color: #dc3545;
-        }
+        .logout-button { background: linear-gradient(45deg, var(--dark-red), var(--primary-red)); }
         .delete-button {
-            background-color: #dc3545;
+            background: linear-gradient(45deg, var(--dark-red), var(--primary-red));
             color: white;
             padding: 10px 15px;
-            border: none;
-            border-radius: 5px;
+            border: 1px solid var(--border-red);
+            border-radius: 6px;
             cursor: pointer;
             font-size: 14px;
         }
-        .delete-button:hover {
-            background-color: #c82333;
-        }
+        .delete-button:hover { box-shadow: 0 0 16px rgba(255,0,0,0.2); }
         table {
             border-collapse: collapse;
             width: 100%;
-            background: #ffffff;
-            box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1);
-            border-radius: 8px;
+            background: rgba(20,20,20,0.85);
+            border: 1px solid var(--border-red);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+            border-radius: 12px;
             overflow: hidden;
+            color: #fff;
         }
-        th, td {
-            border: 1px solid #dddddd;
-            text-align: left;
-            padding: 12px;
-        }
-        th {
-            background-color: #007bff;
-            color: white;
-        }
-        tr:nth-child(even) {
-            background-color: #f2f2f2;
-        }
+        th, td { border: 1px solid rgba(255,255,255,0.06); text-align: left; padding: 12px; }
+        th { background-color: rgba(255,255,255,0.04); color: var(--secondary-color); }
+        tr:nth-child(even) { background-color: rgba(255,255,255,0.02); }
         .filter-input {
             width: 100%;
             padding: 10px;
             margin-bottom: 15px;
-            border: 1px solid #ccc;
-            border-radius: 5px;
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 6px;
             box-sizing: border-box;
             font-size: 16px;
+            background: rgba(255,255,255,0.05);
+            color: #fff;
         }
         .whitelist-button {
-            background-color: #28a745;
+            background: rgba(255,255,255,0.08);
             color: white;
             padding: 10px 15px;
-            border: none;
-            border-radius: 5px;
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 6px;
             cursor: pointer;
             font-size: 14px;
         }
-        .whitelist-button:hover {
-            background-color: #218838;
-        }
+        .whitelist-button:hover { box-shadow: 0 0 16px rgba(255,0,0,0.2); }
     </style>
 </head>
 <body>
     <div class="header-container">
         <img src="/cd/logo.png" alt="Logo">
         <h2>Whitelisted IPs</h2>
-        <p style="margin-right: 20px;">Total IPs: {{ whitelisted_ips|length }}</p>
+        <p style="margin-right: 20px;">Total IPs: {{ len .whitelisted_ips }}</p>
         <div class="button-group">
             <button class="dashboard-button" onclick="window.location.href='/dashboard'">Back to Dashboard</button>
             <button class="logout-button" onclick="window.location.href='/logout'">Logout</button>
@@ -127,27 +122,27 @@
             <th>Expires In</th>
             <th>Action</th>
         </tr>
-        {% for ip, data in whitelisted_ips.items() %}
+        {{ range $ip, $data := .whitelisted_ips }}
             <tr>
-                <td>{{ ip }}</td>
+                <td>{{ $ip }}</td>
                 <td>
-                    {% if data.geolocation %}
-                        <span class="flag-icon flag-icon-{{ data.geolocation.country|lower }}"></span>
-                        {{ data.geolocation.country }}
-                    {% else %}
+                    {{ if $data.Geolocation }}
+                        <span class="flag-icon flag-icon-{{ lower $data.Geolocation.Country }}"></span>
+                        {{ $data.Geolocation.Country }}
+                    {{ else }}
                         N/A
-                    {% endif %}
+                    {{ end }}
                 </td>
-                <td>{{ data.geolocation.city if data.geolocation else 'N/A' }}</td>
-                <td>{{ data.added_by if data.added_by else 'Unknown' }}</td>
-                <td>{{ data.reason if data.reason else 'No reason provided' }}</td>
-                <td>{{ data.expires_in }}</td>
-                <td><button class="delete-button" onclick="removeWhitelist({{ ip | tojson }})">Delete</button></td>
+                <td>{{ if $data.Geolocation }}{{ $data.Geolocation.City }}{{ else }}N/A{{ end }}</td>
+                <td>{{ if $data.AddedBy }}{{ $data.AddedBy }}{{ else }}Unknown{{ end }}</td>
+                <td>{{ if $data.Reason }}{{ $data.Reason }}{{ else }}No reason provided{{ end }}</td>
+                <td>{{ $data.ExpiresIn }}</td>
+                <td><button class="delete-button" onclick="removeWhitelist('{{ $ip }}')">Delete</button></td>
             </tr>
-        {% endfor %}
-        {% for subnet in blocked_subnets %}
+        {{ end }}
+        {{ range $subnet := .blocked_subnets }}
             <tr>
-                <td>{{ subnet }}</td>
+                <td>{{ $subnet }}</td>
                 <td>N/A</td>
                 <td>N/A</td>
                 <td>System</td>
@@ -155,7 +150,7 @@
                 <td>NEVER</td>
                 <td>NOT ALLOWED</td>
             </tr>
-        {% endfor %}
+        {{ end }}
     </table>
     
     <script>

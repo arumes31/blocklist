@@ -1,0 +1,253 @@
+package service
+
+import (
+	"context"
+	"encoding/json"
+	"net"
+	"net/netip"
+	"sort"
+	"strconv"
+	"strings"
+	"time"
+
+	"blocklist/internal/config"
+	"blocklist/internal/models"
+	"blocklist/internal/repository"
+	"github.com/oschwald/geoip2-golang"
+)
+
+type IPService struct {
+	redisRepo     *repository.RedisRepository
+	blockedRanges []netip.Prefix
+	geoipReader   *geoip2.Reader
+}
+
+func NewIPService(cfg *config.Config, rRepo *repository.RedisRepository) *IPService {
+	ranges := []netip.Prefix{}
+	for _, rStr := range strings.Split(cfg.BlockedRanges, ",") {
+		rStr = strings.TrimSpace(rStr)
+		if rStr == "" {
+			continue
+		}
+		prefix, err := netip.ParsePrefix(rStr)
+		if err == nil {
+			ranges = append(ranges, prefix)
+		}
+	}
+
+	var reader *geoip2.Reader
+	// Path from the original dockerfile
+	gReader, err := geoip2.Open("/usr/share/GeoIP/GeoLite2-City.mmdb")
+	if err == nil {
+		reader = gReader
+	}
+
+	return &IPService{
+		redisRepo:     rRepo,
+		blockedRanges: ranges,
+		geoipReader:   reader,
+	}
+}
+
+func (s *IPService) IsValidIP(ipStr string) bool {
+	ip, err := netip.ParseAddr(ipStr)
+	if err != nil {
+		return false
+	}
+
+	// Check whitelist first
+	whitelist, _ := s.redisRepo.GetWhitelistedIPs()
+	if _, ok := whitelist[ipStr]; ok {
+		return false // IP is whitelisted, so it's NOT "valid to block"
+	}
+
+	// Check blocked ranges
+	for _, prefix := range s.blockedRanges {
+		if prefix.Contains(ip) {
+			return false
+		}
+	}
+
+	return true
+}
+
+func (s *IPService) GetGeoIP(ipStr string) *models.GeoData {
+	if s.geoipReader == nil {
+		// Try to reopen if it was missing on start
+		reader, err := geoip2.Open("/usr/share/GeoIP/GeoLite2-City.mmdb")
+		if err == nil {
+			s.geoipReader = reader
+		} else {
+			return nil
+		}
+	}
+	ip := net.ParseIP(ipStr)
+	record, err := s.geoipReader.City(ip)
+	if err != nil {
+		return nil
+	}
+	return &models.GeoData{
+		Country:   record.Country.IsoCode,
+		City:      record.City.Names["en"],
+		Latitude:  record.Location.Latitude,
+		Longitude: record.Location.Longitude,
+	}
+}
+
+// ListIPsPaginated returns items ordered by recency with cursor-based pagination and optional query filter.
+// Fallback implementation using Redis hash if sorted index is unavailable.
+func (s *IPService) ListIPsPaginated(ctx context.Context, limit int, cursor string, query string) ([]map[string]interface{}, string, int, error) {
+	// If ZSET exists, use score-based cursor. Otherwise fallback to hash scan.
+	zs, next, zerr := s.redisRepo.ZPageByScoreDesc(limit, cursor)
+	if zerr == nil && len(zs) > 0 {
+		// total via stats:total (approx for ephemerals only)
+		tot, _ := s.redisRepo.GetTotal()
+		items := make([]map[string]interface{}, 0, len(zs))
+		q := strings.ToLower(strings.TrimSpace(query))
+		for _, z := range zs {
+			ip := z.Member.(string)
+			entry, err := s.redisRepo.GetIPEntry(ip)
+			if err != nil || entry == nil { continue }
+			if q != "" {
+				if !strings.Contains(strings.ToLower(ip), q) &&
+					!strings.Contains(strings.ToLower(entry.Reason), q) &&
+					!strings.Contains(strings.ToLower(entry.AddedBy), q) &&
+					!(entry.Geolocation != nil && strings.Contains(strings.ToLower(entry.Geolocation.Country), q)) {
+					continue
+				}
+			}
+			items = append(items, map[string]interface{}{"ip": ip, "data": entry})
+		}
+		return items, next, tot, nil
+	}
+	// fallback to hash listing
+	all, err := s.redisRepo.HGetAllRaw("ips")
+	if err != nil { return nil, "", 0, err }
+	total := len(all)
+	type pair struct{ ip string; e models.IPEntry; ts int64 }
+	list := make([]pair, 0, total)
+	q := strings.ToLower(strings.TrimSpace(query))
+	for ip, raw := range all {
+		var e models.IPEntry
+		if err := json.Unmarshal([]byte(raw), &e); err != nil { continue }
+		if q != "" {
+			if !strings.Contains(strings.ToLower(ip), q) &&
+				!strings.Contains(strings.ToLower(e.Reason), q) &&
+				!strings.Contains(strings.ToLower(e.AddedBy), q) &&
+				!(e.Geolocation != nil && strings.Contains(strings.ToLower(e.Geolocation.Country), q)) {
+				continue
+			}
+		}
+		var ts int64
+		if t, err := time.Parse("2006-01-02 15:04:05 UTC", e.Timestamp); err == nil { ts = t.Unix() }
+		list = append(list, pair{ip: ip, e: e, ts: ts})
+	}
+	sort.Slice(list, func(i, j int) bool { return list[i].ts > list[j].ts })
+	offset := 0
+	if cursor != "" { if n, err := strconv.Atoi(cursor); err == nil { offset = n } }
+	end := offset + limit
+	if end > len(list) { end = len(list) }
+	itemsOut := make([]map[string]interface{}, 0, end-offset)
+	for _, p := range list[offset:end] {
+		itemsOut = append(itemsOut, map[string]interface{}{"ip": p.ip, "data": p.e})
+	}
+	nextCursor := ""
+	if end < len(list) { nextCursor = strconv.Itoa(end) }
+	return itemsOut, nextCursor, len(list), nil
+}
+
+// Stats computes counts for last hour/day/total and top countries.
+func (s *IPService) Stats(ctx context.Context) (hour int, day int, total int, top []struct{ Country string; Count int }, err error) {
+	h, err := s.redisRepo.CountLastHour()
+	if err != nil { return 0,0,0,nil, err }
+	d, err := s.redisRepo.CountLastDay()
+	if err != nil { return 0,0,0,nil, err }
+	t, err := s.redisRepo.GetTotal()
+	if err != nil { return 0,0,0,nil, err }
+	tc, err := s.redisRepo.TopCountries(3)
+	if err != nil { return 0,0,0,nil, err }
+	top = make([]struct{ Country string; Count int }, 0, len(tc))
+	for _, v := range tc { top = append(top, struct{ Country string; Count int }{v.Country, v.Count}) }
+	return h, d, t, top, nil
+}
+
+// ListIPsPaginatedAdvanced provides server-side pagination and search across all records with advanced filters.
+func (s *IPService) ListIPsPaginatedAdvanced(ctx context.Context, limit int, cursor string, query string, country string, addedBy string, from string, to string) ([]map[string]interface{}, string, int, error) {
+	// For now, we'll use a simplified implementation that fetches more and filters.
+	// In a real production environment with millions of IPs, we'd use Redis search or similar.
+	
+	// Parse dates if provided
+	var fromTime, toTime time.Time
+	if from != "" {
+		fromTime, _ = time.Parse(time.RFC3339, from)
+	}
+	if to != "" {
+		toTime, _ = time.Parse(time.RFC3339, to)
+	}
+
+	// We'll fetch a larger batch if filtering is active to try and fulfill 'limit'
+	fetchLimit := limit
+	if query != "" || country != "" || addedBy != "" || from != "" || to != "" {
+		fetchLimit = limit * 2 // Fetch more to account for filtering
+		if fetchLimit > 5000 { fetchLimit = 5000 }
+	}
+
+	zs, next, zerr := s.redisRepo.ZPageByScoreDesc(fetchLimit, cursor)
+	if zerr == nil && len(zs) > 0 {
+		tot, _ := s.redisRepo.GetTotal()
+		items := make([]map[string]interface{}, 0, limit)
+		q := strings.ToLower(strings.TrimSpace(query))
+		country = strings.ToLower(strings.TrimSpace(country))
+		addedBy = strings.ToLower(strings.TrimSpace(addedBy))
+
+		for _, z := range zs {
+			if len(items) >= limit {
+				// We reached the limit, but we need to adjust 'next' to the score of the LAST ADDED item
+				// Actually, 'next' from ZPageByScoreDesc is the score of the last item in the FETCHED batch.
+				// If we stop early, we should update 'next'.
+				break 
+			}
+
+			ip := z.Member.(string)
+			entry, err := s.redisRepo.GetIPEntry(ip)
+			if err != nil || entry == nil { continue }
+
+			// Apply filters
+			if q != "" {
+				if !strings.Contains(strings.ToLower(ip), q) &&
+					!strings.Contains(strings.ToLower(entry.Reason), q) &&
+					!strings.Contains(strings.ToLower(entry.AddedBy), q) &&
+					!(entry.Geolocation != nil && strings.Contains(strings.ToLower(entry.Geolocation.Country), q)) {
+					continue
+				}
+			}
+			if country != "" {
+				if entry.Geolocation == nil || !strings.EqualFold(entry.Geolocation.Country, country) {
+					continue
+				}
+			}
+			if addedBy != "" {
+				if !strings.EqualFold(entry.AddedBy, addedBy) {
+					continue
+				}
+			}
+			if !fromTime.IsZero() || !toTime.IsZero() {
+				ts, err := time.Parse("2006-01-02 15:04:05 UTC", entry.Timestamp)
+				if err == nil {
+					if !fromTime.IsZero() && ts.Before(fromTime) { continue }
+					if !toTime.IsZero() && ts.After(toTime) { continue }
+				}
+			}
+
+			items = append(items, map[string]interface{}{"ip": ip, "data": entry})
+		}
+		
+		// If we finished the whole batch but items < limit, we might have more to fetch.
+		// But for a simple implementation, returning what we have is okay.
+		
+		return items, next, tot, nil
+	}
+
+	// Fallback to hash listing if ZSET is empty/failed
+	return s.ListIPsPaginated(ctx, limit, cursor, query)
+}

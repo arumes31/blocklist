@@ -1,0 +1,7 @@
+<div class="form-group">
+    <label for="totp">2FA Token</label>
+    <input type="text" id="totp" name="totp" required inputmode="numeric" placeholder="6-digit code">
+</div>
+<input type="hidden" name="username" value="{{ .username }}">
+<input type="hidden" name="password" value="{{ .password }}">
+<input type="submit" value="Authorize Access">

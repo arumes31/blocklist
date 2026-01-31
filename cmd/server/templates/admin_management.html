@@ -6,72 +6,57 @@
     <title>Admin Management</title>
     <link rel="icon" type="image/x-icon" href="/cd/favicon-color.png" />
     <style>
+        :root {
+            --primary-red: #ff0000;
+            --dark-red: #8b0000;
+            --vibrant-red: #ff4d4d;
+            --glass-bg: rgba(20, 20, 20, 0.85);
+            --border-red: rgba(255, 0, 0, 0.3);
+            --secondary-color: #b3b3b3;
+        }
         body {
-            font-family: Arial, sans-serif;
-            margin: 20px;
-            background-color: #f8f9fa;
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            background-color: #000;
+            color: #fff;
         }
         .header-container {
+            background: var(--glass-bg);
+            padding: 1rem 2rem;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 20px;
+            box-shadow: 0 2px 12px rgba(255,0,0,0.15);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            backdrop-filter: blur(8px);
+            border-bottom: 1px solid var(--border-red);
         }
-        .header-container img {
-            height: 50px;
-        }
-        h2 {
-            text-align: center;
-            color: #0056b3;
-            flex-grow: 1;
-        }
+        .header-container img { height: 40px; filter: drop-shadow(0 0 6px rgba(255,0,0,0.4)); }
+        h2 { text-align: center; color: var(--vibrant-red); flex-grow: 1; }
         table {
             width: 100%;
             border-collapse: collapse;
-            background: #ffffff;
-            box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1);
+            background: rgba(20,20,20,0.85);
+            border: 1px solid var(--border-red);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+            color: #fff;
         }
-        th, td {
-            border: 1px solid #dddddd;
-            padding: 12px;
-            text-align: left;
-        }
-        th {
-            background-color: #007bff;
-            color: white;
-        }
-        .delete-button {
-            background-color: #dc3545;
+        th, td { border: 1px solid rgba(255,255,255,0.06); padding: 12px; text-align: left; }
+        th { background-color: rgba(255,255,255,0.04); color: var(--secondary-color); }
+        .delete-button, .qr-button, .password-button, .totp-button {
             color: white;
             padding: 8px;
-            border: none;
-            border-radius: 5px;
+            border: 1px solid var(--border-red);
+            border-radius: 6px;
             cursor: pointer;
+            background: rgba(255,255,255,0.08);
         }
-        .qr-button {
-            background-color: #28a745;
-            color: white;
-            padding: 8px;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-        }
-        .password-button {
-            background-color: #007bff;
-            color: white;
-            padding: 8px;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-        }
-        .totp-button {
-            background-color: #ff9800;
-            color: white;
-            padding: 8px;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-        }
+        .delete-button { background: linear-gradient(45deg, var(--dark-red), var(--primary-red)); }
+        .qr-button { background: rgba(40, 167, 69, 0.2); }
+        .password-button { background: rgba(255,255,255,0.08); }
+        .totp-button { background: #ff980033; }
         .modal {
             display: none;
             position: fixed;
@@ -81,28 +66,29 @@
             width: 100%;
             height: 100%;
             overflow: auto;
-            background-color: rgba(0,0,0,0.4);
+            background-color: rgba(0,0,0,0.5);
+            backdrop-filter: blur(4px);
         }
         .modal-content {
-            background-color: #fefefe;
-            margin: 15% auto;
+            background: rgba(20,20,20,0.95);
+            margin: 10% auto;
             padding: 20px;
-            border: 1px solid #888;
+            border: 1px solid var(--border-red);
             width: 80%;
             max-width: 500px;
+            color: #fff;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.6);
         }
         .close {
             color: #aaaaaa;
             float: right;
             font-size: 28px;
             font-weight: bold;
-        }
-        .close:hover,
-        .close:focus {
-            color: #000;
-            text-decoration: none;
             cursor: pointer;
         }
+        .close:hover,
+        .close:focus { color: #fff; text-decoration: none; }
     </style>
 </head>
 <body>
@@ -124,20 +110,20 @@
             <th>Token</th>
             <th>Actions</th>
         </tr>
-        {% for username, data in admins.items() %}
+        {{ range $username, $data := .admins }}
         <tr>
-            <td>{{ username }}</td>
-            <td>{{ data.token }}</td>
+            <td>{{ $username }}</td>
+            <td>{{ $data.Token }}</td>
             <td>
-                {% if username != 'admin' %}
-                <button class="qr-button" onclick="showQR({{ username | tojson }})">Show QR</button>
-                <button class="password-button" onclick="openPasswordModal({{ username | tojson }})">Change Password</button>
-                <button class="totp-button" onclick="openTotpModal({{ username | tojson }})">Change TOTP</button>
-                <button class="delete-button" onclick="deleteAdmin({{ username | tojson }})">Delete</button>
-                {% endif %}
+                {{ if ne $username "admin" }}
+                <button class="qr-button" onclick="showQR('{{ $username }}')">Show QR</button>
+                <button class="password-button" onclick="openPasswordModal('{{ $username }}')">Change Password</button>
+                <button class="totp-button" onclick="openTotpModal('{{ $username }}')">Change TOTP</button>
+                <button class="delete-button" onclick="deleteAdmin('{{ $username }}')">Delete</button>
+                {{ end }}
             </td>
         </tr>
-        {% endfor %}
+        {{ end }}
     </table>
 
     <!-- Password Change Modal -->

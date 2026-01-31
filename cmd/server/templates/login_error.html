@@ -1,0 +1,16 @@
+<div class="form-group">
+    <label for="username">Operator ID</label>
+    <input type="text" id="username" name="username" required placeholder="Enter username" value="{{ .username }}">
+</div>
+<div class="form-group">
+    <label for="password">Security Key</label>
+    <input type="password" id="password" name="password" required placeholder="Enter password" value="{{ .password }}">
+</div>
+<div class="form-group">
+    <label for="totp">2FA Token</label>
+    <input type="text" id="totp" name="totp" required inputmode="numeric" placeholder="6-digit code">
+</div>
+<input type="submit" value="Authorize Access">
+<div class="error-message" style="display: block;">
+    <strong>Access Denied:</strong> {{ .error }}
+</div>
