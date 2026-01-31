@@ -326,8 +326,13 @@ func (h *APIHandler) Health(c *gin.Context) {
 	status := "UP"
 	dbStatus := "OK"
 	redisStatus := "OK"
-	if _, err := h.redisRepo.HGetAllRaw("ips"); err != nil {
-		redisStatus = "ERROR"
+	if h.redisRepo != nil {
+		if _, err := h.redisRepo.HGetAllRaw("ips"); err != nil {
+			redisStatus = "ERROR"
+			status = "DEGRADED"
+		}
+	} else {
+		redisStatus = "MISSING"
 		status = "DEGRADED"
 	}
 	if h.pgRepo != nil {
@@ -1060,7 +1065,11 @@ func (h *APIHandler) AutomateIPs(c *gin.Context) {
 
 func (h *APIHandler) Ready(c *gin.Context) {
     dep := map[string]interface{}{"redis": true, "geoip": "unknown"}
-    if _, err := h.redisRepo.HGetAllRaw("ips"); err != nil {
+    if h.redisRepo != nil {
+        if _, err := h.redisRepo.HGetAllRaw("ips"); err != nil {
+            dep["redis"] = false
+        }
+    } else {
         dep["redis"] = false
     }
     c.JSON(http.StatusOK, gin.H{"status": "READY", "dependencies": dep})

@@ -14,18 +14,21 @@ import (
 	"strings"
 	"time"
 
+	"blocklist/internal/config"
 	"blocklist/internal/models"
 	"blocklist/internal/repository"
 )
 
 type WebhookService struct {
 	pgRepo *repository.PostgresRepository
+	cfg    *config.Config
 	client *http.Client
 }
 
-func NewWebhookService(pg *repository.PostgresRepository) *WebhookService {
+func NewWebhookService(pg *repository.PostgresRepository, cfg *config.Config) *WebhookService {
 	return &WebhookService{
 		pgRepo: pg,
+		cfg:    cfg,
 		client: &http.Client{
 			Timeout: 10 * time.Second,
 		},
@@ -33,6 +36,9 @@ func NewWebhookService(pg *repository.PostgresRepository) *WebhookService {
 }
 
 func (s *WebhookService) Notify(ctx context.Context, event string, data interface{}) {
+	if s.cfg != nil && !s.cfg.EnableOutboundWebhooks {
+		return
+	}
 	if s.pgRepo == nil { return }
 
 	webhooks, err := s.pgRepo.GetActiveWebhooks()
@@ -86,7 +92,9 @@ func (s *WebhookService) sendWithRetry(wh models.OutboundWebhook, event string, 
 		resp.Body.Close()
 	}
 
-	_ = s.pgRepo.LogWebhookDelivery(logEntry)
+	if s.pgRepo != nil {
+		_ = s.pgRepo.LogWebhookDelivery(logEntry)
+	}
 
 	if (err != nil || logEntry.StatusCode >= 400) && attempt < 3 {
 		time.Sleep(time.Duration(attempt*attempt) * time.Minute) // Exponential backoff

@@ -62,8 +62,17 @@ func main() {
 	}
 	m, err := migrate.NewWithSourceInstance("iofs", d, cfg.PostgresURL)
 	if err == nil {
+		version, dirty, err := m.Version()
+		if err != nil && err != migrate.ErrNilVersion {
+			zlog.Error().Err(err).Msg("Failed to get migration version")
+		} else {
+			zlog.Info().Uint("version", version).Bool("dirty", dirty).Msg("Current database version")
+		}
+
 		if err := m.Up(); err != nil && err != migrate.ErrNoChange {
 			zlog.Error().Err(err).Msg("Migration error")
+		} else if err == migrate.ErrNoChange {
+			zlog.Info().Msg("Database is up to date (no migrations needed)")
 		} else {
 			zlog.Info().Msg("Database migrations applied successfully")
 		}
@@ -81,7 +90,7 @@ func main() {
 	// 2. Initialize Services
 	authService := service.NewAuthService(pgRepo, redisRepo)
 	ipService := service.NewIPService(cfg, redisRepo, pgRepo)
-	webhookService := service.NewWebhookService(pgRepo)
+	webhookService := service.NewWebhookService(pgRepo, cfg)
 	scheduler := service.NewSchedulerService(redisRepo)
 	geoUpdater := service.NewGeoIPService(cfg)
 

@@ -65,9 +65,13 @@ func (s *IPService) IsValidIP(ipStr string) bool {
 	}
 
 	// Check whitelist first
-	whitelist, _ := s.redisRepo.GetWhitelistedIPs()
-	if _, ok := whitelist[ipStr]; ok {
-		return false // IP is whitelisted, so it's NOT "valid to block"
+	if s.redisRepo != nil {
+		whitelist, _ := s.redisRepo.GetWhitelistedIPs()
+		if whitelist != nil {
+			if _, ok := whitelist[ipStr]; ok {
+				return false // IP is whitelisted, so it's NOT "valid to block"
+			}
+		}
 	}
 
 	// Check blocked ranges
@@ -187,6 +191,9 @@ func (s *IPService) ListIPsPaginated(ctx context.Context, limit int, cursor stri
 
 // Stats computes counts for last hour/day/total and top countries, ASNs, and reasons.
 func (s *IPService) Stats(ctx context.Context) (hour int, day int, total int, top []struct{ Country string; Count int }, topASN []struct{ ASN uint; ASNOrg string; Count int }, topReason []struct{ Reason string; Count int }, err error) {
+	if s.redisRepo == nil {
+		return 0, 0, 0, nil, nil, nil, nil
+	}
 	h, err := s.redisRepo.CountLastHour()
 	if err != nil { return 0,0,0,nil, nil, nil, err }
 	d, err := s.redisRepo.CountLastDay()
@@ -216,6 +223,9 @@ func (s *IPService) Stats(ctx context.Context) (hour int, day int, total int, to
 
 // ExportIPs returns all IPs matching the filters for export purposes.
 func (s *IPService) ExportIPs(ctx context.Context, query string, country string, addedBy string, from string, to string) ([]map[string]interface{}, error) {
+	if s.redisRepo == nil {
+		return nil, nil
+	}
 	// For export, we fetch a large batch or iterate.
 	// Simple implementation: fetch up to 10k items.
 	
@@ -285,6 +295,9 @@ func (s *IPService) ExportIPs(ctx context.Context, query string, country string,
 
 // BulkBlock blocks multiple IPs at once.
 func (s *IPService) BulkBlock(ctx context.Context, ips []string, reason string, addedBy string, persist bool, ttl int) error {
+	if s.redisRepo == nil {
+		return nil
+	}
 	now := time.Now().UTC()
 	timestamp := now.Format("2006-01-02 15:04:05 UTC")
 	
@@ -323,6 +336,9 @@ func (s *IPService) BulkBlock(ctx context.Context, ips []string, reason string, 
 
 // BulkUnblock unblocks multiple IPs at once.
 func (s *IPService) BulkUnblock(ctx context.Context, ips []string, actor string) error {
+	if s.redisRepo == nil {
+		return nil
+	}
 	for _, ip := range ips {
 		_ = s.redisRepo.ExecUnblockAtomic(ip)
 		if s.pgRepo != nil {
@@ -335,6 +351,9 @@ func (s *IPService) BulkUnblock(ctx context.Context, ips []string, actor string)
 
 // ListIPsPaginatedAdvanced provides server-side pagination and search across all records with advanced filters.
 func (s *IPService) ListIPsPaginatedAdvanced(ctx context.Context, limit int, cursor string, query string, country string, addedBy string, from string, to string) ([]map[string]interface{}, string, int, error) {
+	if s.redisRepo == nil {
+		return nil, "", 0, nil
+	}
 	// Parse dates if provided
 	var fromTime, toTime time.Time
 	if from != "" {

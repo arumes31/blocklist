@@ -40,6 +40,7 @@ func (s *SchedulerService) Start() {
 }
 
 func (s *SchedulerService) CleanOldIPs(hashKey string) {
+	if s.redisRepo == nil { return }
 	data, err := s.redisRepo.HGetAllRaw(hashKey)
 	if err != nil {
 		log.Printf("Error fetching %s for cleanup: %v", hashKey, err)
@@ -85,6 +86,7 @@ func (s *SchedulerService) CleanOldIPs(hashKey string) {
 }
 
 func (s *SchedulerService) UpdateAutomateCache() {
+	if s.redisRepo == nil { return }
 	data, err := s.redisRepo.HGetAllRaw("ips")
 	if err != nil {
 		return
