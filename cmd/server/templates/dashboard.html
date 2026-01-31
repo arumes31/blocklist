@@ -230,7 +230,7 @@
         /* Compact density */
         .compact table td, .compact table th { padding: 0.5rem; }
         /* Hide Geo column */
-        .hide-geo #ipTable th:nth-child(5), .hide-geo #ipTable td:nth-child(5) { display: none; }
+        .hide-geo #ipTable th:nth-child(7), .hide-geo #ipTable td:nth-child(7) { display: none; }
     </style>
 </head>
 <body>
@@ -410,7 +410,7 @@
     const tbody = document.getElementById('ipTableBody');
 
     function rowHTML(ip, data){
-        const geo = data && data.geolocation ? `<span class="flag-icon flag-icon-${(data.geolocation.country||'').toLowerCase()}"></span> ${data.geolocation.city||''} (${data.geolocation.country||''})` : '<span style="color: #888;">N/A</span>';
+        const geo = data && data.geolocation && data.geolocation.country ? `<span class="flag-icon flag-icon-${data.geolocation.country.toLowerCase()}"></span> ${data.geolocation.city||''} (${data.geolocation.country})` : '<span style="color: #888;">N/A</span>';
         const reason = data && data.reason ? data.reason : 'N/A';
         const addedBy = data && data.added_by ? data.added_by : 'Unknown';
         const ts = data && data.timestamp ? data.timestamp : '';
