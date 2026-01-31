@@ -23,12 +23,29 @@ func NewGeoIPService(cfg *config.Config) *GeoIPService {
 	return &GeoIPService{cfg: cfg}
 }
 
+func (s *GeoIPService) getDBPath() string {
+	path := "/home/blocklist/GeoLite2-City.mmdb"
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return "/tmp/GeoLite2-City.mmdb"
+	}
+	// Check if writable
+	testFile := filepath.Join(dir, ".permtest")
+	f, err := os.Create(testFile)
+	if err != nil {
+		return "/tmp/GeoLite2-City.mmdb"
+	}
+	f.Close()
+	_ = os.Remove(testFile)
+	return path
+}
+
 func (s *GeoIPService) Start() {
-	dbPath := "/usr/share/GeoIP/GeoLite2-City.mmdb"
+	dbPath := s.getDBPath()
 	
 	// 1. Initial Check
 	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
-		log.Println("GeoIP database missing. Starting initial download...")
+		log.Printf("GeoIP database missing at %s. Starting initial download...", dbPath)
 		if err := s.Download(); err != nil {
 			log.Printf("Failed to download GeoIP database: %v", err)
 		}
@@ -95,7 +112,7 @@ func (s *GeoIPService) Download() error {
 		}
 
 		if strings.HasSuffix(header.Name, ".mmdb") {
-			destPath := "/usr/share/GeoIP/GeoLite2-City.mmdb"
+			destPath := s.getDBPath()
 			// Ensure directory exists
 			if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
 				return err
@@ -105,11 +122,12 @@ func (s *GeoIPService) Download() error {
 			if err != nil {
 				return err
 			}
-			defer outFile.Close()
-
+			
 			if _, err := io.Copy(outFile, tr); err != nil {
+				outFile.Close()
 				return err
 			}
+			outFile.Close()
 			log.Printf("Successfully updated GeoIP database: %s", destPath)
 			return nil
 		}

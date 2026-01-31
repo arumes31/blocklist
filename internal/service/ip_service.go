@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"net"
 	"net/netip"
+	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -25,6 +27,20 @@ type IPService struct {
 	asnReader     *geoip2.Reader
 }
 
+func findGeoIPPath(filename string) string {
+	paths := []string{
+		filepath.Join("/home/blocklist", filename),
+		filepath.Join("/usr/share/GeoIP", filename),
+		filepath.Join("/tmp", filename),
+	}
+	for _, p := range paths {
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+	return ""
+}
+
 func NewIPService(cfg *config.Config, rRepo *repository.RedisRepository, pgRepo *repository.PostgresRepository) *IPService {
 	ranges := []netip.Prefix{}
 	for _, rStr := range strings.Split(cfg.BlockedRanges, ",") {
@@ -39,14 +55,19 @@ func NewIPService(cfg *config.Config, rRepo *repository.RedisRepository, pgRepo 
 	}
 
 	var reader, aReader *geoip2.Reader
-	// Path from the original dockerfile
-	gReader, err := geoip2.Open("/usr/share/GeoIP/GeoLite2-City.mmdb")
-	if err == nil {
-		reader = gReader
+	
+	cityPath := findGeoIPPath("GeoLite2-City.mmdb")
+	if cityPath != "" {
+		if gReader, err := geoip2.Open(cityPath); err == nil {
+			reader = gReader
+		}
 	}
-	gaReader, err := geoip2.Open("/usr/share/GeoIP/GeoLite2-ASN.mmdb")
-	if err == nil {
-		aReader = gaReader
+
+	asnPath := findGeoIPPath("GeoLite2-ASN.mmdb")
+	if asnPath != "" {
+		if gaReader, err := geoip2.Open(asnPath); err == nil {
+			aReader = gaReader
+		}
 	}
 
 	return &IPService{
@@ -87,15 +108,19 @@ func (s *IPService) IsValidIP(ipStr string) bool {
 func (s *IPService) GetGeoIP(ipStr string) *models.GeoData {
 	if s.geoipReader == nil {
 		// Try to reopen if it was missing on start
-		reader, err := geoip2.Open("/usr/share/GeoIP/GeoLite2-City.mmdb")
-		if err == nil {
-			s.geoipReader = reader
+		cityPath := findGeoIPPath("GeoLite2-City.mmdb")
+		if cityPath != "" {
+			if reader, err := geoip2.Open(cityPath); err == nil {
+				s.geoipReader = reader
+			}
 		}
 	}
 	if s.asnReader == nil {
-		aReader, err := geoip2.Open("/usr/share/GeoIP/GeoLite2-ASN.mmdb")
-		if err == nil {
-			s.asnReader = aReader
+		asnPath := findGeoIPPath("GeoLite2-ASN.mmdb")
+		if asnPath != "" {
+			if aReader, err := geoip2.Open(asnPath); err == nil {
+				s.asnReader = aReader
+			}
 		}
 	}
 

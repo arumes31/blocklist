@@ -395,7 +395,9 @@ func (h *APIHandler) AuthMiddleware() gin.HandlerFunc {
 			} else {
 				// Clear any potentially corrupt cookies by clearing session
 				session.Clear()
-				_ = session.Save()
+				if err := session.Save(); err != nil {
+					zlog.Error().Err(err).Msg("Failed to clear corrupt session")
+				}
 				c.Redirect(http.StatusFound, "/login")
 			}
 			c.Abort()
@@ -524,7 +526,9 @@ func (h *APIHandler) Login(c *gin.Context) {
 		if admin != nil {
 			session.Set("role", admin.Role)
 		}
-		_ = session.Save()
+		if err := session.Save(); err != nil {
+			zlog.Error().Err(err).Msg("Failed to save session during login")
+		}
 		c.Redirect(http.StatusFound, "/dashboard")
 		return
 	}
