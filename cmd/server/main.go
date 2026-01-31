@@ -219,7 +219,7 @@ func main() {
 	r.Use(func(c *gin.Context) {
 		c.Header("X-Content-Type-Options", "nosniff")
 		c.Header("X-Frame-Options", "DENY")
-		c.Header("Referrer-Policy", "no-referrer")
+		c.Header("Referrer-Policy", "same-origin")
 		// Relaxed CSP for inline scripts used in templates; tighten in prod as feasible
 		c.Header("Content-Security-Policy", "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self' ws: wss:")
 		c.Next()
@@ -235,13 +235,28 @@ func main() {
 		ref := c.GetHeader("Referer")
 		host := c.Request.Host
 		ok := false
-		if origin != "" {
-			if u, err := url.Parse(origin); err == nil && u.Host == host { ok = true }
+
+		// Handle cases where Origin might be "null" due to browser privacy settings
+		if origin != "" && origin != "null" {
+			if u, err := url.Parse(origin); err == nil && u.Host == host {
+				ok = true
+			}
 		}
+
+		// Fallback to Referer check
 		if !ok && ref != "" {
-			if u, err := url.Parse(ref); err == nil && u.Host == host { ok = true }
+			if u, err := url.Parse(ref); err == nil && u.Host == host {
+				ok = true
+			}
 		}
+
+		// In case of localhost development or missing headers in non-browser clients
+		if !ok && (host == "localhost:5000" || host == "127.0.0.1:5000") && (origin == "" && ref == "") {
+			ok = true
+		}
+
 		if !ok {
+			zlog.Warn().Str("origin", origin).Str("referer", ref).Str("host", host).Msg("CSRF check failed")
 			c.AbortWithStatus(http.StatusForbidden)
 			return
 		}
