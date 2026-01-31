@@ -23,7 +23,7 @@ Security and access control
 - [x] Security headers middleware (CSP/Referrer-Policy/XFO/XCTO)
 - [x] Basic CSRF (Origin/Referer) for unsafe methods
 - [ ] Webhook HMAC signatures with timestamp/nonce and optional mTLS
-- [ ] RBAC roles (viewer/operator/admin) and scoped API tokens (phase 1 scaffolding next)
+- [x] RBAC roles (viewer/operator/admin) and scoped API tokens (scaffolding done)
 - [x] WebSocket auth + origin checks + compression
 
 Performance and scalability
@@ -61,7 +61,7 @@ Reliability and retention
 - [ ] TTL sweepers/retention policies; HA options documentation
 
 Deployment and supply chain
-- [~] Alpine hardened image, non-root; pinned digests; SBOM; CI scans
+- [x] Alpine hardened image, non-root; pinned digests; SBOM; CI scans
 
 Testing
 - [ ] Unit/integration tests (Redis testcontainers), fuzz tests, load tests
@@ -72,7 +72,6 @@ Acceptance criteria (added)
 - [x] OpenAPI: endpoints documented with filter params; CI validates spec
 
 Current focus
-- [x] Implement advanced filters in service/repository and UI chips; persist URL state
-- [x] Add Swagger UI scaffolding, expand OpenAPI
-- [x] Add latency histograms and Redis op metrics
-- [~] RBAC/token middleware scaffolding
+- [ ] Implement exports (CSV/NDJSON)
+- [ ] Add unit/integration tests with Testcontainers
+- [ ] Webhook HMAC signatures
