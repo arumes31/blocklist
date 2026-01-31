@@ -19,7 +19,6 @@ err.log
 
 # Go
 vendor/
-go.sum
 
 # IDEs
 .vscode/
@@ -30,7 +29,5 @@ go.sum
 # OS
 Thumbs.db
 .DS_Store
-
-ROADMAP.md
 
 ROADMAP.md
