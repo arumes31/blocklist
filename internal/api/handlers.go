@@ -497,18 +497,27 @@ func (h *APIHandler) VerifyFirstFactor(c *gin.Context) {
 func (h *APIHandler) Login(c *gin.Context) {
 	username := c.PostForm("username")
 	password := c.PostForm("password")
-	totp := c.PostForm("totp")
-	if h.authService.CheckAuth(username, password, totp) {
+	totpCode := c.PostForm("totp")
+	if h.authService.CheckAuth(username, password, totpCode) {
 		session := sessions.Default(c)
 		session.Set("logged_in", true)
 		session.Set("username", username)
 		session.Set("client_ip", c.ClientIP())
 		session.Set("login_time", time.Now().UTC().Format(time.RFC3339))
+		admin, _ := h.pgRepo.GetAdmin(username)
+		if admin != nil {
+			session.Set("role", admin.Role)
+		}
 		_ = session.Save()
 		c.Redirect(http.StatusFound, "/dashboard")
 		return
 	}
-	c.HTML(http.StatusOK, "login.html", gin.H{"error": "Invalid credentials"})
+	c.HTML(http.StatusOK, "login.html", gin.H{
+		"error":    "Invalid credentials or TOTP code",
+		"username": username,
+		"password": password,
+		"step":     "totp",
+	})
 }
 
 func (h *APIHandler) Logout(c *gin.Context) {

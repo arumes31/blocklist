@@ -4,13 +4,14 @@
 </div>
 <div class="form-group">
     <label for="password">Security Key</label>
-    <input type="password" id="password" name="password" required placeholder="Enter password" value="{{ .password }}">
+    <input type="password" id="password" name="password" required placeholder="Enter password">
 </div>
-<div class="form-group">
-    <label for="totp">2FA Token</label>
-    <input type="text" id="totp" name="totp" required inputmode="numeric" placeholder="6-digit code">
-</div>
-<input type="submit" value="Authorize Access">
-<div class="error-message" style="display: block;">
+<button type="button" class="authorize-btn" 
+        hx-post="/login/verify" 
+        hx-target="#loginForm" 
+        hx-swap="innerHTML" 
+        hx-include="[name='username'], [name='password']">Continue</button>
+
+<div class="error-message" style="display: block; margin-top: 20px;">
     <strong>Access Denied:</strong> {{ .error }}
 </div>

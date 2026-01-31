@@ -91,7 +91,7 @@
             background: rgba(255, 0, 0, 0.05);
             box-shadow: 0 0 10px rgba(255, 0, 0, 0.2);
         }
-        input[type="submit"] {
+        input[type="submit"], .authorize-btn {
             width: 100%;
             padding: 14px;
             margin-top: 10px;
@@ -106,8 +106,12 @@
             letter-spacing: 2px;
             transition: all 0.3s;
             box-shadow: 0 4px 15px rgba(255, 0, 0, 0.3);
+            display: block;
+            text-align: center;
+            text-decoration: none;
+            box-sizing: border-box;
         }
-        input[type="submit"]:hover { 
+        input[type="submit"]:hover, .authorize-btn:hover { 
             background: linear-gradient(45deg, var(--primary-red), var(--vibrant-red));
             transform: scale(1.02);
             box-shadow: 0 6px 20px rgba(255, 0, 0, 0.4);
@@ -161,19 +165,42 @@
             <img src="/cd/logo.png" alt="logo" style="height: 60px; width: auto;">
             <div style="margin-top: 15px; font-size: 1.2rem; color: var(--primary-red); font-weight: bold;">Authentication</div>
         </h2>
-        <form id="loginForm" hx-post="/login/verify" hx-target="#loginFormContainer" hx-swap="innerHTML">
-            <div class="form-group">
-                <label for="username">Operator ID</label>
-                <input type="text" id="username" name="username" required placeholder="Enter username">
-            </div>
-            <div class="form-group">
-                <label for="password">Security Key</label>
-                <input type="password" id="password" name="password" required placeholder="Enter password">
-            </div>
-            <input type="submit" value="Continue">
+
+        {{ if .error }}
+        <div class="error-message">
+            {{ .error }}
+        </div>
+        {{ end }}
+
+        <form id="loginForm" method="POST" action="/login">
+            {{ if eq .step "totp" }}
+                <div class="form-group">
+                    <label for="totp">2FA Token</label>
+                    <input type="text" id="totp" name="totp" required inputmode="numeric" placeholder="6-digit code" autofocus>
+                </div>
+                <input type="hidden" name="username" value="{{ .username }}">
+                <input type="hidden" name="password" value="{{ .password }}">
+                <input type="submit" value="Authorize Access">
+                <button type="button" class="small-button" style="margin-top: 15px; width: 100%;" onclick="window.location.href='/login'">Go Back</button>
+            {{ else }}
+                <div class="form-group">
+                    <label for="username">Operator ID</label>
+                    <input type="text" id="username" name="username" required placeholder="Enter username" value="{{ .username }}">
+                </div>
+                <div class="form-group">
+                    <label for="password">Security Key</label>
+                    <input type="password" id="password" name="password" required placeholder="Enter password">
+                </div>
+                <button type="button" class="authorize-btn" 
+                        hx-post="/login/verify" 
+                        hx-target="#loginForm" 
+                        hx-swap="innerHTML" 
+                        hx-include="[name='username'], [name='password']">Continue</button>
+            {{ end }}
         </form>
     </div>
 
+    <script src="/js/htmx.min.js"></script>
     <script src="/js/simplex-noise.min.js"></script>
     <script src="/js/codepen-util.js"></script>
     <script src="/js/aether.js"></script>
