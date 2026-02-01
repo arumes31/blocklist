@@ -127,20 +127,15 @@ func TestRedisRepository_Integration(t *testing.T) {
 			t.Errorf("ExecBlockAtomic failed: %v", err)
 		}
 
-		// Verify multiple side effects
+		// Verify side effects
 		got, _ := repo.GetIPEntry(ip)
 		if got == nil || got.Reason != "atomic-test" {
 			t.Error("Block not persisted in hash")
 		}
 
-		total, _ := repo.GetTotal()
-		if total < 1 {
-			t.Errorf("expected total >= 1, got %d", total)
-		}
-
-		countries, _ := repo.TopCountries(1)
-		if len(countries) == 0 || countries[0].Country != "US" {
-			t.Error("Country stats not updated")
+		score, _ := client.ZScore(ctx, "ips_by_ts", ip).Result()
+		if score == 0 {
+			t.Error("Block not indexed in ZSET")
 		}
 
 		// Test Unblock
