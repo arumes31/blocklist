@@ -98,6 +98,33 @@
         }
         tr:hover { background-color: rgba(255,255,255,0.02); }
 
+        /* Toast Notifications */
+        #toast-container {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 2000;
+        }
+        .toast {
+            background: #333;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            margin-top: 10px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            animation: slideIn 0.3s ease-out;
+            transition: opacity 0.5s ease;
+        }
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        .toast.success { border-left: 4px solid var(--success-color); }
+        .toast.danger { border-left: 4px solid var(--danger-color); }
+
         .modal {
             display: none;
             position: fixed;
@@ -131,6 +158,7 @@
     </style>
 </head>
 <body>
+    <div id="toast-container"></div>
     <div class="header-container">
         <div style="display: flex; align-items: center; gap: 2rem;">
             <img src="/cd/logo.png" alt="Logo">
@@ -249,6 +277,18 @@
     </div>
 
     <script>
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.innerHTML = `<span>${message}</span>`;
+            container.appendChild(toast);
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                setTimeout(() => toast.remove(), 500);
+            }, 4000);
+        }
+
         function getSelectedPerms(prefix) {
             const perms = [];
             if (document.getElementById(prefix + 'gui_read').checked) perms.push('gui_read');
@@ -263,7 +303,7 @@
             const permissions = getSelectedPerms('perm_');
 
             if (!username || !password) {
-                alert('Username and password are required');
+                showToast('Username and password are required', 'danger');
                 return;
             }
 
@@ -275,10 +315,10 @@
             .then(response => response.json())
             .then(data => {
                 if (data.status === 'success') {
-                    alert('Admin created successfully!');
-                    location.reload();
+                    showToast('Admin created successfully!', 'success');
+                    setTimeout(() => location.reload(), 1000);
                 } else {
-                    alert(data.error || 'Failed to create admin');
+                    showToast(data.error || 'Failed to create admin', 'danger');
                 }
             });
         }
@@ -308,10 +348,10 @@
             .then(response => response.json())
             .then(data => {
                 if (data.status === 'success') {
-                    alert('Permissions updated successfully!');
-                    location.reload();
+                    showToast('Permissions updated successfully!', 'success');
+                    setTimeout(() => location.reload(), 1000);
                 } else {
-                    alert(data.error || 'Failed to update permissions');
+                    showToast(data.error || 'Failed to update permissions', 'danger');
                 }
             });
         }
@@ -330,10 +370,10 @@
                 .then(response => response.json())
                 .then(data => {
                     if (data.status === 'success') {
-                        alert('Admin deleted successfully!');
-                        location.reload();
+                        showToast('Admin deleted successfully!', 'success');
+                        setTimeout(() => location.reload(), 1000);
                     } else {
-                        alert(data.error || 'Failed to delete admin');
+                        showToast(data.error || 'Failed to delete admin', 'danger');
                     }
                 });
             }
@@ -353,7 +393,7 @@
             const username = document.getElementById('passwordUsername').value;
             const new_password = document.getElementById('newPasswordInput').value;
             if (!new_password) {
-                alert('Please enter a new password');
+                showToast('Please enter a new password', 'danger');
                 return;
             }
             fetch('/admin_management/change_password', {
@@ -364,11 +404,11 @@
             .then(response => response.json())
             .then(data => {
                 if (data.status === 'success') {
-                    alert('Password changed successfully!');
+                    showToast('Password changed successfully!', 'success');
                     closePasswordModal();
-                    location.reload();
+                    setTimeout(() => location.reload(), 1000);
                 } else {
-                    alert(data.error || 'Failed to change password');
+                    showToast(data.error || 'Failed to change password', 'danger');
                 }
             });
         }
@@ -393,17 +433,17 @@
             .then(response => response.json())
             .then(data => {
                 if (data.status === 'success') {
-                    alert('TOTP changed successfully! Scan the new QR code below.');
+                    showToast('TOTP changed successfully! Scan the new QR code below.', 'success');
                     const qrCodeDiv = document.getElementById('newQrCode');
                     qrCodeDiv.style.display = 'block';
                     qrCodeDiv.innerHTML = `<img src="${data.qr_image}" alt="New QR Code" style="max-width: 100%;">`;
                 } else {
-                    alert(data.error || 'Failed to change TOTP');
+                    showToast(data.error || 'Failed to change TOTP', 'danger');
                 }
             })
             .catch(error => {
                 console.error('Error:', error);
-                alert('Failed to change TOTP');
+                showToast('Failed to change TOTP', 'danger');
             });
         }
     </script>

@@ -104,9 +104,37 @@
         tr:hover { background-color: rgba(255,255,255,0.02); }
         code { background: rgba(255,255,255,0.1); padding: 0.2rem 0.4rem; border-radius: 4px; font-family: monospace; color: var(--vibrant-red); }
         pre { background: rgba(0,0,0,0.3); padding: 1rem; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); overflow-x: auto; }
+
+        /* Toast Notifications */
+        #toast-container {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 2000;
+        }
+        .toast {
+            background: #333;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            margin-top: 10px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            animation: slideIn 0.3s ease-out;
+            transition: opacity 0.5s ease;
+        }
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        .toast.success { border-left: 4px solid var(--success-color); }
+        .toast.danger { border-left: 4px solid var(--danger-color); }
     </style>
 </head>
 <body>
+    <div id="toast-container"></div>
     <div class="header-container">
         <div style="display: flex; align-items: center; gap: 2rem;">
             <img src="/cd/logo.png" alt="Logo">
@@ -183,4 +211,31 @@ actionunban = curl -X POST -H "Content-Type: application/json" -d '{"ip":"&lt;ip
             <p style="color: var(--secondary-color);">Use Bearer tokens for authentication. Tokens can be managed in the Admin panel.</p>
         </div>
     </div>
+
+    <script>
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.innerHTML = `<span>${message}</span>`;
+            container.appendChild(toast);
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                setTimeout(() => toast.remove(), 500);
+            }, 4000);
+        }
+
+        document.body.addEventListener('htmx:afterOnLoad', function(evt) {
+            if (evt.detail.xhr.status === 200) {
+                if (evt.detail.requestConfig.verb === 'post') {
+                    showToast('Webhook added successfully', 'success');
+                } else if (evt.detail.requestConfig.verb === 'delete') {
+                    showToast('Webhook deleted successfully', 'success');
+                }
+            } else {
+                showToast('Action failed: ' + (evt.detail.xhr.responseText || 'Server error'), 'danger');
+            }
+        });
+    </script>
+</body>
 </html>

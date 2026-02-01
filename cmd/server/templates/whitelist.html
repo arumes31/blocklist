@@ -99,9 +99,37 @@
             letter-spacing: 0.05em;
         }
         tr:hover { background-color: rgba(255,255,255,0.02); }
+
+        /* Toast Notifications */
+        #toast-container {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 2000;
+        }
+        .toast {
+            background: #333;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            margin-top: 10px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            animation: slideIn 0.3s ease-out;
+            transition: opacity 0.5s ease;
+        }
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        .toast.success { border-left: 4px solid var(--success-color); }
+        .toast.danger { border-left: 4px solid var(--danger-color); }
     </style>
 </head>
 <body>
+    <div id="toast-container"></div>
     <div class="header-container">
         <div style="display: flex; align-items: center; gap: 2rem;">
             <img src="/cd/logo.png" alt="Logo">
@@ -176,15 +204,27 @@
     </div>
     
     <script>
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.innerHTML = `<span>${message}</span>`;
+            container.appendChild(toast);
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                setTimeout(() => toast.remove(), 500);
+            }, 4000);
+        }
+
         function addWhitelist() {
             var ip = document.getElementById('whitelistIP').value;
             var reason = document.getElementById('whitelistReason').value;
             if (!ip) {
-                alert('Please enter an IP address.');
+                showToast('Please enter an IP address.', 'danger');
                 return;
             }
             if (!reason) {
-                alert('Reason is required.');
+                showToast('Reason is required.', 'danger');
                 return;
             }
             fetch('/add_whitelist', {
@@ -195,10 +235,10 @@
             .then(response => response.json())
             .then(data => {
                 if (data.status === 'success') {
-                    alert('IP added to whitelist!');
-                    location.reload();
+                    showToast('IP added to whitelist!', 'success');
+                    setTimeout(() => location.reload(), 1000);
                 } else {
-                    alert('Failed to add IP!');
+                    showToast('Failed to add IP!', 'danger');
                 }
             });
         }
@@ -213,15 +253,15 @@
                 .then(response => response.json())
                 .then(data => {
                     if (data.status === 'success') {
-                        alert('IP removed from whitelist!');
-                        location.reload();
+                        showToast('IP removed from whitelist!', 'success');
+                        setTimeout(() => location.reload(), 1000);
                     } else {
-                        alert('Failed to remove IP!');
+                        showToast('Failed to remove IP!', 'danger');
                     }
                 })
                 .catch(error => {
                     console.error('Error:', error);
-                    alert('Failed to remove IP!');
+                    showToast('Failed to remove IP!', 'danger');
                 });
             }
         }
