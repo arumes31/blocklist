@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -141,82 +139,13 @@ func (r *RedisRepository) ZPageByScoreDesc(limit int, cursor string) ([]redis.Z,
 	return res, next, nil
 }
 
-// Stats counters
+// ZRangeArgsWithScores fetches range from ZSET
 func (r *RedisRepository) ZRangeArgsWithScores(ctx context.Context, args redis.ZRangeArgs) ([]redis.Z, error) {
 	defer r.trackDuration("ZRangeArgsWithScores", time.Now())
 	return r.client.ZRangeArgsWithScores(ctx, args).Result()
 }
 
-func (r *RedisRepository) IncrTotal(delta int64) error {
-	return r.client.IncrBy(r.ctx, "stats:total", delta).Err()
-}
-
-func (r *RedisRepository) GetTotal() (int, error) {
-	v, err := r.client.Get(r.ctx, "stats:total").Int()
-	if err == redis.Nil { return 0, nil }
-	return v, err
-}
-
-func (r *RedisRepository) IncrCountry(country string, delta int64) error {
-	if country == "" { return nil }
-	return r.client.HIncrBy(r.ctx, "stats:country", country, delta).Err()
-}
-
-func (r *RedisRepository) TopCountries(limit int) ([]struct{ Country string; Count int }, error) {
-	res, err := r.client.HGetAll(r.ctx, "stats:country").Result()
-	if err != nil { return nil, err }
-	arr := make([]struct{ Country string; Count int }, 0, len(res))
-	for k, v := range res {
-		iv, _ := strconv.Atoi(v)
-		arr = append(arr, struct{ Country string; Count int }{k, iv})
-	}
-	sort.Slice(arr, func(i,j int) bool { return arr[i].Count > arr[j].Count })
-	if limit > 0 && len(arr) > limit { arr = arr[:limit] }
-	return arr, nil
-}
-
-func (r *RedisRepository) IncrASN(asn uint, asnOrg string, delta int64) error {
-	if asn == 0 { return nil }
-	key := fmt.Sprintf("%d|%s", asn, asnOrg)
-	return r.client.HIncrBy(r.ctx, "stats:asn", key, delta).Err()
-}
-
-func (r *RedisRepository) TopASNs(limit int) ([]struct{ ASN uint; ASNOrg string; Count int }, error) {
-	res, err := r.client.HGetAll(r.ctx, "stats:asn").Result()
-	if err != nil { return nil, err }
-	arr := make([]struct{ ASN uint; ASNOrg string; Count int }, 0, len(res))
-	for k, v := range res {
-		parts := strings.SplitN(k, "|", 2)
-		asn, _ := strconv.Atoi(parts[0])
-		org := ""
-		if len(parts) > 1 { org = parts[1] }
-		iv, _ := strconv.Atoi(v)
-		arr = append(arr, struct{ ASN uint; ASNOrg string; Count int }{uint(asn), org, iv})
-	}
-	sort.Slice(arr, func(i,j int) bool { return arr[i].Count > arr[j].Count })
-	if limit > 0 && len(arr) > limit { arr = arr[:limit] }
-	return arr, nil
-}
-
-func (r *RedisRepository) IncrReason(reason string, delta int64) error {
-	if reason == "" { return nil }
-	return r.client.HIncrBy(r.ctx, "stats:reason", reason, delta).Err()
-}
-
-func (r *RedisRepository) TopReasons(limit int) ([]struct{ Reason string; Count int }, error) {
-	res, err := r.client.HGetAll(r.ctx, "stats:reason").Result()
-	if err != nil { return nil, err }
-	arr := make([]struct{ Reason string; Count int }, 0, len(res))
-	for k, v := range res {
-		iv, _ := strconv.Atoi(v)
-		arr = append(arr, struct{ Reason string; Count int }{k, iv})
-	}
-	sort.Slice(arr, func(i,j int) bool { return arr[i].Count > arr[j].Count })
-	if limit > 0 && len(arr) > limit { arr = arr[:limit] }
-	return arr, nil
-}
-
-// Time-bucketed counters (hour/day)
+// Time-bucketed counters (hour/day) - these remain useful for trending
 func (r *RedisRepository) IncrHourBucket(ts time.Time, delta int64) error {
 	key := fmt.Sprintf("stats:hour:%s", ts.UTC().Format("2006010215"))
 	return r.client.IncrBy(r.ctx, key, delta).Err()
@@ -346,30 +275,13 @@ func (r *RedisRepository) GetClient() *redis.Client {
 	return r.client
 }
 
-// Atomic block operation: writes hash, updates ZSET, and increments counters in one script
+// Atomic block operation: writes hash and updates ZSET in one script
 var blockAtomicScript = `
 local ip = ARGV[1]
 local entry = ARGV[2]
 local ts = tonumber(ARGV[3])
-local country = ARGV[4]
-local hourKey = ARGV[5]
-local dayKey = ARGV[6]
-local reason = ARGV[7]
-local asnKey = ARGV[8]
 redis.call('HSET','ips',ip,entry)
 redis.call('ZADD','ips_by_ts',ts,ip)
-redis.call('INCR','stats:total')
-if country ~= nil and country ~= '' then
-  redis.call('HINCRBY','stats:country', country, 1)
-end
-if reason ~= nil and reason ~= '' then
-  redis.call('HINCRBY','stats:reason', reason, 1)
-end
-if asnKey ~= nil and asnKey ~= '' then
-  redis.call('HINCRBY','stats:asn', asnKey, 1)
-end
-redis.call('INCR',hourKey)
-redis.call('INCR',dayKey)
 return 1
 `
 
@@ -379,27 +291,16 @@ local ip = ARGV[1]
 local removed = redis.call('HDEL','ips',ip)
 if removed == 1 then
   redis.call('ZREM','ips_by_ts',ip)
-  redis.call('DECR','stats:total')
 end
 return removed
 `
 
-// ExecBlockAtomic executes atomic block writes (hash, zset, counters)
+// ExecBlockAtomic executes atomic block writes (hash, zset)
 func (r *RedisRepository) ExecBlockAtomic(ip string, entry models.IPEntry, now time.Time) error {
 	defer r.trackDuration("ExecBlockAtomic", time.Now())
 	data, err := json.Marshal(entry)
 	if err != nil { return err }
-	country := ""
-	asnKey := ""
-	if entry.Geolocation != nil {
-		country = entry.Geolocation.Country
-		if entry.Geolocation.ASN != 0 {
-			asnKey = fmt.Sprintf("%d|%s", entry.Geolocation.ASN, entry.Geolocation.ASNOrg)
-		}
-	}
-	hourKey := fmt.Sprintf("stats:hour:%s", now.UTC().Format("2006010215"))
-	dayKey := fmt.Sprintf("stats:day:%s", now.UTC().Format("20060102"))
-	_, err = r.client.Eval(r.ctx, blockAtomicScript, []string{}, ip, string(data), fmt.Sprintf("%d", now.Unix()), country, hourKey, dayKey, entry.Reason, asnKey).Result()
+	_, err = r.client.Eval(r.ctx, blockAtomicScript, []string{}, ip, string(data), fmt.Sprintf("%d", now.Unix())).Result()
 	return err
 }
 

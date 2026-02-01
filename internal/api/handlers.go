@@ -932,18 +932,11 @@ func (h *APIHandler) BlockIP(c *gin.Context) {
 			_ = h.pgRepo.LogAction(username, "BLOCK_EPHEMERAL", req.IP, req.Reason)
 		}
 	}
-	// stats + index (non-persistent tracked in Redis)
-	if country := func() string { if geo!=nil { return geo.Country }; return "" }(); true {
-		_ = h.redisRepo.IndexIPTimestamp(req.IP, now)
-		_ = h.redisRepo.IncrTotal(1)
-		_ = h.redisRepo.IncrCountry(country, 1)
-		_ = h.redisRepo.IncrHourBucket(now, 1)
-		_ = h.redisRepo.IncrDayBucket(now, 1)
-		_ = h.redisRepo.IncrReason(entry.Reason, 1)
-		if geo != nil && geo.ASN != 0 {
-			_ = h.redisRepo.IncrASN(geo.ASN, geo.ASNOrg, 1)
-		}
-	}
+	// index (tracked in Redis ZSET)
+	_ = h.redisRepo.IndexIPTimestamp(req.IP, now)
+	_ = h.redisRepo.IncrHourBucket(now, 1)
+	_ = h.redisRepo.IncrDayBucket(now, 1)
+
 	metrics.MetricBlocksTotal.WithLabelValues("gui").Inc()
 
 	h.hub.BroadcastEvent("block", map[string]interface{}{
@@ -968,8 +961,8 @@ func (h *APIHandler) UnblockIP(c *gin.Context) {
 		return
 	}
 
-	// Fetch entry first for counter adjustment
-	e, err := h.redisRepo.GetIPEntry(req.IP)
+	// Fetch entry first
+	h.redisRepo.GetIPEntry(req.IP)
 	
 	// Atomic unblock from Redis
 	_ = h.redisRepo.ExecUnblockAtomic(req.IP)
@@ -977,13 +970,6 @@ func (h *APIHandler) UnblockIP(c *gin.Context) {
 	if h.pgRepo != nil {
 		_ = h.pgRepo.DeletePersistentBlock(req.IP)
 		_ = h.pgRepo.LogAction(username, "UNBLOCK", req.IP, "")
-	}
-
-	if err == nil && e != nil {
-		cc := ""
-		if e.Geolocation != nil { cc = e.Geolocation.Country }
-		// stats:total is already decremented by ExecUnblockAtomic
-		_ = h.redisRepo.IncrCountry(cc, -1)
 	}
 
 	metrics.MetricUnblocksTotal.WithLabelValues("gui").Inc()
@@ -1247,16 +1233,8 @@ func (h *APIHandler) Webhook(c *gin.Context) {
 		}
 
 		_ = h.redisRepo.IndexIPTimestamp(data.IP, now)
-		_ = h.redisRepo.IncrTotal(1)
-		cc := ""
-		if geo != nil { cc = geo.Country }
-		_ = h.redisRepo.IncrCountry(cc, 1)
 		_ = h.redisRepo.IncrHourBucket(now, 1)
 		_ = h.redisRepo.IncrDayBucket(now, 1)
-		_ = h.redisRepo.IncrReason(entry.Reason, 1)
-		if geo != nil && geo.ASN != 0 {
-			_ = h.redisRepo.IncrASN(geo.ASN, geo.ASNOrg, 1)
-		}
 
 		metrics.MetricBlocksTotal.WithLabelValues("webhook").Inc()
 		h.hub.BroadcastEvent("block", map[string]interface{}{
@@ -1266,7 +1244,7 @@ func (h *APIHandler) Webhook(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "IP banned", "ip": data.IP})
 	} else if data.Act == "unban" || data.Act == "delete-ban" {
 		// Fetch entry first
-		e, err := h.redisRepo.GetIPEntry(data.IP)
+		h.redisRepo.GetIPEntry(data.IP)
 		
 		_ = h.redisRepo.ExecUnblockAtomic(data.IP)
 		
@@ -1274,11 +1252,6 @@ func (h *APIHandler) Webhook(c *gin.Context) {
 			_ = h.pgRepo.DeletePersistentBlock(data.IP)
 		}
 
-		if err == nil && e != nil {
-			cc := ""
-			if e.Geolocation != nil { cc = e.Geolocation.Country }
-			_ = h.redisRepo.IncrCountry(cc, -1)
-		}
 		metrics.MetricUnblocksTotal.WithLabelValues("webhook").Inc()
 		c.JSON(200, gin.H{"status": "IP unbanned", "ip": data.IP})
 	} else {

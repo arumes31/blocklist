@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net"
 	"net/netip"
 	"os"
@@ -229,35 +230,88 @@ func (s *IPService) Stats(ctx context.Context) (hour int, day int, total int, to
 	if s.redisRepo == nil {
 		return 0, 0, 0, nil, nil, nil, 0, 0, 0, nil
 	}
-	h, err := s.redisRepo.CountLastHour()
-	if err != nil { return 0,0,0,nil, nil, nil, 0, 0, 0, err }
-	d, err := s.redisRepo.CountLastDay()
-	if err != nil { return 0,0,0,nil, nil, nil, 0, 0, 0, err }
-	t, err := s.redisRepo.GetTotal()
-	if err != nil { return 0,0,0,nil, nil, nil, 0, 0, 0, err }
-	
-	tc, err := s.redisRepo.TopCountries(3)
-	if err != nil { return 0,0,0,nil, nil, nil, 0, 0, 0, err }
-	top = make([]struct{ Country string; Count int }, 0, len(tc))
-	for _, v := range tc { top = append(top, struct{ Country string; Count int }{v.Country, v.Count}) }
 
-	ta, err := s.redisRepo.TopASNs(3)
-	if err == nil {
-		topASN = make([]struct{ ASN uint; ASNOrg string; Count int }, 0, len(ta))
-		for _, v := range ta { topASN = append(topASN, struct{ ASN uint; ASNOrg string; Count int }{v.ASN, v.ASNOrg, v.Count}) }
+	ips, err := s.redisRepo.GetBlockedIPs()
+	if err != nil {
+		return 0, 0, 0, nil, nil, nil, 0, 0, 0, err
 	}
 
-	tr, err := s.redisRepo.TopReasons(3)
-	if err == nil {
-		topReason = make([]struct{ Reason string; Count int }, 0, len(tr))
-		for _, v := range tr { topReason = append(topReason, struct{ Reason string; Count int }{v.Reason, v.Count}) }
+	total = len(ips)
+
+	countryMap := make(map[string]int)
+	asnMap := make(map[string]struct {
+		ASN    uint
+		ASNOrg string
+		Count  int
+	})
+	reasonMap := make(map[string]int)
+
+	for _, entry := range ips {
+		if entry.Geolocation != nil {
+			if entry.Geolocation.Country != "" {
+				countryMap[entry.Geolocation.Country]++
+			}
+			if entry.Geolocation.ASN != 0 {
+				key := fmt.Sprintf("%d|%s", entry.Geolocation.ASN, entry.Geolocation.ASNOrg)
+				if val, ok := asnMap[key]; ok {
+					val.Count++
+					asnMap[key] = val
+				} else {
+					asnMap[key] = struct {
+						ASN    uint
+						ASNOrg string
+						Count  int
+					}{entry.Geolocation.ASN, entry.Geolocation.ASNOrg, 1}
+				}
+			}
+		}
+		if entry.Reason != "" {
+			reasonMap[entry.Reason]++
+		}
 	}
 
+	// Convert maps to slices and sort
+	for c, count := range countryMap {
+		top = append(top, struct {
+			Country string
+			Count   int
+		}{c, count})
+	}
+	sort.Slice(top, func(i, j int) bool { return top[i].Count > top[j].Count })
+	if len(top) > 10 {
+		top = top[:10]
+	}
+
+	for _, val := range asnMap {
+		topASN = append(topASN, struct {
+			ASN    uint
+			ASNOrg string
+			Count  int
+		}{val.ASN, val.ASNOrg, val.Count})
+	}
+	sort.Slice(topASN, func(i, j int) bool { return topASN[i].Count > topASN[j].Count })
+	if len(topASN) > 10 {
+		topASN = topASN[:10]
+	}
+
+	for r, count := range reasonMap {
+		topReason = append(topReason, struct {
+			Reason string
+			Count  int
+		}{r, count})
+	}
+	sort.Slice(topReason, func(i, j int) bool { return topReason[i].Count > topReason[j].Count })
+	if len(topReason) > 10 {
+		topReason = topReason[:10]
+	}
+
+	h, _ := s.redisRepo.CountLastHour()
+	d, _ := s.redisRepo.CountLastDay()
 	wh, _ := s.redisRepo.CountWebhooksLastHour()
 	lb, _ := s.redisRepo.GetLastBlockTime()
 	bm, _ := s.redisRepo.CountBlocksLastMinute()
 
-	return h, d, t, top, topASN, topReason, wh, lb, bm, nil
+	return h, d, total, top, topASN, topReason, wh, lb, bm, nil
 }
 
 // ExportIPs returns all IPs matching the filters for export purposes.
@@ -434,7 +488,7 @@ func (s *IPService) ListIPsPaginatedAdvanced(ctx context.Context, limit int, cur
 
 	zs, next, zerr := s.redisRepo.ZPageByScoreDesc(fetchLimit, cursor)
 	if zerr == nil && len(zs) > 0 {
-		tot, _ := s.redisRepo.GetTotal()
+		tot := s.GetTotalCount(ctx)
 		items := make([]map[string]interface{}, 0, limit)
 		q := strings.ToLower(strings.TrimSpace(query))
 		
