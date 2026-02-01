@@ -6,10 +6,15 @@
     <title>Thread Map - Blocklist</title>
     <link rel="stylesheet" href="/cd/flag-icon.min.css">
     <link rel="stylesheet" href="/js/leaflet.css">
+    <link rel="stylesheet" href="/js/MarkerCluster.css">
+    <link rel="stylesheet" href="/js/MarkerCluster.Default.css">
     <link rel="icon" type="image/x-icon" href="/cd/favicon-color.png" />
     <script src="/js/htmx.min.js"></script>
     <script src="/js/json-enc.js"></script>
     <script src="/js/leaflet.js"></script>
+    <script src="/js/leaflet.markercluster.js"></script>
+    <script src="/js/leaflet-heat.js"></script>
+    <script src="/js/leaflet-ant-path.js"></script>
     <script src="/js/chart.js"></script>
     <style>
         :root {
@@ -136,6 +141,14 @@
             animation: spawn-pulse 1.5s ease-out infinite;
             pointer-events: none;
         }
+
+        /* Marker Cluster Customization */
+        .marker-cluster-small { background-color: rgba(255, 0, 0, 0.6); }
+        .marker-cluster-small div { background-color: rgba(255, 0, 0, 0.6); color: #fff; }
+        .marker-cluster-medium { background-color: rgba(255, 0, 0, 0.7); }
+        .marker-cluster-medium div { background-color: rgba(255, 0, 0, 0.7); color: #fff; }
+        .marker-cluster-large { background-color: rgba(255, 0, 0, 0.8); }
+        .marker-cluster-large div { background-color: rgba(255, 0, 0, 0.8); color: #fff; }
     </style>
 </head>
 <body>
@@ -154,6 +167,16 @@
             </label>
             <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
                 <input type="checkbox" id="toggleWhitelistIPs" onchange="fetchLatestData()"> Whitelisted IPs
+            </label>
+            <div style="width: 1px; height: 15px; background: rgba(255,255,255,0.1); margin: 0 5px;"></div>
+            <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                <input type="checkbox" id="toggleHeatmap" onchange="toggleViewMode()"> Heatmap
+            </label>
+            <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                <input type="checkbox" id="toggleCluster" onchange="toggleViewMode()" checked> Cluster
+            </label>
+            <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                <input type="checkbox" id="toggleServerLines" onchange="toggleViewMode()" checked> Attack Lines
             </label>
         </div>
         <span id="live-status">LIVE</span>
@@ -196,9 +219,16 @@
 <script>
     let countryChart = null;
     let map = null;
-    let markers = null;
+    let markerLayer = null;
+    let clusterLayer = null;
+    let heatmapLayer = null;
+    let lineLayer = null;
     let liveMarkers = null;
     let worldLayer = null;
+    
+    // Placeholder for server location (can be updated by user)
+    // Defaulting to a central-ish location (e.g., Frankfurt for EU servers)
+    const SERVER_LOCATION = [50.1109, 8.6821]; 
 
     async function initMap() {
         map = L.map('threat-map', {
@@ -206,20 +236,21 @@
             zoom: 2,
             zoomControl: true,
             attributionControl: false,
-            minZoom: 2
+            minZoom: 2,
+            maxZoom: 18
         });
 
-        // Load local world GeoJSON
+        // Load local world GeoJSON with custom styling
         try {
             const response = await fetch('/js/world.json');
             const worldData = await response.json();
             
             worldLayer = L.geoJSON(worldData, {
                 style: {
-                    fillColor: '#1a1a1a',
-                    weight: 1,
+                    fillColor: '#0d0d0d',
+                    weight: 1.5,
                     opacity: 1,
-                    color: '#333',
+                    color: '#ff000033', // Subtle red borders
                     fillOpacity: 1
                 }
             }).addTo(map);
@@ -227,9 +258,54 @@
             console.error("Failed to load map data", e);
         }
 
-        markers = L.layerGroup().addTo(map);
+        markerLayer = L.layerGroup();
+        clusterLayer = L.markerClusterGroup({
+            showCoverageOnHover: false,
+            maxClusterRadius: 50,
+            iconCreateFunction: function(cluster) {
+                const count = cluster.getChildCount();
+                let size = 'small';
+                if (count > 100) size = 'large';
+                else if (count > 20) size = 'medium';
+                
+                return L.divIcon({ 
+                    html: '<div><span>' + count + '</span></div>', 
+                    className: 'marker-cluster marker-cluster-' + size, 
+                    iconSize: new L.Point(40, 40) 
+                });
+            }
+        });
+        heatmapLayer = L.heatLayer([], { radius: 25, blur: 15, max: 1.0, gradient: {0.4: 'blue', 0.65: 'lime', 1: 'red'} });
+        lineLayer = L.layerGroup().addTo(map);
         liveMarkers = L.layerGroup().addTo(map);
+
+        // Initial mode setup
+        toggleViewMode();
         fetchLatestData();
+    }
+
+    function toggleViewMode() {
+        const isHeatmap = document.getElementById('toggleHeatmap').checked;
+        const isCluster = document.getElementById('toggleCluster').checked;
+        const isLines = document.getElementById('toggleServerLines').checked;
+
+        map.removeLayer(markerLayer);
+        map.removeLayer(clusterLayer);
+        map.removeLayer(heatmapLayer);
+        
+        if (isHeatmap) {
+            map.addLayer(heatmapLayer);
+        } else if (isCluster) {
+            map.addLayer(clusterLayer);
+        } else {
+            map.addLayer(markerLayer);
+        }
+
+        if (isLines) {
+            map.addLayer(lineLayer);
+        } else {
+            map.removeLayer(lineLayer);
+        }
     }
 
     function initChart(data) {
@@ -280,9 +356,10 @@
             const res = await fetch('/api/v1/ips?limit=500');
             if (res.ok) {
                 const payload = await res.json();
-                            const blocks = payload.items || [];
-                            // In this case, "Blocked IPs" means ALL blocks.
-                            allItems = allItems.concat(blocks.map(it => ({ ...it, type: 'block' })));            }
+                const blocks = payload.items || [];
+                // In this case, "Blocked IPs" means ALL blocks.
+                allItems = allItems.concat(blocks.map(it => ({ ...it, type: 'block' })));
+            }
         }
 
         // Fetch Whitelists if enabled
@@ -290,7 +367,6 @@
             const wres = await fetch('/api/v1/whitelists');
             if (wres.ok) {
                 const whitelists = await wres.json();
-                // Follow user request: "Display all per eWebhook whitelisted ips as green dot"
                 const filteredWhitelists = whitelists.filter(it => {
                     return it.data && it.data.added_by && it.data.added_by.includes('WebhookAuto');
                 });
@@ -309,7 +385,11 @@
     }
 
     function updateMap(items) {
-        markers.clearLayers();
+        markerLayer.clearLayers();
+        clusterLayer.clearLayers();
+        lineLayer.clearLayers();
+        const heatData = [];
+
         items.forEach(it => {
             if (it.data && it.data.geolocation && it.data.geolocation.latitude) {
                 const geo = it.data.geolocation;
@@ -317,14 +397,14 @@
                 const label = it.type === 'whitelist' ? "WHITELIST" : "BLOCK";
                 const ts = it.data.timestamp ? new Date(it.data.timestamp).toLocaleString() : 'N/A';
                 
-                L.circleMarker([geo.latitude, geo.longitude], {
+                const marker = L.circleMarker([geo.latitude, geo.longitude], {
                     radius: 4,
                     fillColor: color,
                     color: "#fff",
                     weight: 0.5,
                     opacity: 1,
                     fillOpacity: 0.8
-                }).addTo(markers).bindPopup(`
+                }).bindPopup(`
                     <b>[${label}] ${it.ip}</b><br>
                     ${geo.city}, ${geo.country}<br>
                     <i>${it.data.reason}</i><br>
@@ -333,8 +413,29 @@
                         <b>Activity:</b> ${ts}
                     </div>
                 `);
+
+                markerLayer.addLayer(marker);
+                clusterLayer.addLayer(marker);
+                heatData.push([geo.latitude, geo.longitude, 0.5]);
+
+                // Draw static connection lines if enabled
+                if (it.type === 'block') {
+                    const antPath = L.polyline.antPath([ [geo.latitude, geo.longitude], SERVER_LOCATION ], {
+                        delay: 3000,
+                        dashArray: [10, 20],
+                        weight: 1,
+                        color: '#ff0000',
+                        pulseColor: '#ffffff',
+                        paused: false,
+                        reverse: false,
+                        hardwareAcceleration: true
+                    });
+                    lineLayer.addLayer(antPath);
+                }
             }
         });
+
+        heatmapLayer.setLatLngs(heatData);
     }
 
     function updateStats(s) {
@@ -360,7 +461,6 @@
             if (type === 'block' && !showBlocks) return;
             if (type === 'whitelist') {
                 if (!showWhitelists) return;
-                // Follow user request: only show Webhook whitelists
                 if (!addedBy.includes('WebhookAuto')) return;
             }
 
@@ -389,19 +489,32 @@
                         </div>
                     `)
                     .openPopup();
+
+                // Draw live attack line
+                if (type === 'block') {
+                    const attackPath = L.polyline.antPath([ [geo.latitude, geo.longitude], SERVER_LOCATION ], {
+                        delay: 1000,
+                        dashArray: [10, 20],
+                        weight: 2,
+                        color: '#ff0000',
+                        pulseColor: '#ffffff'
+                    }).addTo(liveMarkers);
+                    
+                    setTimeout(() => {
+                        liveMarkers.removeLayer(attackPath);
+                    }, 5000);
+                }
                 
                 // Remove the pulse after 10 seconds
                 setTimeout(() => {
                     liveMarkers.removeLayer(liveMarker);
                 }, 10000);
 
-                // Update total/stats optimistically for blocks
                 if (type === 'block') {
                     const totalEl = document.getElementById('stat-total');
                     if (totalEl) totalEl.textContent = (parseInt(totalEl.textContent) + 1).toString();
                 }
                 
-                // Refresh full data after a short delay to update chart and persistent markers
                 setTimeout(fetchLatestData, 3000);
             }
         }
