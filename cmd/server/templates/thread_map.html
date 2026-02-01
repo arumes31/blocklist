@@ -150,10 +150,10 @@
     <div style="display: flex; align-items: center; gap: 1rem;">
         <div style="display: flex; gap: 1rem; font-size: 0.8rem; background: rgba(255,255,255,0.05); padding: 5px 15px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1);">
             <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
-                <input type="checkbox" id="toggleWebhookBlock" onchange="fetchLatestData()"> Webhooks (Block)
+                <input type="checkbox" id="toggleBlockIPs" onchange="fetchLatestData()" checked> Block IPs
             </label>
             <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
-                <input type="checkbox" id="toggleWebhookWhitelist" onchange="fetchLatestData()"> Webhooks (Whitelist)
+                <input type="checkbox" id="toggleWhitelistIPs" onchange="fetchLatestData()"> Whitelisted IPs
             </label>
         </div>
         <span id="live-status">LIVE</span>
@@ -270,33 +270,28 @@
     }
 
     async function fetchLatestData() {
-        const showWebhookBlock = document.getElementById('toggleWebhookBlock').checked;
-        const showWebhookWhitelist = document.getElementById('toggleWebhookWhitelist').checked;
+        const showBlocks = document.getElementById('toggleBlockIPs').checked;
+        const showWhitelists = document.getElementById('toggleWhitelistIPs').checked;
 
         let allItems = [];
 
-        // Fetch Blocks
-        const res = await fetch('/api/v1/ips?limit=500');
-        if (res.ok) {
-            const payload = await res.json();
-            const blocks = payload.items || [];
-            
-            // Filter blocks: if it's from Webhook, only show if toggle is ON
-            const filteredBlocks = blocks.filter(it => {
-                const isWebhook = it.data && it.data.added_by && it.data.added_by.includes('Webhook');
-                if (isWebhook) return showWebhookBlock;
-                return true; // Always show manual blocks
-            });
-            
-            allItems = allItems.concat(filteredBlocks.map(it => ({ ...it, type: 'block' })));
+        // Fetch Blocks if enabled
+        if (showBlocks) {
+            const res = await fetch('/api/v1/ips?limit=500');
+            if (res.ok) {
+                const payload = await res.json();
+                const blocks = payload.items || [];
+                // In this case, "Block IPs" means ALL blocks.
+                allItems = allItems.concat(blocks.map(it => ({ ...it, type: 'block' })));
+            }
         }
 
         // Fetch Whitelists if enabled
-        if (showWebhookWhitelist) {
+        if (showWhitelists) {
             const wres = await fetch('/api/v1/whitelists');
             if (wres.ok) {
                 const whitelists = await wres.json();
-                // Filter whitelists: normally we only want to show webhook whitelists as requested
+                // Follow user request: "Display all per eWebhook whitelisted ips as green dot"
                 const filteredWhitelists = whitelists.filter(it => {
                     return it.data && it.data.added_by && it.data.added_by.includes('WebhookAuto');
                 });
@@ -354,19 +349,20 @@
     const socket = new WebSocket((window.location.protocol === 'https:' ? 'wss://' : 'ws://') + window.location.host + '/ws');
     socket.onmessage = function(event) {
         const msg = JSON.parse(event.data);
-        const showWebhookBlock = document.getElementById('toggleWebhookBlock').checked;
-        const showWebhookWhitelist = document.getElementById('toggleWebhookWhitelist').checked;
+        const showBlocks = document.getElementById('toggleBlockIPs').checked;
+        const showWhitelists = document.getElementById('toggleWhitelistIPs').checked;
 
         if (msg.action === 'block' || msg.action === 'whitelist') {
             const it = msg.data;
             const type = msg.action;
             const addedBy = it.data && it.data.added_by ? it.data.added_by : "";
-            const isWebhook = addedBy.includes('Webhook');
             
             // Check if we should show this live update
-            if (isWebhook) {
-                if (type === 'block' && !showWebhookBlock) return;
-                if (type === 'whitelist' && !showWebhookWhitelist) return;
+            if (type === 'block' && !showBlocks) return;
+            if (type === 'whitelist') {
+                if (!showWhitelists) return;
+                // Follow user request: only show Webhook whitelists
+                if (!addedBy.includes('WebhookAuto')) return;
             }
 
             if (it.data && it.data.geolocation && it.data.geolocation.latitude) {
