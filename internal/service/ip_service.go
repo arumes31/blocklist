@@ -279,7 +279,16 @@ func (s *IPService) ExportIPs(ctx context.Context, query string, country string,
 
 	items := make([]map[string]interface{}, 0)
 	q := strings.ToLower(strings.TrimSpace(query))
-	country = strings.ToLower(strings.TrimSpace(country))
+	
+	countryList := []string{}
+	if country != "" {
+		for _, c := range strings.Split(country, ",") {
+			if trimmed := strings.TrimSpace(c); trimmed != "" {
+				countryList = append(countryList, strings.ToLower(trimmed))
+			}
+		}
+	}
+	
 	addedBy = strings.ToLower(strings.TrimSpace(addedBy))
 
 	for _, z := range zs {
@@ -295,8 +304,18 @@ func (s *IPService) ExportIPs(ctx context.Context, query string, country string,
 				continue
 			}
 		}
-		if country != "" {
-			if entry.Geolocation == nil || !strings.EqualFold(entry.Geolocation.Country, country) {
+		if len(countryList) > 0 {
+			match := false
+			if entry.Geolocation != nil {
+				cCode := strings.ToLower(entry.Geolocation.Country)
+				for _, c := range countryList {
+					if cCode == c {
+						match = true
+						break
+					}
+				}
+			}
+			if !match {
 				continue
 			}
 		}
@@ -401,7 +420,16 @@ func (s *IPService) ListIPsPaginatedAdvanced(ctx context.Context, limit int, cur
 		tot, _ := s.redisRepo.GetTotal()
 		items := make([]map[string]interface{}, 0, limit)
 		q := strings.ToLower(strings.TrimSpace(query))
-		country = strings.ToLower(strings.TrimSpace(country))
+		
+		countryList := []string{}
+		if country != "" {
+			for _, c := range strings.Split(country, ",") {
+				if trimmed := strings.TrimSpace(c); trimmed != "" {
+					countryList = append(countryList, strings.ToLower(trimmed))
+				}
+			}
+		}
+		
 		addedBy = strings.ToLower(strings.TrimSpace(addedBy))
 
 		for _, z := range zs {
@@ -422,8 +450,18 @@ func (s *IPService) ListIPsPaginatedAdvanced(ctx context.Context, limit int, cur
 					continue
 				}
 			}
-			if country != "" {
-				if entry.Geolocation == nil || !strings.EqualFold(entry.Geolocation.Country, country) {
+			if len(countryList) > 0 {
+				match := false
+				if entry.Geolocation != nil {
+					cCode := strings.ToLower(entry.Geolocation.Country)
+					for _, c := range countryList {
+						if cCode == c {
+							match = true
+							break
+						}
+					}
+				}
+				if !match {
 					continue
 				}
 			}
