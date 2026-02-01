@@ -165,6 +165,12 @@ func (p *PostgresRepository) GetPersistentBlocks() (map[string]models.IPEntry, e
 	return ips, nil
 }
 
+func (p *PostgresRepository) GetPersistentCount() (int, error) {
+	var count int
+	err := p.db.Get(&count, "SELECT COUNT(*) FROM persistent_blocks")
+	return count, err
+}
+
 func (p *PostgresRepository) LogAction(actor, action, target, reason string) error {
 	_, err := p.db.Exec("INSERT INTO audit_logs (actor, action, target, reason) VALUES ($1, $2, $3, $4)", actor, action, target, reason)
 	return err

@@ -48,7 +48,7 @@ func TestIPService_Enhanced(t *testing.T) {
 		_ = rRepo.BlockIP("1.2.3.4", entry)
 		_ = rRepo.IncrTotal(1)
 
-		h, d, total, _, _, _, err := svc.Stats(ctx)
+		h, d, total, _, _, _, wh, lb, bm, err := svc.Stats(ctx)
 		if err != nil {
 			t.Fatalf("Stats failed: %v", err)
 		}
@@ -56,7 +56,7 @@ func TestIPService_Enhanced(t *testing.T) {
 			t.Errorf("expected total 1, got %d", total)
 		}
 		// h and d might be 0 because we didn't update buckets or ZSET in this manual call
-		_ = h; _ = d
+		_ = h; _ = d; _ = wh; _ = lb; _ = bm
 	})
 
 	t.Run("BulkBlock_Logic", func(t *testing.T) {

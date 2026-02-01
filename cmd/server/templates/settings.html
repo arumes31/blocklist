@@ -209,6 +209,23 @@ actionunban = curl -X POST -H "Content-Type: application/json" -d '{"ip":"&lt;ip
             <h3>API Access</h3>
             <p style="color: var(--secondary-color);">Your base API URL is: <code>{{ .base_url }}/api/v1</code></p>
             <p style="color: var(--secondary-color);">Use Bearer tokens for authentication. Tokens can be managed in the Admin panel.</p>
+            
+            <h4 style="color: var(--vibrant-red); margin-top: 1.5rem; margin-bottom: 0.5rem;">Examples</h4>
+            
+            <div style="margin-bottom: 1rem;">
+                <p style="color: var(--secondary-color); margin-bottom: 0.5rem; font-size: 0.9rem;"><strong>Curl - Block an IP</strong></p>
+                <pre><code>curl -X POST {{ .base_url }}/api/v1/ips \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"ip": "1.2.3.4", "reason": "manual block", "ttl": 86400}'</code></pre>
+            </div>
+
+            <div>
+                <p style="color: var(--secondary-color); margin-bottom: 0.5rem; font-size: 0.9rem;"><strong>Wget - Download Blocklist</strong></p>
+                <pre><code>wget --header="Authorization: Bearer YOUR_TOKEN" \
+     {{ .base_url }}/api/v1/ips/export?format=txt \
+     -O blocklist.txt</code></pre>
+            </div>
         </div>
     </div>
 

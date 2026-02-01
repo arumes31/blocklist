@@ -13,6 +13,9 @@ var (
 		prometheus.CounterOpts{Namespace: "blocklist", Name: "unblocks_total", Help: "Number of IP unblocks"},
 		[]string{"source"},
 	)
+	MetricWebhooksTotal = prometheus.NewCounter(
+		prometheus.CounterOpts{Namespace: "blocklist", Name: "webhooks_received_total", Help: "Number of received webhooks"},
+	)
 	MetricHttpDuration = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Namespace: "blocklist",
@@ -36,6 +39,7 @@ var (
 func init() {
 	prometheus.MustRegister(MetricBlocksTotal)
 	prometheus.MustRegister(MetricUnblocksTotal)
+	prometheus.MustRegister(MetricWebhooksTotal)
 	prometheus.MustRegister(MetricHttpDuration)
 	prometheus.MustRegister(MetricRedisDuration)
 }

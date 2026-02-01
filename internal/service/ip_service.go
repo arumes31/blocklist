@@ -153,14 +153,23 @@ func (s *IPService) GetGeoIP(ipStr string) *models.GeoData {
 	return data
 }
 
+func (s *IPService) GetTotalCount(ctx context.Context) int {
+	if s.redisRepo != nil {
+		if c, err := s.redisRepo.GetZSetCount(); err == nil {
+			return c
+		}
+	}
+	return 0
+}
+
 // ListIPsPaginated returns items ordered by recency with cursor-based pagination and optional query filter.
 // Fallback implementation using Redis hash if sorted index is unavailable.
 func (s *IPService) ListIPsPaginated(ctx context.Context, limit int, cursor string, query string) ([]map[string]interface{}, string, int, error) {
 	// If ZSET exists, use score-based cursor. Otherwise fallback to hash scan.
 	zs, next, zerr := s.redisRepo.ZPageByScoreDesc(limit, cursor)
 	if zerr == nil && len(zs) > 0 {
-		// total via stats:total (approx for ephemerals only)
-		tot, _ := s.redisRepo.GetTotal()
+		// total via GetTotalCount
+		tot := s.GetTotalCount(ctx)
 		items := make([]map[string]interface{}, 0, len(zs))
 		q := strings.ToLower(strings.TrimSpace(query))
 		for _, z := range zs {
@@ -216,19 +225,19 @@ func (s *IPService) ListIPsPaginated(ctx context.Context, limit int, cursor stri
 }
 
 // Stats computes counts for last hour/day/total and top countries, ASNs, and reasons.
-func (s *IPService) Stats(ctx context.Context) (hour int, day int, total int, top []struct{ Country string; Count int }, topASN []struct{ ASN uint; ASNOrg string; Count int }, topReason []struct{ Reason string; Count int }, err error) {
+func (s *IPService) Stats(ctx context.Context) (hour int, day int, total int, top []struct{ Country string; Count int }, topASN []struct{ ASN uint; ASNOrg string; Count int }, topReason []struct{ Reason string; Count int }, webhooksHour int, lastBlockTs int64, blocksMinute int, err error) {
 	if s.redisRepo == nil {
-		return 0, 0, 0, nil, nil, nil, nil
+		return 0, 0, 0, nil, nil, nil, 0, 0, 0, nil
 	}
 	h, err := s.redisRepo.CountLastHour()
-	if err != nil { return 0,0,0,nil, nil, nil, err }
+	if err != nil { return 0,0,0,nil, nil, nil, 0, 0, 0, err }
 	d, err := s.redisRepo.CountLastDay()
-	if err != nil { return 0,0,0,nil, nil, nil, err }
+	if err != nil { return 0,0,0,nil, nil, nil, 0, 0, 0, err }
 	t, err := s.redisRepo.GetTotal()
-	if err != nil { return 0,0,0,nil, nil, nil, err }
+	if err != nil { return 0,0,0,nil, nil, nil, 0, 0, 0, err }
 	
 	tc, err := s.redisRepo.TopCountries(3)
-	if err != nil { return 0,0,0,nil, nil, nil, err }
+	if err != nil { return 0,0,0,nil, nil, nil, 0, 0, 0, err }
 	top = make([]struct{ Country string; Count int }, 0, len(tc))
 	for _, v := range tc { top = append(top, struct{ Country string; Count int }{v.Country, v.Count}) }
 
@@ -244,7 +253,11 @@ func (s *IPService) Stats(ctx context.Context) (hour int, day int, total int, to
 		for _, v := range tr { topReason = append(topReason, struct{ Reason string; Count int }{v.Reason, v.Count}) }
 	}
 
-	return h, d, t, top, topASN, topReason, nil
+	wh, _ := s.redisRepo.CountWebhooksLastHour()
+	lb, _ := s.redisRepo.GetLastBlockTime()
+	bm, _ := s.redisRepo.CountBlocksLastMinute()
+
+	return h, d, t, top, topASN, topReason, wh, lb, bm, nil
 }
 
 // ExportIPs returns all IPs matching the filters for export purposes.

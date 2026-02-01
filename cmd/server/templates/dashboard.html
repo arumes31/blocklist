@@ -298,7 +298,7 @@
             <img src="/cd/logo.png" alt="logo">
         </div> 
         <div style="display: flex; align-items: center; gap: 1.5rem;">
-            <h2 style="margin: 0;">Blocklist Dashboard</h2>
+            <h2 style="margin: 0;">Dashboard</h2>
             <div style="display: flex; gap: 0.8rem;">
                 <button onclick="openModal('blockModal')" class="btn btn-danger">Block IP</button>
                 <a href="/whitelist" class="btn btn-dark" style="min-width: 120px;">Whitelist</a>
@@ -317,8 +317,15 @@
             <span id="live-status" class="status-chip live">LIVE</span>
         </div>
         <div style="text-align: right;">
-            <div style="font-weight: 700; color: var(--vibrant-red);">Total IPs: <span id="total-ips-count">{{ .total_ips }}</span></div>
-            <div style="font-size: 0.8rem; color: var(--secondary-color);">Live Updates</div>
+            <div style="font-weight: 700; color: var(--vibrant-red);">
+                Total IPs: <span id="total-ips-count">{{ .total_ips }}</span>
+                <span id="stat-day-delta" style="font-size: 0.8rem; color: var(--success-color); margin-left: 4px;" title="Last 24h">+{{ .stats.day }}</span>
+            </div>
+            <div style="font-size: 0.75rem; color: var(--secondary-color); display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 2px;">
+                <span id="bpm-display" title="Blocks Per Minute">0.0 BPM</span>
+                <span id="last-block-display">Last: never</span>
+                <span id="health-dot" style="width: 8px; height: 8px; background: var(--success-color); border-radius: 50%; display: inline-block;" title="System Health: OK"></span>
+            </div>
         </div>
         <a href="/logout" class="btn" style="background: rgba(255,255,255,0.08);">Logout</a>
     </div>
@@ -651,6 +658,10 @@
                 {{ end }}
             </div>
         </div>
+        <div class="table-card" style="padding:1rem;">
+            <div style="font-size:0.85rem; color:var(--secondary-color);">Webhooks (last hour)</div>
+            <div id="stat-webhooks" style="font-size:1.6rem; font-weight:700; color:#fff;">{{ .stats.webhooks_hour }}</div>
+        </div>
     </div>
 
     <div class="table-card">
@@ -848,12 +859,46 @@
     // Periodic stats refresh
     async function refreshStats(){
         try {
+            const hr = await fetch('/health');
+            const hdata = await hr.json();
+            const dot = document.getElementById('health-dot');
+            if (hdata.status === 'UP') {
+                dot.style.background = 'var(--success-color)';
+                dot.title = 'System Health: OK';
+            } else {
+                dot.style.background = 'var(--primary-red)';
+                dot.title = 'System Health: ' + hdata.status;
+            }
+
             const r = await fetch('/api/stats', { headers: { 'Accept': 'application/json' } });
             if (!r.ok) return;
             const s = await r.json();
             if (typeof s.hour === 'number') document.getElementById('stat-hour').textContent = s.hour;
-            if (typeof s.day === 'number') document.getElementById('stat-day').textContent = s.day;
-            if (typeof s.total === 'number') document.getElementById('stat-total').textContent = s.total;
+            if (typeof s.day === 'number') {
+                document.getElementById('stat-day').textContent = s.day;
+                document.getElementById('stat-day-delta').textContent = '+' + s.day;
+            }
+            if (typeof s.total === 'number') {
+                document.getElementById('stat-total').textContent = s.total;
+                document.getElementById('total-ips-count').textContent = s.total;
+            }
+            if (typeof s.webhooks_hour === 'number') {
+                document.getElementById('stat-webhooks').textContent = s.webhooks_hour;
+            }
+            if (typeof s.blocks_minute === 'number') {
+                document.getElementById('bpm-display').textContent = s.blocks_minute.toFixed(1) + ' BPM';
+            }
+            if (s.last_block_ts > 0) {
+                const diff = Math.floor((Date.now() / 1000) - s.last_block_ts);
+                let text = "just now";
+                if (diff > 0) {
+                    if (diff < 60) text = diff + "s ago";
+                    else if (diff < 3600) text = Math.floor(diff/60) + "m ago";
+                    else text = Math.floor(diff/3600) + "h ago";
+                }
+                document.getElementById('last-block-display').textContent = 'Last: ' + text;
+            }
+
             if (Array.isArray(s.top_countries)) {
                 const wrap = document.getElementById('stat-countries');
                 wrap.innerHTML = s.top_countries.slice(0,3).map(c => `

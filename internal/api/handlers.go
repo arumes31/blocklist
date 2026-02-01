@@ -264,7 +264,7 @@ func (h *APIHandler) Dashboard(c *gin.Context) {
 	totalCount := len(ips)
 
 	// Preload stats for initial render
-	hour, day, _, top, topASN, topReason, _ := h.ipService.Stats(c.Request.Context())
+	hour, day, _, top, topASN, topReason, wh, lb, bm, _ := h.ipService.Stats(c.Request.Context())
 	
 	tops := make([]map[string]interface{}, 0, len(top))
 	for _, t := range top { tops = append(tops, map[string]interface{}{"Country": t.Country, "Count": t.Count}) }
@@ -284,12 +284,15 @@ func (h *APIHandler) Dashboard(c *gin.Context) {
 		"username":       username,
 		"views":          views,
 		"stats": gin.H{
-			"hour":          hour,
-			"day":           day,
-			"total":         totalCount,
-			"top_countries": tops,
-			"top_asns":      asns,
-			"top_reasons":   reasons,
+			"hour":           hour,
+			"day":            day,
+			"total":          totalCount,
+			"top_countries":  tops,
+			"top_asns":       asns,
+			"top_reasons":    reasons,
+			"webhooks_hour":  wh,
+			"last_block_ts":  lb,
+			"blocks_minute":  bm,
 		},
 	})
 }
@@ -699,18 +702,22 @@ func (h *APIHandler) UnblockIP(c *gin.Context) {
 		return
 	}
 
-	_ = h.redisRepo.UnblockIP(req.IP)
+	// Fetch entry first for counter adjustment
+	e, err := h.redisRepo.GetIPEntry(req.IP)
+	
+	// Atomic unblock from Redis
+	_ = h.redisRepo.ExecUnblockAtomic(req.IP)
+	
 	if h.pgRepo != nil {
 		_ = h.pgRepo.DeletePersistentBlock(req.IP)
 		_ = h.pgRepo.LogAction(username, "UNBLOCK", req.IP, "")
 	}
-	// decrement counters where applicable
-	if e, err := h.redisRepo.GetIPEntry(req.IP); err == nil && e != nil {
+
+	if err == nil && e != nil {
 		cc := ""
 		if e.Geolocation != nil { cc = e.Geolocation.Country }
-		_ = h.redisRepo.IncrTotal(-1)
+		// stats:total is already decremented by ExecUnblockAtomic
 		_ = h.redisRepo.IncrCountry(cc, -1)
-		_ = h.redisRepo.RemoveIPTimestamp(req.IP)
 	}
 
 	metrics.MetricUnblocksTotal.WithLabelValues("gui").Inc()
@@ -890,6 +897,9 @@ func (h *APIHandler) Webhook(c *gin.Context) {
 		return
 	}
 
+	metrics.MetricWebhooksTotal.Inc()
+	_ = h.redisRepo.IndexWebhookHit(time.Now().UTC())
+
 	timestamp := time.Now().UTC().Format("2006-01-02 15:04:05 UTC")
 	geo := h.ipService.GetGeoIP(data.IP)
 	now := time.Now().UTC()
@@ -916,14 +926,15 @@ func (h *APIHandler) Webhook(c *gin.Context) {
 		})
 		c.JSON(200, gin.H{"status": "IP banned", "ip": data.IP})
 	} else if data.Act == "unban" || data.Act == "delete-ban" {
-		_ = h.redisRepo.UnblockIP(data.IP)
-		// adjust counters if present
-		if e, err := h.redisRepo.GetIPEntry(data.IP); err == nil && e != nil {
+		// Fetch entry first
+		e, err := h.redisRepo.GetIPEntry(data.IP)
+		
+		_ = h.redisRepo.ExecUnblockAtomic(data.IP)
+		
+		if err == nil && e != nil {
 			cc := ""
 			if e.Geolocation != nil { cc = e.Geolocation.Country }
-			_ = h.redisRepo.IncrTotal(-1)
 			_ = h.redisRepo.IncrCountry(cc, -1)
-			_ = h.redisRepo.RemoveIPTimestamp(data.IP)
 		}
 		metrics.MetricUnblocksTotal.WithLabelValues("webhook").Inc()
 		c.JSON(200, gin.H{"status": "IP unbanned", "ip": data.IP})
@@ -1353,7 +1364,7 @@ func (h *APIHandler) OpenAPI(c *gin.Context) {
 }
 
 func (h *APIHandler) Stats(c *gin.Context) {
-	hour, day, total, top, topASN, topReason, err := h.ipService.Stats(c.Request.Context())
+	hour, day, total, top, topASN, topReason, wh, lb, bm, err := h.ipService.Stats(c.Request.Context())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "stats error"})
 		return
@@ -1379,12 +1390,15 @@ func (h *APIHandler) Stats(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"hour":          hour,
-		"day":           day,
-		"total":         total,
-		"top_countries": tops,
-		"top_asns":      asns,
-		"top_reasons":   reasons,
+		"hour":           hour,
+		"day":            day,
+		"total":          total,
+		"top_countries":  tops,
+		"top_asns":       asns,
+		"top_reasons":    reasons,
+		"webhooks_hour":  wh,
+		"last_block_ts":  lb,
+		"blocks_minute":  bm,
 	})
 }
 

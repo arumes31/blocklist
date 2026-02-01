@@ -282,6 +282,42 @@ func (r *RedisRepository) RemoveFromWhitelist(ip string) error {
 	return r.client.HDel(r.ctx, "ips_webhook2_whitelist", ip).Err()
 }
 
+func (r *RedisRepository) IndexWebhookHit(ts time.Time) error {
+	return r.client.ZAdd(r.ctx, "webhooks_by_ts", redis.Z{Score: float64(ts.Unix()), Member: fmt.Sprintf("%d-%d", ts.UnixNano(), ts.Unix())}).Err()
+}
+
+func (r *RedisRepository) CountWebhooksLastHour() (int, error) {
+	now := time.Now().UTC()
+	min := float64(now.Add(-1 * time.Hour).Unix())
+	max := float64(now.Unix())
+	cnt, err := r.client.ZCount(r.ctx, "webhooks_by_ts", fmt.Sprintf("%f", min), fmt.Sprintf("%f", max)).Result()
+	if err != nil {
+		return 0, err
+	}
+	// Cleanup old entries while we're at it (older than 24h)
+	_ = r.client.ZRemRangeByScore(r.ctx, "webhooks_by_ts", "-inf", fmt.Sprintf("%f", float64(now.Add(-24*time.Hour).Unix())))
+	return int(cnt), nil
+}
+
+func (r *RedisRepository) GetLastBlockTime() (int64, error) {
+	res, err := r.client.ZRevRangeWithScores(r.ctx, "ips_by_ts", 0, 0).Result()
+	if err != nil || len(res) == 0 {
+		return 0, err
+	}
+	return int64(res[0].Score), nil
+}
+
+func (r *RedisRepository) CountBlocksLastMinute() (int, error) {
+	now := time.Now().UTC()
+	min := float64(now.Add(-1 * time.Minute).Unix())
+	max := float64(now.Unix())
+	cnt, err := r.client.ZCount(r.ctx, "ips_by_ts", fmt.Sprintf("%f", min), fmt.Sprintf("%f", max)).Result()
+	if err != nil {
+		return 0, err
+	}
+	return int(cnt), nil
+}
+
 func (r *RedisRepository) SetCache(key string, val interface{}, expiration time.Duration) error {
 	data, err := json.Marshal(val)
 	if err != nil {
@@ -336,33 +372,30 @@ return 1
 // Atomic unblock operation: removes from hash and ZSET in one script
 var unblockAtomicScript = `
 local ip = ARGV[1]
-redis.call('HDEL','ips',ip)
-redis.call('ZREM','ips_by_ts',ip)
-return 1
+local removed = redis.call('HDEL','ips',ip)
+if removed == 1 then
+  redis.call('ZREM','ips_by_ts',ip)
+  redis.call('DECR','stats:total')
+end
+return removed
 `
 
 // ExecBlockAtomic executes atomic block writes (hash, zset, counters)
 func (r *RedisRepository) ExecBlockAtomic(ip string, entry models.IPEntry, now time.Time) error {
-	defer r.trackDuration("ExecBlockAtomic", time.Now())
-	data, err := json.Marshal(entry)
-	if err != nil { return err }
-	country := ""
-	asnKey := ""
-	if entry.Geolocation != nil {
-		country = entry.Geolocation.Country
-		if entry.Geolocation.ASN != 0 {
-			asnKey = fmt.Sprintf("%d|%s", entry.Geolocation.ASN, entry.Geolocation.ASNOrg)
-		}
-	}
-	hourKey := fmt.Sprintf("stats:hour:%s", now.UTC().Format("2006010215"))
-	dayKey := fmt.Sprintf("stats:day:%s", now.UTC().Format("20060102"))
-	_, err = r.client.Eval(r.ctx, blockAtomicScript, []string{}, ip, string(data), fmt.Sprintf("%d", now.Unix()), country, hourKey, dayKey, entry.Reason, asnKey).Result()
-	return err
-}
-
+...
 // ExecUnblockAtomic removes ip from hash and ZSET atomically; caller may adjust counters separately
 func (r *RedisRepository) ExecUnblockAtomic(ip string) error {
 	defer r.trackDuration("ExecUnblockAtomic", time.Now())
 	_, err := r.client.Eval(r.ctx, unblockAtomicScript, []string{}, ip).Result()
 	return err
+}
+
+func (r *RedisRepository) GetTrueRedisCount() (int, error) {
+	v, err := r.client.HLen(r.ctx, "ips").Result()
+	return int(v), err
+}
+
+func (r *RedisRepository) GetZSetCount() (int, error) {
+	v, err := r.client.ZCard(r.ctx, "ips_by_ts").Result()
+	return int(v), err
 }
