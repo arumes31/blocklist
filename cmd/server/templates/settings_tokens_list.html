@@ -15,11 +15,10 @@
         <div class="perm-edit" id="perm-edit-{{ .ID }}" style="display: none;">
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px; font-size: 0.75rem; margin-bottom: 5px;">
                 <label><input type="checkbox" class="token-edit-perm-{{ .ID }}" value="view_ips"> View</label>
-                <label><input type="checkbox" class="token-edit-perm-{{ .ID }}" value="block_ips"> Block</label>
-                <label><input type="checkbox" class="token-edit-perm-{{ .ID }}" value="unblock_ips"> Unblock</label>
                 <label><input type="checkbox" class="token-edit-perm-{{ .ID }}" value="webhook_ban"> Webhook (Ban)</label>
                 <label><input type="checkbox" class="token-edit-perm-{{ .ID }}" value="webhook_unban"> Webhook (Unban)</label>
                 <label><input type="checkbox" class="token-edit-perm-{{ .ID }}" value="webhook_whitelist"> Webhook (Whitelist)</label>
+                <label><input type="checkbox" class="token-edit-perm-{{ .ID }}" value="manage_admins"> System Admin</label>
                 <label><input type="checkbox" class="token-edit-perm-{{ .ID }}" value="export_data"> Export</label>
             </div>
             <div style="display: flex; gap: 5px;">

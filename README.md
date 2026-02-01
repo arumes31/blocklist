@@ -96,7 +96,7 @@ graph LR
 
 The platform uses a detailed permission system for administrators:
 - **Monitoring**: `view_ips`, `view_stats`, `view_audit_logs`
-- **Enforcement**: `block_ips`, `unblock_ips`, `manage_whitelist`
+- **Enforcement**: `manage_whitelist`, `webhook_ban`, `webhook_unban`, `webhook_whitelist`
 - **System**: `manage_webhooks`, `manage_api_tokens`, `manage_admins`
 - **Utility**: `export_data`
 
