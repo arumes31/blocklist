@@ -204,6 +204,7 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 		// API Tokens
 		auth.POST("/api/v1/settings/tokens", h.PermissionMiddleware("manage_api_tokens"), h.CreateAPIToken)
 		auth.DELETE("/api/v1/settings/tokens/:id", h.PermissionMiddleware("manage_api_tokens"), h.DeleteAPIToken)
+		auth.DELETE("/api/v1/admin/tokens/:id", h.PermissionMiddleware("manage_admins"), h.AdminRevokeAPIToken)
 
 		// Enforcement actions
 		auth.POST("/block", h.PermissionMiddleware("block_ips"), h.BlockIP)
@@ -1416,6 +1417,11 @@ func (h *APIHandler) Settings(c *gin.Context) {
 	webhooks, _ := h.pgRepo.GetActiveWebhooks()
 	tokens, _ := h.pgRepo.GetAPITokens(username.(string))
 	
+	var allTokens []models.APIToken
+	if username == h.cfg.GUIAdmin {
+		allTokens, _ = h.pgRepo.GetAllAPITokens()
+	}
+	
 	// Get base URL from request
 	scheme := "http"
 	if c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https" {
@@ -1426,6 +1432,7 @@ func (h *APIHandler) Settings(c *gin.Context) {
 	c.HTML(http.StatusOK, "settings.html", gin.H{
 		"webhooks":   webhooks,
 		"tokens":     tokens,
+		"all_tokens": allTokens,
 		"admin_user": h.cfg.GUIAdmin,
 		"base_url":   baseURL,
 		"username":   username,
@@ -1504,6 +1511,18 @@ func (h *APIHandler) DeleteAPIToken(c *gin.Context) {
 	
 	_ = h.pgRepo.DeleteAPIToken(id, username.(string))
 	c.Status(http.StatusOK)
+}
+
+func (h *APIHandler) AdminRevokeAPIToken(c *gin.Context) {
+	username, _ := c.Get("username")
+	id, _ := strconv.Atoi(c.Param("id"))
+	
+	if username == h.cfg.GUIAdmin {
+		_ = h.pgRepo.DeleteAPITokenByID(id)
+		c.Status(http.StatusOK)
+	} else {
+		c.Status(http.StatusForbidden)
+	}
 }
 
 func (h *APIHandler) AddOutboundWebhook(c *gin.Context) {

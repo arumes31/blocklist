@@ -243,6 +243,36 @@ actionunban = curl -X POST -H "Content-Type: application/json" -d '{"ip":"&lt;ip
                 </table>
             </div>
 
+            {{ if eq .username .admin_user }}
+            <div style="margin-top: 2.5rem; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 1.5rem;">
+                <h4 style="color: var(--vibrant-red); margin-bottom: 1rem;">System API Tokens (Admin View)</h4>
+                <table style="font-size: 0.9rem;">
+                    <thead>
+                        <tr>
+                            <th>Owner</th>
+                            <th>Name</th>
+                            <th>Created</th>
+                            <th>Last Used</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {{ range .all_tokens }}
+                        <tr>
+                            <td style="font-weight: 600;">{{ .Username }}</td>
+                            <td>{{ .Name }}</td>
+                            <td><span class="utc-timestamp">{{ .CreatedAt }}</span></td>
+                            <td>{{ if .LastUsed }}<span class="utc-timestamp">{{ .LastUsed }}</span>{{ else }}-{{ end }}</td>
+                            <td>
+                                <button class="btn btn-danger" style="padding: 0.2rem 0.6rem; font-size: 0.8rem;" hx-delete="/api/v1/admin/tokens/{{ .ID }}" hx-target="closest tr" hx-swap="outerHTML" hx-confirm="Revoke this user's token?">Revoke</button>
+                            </td>
+                        </tr>
+                        {{ end }}
+                    </tbody>
+                </table>
+            </div>
+            {{ end }}
+
             <h4 style="color: var(--vibrant-red); margin-top: 2rem; margin-bottom: 0.5rem;">Examples</h4>
             
             <div style="margin-bottom: 1rem;">
