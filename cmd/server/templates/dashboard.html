@@ -819,6 +819,7 @@
         } else {
             currentTbody.innerHTML = container.innerHTML;
         }
+        htmx.process(document.getElementById('ipTableBody'));
         convertTimestamps();
     }
 
@@ -848,7 +849,9 @@
                 tr.innerHTML = rowHTML(it.ip, it.data);
                 frag.appendChild(tr.firstChild);
             });
-            document.getElementById('ipTableBody').appendChild(frag);
+            const tbodyEl = document.getElementById('ipTableBody');
+            tbodyEl.appendChild(frag);
+            htmx.process(tbodyEl);
             convertTimestamps();
             loading = false;
             if (!cursor) sentinel.style.display = 'none';
@@ -964,6 +967,7 @@
             const firstCell = row.querySelector('td');
             if (firstCell) firstCell.classList.add('pulse-start');
             tbodyEl.insertBefore(row, tbodyEl.firstChild);
+            htmx.process(row);
             convertTimestamps();
             updateTotalCount(1);
             // optional toast
