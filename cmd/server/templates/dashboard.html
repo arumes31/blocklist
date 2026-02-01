@@ -319,7 +319,7 @@
         </div>
         <div class="table-card" style="padding:1rem;">
             <div style="font-size:0.85rem; color:var(--secondary-color);">IPs banned (total)</div>
-            <div id="stat-total" style="font-size:1.6rem; font-weight:700; color:#fff;">{{ .stats.total }}</div>
+            <div id="stat-total" style="font-size:1.6rem; font-weight:700; color:#fff;">{{ .total_ips }}</div>
         </div>
         <div class="table-card" style="padding:1rem;">
             <div style="font-size:0.85rem; color:var(--secondary-color);">Top countries</div>
@@ -613,6 +613,7 @@
             const idx = items.findIndex(it => it.ip === ip);
             if (idx >= 0) items.splice(idx, 1);
             updateTotalCount(-1);
+            showToast(`IP Unblocked: ${ip}`, 'success');
         }
     }
 
@@ -843,6 +844,11 @@
 
     setTimeout(() => { convertTimestamps(); init(); }, 100);
     document.body.addEventListener('htmx:afterOnLoad', convertTimestamps);
+
+    // HTMX Error Handling
+    document.body.addEventListener('htmx:responseError', function(evt) {
+        showToast('Action failed: ' + (evt.detail.xhr.responseText || 'Server error'), 'danger');
+    });
 
     function confirmBlock() {
         const ip = document.getElementById('ipToBlock').value;
