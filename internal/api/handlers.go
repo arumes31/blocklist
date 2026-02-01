@@ -961,9 +961,6 @@ func (h *APIHandler) UnblockIP(c *gin.Context) {
 		return
 	}
 
-	// Fetch entry first
-	h.redisRepo.GetIPEntry(req.IP)
-	
 	// Atomic unblock from Redis
 	_ = h.redisRepo.ExecUnblockAtomic(req.IP)
 	
@@ -1243,9 +1240,6 @@ func (h *APIHandler) Webhook(c *gin.Context) {
 		})
 		c.JSON(200, gin.H{"status": "IP banned", "ip": data.IP})
 	} else if data.Act == "unban" || data.Act == "delete-ban" {
-		// Fetch entry first
-		h.redisRepo.GetIPEntry(data.IP)
-		
 		_ = h.redisRepo.ExecUnblockAtomic(data.IP)
 		
 		if h.pgRepo != nil {
