@@ -1210,14 +1210,19 @@
     }
 
     // Wire controls
-    document.getElementById('togglePause').addEventListener('click', () => {
+    document.getElementById('togglePause').addEventListener('click', function() {
         paused = !paused;
+        const btn = this;
         if (!paused) {
             setStatus('live');
+            btn.textContent = 'Pause';
+            btn.classList.remove('btn-danger');
             const q = updateQueue.splice(0, updateQueue.length);
             q.forEach(applyMessage);
         } else {
             setStatus('paused');
+            btn.textContent = 'Resume';
+            btn.classList.add('btn-danger');
         }
     });
     document.getElementById('toggleGeo').addEventListener('click', () => {

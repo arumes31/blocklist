@@ -261,9 +261,10 @@ func (h *APIHandler) Dashboard(c *gin.Context) {
 	username := session.Get("username").(string)
 
 	ips := h.getCombinedIPs()
+	totalCount := len(ips)
 
 	// Preload stats for initial render
-	hour, day, total, top, topASN, topReason, _ := h.ipService.Stats(c.Request.Context())
+	hour, day, _, top, topASN, topReason, _ := h.ipService.Stats(c.Request.Context())
 	
 	tops := make([]map[string]interface{}, 0, len(top))
 	for _, t := range top { tops = append(tops, map[string]interface{}{"Country": t.Country, "Count": t.Count}) }
@@ -278,14 +279,14 @@ func (h *APIHandler) Dashboard(c *gin.Context) {
 
 	c.HTML(http.StatusOK, "dashboard.html", gin.H{
 		"ips":            ips,
-		"total_ips":      len(ips),
+		"total_ips":      totalCount,
 		"admin_username": h.cfg.GUIAdmin,
 		"username":       username,
 		"views":          views,
 		"stats": gin.H{
 			"hour":          hour,
 			"day":           day,
-			"total":         total,
+			"total":         totalCount,
 			"top_countries": tops,
 			"top_asns":      asns,
 			"top_reasons":   reasons,

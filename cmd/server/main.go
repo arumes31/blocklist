@@ -303,6 +303,16 @@ func main() {
 	flagsRoot, _ := fs.Sub(staticFS, "static/flags")
 	r.StaticFS("/flags", http.FS(flagsRoot))
 
+	// Serve favicon
+	r.GET("/favicon.ico", func(c *gin.Context) {
+		file, err := staticFS.ReadFile("static/cd/favicon-color.png")
+		if err != nil {
+			c.AbortWithStatus(http.StatusNotFound)
+			return
+		}
+		c.Data(http.StatusOK, "image/png", file)
+	})
+
 	// 6. Initialize API Handler
 	handler := api.NewAPIHandler(cfg, redisRepo, pgRepo, authService, ipService, hub, webhookService)
 	handler.SetLimiters(mainLimiter, loginLimiter, webhookLimiter)
