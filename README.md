@@ -38,7 +38,7 @@ graph LR
 
 - **Advanced Filtering**: Server-side filtering by IP, Reason, Country, Added By, and Date Range (ISO8601).
 - **Real-time Updates**: Live dashboard updates via WebSockets, now scaled with **Redis Pub/Sub** for multi-instance support.
-- **Visual Threat Intelligence**: Dedicated **Threat Analytics** page with interactive **Threat Map** (Leaflet) and distribution charts (Chart.js) for instant situational awareness.
+- **Visual Threat Intelligence**: Dedicated **Thread Map** page with interactive mapping (Leaflet) and distribution charts (Chart.js) for instant situational awareness.
 - **Local Map Solution**: Integrated world GeoJSON for offline mapping without external tile provider dependencies.
 - **Reliable Webhooks**: Persistent **Task Queue** for outbound notifications with automatic retries and exponential backoff.
 - **Bulk Operations**: Multi-select interface for batch unblocking and management.

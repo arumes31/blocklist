@@ -203,7 +203,7 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 	{
 		// Dashboard requires view_ips and view_stats
 		auth.GET("/dashboard", h.PermissionMiddleware("view_ips"), h.Dashboard)
-		auth.GET("/analytics", h.PermissionMiddleware("view_ips"), h.Analytics)
+		auth.GET("/thread-map", h.PermissionMiddleware("view_ips"), h.ThreadMap)
 		auth.GET("/dashboard/table", h.PermissionMiddleware("view_ips"), h.DashboardTable) // For HTMX polling
 		
 		auth.GET("/api/v1/views", h.PermissionMiddleware("view_ips"), h.GetSavedViews)
@@ -320,7 +320,7 @@ func (h *APIHandler) Dashboard(c *gin.Context) {
 	})
 }
 
-func (h *APIHandler) Analytics(c *gin.Context) {
+func (h *APIHandler) ThreadMap(c *gin.Context) {
 	ips := h.getCombinedIPs()
 	totalCount := len(ips)
 
@@ -329,7 +329,7 @@ func (h *APIHandler) Analytics(c *gin.Context) {
 	tops := make([]map[string]interface{}, 0, len(top))
 	for _, t := range top { tops = append(tops, map[string]interface{}{"Country": t.Country, "Count": t.Count}) }
 
-	c.HTML(http.StatusOK, "analytics.html", gin.H{
+	c.HTML(http.StatusOK, "thread_map.html", gin.H{
 		"total_ips": totalCount,
 		"stats": gin.H{
 			"hour":          hour,

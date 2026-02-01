@@ -241,9 +241,7 @@
                             <td>
                                 {{ if ne $username $.admin_username }}
                                 <button class="btn btn-dark" style="padding: 0.4rem 0.8rem; font-size: 0.8rem;" onclick="openPasswordModal('{{ $username }}')">Password</button>
-                                {{ end }}
                                 <button class="btn btn-dark" style="padding: 0.4rem 0.8rem; font-size: 0.8rem; background: #ff980033;" onclick="clearTotp('{{ $username }}')">Clear TOTP</button>
-                                {{ if ne $username $.admin_username }}
                                 <button class="btn btn-danger" style="padding: 0.4rem 0.8rem; font-size: 0.8rem;" onclick="deleteAdmin('{{ $username }}')">Delete</button>
                                 {{ end }}
                             </td>
