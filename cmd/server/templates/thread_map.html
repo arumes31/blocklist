@@ -379,7 +379,7 @@
 
         updateMap(allItems);
 
-        const statsRes = await fetch('/api/stats');
+        const statsRes = await fetch('/api/v1/stats');
         if (statsRes.ok) {
             const s = await statsRes.json();
             initChart(s.top_countries || []);

@@ -886,7 +886,7 @@
                 dot.title = 'System Health: ' + hdata.status;
             }
 
-            const r = await fetch('/api/stats', { headers: { 'Accept': 'application/json' } });
+            const r = await fetch('/api/v1/stats', { headers: { 'Accept': 'application/json' } });
             if (!r.ok) return;
             const s = await r.json();
             if (typeof s.hour === 'number') document.getElementById('stat-hour').textContent = s.hour;
