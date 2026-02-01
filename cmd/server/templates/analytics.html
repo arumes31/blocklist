@@ -120,6 +120,22 @@
         .leaflet-container {
             background: #0a0a0a !important;
         }
+
+        @keyframes spawn-pulse {
+            0% { transform: translate(-50%, -50%) scale(0.1); opacity: 0.8; box-shadow: 0 0 0 0 rgba(255, 0, 0, 0.7); }
+            70% { transform: translate(-50%, -50%) scale(2.5); opacity: 0.3; box-shadow: 0 0 0 20px rgba(255, 0, 0, 0); }
+            100% { transform: translate(-50%, -50%) scale(1); opacity: 1; box-shadow: 0 0 0 0 rgba(255, 0, 0, 0); }
+        }
+        .live-spawn-marker {
+            width: 12px;
+            height: 12px;
+            background: var(--primary-red);
+            border: 2px solid #fff;
+            border-radius: 50%;
+            position: absolute;
+            animation: spawn-pulse 1.5s ease-out infinite;
+            pointer-events: none;
+        }
     </style>
 </head>
 <body>
@@ -133,7 +149,6 @@
     </div>
     <div style="display: flex; align-items: center; gap: 1rem;">
         <span id="live-status">LIVE</span>
-        <a href="/analytics" class="btn">Threat Map</a>
         <a href="/dashboard" class="btn">Back to Dashboard</a>
     </div>
 </div>
@@ -174,6 +189,7 @@
     let countryChart = null;
     let map = null;
     let markers = null;
+    let liveMarkers = null;
     let worldLayer = null;
 
     async function initMap() {
@@ -204,6 +220,7 @@
         }
 
         markers = L.layerGroup().addTo(map);
+        liveMarkers = L.layerGroup().addTo(map);
         fetchLatestData();
     }
 
@@ -212,6 +229,13 @@
         const labels = data.map(c => c.country || 'Unknown');
         const values = data.map(c => c.count);
         
+        if (countryChart) {
+            countryChart.data.labels = labels;
+            countryChart.data.datasets[0].data = values;
+            countryChart.update();
+            return;
+        }
+
         countryChart = new Chart(ctx, {
             type: 'doughnut',
             data: {
@@ -274,12 +298,6 @@
         if (typeof s.day === 'number') document.getElementById('stat-day').textContent = s.day;
         if (typeof s.hour === 'number') document.getElementById('stat-hour').textContent = s.hour;
         if (typeof s.blocks_minute === 'number') document.getElementById('bpm-display').textContent = s.blocks_minute.toFixed(1) + ' BPM';
-        
-        if (countryChart && Array.isArray(s.top_countries)) {
-            countryChart.data.labels = s.top_countries.map(c => c.country || 'Unknown');
-            countryChart.data.datasets[0].data = s.top_countries.map(c => c.count);
-            countryChart.update();
-        }
     }
 
     // WebSocket for real-time updates
@@ -290,19 +308,30 @@
             const it = msg.data;
             if (it.data && it.data.geolocation && it.data.geolocation.latitude) {
                 const geo = it.data.geolocation;
-                L.circleMarker([geo.latitude, geo.longitude], {
-                    radius: 6, // Pulsing effect
-                    fillColor: "#ff0000",
-                    color: "#fff",
-                    weight: 1,
-                    opacity: 1,
-                    fillOpacity: 1
-                }).addTo(markers)
-                  .bindPopup(`<b>${it.ip}</b><br>${geo.city}, ${geo.country}<br>${it.data.reason}`)
-                  .openPopup();
                 
-                // Refresh stats after a short delay
-                setTimeout(fetchLatestData, 2000);
+                // Create a pulsing live marker
+                const liveIcon = L.divIcon({
+                    className: 'live-spawn-container',
+                    html: '<div class="live-spawn-marker"></div>',
+                    iconSize: [0, 0]
+                });
+                
+                const liveMarker = L.marker([geo.latitude, geo.longitude], { icon: liveIcon })
+                    .addTo(liveMarkers)
+                    .bindPopup(`<b>LIVE BLOCK: ${it.ip}</b><br>${geo.city}, ${geo.country}<br>${it.data.reason}`)
+                    .openPopup();
+                
+                // Remove the pulse after 10 seconds
+                setTimeout(() => {
+                    liveMarkers.removeLayer(liveMarker);
+                }, 10000);
+
+                // Update total/stats optimistically
+                const totalEl = document.getElementById('stat-total');
+                if (totalEl) totalEl.textContent = (parseInt(totalEl.textContent) + 1).toString();
+                
+                // Refresh full data after a short delay to update chart and persistent markers
+                setTimeout(fetchLatestData, 3000);
             }
         }
     };
