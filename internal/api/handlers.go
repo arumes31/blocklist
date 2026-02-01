@@ -1087,6 +1087,7 @@ func (h *APIHandler) ChangeAdminPermissions(c *gin.Context) {
 }
 
 func (h *APIHandler) AdminManagement(c *gin.Context) {
+	username, _ := c.Get("username")
 	admins, _ := h.pgRepo.GetAllAdmins()
 	adminMap := make(map[string]models.AdminAccount)
 	for _, a := range admins {
@@ -1097,9 +1098,11 @@ func (h *APIHandler) AdminManagement(c *gin.Context) {
 	userPerms, _ := c.Get("permissions")
 
 	c.HTML(http.StatusOK, "admin_management.html", gin.H{
-		"admins":      adminMap,
-		"audit_logs":   logs,
-		"permissions": userPerms.(string),
+		"admins":         adminMap,
+		"audit_logs":     logs,
+		"permissions":    userPerms.(string),
+		"username":       username.(string),
+		"admin_username": h.cfg.GUIAdmin,
 	})
 }
 

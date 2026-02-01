@@ -165,6 +165,9 @@
             <h2>Admin Management</h2>
         </div>
         <div style="display: flex; align-items: center; gap: 1rem;">
+            {{ if eq .username .admin_username }}
+            <a href="/settings#global-tokens" class="btn btn-dark" style="min-width: 150px;">Global API Tokens</a>
+            {{ end }}
             <a href="/dashboard" class="btn btn-dark" style="min-width: 150px;">Back to Dashboard</a>
             <a href="/logout" class="btn" style="background: rgba(255,255,255,0.08);">Logout</a>
         </div>
