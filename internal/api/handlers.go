@@ -452,23 +452,29 @@ func (h *APIHandler) AuthMiddleware() gin.HandlerFunc {
 		}
 		
 		username := session.Get("username").(string)
+		
+		// Verify user still exists in database
+		admin, err := h.pgRepo.GetAdmin(username)
+		if err != nil || admin == nil {
+			zlog.Warn().Str("username", username).Msg("Session active for non-existent user")
+			session.Clear()
+			_ = session.Save()
+			c.Redirect(http.StatusFound, "/login")
+			c.Abort()
+			return
+		}
+
 		c.Set("username", username)
 		
 		// Get role and permissions from DB or session
 		role := session.Get("role")
 		perms := session.Get("permissions")
 		if role == nil || perms == nil {
-			admin, _ := h.pgRepo.GetAdmin(username)
-			if admin != nil {
-				role = admin.Role
-				perms = admin.Permissions
-				session.Set("role", role)
-				session.Set("permissions", perms)
-				_ = session.Save()
-			} else {
-				role = "viewer"
-				perms = "gui_read"
-			}
+			role = admin.Role
+			perms = admin.Permissions
+			session.Set("role", role)
+			session.Set("permissions", perms)
+			_ = session.Save()
 		}
 		c.Set("role", role.(string))
 		c.Set("permissions", perms.(string))
@@ -1187,6 +1193,11 @@ func (h *APIHandler) DeleteAdmin(c *gin.Context) {
 		c.JSON(500, gin.H{"error": "database error"})
 		return
 	}
+
+	// Log deletion
+	session := sessions.Default(c)
+	actor, _ := session.Get("username").(string)
+	_ = h.pgRepo.LogAction(actor, "DELETE_ADMIN", req.Username, "User account and all associated tokens removed")
 
 	c.JSON(200, gin.H{"status": "success"})
 }
