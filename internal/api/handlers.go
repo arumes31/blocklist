@@ -1972,6 +1972,7 @@ func (h *APIHandler) DeleteAPIToken(c *gin.Context) {
 
 func (h *APIHandler) UpdateAPITokenPermissions(c *gin.Context) {
 	username, _ := c.Get("username")
+	userPerms, _ := c.Get("permissions")
 	id, _ := strconv.Atoi(c.Param("id"))
 	
 	var req struct {
@@ -1982,9 +1983,29 @@ func (h *APIHandler) UpdateAPITokenPermissions(c *gin.Context) {
 		return
 	}
 
-	// Basic security: In a real app, we'd verify the user owns this token or is admin.
-	// Since we use AuthMiddleware, we have the username.
-	err := h.pgRepo.UpdateAPITokenPermissions(id, username.(string), req.Permissions)
+	// Validate permissions
+	finalPerms := ""
+	if req.Permissions != "" {
+		if username == h.cfg.GUIAdmin {
+			finalPerms = req.Permissions
+		} else {
+			rPerms := strings.Split(req.Permissions, ",")
+			uPerms := strings.Split(userPerms.(string), ",")
+			validPerms := []string{}
+			for _, rp := range rPerms {
+				rp = strings.TrimSpace(rp)
+				for _, up := range uPerms {
+					if rp == strings.TrimSpace(up) {
+						validPerms = append(validPerms, rp)
+						break
+					}
+				}
+			}
+			finalPerms = strings.Join(validPerms, ",")
+		}
+	}
+
+	err := h.pgRepo.UpdateAPITokenPermissions(id, username.(string), finalPerms)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update permissions"})
 		return

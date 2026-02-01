@@ -218,7 +218,7 @@ actionunban = curl -X POST -H "Content-Type: application/json" -d '{"ip":"&lt;ip
             
             <div style="margin-top: 1.5rem; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 1.5rem;">
                 <h4 style="color: #fff; margin-bottom: 1rem;">My API Tokens</h4>
-                <form id="tokenForm" hx-post="/api/v1/settings/tokens" hx-target="#token-list" hx-swap="innerHTML" onsubmit="prepareTokenPerms()">
+                <form id="tokenForm" hx-post="/api/v1/settings/tokens" hx-target="#token-list" hx-swap="innerHTML" hx-on:htmx:config-request="prepareTokenPerms()">
                     <div style="display: flex; gap: 10px; margin-bottom: 1rem;">
                         <input type="text" name="name" class="filter-input" placeholder="Token Name (e.g. CI/CD)" required style="flex: 1;">
                         <input type="hidden" name="permissions" id="tokenPermsInput">

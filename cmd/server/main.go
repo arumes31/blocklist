@@ -146,7 +146,7 @@ func main() {
 				PasswordHash: hash,
 				Token:        cfg.GUIToken,
 				Role:         "admin",
-				Permissions:  "gui_read,gui_write,block_ips,unblock_ips,manage_whitelist,manage_webhooks,manage_api_tokens,manage_admins,view_stats,view_audit_logs,export_data",
+				Permissions:  "gui_read,gui_write,block_ips,unblock_ips,manage_whitelist,manage_webhooks,manage_api_tokens,manage_admins,view_stats,view_audit_logs,export_data,webhook_access",
 			})
 			if err != nil {
 				zlog.Error().Err(err).Msg("Failed to seed admin user")
