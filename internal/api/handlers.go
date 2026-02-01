@@ -170,10 +170,6 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 	v1auth := v1.Group("/")
 	v1auth.Use(h.AuthMiddleware())
 	{
-		// Webhooks require webhook_access and specific limiter
-		v1auth.POST("/webhook", h.webhookLimiter, h.PermissionMiddleware("webhook_access"), h.Webhook)
-		v1auth.POST("/webhook2_whitelist", h.webhookLimiter, h.PermissionMiddleware("webhook_access"), h.Webhook2)
-		
 		// Data viewing requires view_ips and main limiter
 		v1auth.GET("/ips", h.mainLimiter, h.PermissionMiddleware("view_ips"), h.IPsPaginated)
 		v1auth.GET("/ips_automate", h.mainLimiter, h.PermissionMiddleware("view_ips"), h.AutomateIPs)
@@ -184,6 +180,11 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 		// Stats require view_stats
 		v1auth.GET("/stats", h.mainLimiter, h.PermissionMiddleware("view_stats"), h.Stats)
 	}
+
+	// Webhooks handle their own granular permission checks and multiple auth types
+	v1.POST("/webhook", h.AuthMiddleware(), h.webhookLimiter, h.Webhook)
+	v1.POST("/webhook2_whitelist", h.AuthMiddleware(), h.webhookLimiter, h.Webhook2)
+	
 	r.GET("/openapi.json", h.OpenAPI)
 
 	// Protected UI routes
@@ -234,7 +235,7 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 	}
 
 	// Legacy / Compatibility routes
-	r.POST("/webhook", h.AuthMiddleware(), h.webhookLimiter, h.PermissionMiddleware("webhook_access"), h.Webhook)
+	r.POST("/webhook", h.AuthMiddleware(), h.webhookLimiter, h.Webhook)
 	r.GET("/raw", h.RawIPs) // Public
 	r.GET("/ips", h.AuthMiddleware(), h.mainLimiter, h.PermissionMiddleware("view_ips"), h.JSONIPs)
 	r.GET("/ips_automate", h.AuthMiddleware(), h.mainLimiter, h.PermissionMiddleware("view_ips"), h.AutomateIPs)
@@ -420,6 +421,14 @@ func (h *APIHandler) AuthMiddleware() gin.HandlerFunc {
 		// If session is invalid (e.g. key mismatch after restart), clear it
 		if loggedIn := session.Get("logged_in"); loggedIn == nil {
 			zlog.Debug().Str("path", c.Request.URL.Path).Msg("Session missing or invalid")
+
+			// Allow fall-through for webhooks so they can use HMAC or body auth if Bearer is missing
+			p := c.Request.URL.Path
+			if p == "/api/v1/webhook" || p == "/webhook" || p == "/api/v1/webhook2_whitelist" {
+				c.Next()
+				return
+			}
+
 			if strings.HasPrefix(c.Request.URL.Path, "/api/") {
 				c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 			} else {
@@ -937,6 +946,19 @@ func (h *APIHandler) Webhook(c *gin.Context) {
 	}
 
 	if !authenticated {
+		// Check if already authenticated via Middleware (Bearer token or Session)
+		if _, exists := c.Get("username"); exists {
+			perms, _ := c.Get("permissions")
+			if strings.Contains(perms.(string), "webhook_access") {
+				authenticated = true
+			} else {
+				c.JSON(403, gin.H{"error": "Webhook access denied (insufficient permissions)"})
+				return
+			}
+		}
+	}
+
+	if !authenticated {
 		if h.pgRepo != nil {
 			// Verify against database user permissions
 			admin, err := h.pgRepo.GetAdmin(data.Username)
@@ -1014,6 +1036,17 @@ func (h *APIHandler) Webhook(c *gin.Context) {
 }
 
 func (h *APIHandler) Webhook2(c *gin.Context) {
+	// Webhook2 requires authentication (HMAC is not supported here, only Bearer or Session)
+	if _, exists := c.Get("username"); !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
+		return
+	}
+	perms, _ := c.Get("permissions")
+	if !strings.Contains(perms.(string), "webhook_access") {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Webhook access denied"})
+		return
+	}
+
 	// automated whitelist for the calling IP
 	clientIP := c.ClientIP()
 	geo := h.ipService.GetGeoIP(clientIP)
