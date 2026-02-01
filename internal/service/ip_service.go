@@ -288,6 +288,10 @@ func (s *IPService) ExportIPs(ctx context.Context, query string, country string,
 	}
 	
 	zs, err := s.redisRepo.ZRangeArgsWithScores(ctx, *args)
+	// If ZSET is empty or missing, fallback to full hash scan
+	if err == nil && len(zs) == 0 {
+		return s.exportFallback(ctx, query, country, addedBy, fromTime, toTime)
+	}
 	if err != nil { return nil, err }
 
 	items := make([]map[string]interface{}, 0)
@@ -498,4 +502,67 @@ func (s *IPService) ListIPsPaginatedAdvanced(ctx context.Context, limit int, cur
 
 	// Fallback to hash listing if ZSET is empty/failed
 	return s.ListIPsPaginated(ctx, limit, cursor, query)
+}
+
+func (s *IPService) exportFallback(ctx context.Context, query string, country string, addedBy string, fromTime, toTime time.Time) ([]map[string]interface{}, error) {
+	all, err := s.redisRepo.HGetAllRaw("ips")
+	if err != nil { return nil, err }
+
+	items := make([]map[string]interface{}, 0)
+	q := strings.ToLower(strings.TrimSpace(query))
+	countryList := []string{}
+	if country != "" {
+		for _, c := range strings.Split(country, ",") {
+			if trimmed := strings.TrimSpace(c); trimmed != "" {
+				countryList = append(countryList, strings.ToLower(trimmed))
+			}
+		}
+	}
+	addedBy = strings.ToLower(strings.TrimSpace(addedBy))
+
+	for ip, raw := range all {
+		var entry models.IPEntry
+		if err := json.Unmarshal([]byte(raw), &entry); err != nil { continue }
+
+		if q != "" {
+			if !strings.Contains(strings.ToLower(ip), q) &&
+				!strings.Contains(strings.ToLower(entry.Reason), q) &&
+				!strings.Contains(strings.ToLower(entry.AddedBy), q) &&
+				!(entry.Geolocation != nil && strings.Contains(strings.ToLower(entry.Geolocation.Country), q)) {
+				continue
+			}
+		}
+		if len(countryList) > 0 {
+			match := false
+			if entry.Geolocation != nil {
+				cCode := strings.ToLower(entry.Geolocation.Country)
+				for _, c := range countryList {
+					if cCode == c {
+						match = true
+						break
+					}
+				}
+			}
+			if !match { continue }
+		}
+		if addedBy != "" {
+			if !strings.EqualFold(entry.AddedBy, addedBy) { continue }
+		}
+		if !fromTime.IsZero() || !toTime.IsZero() {
+			ts, err := time.Parse("2006-01-02 15:04:05 UTC", entry.Timestamp)
+			if err == nil {
+				if !fromTime.IsZero() && ts.Before(fromTime) { continue }
+				if !toTime.IsZero() && ts.After(toTime) { continue }
+			}
+		}
+
+		items = append(items, map[string]interface{}{"ip": ip, "data": &entry})
+	}
+	// Sort by timestamp descending
+	sort.Slice(items, func(i, j int) bool {
+		ti, _ := time.Parse("2006-01-02 15:04:05 UTC", items[i]["data"].(*models.IPEntry).Timestamp)
+		tj, _ := time.Parse("2006-01-02 15:04:05 UTC", items[j]["data"].(*models.IPEntry).Timestamp)
+		return ti.After(tj)
+	})
+	return items, nil
 }
