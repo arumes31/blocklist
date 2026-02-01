@@ -119,9 +119,13 @@ func main() {
 
 	// 1. Initialize Repositories
 	redisRepo := repository.NewRedisRepository(cfg.RedisHost, cfg.RedisPort, cfg.RedisPassword, cfg.RedisDB)
+	if err := redisRepo.GetClient().Ping(context.Background()).Err(); err != nil {
+		zlog.Fatal().Err(err).Msg("Failed to connect to Redis")
+	}
+
 	pgRepo, err := repository.NewPostgresRepository(cfg.PostgresURL)
 	if err != nil {
-		zlog.Warn().Err(err).Msg("Failed to connect to Postgres. Persistent features may be limited.")
+		zlog.Fatal().Err(err).Msg("Failed to connect to Postgres")
 	}
 
 	// 2. Initialize Services
@@ -137,17 +141,12 @@ func main() {
 		if admin == nil {
 			zlog.Info().Str("username", cfg.GUIAdmin).Msg("Seeding initial admin user")
 			hash, _ := authService.HashPassword(cfg.GUIPassword)
-			token := cfg.GUIToken
-			if token == "" {
-				// Default token if not provided - better to fail or use a fixed one for first boot
-				token = "JBSWY3DPEBLW64TMMQ======" // example
-			}
 			err := pgRepo.CreateAdmin(models.AdminAccount{
 				Username:     cfg.GUIAdmin,
 				PasswordHash: hash,
-				Token:        token,
+				Token:        cfg.GUIToken,
 				Role:         "admin",
-				Permissions:  "gui_read,gui_write", // webhook_access excluded by default
+				Permissions:  "gui_read,gui_write,block_ips,unblock_ips,manage_whitelist,manage_webhooks,manage_api_tokens,manage_admins,view_stats,view_audit_logs,export_data",
 			})
 			if err != nil {
 				zlog.Error().Err(err).Msg("Failed to seed admin user")
