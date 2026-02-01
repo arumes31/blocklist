@@ -31,6 +31,7 @@ type AdminAccount struct {
 	PasswordHash string `json:"password_hash" db:"password_hash"`
 	Token        string `json:"token" db:"token"`
 	Role         string `json:"role" db:"role"`
+	Permissions  string `json:"permissions" db:"permissions"`
 }
 
 type APIToken struct {

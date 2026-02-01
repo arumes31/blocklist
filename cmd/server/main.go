@@ -147,6 +147,7 @@ func main() {
 				PasswordHash: hash,
 				Token:        token,
 				Role:         "admin",
+				Permissions:  "gui_read,gui_write,webhook_access",
 			})
 			if err != nil {
 				zlog.Error().Err(err).Msg("Failed to seed admin user")
@@ -231,6 +232,7 @@ func main() {
 	templ := template.Must(template.New("").Funcs(map[string]interface{}{
 		"lower":   strings.ToLower,
 		"replace": strings.ReplaceAll,
+		"split":   strings.Split,
 	}).ParseFS(templateFS, "templates/*.html"))
 	r.SetHTMLTemplate(templ)
 

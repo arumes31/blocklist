@@ -28,7 +28,7 @@ func NewPostgresRepository(url string) (*PostgresRepository, error) {
 
 func (p *PostgresRepository) GetAdmin(username string) (*models.AdminAccount, error) {
 	var admin models.AdminAccount
-	err := p.db.Get(&admin, "SELECT username, password_hash, token, role FROM admins WHERE username = $1", username)
+	err := p.db.Get(&admin, "SELECT username, password_hash, token, role, permissions FROM admins WHERE username = $1", username)
 	if err != nil {
 		return nil, err
 	}
@@ -37,7 +37,8 @@ func (p *PostgresRepository) GetAdmin(username string) (*models.AdminAccount, er
 
 func (p *PostgresRepository) CreateAdmin(admin models.AdminAccount) error {
 	if admin.Role == "" { admin.Role = "operator" }
-	_, err := p.db.NamedExec("INSERT INTO admins (username, password_hash, token, role) VALUES (:username, :password_hash, :token, :role)", admin)
+	if admin.Permissions == "" { admin.Permissions = "gui_read" }
+	_, err := p.db.NamedExec("INSERT INTO admins (username, password_hash, token, role, permissions) VALUES (:username, :password_hash, :token, :role, :permissions)", admin)
 	return err
 }
 
@@ -51,6 +52,11 @@ func (p *PostgresRepository) UpdateAdminToken(username, token string) error {
 	return err
 }
 
+func (p *PostgresRepository) UpdateAdminPermissions(username, permissions string) error {
+	_, err := p.db.Exec("UPDATE admins SET permissions = $1 WHERE username = $2", permissions, username)
+	return err
+}
+
 func (p *PostgresRepository) DeleteAdmin(username string) error {
 	_, err := p.db.Exec("DELETE FROM admins WHERE username = $1", username)
 	return err
@@ -58,7 +64,7 @@ func (p *PostgresRepository) DeleteAdmin(username string) error {
 
 func (p *PostgresRepository) GetAllAdmins() ([]models.AdminAccount, error) {
 	var admins []models.AdminAccount
-	err := p.db.Select(&admins, "SELECT username, password_hash, token, role FROM admins")
+	err := p.db.Select(&admins, "SELECT username, password_hash, token, role, permissions FROM admins")
 	return admins, err
 }
 

@@ -41,7 +41,7 @@ func (s *AuthService) HashPassword(password string) (string, error) {
 	return string(bytes), err
 }
 
-func (s *AuthService) CreateAdmin(username, password, role string) (*models.AdminAccount, error) {
+func (s *AuthService) CreateAdmin(username, password, role, permissions string) (*models.AdminAccount, error) {
 	if s.pgRepo == nil { return nil, nil }
 	hash, err := s.HashPassword(password)
 	if err != nil {
@@ -58,12 +58,14 @@ func (s *AuthService) CreateAdmin(username, password, role string) (*models.Admi
 	}
 
 	if role == "" { role = "operator" }
+	if permissions == "" { permissions = "gui_read" }
 
 	admin := models.AdminAccount{
 		Username:     username,
 		PasswordHash: hash,
 		Token:        key.Secret(),
 		Role:         role,
+		Permissions:  permissions,
 	}
 
 	err = s.pgRepo.CreateAdmin(admin)

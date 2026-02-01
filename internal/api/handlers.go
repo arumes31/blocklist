@@ -166,12 +166,12 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 	v1auth := v1.Group("/")
 	v1auth.Use(h.AuthMiddleware())
 	{
-		v1auth.POST("/webhook", h.Webhook)
-		v1auth.POST("/webhook2_whitelist", h.Webhook2)
-		v1auth.GET("/ips", h.IPsPaginated)
-		v1auth.GET("/ips/export", h.ExportIPs)
-		v1auth.GET("/ips_automate", h.AutomateIPs)
-		v1auth.GET("/stats", h.Stats)
+		v1auth.POST("/webhook", h.PermissionMiddleware("webhook_access"), h.Webhook)
+		v1auth.POST("/webhook2_whitelist", h.PermissionMiddleware("webhook_access"), h.Webhook2)
+		v1auth.GET("/ips", h.PermissionMiddleware("gui_read"), h.IPsPaginated)
+		v1auth.GET("/ips/export", h.PermissionMiddleware("gui_read"), h.ExportIPs)
+		v1auth.GET("/ips_automate", h.PermissionMiddleware("gui_read"), h.AutomateIPs)
+		v1auth.GET("/stats", h.PermissionMiddleware("gui_read"), h.Stats)
 	}
 	r.GET("/openapi.json", h.OpenAPI)
 
@@ -179,19 +179,19 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 	auth := r.Group("/")
 	auth.Use(h.AuthMiddleware())
 	{
-		auth.GET("/dashboard", h.Dashboard)
-		auth.GET("/dashboard/table", h.DashboardTable) // For HTMX polling
+		auth.GET("/dashboard", h.PermissionMiddleware("gui_read"), h.Dashboard)
+		auth.GET("/dashboard/table", h.PermissionMiddleware("gui_read"), h.DashboardTable) // For HTMX polling
 		
-		auth.GET("/api/v1/views", h.GetSavedViews)
-		auth.POST("/api/v1/views", h.CreateSavedView)
-		auth.DELETE("/api/v1/views/:id", h.DeleteSavedView)
+		auth.GET("/api/v1/views", h.PermissionMiddleware("gui_read"), h.GetSavedViews)
+		auth.POST("/api/v1/views", h.PermissionMiddleware("gui_read"), h.CreateSavedView)
+		auth.DELETE("/api/v1/views/:id", h.PermissionMiddleware("gui_read"), h.DeleteSavedView)
 
-		auth.GET("/settings", h.Settings)
-		auth.POST("/api/v1/settings/webhooks", h.AddOutboundWebhook)
-		auth.DELETE("/api/v1/settings/webhooks/:id", h.DeleteOutboundWebhook)
+		auth.GET("/settings", h.PermissionMiddleware("gui_read"), h.Settings)
+		auth.POST("/api/v1/settings/webhooks", h.PermissionMiddleware("gui_read"), h.AddOutboundWebhook)
+		auth.DELETE("/api/v1/settings/webhooks/:id", h.PermissionMiddleware("gui_read"), h.DeleteOutboundWebhook)
 
 		operator := auth.Group("/")
-		operator.Use(h.RBACMiddleware("operator"))
+		operator.Use(h.PermissionMiddleware("gui_write"))
 		{
 			operator.POST("/block", h.BlockIP)
 			operator.POST("/unblock", h.UnblockIP)
@@ -211,17 +211,18 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 			admin.POST("/delete", h.DeleteAdmin)
 			admin.POST("/change_password", h.ChangeAdminPassword)
 			admin.POST("/change_totp", h.ChangeAdminTOTP)
+			admin.POST("/change_permissions", h.ChangeAdminPermissions)
 			admin.GET("/get_qr/:username", h.GetQR)
 		}
 	}
 
 	// Legacy / Compatibility routes
-	r.POST("/webhook", h.Webhook)
-	r.GET("/raw", h.RawIPs)
-	r.GET("/ips", h.JSONIPs)
-	r.GET("/ips_automate", h.AutomateIPs)
-	r.GET("/api/ips", h.IPsPaginated)
-	r.GET("/api/stats", h.Stats)
+	r.POST("/webhook", h.AuthMiddleware(), h.PermissionMiddleware("webhook_access"), h.Webhook)
+	r.GET("/raw", h.RawIPs) // Public
+	r.GET("/ips", h.AuthMiddleware(), h.PermissionMiddleware("gui_read"), h.JSONIPs)
+	r.GET("/ips_automate", h.AuthMiddleware(), h.PermissionMiddleware("gui_read"), h.AutomateIPs)
+	r.GET("/api/ips", h.AuthMiddleware(), h.PermissionMiddleware("gui_read"), h.IPsPaginated)
+	r.GET("/api/stats", h.AuthMiddleware(), h.PermissionMiddleware("gui_read"), h.Stats)
 	r.GET("/health", h.Health)
 	r.GET("/ready", h.Ready)
 	r.GET("/metrics", h.MetricsAuthMiddleware(), gin.WrapH(promhttp.Handler()))
@@ -422,19 +423,24 @@ func (h *APIHandler) AuthMiddleware() gin.HandlerFunc {
 		username := session.Get("username").(string)
 		c.Set("username", username)
 		
-		// Get role from DB or session
+		// Get role and permissions from DB or session
 		role := session.Get("role")
-		if role == nil {
+		perms := session.Get("permissions")
+		if role == nil || perms == nil {
 			admin, _ := h.pgRepo.GetAdmin(username)
 			if admin != nil {
 				role = admin.Role
+				perms = admin.Permissions
 				session.Set("role", role)
+				session.Set("permissions", perms)
 				_ = session.Save()
 			} else {
 				role = "viewer"
+				perms = "gui_read"
 			}
 		}
 		c.Set("role", role.(string))
+		c.Set("permissions", perms.(string))
 		
 		c.Next()
 	}
@@ -455,6 +461,42 @@ func (h *APIHandler) RBACMiddleware(requiredRole string) gin.HandlerFunc {
 		weights := map[string]int{"viewer": 1, "operator": 2, "admin": 3}
 		if weights[roleStr] < weights[requiredRole] {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Insufficient permissions"})
+			c.Abort()
+			return
+		}
+		c.Next()
+	}
+}
+
+func (h *APIHandler) PermissionMiddleware(requiredPerm string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		perms, exists := c.Get("permissions")
+		if !exists {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Permissions not found"})
+			c.Abort()
+			return
+		}
+
+		permStr := perms.(string)
+		
+		// System admin bypass
+		username, _ := c.Get("username")
+		if username == h.cfg.GUIAdmin {
+			c.Next()
+			return
+		}
+
+		userPerms := strings.Split(permStr, ",")
+		hasPerm := false
+		for _, p := range userPerms {
+			if strings.TrimSpace(p) == requiredPerm {
+				hasPerm = true
+				break
+			}
+		}
+
+		if !hasPerm {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Insufficient granular permissions"})
 			c.Abort()
 			return
 		}
@@ -532,6 +574,7 @@ func (h *APIHandler) Login(c *gin.Context) {
 		admin, _ := h.pgRepo.GetAdmin(username)
 		if admin != nil {
 			session.Set("role", admin.Role)
+			session.Set("permissions", admin.Permissions)
 		}
 		if err := session.Save(); err != nil {
 			zlog.Error().Err(err).Msg("Failed to save session during login")
@@ -880,9 +923,10 @@ func (h *APIHandler) Webhook2(c *gin.Context) {
 
 func (h *APIHandler) CreateAdmin(c *gin.Context) {
 	var req struct {
-		Username string `json:"username"`
-		Password string `json:"password"`
-		Role     string `json:"role"`
+		Username    string `json:"username"`
+		Password    string `json:"password"`
+		Role        string `json:"role"`
+		Permissions string `json:"permissions"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(400, gin.H{"error": "invalid request"})
@@ -890,14 +934,39 @@ func (h *APIHandler) CreateAdmin(c *gin.Context) {
 	}
 
 	if req.Role == "" { req.Role = "operator" }
+	if req.Permissions == "" { req.Permissions = "gui_read" }
 
-	admin, err := h.authService.CreateAdmin(req.Username, req.Password, req.Role)
+	admin, err := h.authService.CreateAdmin(req.Username, req.Password, req.Role, req.Permissions)
 	if err != nil {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
 
 	c.JSON(200, gin.H{"status": "success", "username": admin.Username})
+}
+
+func (h *APIHandler) ChangeAdminPermissions(c *gin.Context) {
+	var req struct {
+		Username    string `json:"username"`
+		Permissions string `json:"permissions"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(400, gin.H{"error": "invalid request"})
+		return
+	}
+
+	if req.Username == h.cfg.GUIAdmin {
+		c.JSON(400, gin.H{"error": "cannot change main admin permissions"})
+		return
+	}
+
+	err := h.pgRepo.UpdateAdminPermissions(req.Username, req.Permissions)
+	if err != nil {
+		c.JSON(500, gin.H{"error": "database error"})
+		return
+	}
+
+	c.JSON(200, gin.H{"status": "success"})
 }
 
 func (h *APIHandler) AdminManagement(c *gin.Context) {

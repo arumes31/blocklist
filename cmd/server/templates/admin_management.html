@@ -144,10 +144,23 @@
     </div>
 
     <div class="main-content">
-        <div class="table-card" style="padding: 1.5rem; margin-bottom: 2rem; display: flex; gap: 10px; align-items: center; justify-content: center;">
-            <input type="text" id="newUsername" class="filter-input" style="flex: 1; max-width: 250px;" placeholder="New Username">
-            <input type="password" id="newPassword" class="filter-input" style="flex: 1; max-width: 250px;" placeholder="New Password">
-            <button class="btn btn-danger" onclick="createAdmin()">Create Admin</button>
+        <div class="table-card" style="padding: 1.5rem; margin-bottom: 2rem;">
+            <div style="display: flex; gap: 10px; align-items: center; justify-content: center; margin-bottom: 1rem;">
+                <input type="text" id="newUsername" class="filter-input" style="flex: 1; max-width: 250px;" placeholder="New Username">
+                <input type="password" id="newPassword" class="filter-input" style="flex: 1; max-width: 250px;" placeholder="New Password">
+                <button class="btn btn-danger" onclick="createAdmin()">Create Admin</button>
+            </div>
+            <div style="display: flex; gap: 20px; align-items: center; justify-content: center; color: var(--secondary-color); font-size: 0.9rem;">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                    <input type="checkbox" id="perm_gui_read" checked> GUI Read
+                </label>
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                    <input type="checkbox" id="perm_gui_write"> GUI Write
+                </label>
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                    <input type="checkbox" id="perm_webhook"> Webhook Access
+                </label>
+            </div>
         </div>
 
         <div class="table-card">
@@ -155,7 +168,7 @@
                 <thead>
                     <tr>
                         <th>Username</th>
-                        <th>Token</th>
+                        <th>Permissions</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
@@ -163,16 +176,23 @@
                     {{ range $username, $data := .admins }}
                     <tr>
                         <td style="font-weight: 600;">{{ $username }}</td>
-                        <td style="font-family: monospace; color: var(--secondary-color);">{{ $data.Token }}</td>
+                        <td>
+                            <div style="display: flex; gap: 5px; flex-wrap: wrap;">
+                                {{ range $p := split $data.Permissions "," }}
+                                    <span class="status-chip live" style="font-size: 0.7rem; padding: 0.1rem 0.4rem;">{{ $p }}</span>
+                                {{ end }}
+                            </div>
+                        </td>
                         <td>
                             <div style="display: flex; gap: 8px;">
-                                {{ if ne $username "admin" }}
                                 <button class="btn btn-success" style="padding: 0.4rem 0.8rem; font-size: 0.8rem;" onclick="showQR('{{ $username }}')">Show QR</button>
                                 <button class="btn btn-dark" style="padding: 0.4rem 0.8rem; font-size: 0.8rem;" onclick="openPasswordModal('{{ $username }}')">Password</button>
+                                {{ if ne $username "admin" }}
+                                <button class="btn btn-dark" style="padding: 0.4rem 0.8rem; font-size: 0.8rem;" onclick="openPermissionsModal('{{ $username }}', '{{ $data.Permissions }}')">Perms</button>
                                 <button class="btn btn-dark" style="padding: 0.4rem 0.8rem; font-size: 0.8rem; background: #ff980033;" onclick="openTotpModal('{{ $username }}')">TOTP</button>
                                 <button class="btn btn-danger" style="padding: 0.4rem 0.8rem; font-size: 0.8rem;" onclick="deleteAdmin('{{ $username }}')">Delete</button>
                                 {{ else }}
-                                <span style="font-size: 0.8rem; color: var(--secondary-color); font-style: italic;">System Root (Protected)</span>
+                                <span style="font-size: 0.8rem; color: var(--secondary-color); font-style: italic; margin-left: 10px;">System Root (Protected)</span>
                                 {{ end }}
                             </div>
                         </td>
@@ -180,6 +200,27 @@
                     {{ end }}
                 </tbody>
             </table>
+        </div>
+    </div>
+...
+    <!-- Permissions Modal -->
+    <div id="permissionsModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closePermissionsModal()">×</span>
+            <h3 style="margin-top: 0;">Manage Permissions</h3>
+            <input type="hidden" id="permUsername">
+            <div style="display: flex; flex-direction: column; gap: 15px; margin-bottom: 2rem;">
+                <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                    <input type="checkbox" id="edit_gui_read"> GUI Access (Read)
+                </label>
+                <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                    <input type="checkbox" id="edit_gui_write"> GUI Access (Write/Modify)
+                </label>
+                <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                    <input type="checkbox" id="edit_webhook"> Webhook Access (API)
+                </label>
+            </div>
+            <button class="btn btn-danger" style="width: 100%;" onclick="savePermissions()">Save Permissions</button>
         </div>
     </div>
 
@@ -209,13 +250,28 @@
     </div>
 
     <script>
+        function getSelectedPerms(prefix) {
+            const perms = [];
+            if (document.getElementById(prefix + 'gui_read').checked) perms.push('gui_read');
+            if (document.getElementById(prefix + 'gui_write').checked) perms.push('gui_write');
+            if (document.getElementById(prefix + 'webhook').checked) perms.push('webhook_access');
+            return perms.join(',');
+        }
+
         function createAdmin() {
             const username = document.getElementById('newUsername').value;
             const password = document.getElementById('newPassword').value;
-            fetch('/create_admin', {
+            const permissions = getSelectedPerms('perm_');
+
+            if (!username || !password) {
+                alert('Username and password are required');
+                return;
+            }
+
+            fetch('/admin_management/create', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username, password })
+                body: JSON.stringify({ username, password, role: 'operator', permissions })
             })
             .then(response => response.json())
             .then(data => {
@@ -228,13 +284,46 @@
             });
         }
 
+        function openPermissionsModal(username, currentPerms) {
+            document.getElementById('permUsername').value = username;
+            const perms = currentPerms.split(',');
+            document.getElementById('edit_gui_read').checked = perms.includes('gui_read');
+            document.getElementById('edit_gui_write').checked = perms.includes('gui_write');
+            document.getElementById('edit_webhook').checked = perms.includes('webhook_access');
+            document.getElementById('permissionsModal').style.display = 'block';
+        }
+
+        function closePermissionsModal() {
+            document.getElementById('permissionsModal').style.display = 'none';
+        }
+
+        function savePermissions() {
+            const username = document.getElementById('permUsername').value;
+            const permissions = getSelectedPerms('edit_');
+
+            fetch('/admin_management/change_permissions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, permissions })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    alert('Permissions updated successfully!');
+                    location.reload();
+                } else {
+                    alert(data.error || 'Failed to update permissions');
+                }
+            });
+        }
+
         function showQR(username) {
-            window.open('/get_qr/' + username, '_blank');
+            window.open('/admin_management/get_qr/' + username, '_blank');
         }
 
         function deleteAdmin(username) {
             if (confirm('Are you sure you want to delete this admin?')) {
-                fetch('/delete_admin', {
+                fetch('/admin_management/delete', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ username })
@@ -268,7 +357,7 @@
                 alert('Please enter a new password');
                 return;
             }
-            fetch('/change_admin_password', {
+            fetch('/admin_management/change_password', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ username, new_password })
@@ -297,7 +386,7 @@
 
         function changeTotp() {
             const username = document.getElementById('totpUsername').value;
-            fetch('/change_admin_totp', {
+            fetch('/admin_management/change_totp', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ username })
