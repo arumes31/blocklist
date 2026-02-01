@@ -211,8 +211,8 @@ func main() {
 
 	// Rate Limiting
 	rate := limiter.Rate{
-		Period: 1,
-		Limit:  200,
+		Period: time.Duration(cfg.RatePeriod) * time.Second,
+		Limit:  int64(cfg.RateLimit),
 	}
 	limiterClient := rdb.NewClient(&rdb.Options{
 		Addr:     fmt.Sprintf("%s:%d", cfg.RedisHost, cfg.RedisPort),
@@ -226,7 +226,8 @@ func main() {
 		zlog.Fatal().Err(err).Msg("Failed to create limiter store")
 	}
 	rateLimiter := limiter.New(limitStore, rate)
-	r.Use(mgin.NewMiddleware(rateLimiter))
+	// Don't apply globally yet, apply to the main app groups below
+	rateMiddleware := mgin.NewMiddleware(rateLimiter)
 
 	// Load Templates from embed.FS
 	templ := template.Must(template.New("").Funcs(map[string]interface{}{
@@ -296,6 +297,9 @@ func main() {
 
 	flagsRoot, _ := fs.Sub(staticFS, "static/flags")
 	r.StaticFS("/flags", http.FS(flagsRoot))
+
+	// Apply Rate Limiting to all application routes (not static files)
+	r.Use(rateMiddleware)
 
 	// 6. Initialize API Handler
 	handler := api.NewAPIHandler(cfg, redisRepo, pgRepo, authService, ipService, hub, webhookService)
