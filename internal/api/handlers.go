@@ -211,26 +211,26 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 		auth.POST("/api/v1/views", h.PermissionMiddleware("view_ips"), h.CreateSavedView)
 		auth.DELETE("/api/v1/views/:id", h.PermissionMiddleware("view_ips"), h.DeleteSavedView)
 
-		auth.GET("/settings", h.PermissionMiddleware("manage_admins"), h.Settings)
-		auth.POST("/api/v1/settings/webhooks", h.PermissionMiddleware("manage_admins"), h.AddOutboundWebhook)
-		auth.DELETE("/api/v1/settings/webhooks/:id", h.PermissionMiddleware("manage_admins"), h.DeleteOutboundWebhook)
+		auth.GET("/settings", h.PermissionMiddleware("manage_webhooks"), h.Settings)
+		auth.POST("/api/v1/settings/webhooks", h.PermissionMiddleware("manage_webhooks"), h.AddOutboundWebhook)
+		auth.DELETE("/api/v1/settings/webhooks/:id", h.PermissionMiddleware("manage_webhooks"), h.DeleteOutboundWebhook)
 
 		// API Tokens
-		auth.POST("/api/v1/settings/tokens", h.PermissionMiddleware("manage_admins"), h.CreateAPIToken)
-		auth.DELETE("/api/v1/settings/tokens/:id", h.PermissionMiddleware("manage_admins"), h.DeleteAPIToken)
-		auth.POST("/api/v1/settings/tokens/:id/permissions", h.PermissionMiddleware("manage_admins"), h.UpdateAPITokenPermissions)
-		auth.DELETE("/api/v1/admin/tokens/:id", h.PermissionMiddleware("manage_admins"), h.SudoMiddleware(), h.AdminRevokeAPIToken)
+		auth.POST("/api/v1/settings/tokens", h.PermissionMiddleware("manage_api_tokens"), h.CreateAPIToken)
+		auth.DELETE("/api/v1/settings/tokens/:id", h.PermissionMiddleware("manage_api_tokens"), h.DeleteAPIToken)
+		auth.POST("/api/v1/settings/tokens/:id/permissions", h.PermissionMiddleware("manage_api_tokens"), h.UpdateAPITokenPermissions)
+		auth.DELETE("/api/v1/admin/tokens/:id", h.PermissionMiddleware("manage_global_tokens"), h.SudoMiddleware(), h.AdminRevokeAPIToken)
 
 		// Enforcement actions
-		auth.POST("/block", h.PermissionMiddleware("webhook_ban"), h.BlockIP)
-		auth.POST("/unblock", h.PermissionMiddleware("webhook_unban"), h.UnblockIP)
-		auth.POST("/bulk_block", h.PermissionMiddleware("webhook_ban"), h.BulkBlock)
-		auth.POST("/bulk_unblock", h.PermissionMiddleware("webhook_unban"), h.BulkUnblock)
+		auth.POST("/block", h.PermissionMiddleware("block_ips"), h.BlockIP)
+		auth.POST("/unblock", h.PermissionMiddleware("unblock_ips"), h.UnblockIP)
+		auth.POST("/bulk_block", h.PermissionMiddleware("block_ips"), h.BulkBlock)
+		auth.POST("/bulk_unblock", h.PermissionMiddleware("unblock_ips"), h.BulkUnblock)
 		
 		// Whitelist management
-		auth.GET("/whitelist", h.PermissionMiddleware("webhook_whitelist"), h.Whitelist)
-		auth.POST("/add_whitelist", h.PermissionMiddleware("webhook_whitelist"), h.AddWhitelist)
-		auth.POST("/remove_whitelist", h.PermissionMiddleware("webhook_whitelist"), h.RemoveWhitelist)
+		auth.GET("/whitelist", h.PermissionMiddleware("manage_whitelist"), h.Whitelist)
+		auth.POST("/add_whitelist", h.PermissionMiddleware("manage_whitelist"), h.AddWhitelist)
+		auth.POST("/remove_whitelist", h.PermissionMiddleware("manage_whitelist"), h.RemoveWhitelist)
 
 		// Admin management
 		admin := auth.Group("/admin_management")
@@ -581,13 +581,12 @@ func (h *APIHandler) PermissionMiddleware(requiredPerm string) gin.HandlerFunc {
 
 		permStr := perms.(string)
 		
-		// System admin bypass (except for granular webhooks by default)
+		// System admin bypass
 		username, _ := c.Get("username")
 		if username == h.cfg.GUIAdmin && 
 		   requiredPerm != "webhook_ban" && 
 		   requiredPerm != "webhook_unban" && 
-		   requiredPerm != "webhook_whitelist" &&
-		   requiredPerm != "view_ips" {
+		   requiredPerm != "webhook_whitelist" {
 			c.Next()
 			return
 		}

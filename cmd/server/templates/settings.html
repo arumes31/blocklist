@@ -228,10 +228,11 @@ actionunban = curl -X POST -H "Content-Type: application/json" -d '{"ip":"&lt;ip
                         <div style="font-size: 0.8rem; color: var(--secondary-color); margin-bottom: 8px;">Scoped Permissions (Optional - Defaults to restricted):</div>
                         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; font-size: 0.8rem;">
                             <label><input type="checkbox" class="token-perm" value="view_ips"> View IPs</label>
+                            <label><input type="checkbox" class="token-perm" value="block_ips"> Block IPs</label>
+                            <label><input type="checkbox" class="token-perm" value="unblock_ips"> Unblock IPs</label>
                             <label><input type="checkbox" class="token-perm" value="webhook_ban"> Webhook (Ban)</label>
                             <label><input type="checkbox" class="token-perm" value="webhook_unban"> Webhook (Unban)</label>
                             <label><input type="checkbox" class="token-perm" value="webhook_whitelist"> Webhook (Whitelist)</label>
-                            <label><input type="checkbox" class="token-perm" value="manage_admins"> System Admin</label>
                             <label><input type="checkbox" class="token-perm" value="export_data"> Export Data</label>
                         </div>
                         <div style="margin-top: 10px; display: flex; gap: 10px;">
@@ -270,10 +271,11 @@ actionunban = curl -X POST -H "Content-Type: application/json" -d '{"ip":"&lt;ip
                                 <div class="perm-edit" id="perm-edit-{{ .ID }}" style="display: none;">
                                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px; font-size: 0.75rem; margin-bottom: 5px;">
                                         <label><input type="checkbox" class="token-edit-perm-{{ .ID }}" value="view_ips"> View</label>
+                                        <label><input type="checkbox" class="token-edit-perm-{{ .ID }}" value="block_ips"> Block</label>
+                                        <label><input type="checkbox" class="token-edit-perm-{{ .ID }}" value="unblock_ips"> Unblock</label>
                                         <label><input type="checkbox" class="token-edit-perm-{{ .ID }}" value="webhook_ban"> Webhook (Ban)</label>
                                         <label><input type="checkbox" class="token-edit-perm-{{ .ID }}" value="webhook_unban"> Webhook (Unban)</label>
                                         <label><input type="checkbox" class="token-edit-perm-{{ .ID }}" value="webhook_whitelist"> Webhook (Whitelist)</label>
-                                        <label><input type="checkbox" class="token-edit-perm-{{ .ID }}" value="manage_admins"> System Admin</label>
                                         <label><input type="checkbox" class="token-edit-perm-{{ .ID }}" value="export_data"> Export</label>
                                     </div>
                                     <div style="display: flex; gap: 5px;">
@@ -445,8 +447,8 @@ actionunban = curl -X POST -H "Content-Type: application/json" -d '{"ip":"&lt;ip
             checkboxes.forEach(cb => cb.checked = false);
             
             const perms = {
-                'fail2ban': ['webhook_ban'],
-                'fortigate': ['webhook_ban', 'webhook_unban'],
+                'fail2ban': ['block_ips', 'webhook_ban'],
+                'fortigate': ['block_ips', 'unblock_ips', 'webhook_ban', 'webhook_unban'],
                 'auditor': ['view_ips', 'export_data']
             };
             

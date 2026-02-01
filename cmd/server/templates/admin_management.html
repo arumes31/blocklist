@@ -193,20 +193,32 @@
             
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; color: var(--secondary-color); font-size: 0.85rem; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 1.5rem;">
                 <div>
-                    <div style="font-weight: bold; color: var(--vibrant-red); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px;">Monitoring</div>
+                    <div style="font-weight: bold; color: var(--vibrant-red); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px;">GUI Access</div>
+                    <label title="Base read access for the GUI" style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-bottom: 5px;"><input type="checkbox" id="perm_gui_read" checked> GUI Read</label>
+                    <label title="Base write access for the GUI" style="display: flex; align-items: center; gap: 8px; cursor: pointer;"><input type="checkbox" id="perm_gui_write" checked> GUI Write</label>
+                    <div style="font-weight: bold; color: var(--vibrant-red); margin-top: 15px; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px;">Monitoring</div>
                     <label title="Read-only access to the main IP dashboard" style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-bottom: 5px;"><input type="checkbox" id="perm_view_ips" checked> View IPs</label>
                     <label title="Access to system statistics and charts" style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-bottom: 5px;"><input type="checkbox" id="perm_view_stats"> View Stats</label>
                     <label title="View the audit trail of admin actions" style="display: flex; align-items: center; gap: 8px; cursor: pointer;"><input type="checkbox" id="perm_view_audit_logs"> View Audit Logs</label>
                 </div>
                 <div>
-                    <div style="font-weight: bold; color: var(--vibrant-red); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px;">Enforcement</div>
-                    <label title="Allow banning IPs" style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-bottom: 5px;"><input type="checkbox" id="perm_webhook_ban"> Webhook (Ban)</label>
-                    <label title="Allow unbanning IPs" style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-bottom: 5px;"><input type="checkbox" id="perm_webhook_unban"> Webhook (Unban)</label>
-                    <label title="Allow whitelisting IPs" style="display: flex; align-items: center; gap: 8px; cursor: pointer;"><input type="checkbox" id="perm_webhook_whitelist"> Webhook (Whitelist)</label>
+                    <div style="font-weight: bold; color: var(--vibrant-red); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px;">Enforcement (GUI)</div>
+                    <label title="Block IPs via the GUI" style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-bottom: 5px;"><input type="checkbox" id="perm_block_ips"> Block IPs</label>
+                    <label title="Unblock IPs via the GUI" style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-bottom: 5px;"><input type="checkbox" id="perm_unblock_ips"> Unblock IPs</label>
+                    <label title="Manage whitelist via the GUI" style="display: flex; align-items: center; gap: 8px; cursor: pointer;"><input type="checkbox" id="perm_manage_whitelist"> Manage Whitelist</label>
                 </div>
                 <div>
                     <div style="font-weight: bold; color: var(--vibrant-red); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px;">System</div>
-                    <label title="Full administrative access (Users, Settings, Tokens)" style="display: flex; align-items: center; gap: 8px; cursor: pointer;"><input type="checkbox" id="perm_manage_admins"> System Admin</label>
+                    <label title="Configure outbound webhooks" style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-bottom: 5px;"><input type="checkbox" id="perm_manage_webhooks"> Manage Webhooks</label>
+                    <label title="Manage API tokens" style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-bottom: 5px;"><input type="checkbox" id="perm_manage_api_tokens"> API Tokens</label>
+                    <label title="Manage API tokens for all users" style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-bottom: 5px;"><input type="checkbox" id="perm_manage_global_tokens"> Global API Tokens</label>
+                    <label title="Create, edit, and delete admin users" style="display: flex; align-items: center; gap: 8px; cursor: pointer;"><input type="checkbox" id="perm_manage_admins"> User Management</label>
+                </div>
+                <div>
+                    <div style="font-weight: bold; color: var(--vibrant-red); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px;">Webhooks (API)</div>
+                    <label title="Allow banning IPs via incoming webhooks" style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-bottom: 5px;"><input type="checkbox" id="perm_webhook_ban"> Webhook (Ban)</label>
+                    <label title="Allow unbanning IPs via incoming webhooks" style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-bottom: 5px;"><input type="checkbox" id="perm_webhook_unban"> Webhook (Unban)</label>
+                    <label title="Allow whitelisting IPs via incoming webhooks" style="display: flex; align-items: center; gap: 8px; cursor: pointer;"><input type="checkbox" id="perm_webhook_whitelist"> Webhook (Whitelist)</label>
                 </div>
                 <div>
                     <div style="font-weight: bold; color: var(--vibrant-red); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px;">Utility</div>
@@ -288,20 +300,30 @@
             
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 25px; margin-bottom: 2rem; color: #fff; font-size: 0.9rem;">
                 <div>
-                    <div style="font-weight: bold; color: var(--vibrant-red); margin-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 5px;">Monitoring</div>
+                    <div style="font-weight: bold; color: var(--vibrant-red); margin-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 5px;">Access / Monitoring</div>
+                    <label title="Base read access for the GUI" style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin-bottom: 8px;"><input type="checkbox" id="edit_gui_read"> GUI Read</label>
+                    <label title="Base write access for the GUI" style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin-bottom: 8px;"><input type="checkbox" id="edit_gui_write"> GUI Write</label>
                     <label title="Read-only access to the main IP dashboard" style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin-bottom: 8px;"><input type="checkbox" id="edit_view_ips"> View IPs</label>
                     <label title="Access to system statistics and charts" style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin-bottom: 8px;"><input type="checkbox" id="edit_view_stats"> View Stats</label>
                     <label title="View the audit trail of admin actions" style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin-bottom: 8px;"><input type="checkbox" id="edit_view_audit_logs"> View Audit Logs</label>
                     <label title="Download CSV/JSON exports" style="display: flex; align-items: center; gap: 10px; cursor: pointer;"><input type="checkbox" id="edit_export_data"> Data Export</label>
+
+                    <div style="font-weight: bold; color: var(--vibrant-red); margin-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 5px; margin-top: 15px;">Enforcement (GUI)</div>
+                    <label title="Block IPs via the GUI" style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin-bottom: 8px;"><input type="checkbox" id="edit_block_ips"> Block IPs</label>
+                    <label title="Unblock IPs via the GUI" style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin-bottom: 8px;"><input type="checkbox" id="edit_unblock_ips"> Unblock IPs</label>
+                    <label title="Manage whitelist via the GUI" style="display: flex; align-items: center; gap: 10px; cursor: pointer;"><input type="checkbox" id="edit_manage_whitelist"> Manage Whitelist</label>
                 </div>
                 <div>
-                    <div style="font-weight: bold; color: var(--vibrant-red); margin-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 5px;">Webhooks / Enforcement</div>
-                    <label title="Allow banning IPs" style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin-bottom: 8px;"><input type="checkbox" id="edit_webhook_ban"> Webhook (Ban)</label>
-                    <label title="Allow unbanning IPs" style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin-bottom: 8px;"><input type="checkbox" id="edit_webhook_unban"> Webhook (Unban)</label>
-                    <label title="Allow whitelisting IPs" style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin-bottom: 8px;"><input type="checkbox" id="edit_webhook_whitelist"> Webhook (Whitelist)</label>
+                    <div style="font-weight: bold; color: var(--vibrant-red); margin-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 5px;">Webhooks (API)</div>
+                    <label title="Allow banning IPs via incoming webhooks" style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin-bottom: 8px;"><input type="checkbox" id="edit_webhook_ban"> Webhook (Ban)</label>
+                    <label title="Allow unbanning IPs via incoming webhooks" style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin-bottom: 8px;"><input type="checkbox" id="edit_webhook_unban"> Webhook (Unban)</label>
+                    <label title="Allow whitelisting IPs via incoming webhooks" style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin-bottom: 8px;"><input type="checkbox" id="edit_webhook_whitelist"> Webhook (Whitelist)</label>
                     
                     <div style="font-weight: bold; color: var(--vibrant-red); margin-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 5px; margin-top: 15px;">System</div>
-                    <label title="Full administrative access (Users, Settings, Tokens)" style="display: flex; align-items: center; gap: 10px; cursor: pointer;"><input type="checkbox" id="edit_manage_admins"> System Admin</label>
+                    <label title="Configure outbound webhooks" style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin-bottom: 8px;"><input type="checkbox" id="edit_manage_webhooks"> Manage Webhooks</label>
+                    <label title="Manage API tokens" style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin-bottom: 8px;"><input type="checkbox" id="edit_manage_api_tokens"> API Tokens</label>
+                    <label title="Manage API tokens for all users" style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin-bottom: 8px;"><input type="checkbox" id="edit_manage_global_tokens"> Global API Tokens</label>
+                    <label title="Create, edit, and delete admin users" style="display: flex; align-items: center; gap: 10px; cursor: pointer;"><input type="checkbox" id="edit_manage_admins"> User Management</label>
                 </div>
             </div>
             <button class="btn btn-danger" style="width: 100%;" onclick="savePermissions()">Save Permissions</button>
@@ -335,8 +357,9 @@
         }
 
         const PERM_KEYS = [
-            'view_ips', 'view_stats', 'view_audit_logs', 'export_data',
-            'manage_admins',
+            'gui_read', 'gui_write', 'view_ips', 'view_stats', 'view_audit_logs', 'export_data',
+            'block_ips', 'unblock_ips', 'manage_whitelist',
+            'manage_webhooks', 'manage_api_tokens', 'manage_global_tokens', 'manage_admins',
             'webhook_ban', 'webhook_unban', 'webhook_whitelist'
         ];
 
@@ -351,9 +374,9 @@
 
         function setRole(role) {
             const mapping = {
-                'auditor': ['view_ips', 'view_stats', 'view_audit_logs'],
-                'operator': ['view_ips', 'view_stats', 'webhook_ban', 'webhook_unban', 'webhook_whitelist'],
-                'security': ['manage_admins', 'webhook_ban', 'webhook_unban', 'webhook_whitelist']
+                'auditor': ['gui_read', 'view_ips', 'view_stats', 'view_audit_logs'],
+                'operator': ['gui_read', 'gui_write', 'view_ips', 'view_stats', 'block_ips', 'unblock_ips', 'manage_whitelist'],
+                'security': ['gui_read', 'gui_write', 'manage_webhooks', 'manage_api_tokens', 'manage_global_tokens', 'manage_admins']
             };
             
             PERM_KEYS.forEach(k => {
