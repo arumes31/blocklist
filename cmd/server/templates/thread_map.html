@@ -176,7 +176,7 @@
                 <input type="checkbox" id="toggleCluster" onchange="toggleViewMode()" checked> Cluster
             </label>
             <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
-                <input type="checkbox" id="toggleServerLines" onchange="toggleViewMode()" checked> Attack Lines
+                <input type="checkbox" id="toggleServerLines" onchange="toggleViewMode()" checked> Live Lines
             </label>
         </div>
         <span id="live-status">LIVE</span>
@@ -225,10 +225,6 @@
     let lineLayer = null;
     let liveMarkers = null;
     let worldLayer = null;
-    
-    // Placeholder for server location (can be updated by user)
-    // Defaulting to a central-ish location (e.g., Frankfurt for EU servers)
-    const SERVER_LOCATION = [50.1109, 8.6821]; 
 
     async function initMap() {
         map = L.map('threat-map', {
@@ -417,21 +413,6 @@
                 markerLayer.addLayer(marker);
                 clusterLayer.addLayer(marker);
                 heatData.push([geo.latitude, geo.longitude, 0.5]);
-
-                // Draw static connection lines if enabled
-                if (it.type === 'block') {
-                    const antPath = L.polyline.antPath([ [geo.latitude, geo.longitude], SERVER_LOCATION ], {
-                        delay: 3000,
-                        dashArray: [10, 20],
-                        weight: 1,
-                        color: '#ff0000',
-                        pulseColor: '#ffffff',
-                        paused: false,
-                        reverse: false,
-                        hardwareAcceleration: true
-                    });
-                    lineLayer.addLayer(antPath);
-                }
             }
         });
 
@@ -451,6 +432,7 @@
         const msg = JSON.parse(event.data);
         const showBlocks = document.getElementById('toggleBlockIPs').checked;
         const showWhitelists = document.getElementById('toggleWhitelistIPs').checked;
+        const showLines = document.getElementById('toggleServerLines').checked;
 
         if (msg.action === 'block' || msg.action === 'whitelist') {
             const it = msg.data;
@@ -490,19 +472,20 @@
                     `)
                     .openPopup();
 
-                // Draw live attack line
-                if (type === 'block') {
-                    const attackPath = L.polyline.antPath([ [geo.latitude, geo.longitude], SERVER_LOCATION ], {
+                // Draw live connection line if enabled and source_geo is present
+                if (showLines && msg.data.source_geo && msg.data.source_geo.latitude) {
+                    const src = msg.data.source_geo;
+                    const attackPath = L.polyline.antPath([ [src.latitude, src.longitude], [geo.latitude, geo.longitude] ], {
                         delay: 1000,
                         dashArray: [10, 20],
                         weight: 2,
-                        color: '#ff0000',
+                        color: color,
                         pulseColor: '#ffffff'
                     }).addTo(liveMarkers);
                     
                     setTimeout(() => {
                         liveMarkers.removeLayer(attackPath);
-                    }, 5000);
+                    }, 5000); // Display line for 5 seconds (matching pulse roughly)
                 }
                 
                 // Remove the pulse after 10 seconds

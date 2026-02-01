@@ -1213,6 +1213,9 @@ func (h *APIHandler) Webhook(c *gin.Context) {
 		addedBy = fmt.Sprintf("Webhook (%s)", data.Username)
 	}
 
+	sourceIP := c.ClientIP()
+	sourceGeo := h.ipService.GetGeoIP(sourceIP)
+
 	entry := models.IPEntry{
 		Timestamp:   timestamp,
 		Geolocation: geo,
@@ -1235,8 +1238,9 @@ func (h *APIHandler) Webhook(c *gin.Context) {
 
 		metrics.MetricBlocksTotal.WithLabelValues("webhook").Inc()
 		h.hub.BroadcastEvent("block", map[string]interface{}{
-			"ip":   data.IP,
-			"data": entry,
+			"ip":         data.IP,
+			"data":       entry,
+			"source_geo": sourceGeo,
 		})
 		c.JSON(200, gin.H{"status": "IP banned", "ip": data.IP})
 	} else if data.Act == "unban" || data.Act == "delete-ban" {
@@ -1287,8 +1291,9 @@ func (h *APIHandler) Webhook2(c *gin.Context) {
 	_ = h.redisRepo.WhitelistIP(clientIP, entry)
 	
 	h.hub.BroadcastEvent("whitelist", map[string]interface{}{
-		"ip":   clientIP,
-		"data": entry,
+		"ip":         clientIP,
+		"data":       entry,
+		"source_geo": geo, // In this case source and target are the same
 	})
 
 	c.JSON(http.StatusOK, gin.H{"status": "IP added", "ip": clientIP})
