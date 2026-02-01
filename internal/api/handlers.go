@@ -166,12 +166,19 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 	v1auth := v1.Group("/")
 	v1auth.Use(h.AuthMiddleware())
 	{
+		// Webhooks require webhook_access
 		v1auth.POST("/webhook", h.PermissionMiddleware("webhook_access"), h.Webhook)
 		v1auth.POST("/webhook2_whitelist", h.PermissionMiddleware("webhook_access"), h.Webhook2)
-		v1auth.GET("/ips", h.PermissionMiddleware("gui_read"), h.IPsPaginated)
-		v1auth.GET("/ips/export", h.PermissionMiddleware("gui_read"), h.ExportIPs)
-		v1auth.GET("/ips_automate", h.PermissionMiddleware("gui_read"), h.AutomateIPs)
-		v1auth.GET("/stats", h.PermissionMiddleware("gui_read"), h.Stats)
+		
+		// Data viewing requires view_ips
+		v1auth.GET("/ips", h.PermissionMiddleware("view_ips"), h.IPsPaginated)
+		v1auth.GET("/ips_automate", h.PermissionMiddleware("view_ips"), h.AutomateIPs)
+		
+		// Exports require export_data
+		v1auth.GET("/ips/export", h.PermissionMiddleware("export_data"), h.ExportIPs)
+		
+		// Stats require view_stats
+		v1auth.GET("/stats", h.PermissionMiddleware("view_stats"), h.Stats)
 	}
 	r.GET("/openapi.json", h.OpenAPI)
 
@@ -179,32 +186,32 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 	auth := r.Group("/")
 	auth.Use(h.AuthMiddleware())
 	{
-		auth.GET("/dashboard", h.PermissionMiddleware("gui_read"), h.Dashboard)
-		auth.GET("/dashboard/table", h.PermissionMiddleware("gui_read"), h.DashboardTable) // For HTMX polling
+		// Dashboard requires view_ips and view_stats
+		auth.GET("/dashboard", h.PermissionMiddleware("view_ips"), h.Dashboard)
+		auth.GET("/dashboard/table", h.PermissionMiddleware("view_ips"), h.DashboardTable) // For HTMX polling
 		
-		auth.GET("/api/v1/views", h.PermissionMiddleware("gui_read"), h.GetSavedViews)
-		auth.POST("/api/v1/views", h.PermissionMiddleware("gui_read"), h.CreateSavedView)
-		auth.DELETE("/api/v1/views/:id", h.PermissionMiddleware("gui_read"), h.DeleteSavedView)
+		auth.GET("/api/v1/views", h.PermissionMiddleware("view_ips"), h.GetSavedViews)
+		auth.POST("/api/v1/views", h.PermissionMiddleware("view_ips"), h.CreateSavedView)
+		auth.DELETE("/api/v1/views/:id", h.PermissionMiddleware("view_ips"), h.DeleteSavedView)
 
-		auth.GET("/settings", h.PermissionMiddleware("gui_read"), h.Settings)
-		auth.POST("/api/v1/settings/webhooks", h.PermissionMiddleware("gui_read"), h.AddOutboundWebhook)
-		auth.DELETE("/api/v1/settings/webhooks/:id", h.PermissionMiddleware("gui_read"), h.DeleteOutboundWebhook)
+		auth.GET("/settings", h.PermissionMiddleware("manage_webhooks"), h.Settings)
+		auth.POST("/api/v1/settings/webhooks", h.PermissionMiddleware("manage_webhooks"), h.AddOutboundWebhook)
+		auth.DELETE("/api/v1/settings/webhooks/:id", h.PermissionMiddleware("manage_webhooks"), h.DeleteOutboundWebhook)
 
-		operator := auth.Group("/")
-		operator.Use(h.PermissionMiddleware("gui_write"))
-		{
-			operator.POST("/block", h.BlockIP)
-			operator.POST("/unblock", h.UnblockIP)
-			operator.POST("/bulk_block", h.BulkBlock)
-			operator.POST("/bulk_unblock", h.BulkUnblock)
-			operator.GET("/whitelist", h.Whitelist)
-			operator.POST("/add_whitelist", h.AddWhitelist)
-			operator.POST("/remove_whitelist", h.RemoveWhitelist)
-		}
+		// Enforcement actions
+		auth.POST("/block", h.PermissionMiddleware("block_ips"), h.BlockIP)
+		auth.POST("/unblock", h.PermissionMiddleware("unblock_ips"), h.UnblockIP)
+		auth.POST("/bulk_block", h.PermissionMiddleware("block_ips"), h.BulkBlock)
+		auth.POST("/bulk_unblock", h.PermissionMiddleware("unblock_ips"), h.BulkUnblock)
+		
+		// Whitelist management
+		auth.GET("/whitelist", h.PermissionMiddleware("manage_whitelist"), h.Whitelist)
+		auth.POST("/add_whitelist", h.PermissionMiddleware("manage_whitelist"), h.AddWhitelist)
+		auth.POST("/remove_whitelist", h.PermissionMiddleware("manage_whitelist"), h.RemoveWhitelist)
 
 		// Admin management
 		admin := auth.Group("/admin_management")
-		admin.Use(h.AdminOnlyMiddleware())
+		admin.Use(h.PermissionMiddleware("manage_admins"))
 		{
 			admin.GET("", h.AdminManagement)
 			admin.POST("/create", h.CreateAdmin)
@@ -219,10 +226,10 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 	// Legacy / Compatibility routes
 	r.POST("/webhook", h.AuthMiddleware(), h.PermissionMiddleware("webhook_access"), h.Webhook)
 	r.GET("/raw", h.RawIPs) // Public
-	r.GET("/ips", h.AuthMiddleware(), h.PermissionMiddleware("gui_read"), h.JSONIPs)
-	r.GET("/ips_automate", h.AuthMiddleware(), h.PermissionMiddleware("gui_read"), h.AutomateIPs)
-	r.GET("/api/ips", h.AuthMiddleware(), h.PermissionMiddleware("gui_read"), h.IPsPaginated)
-	r.GET("/api/stats", h.AuthMiddleware(), h.PermissionMiddleware("gui_read"), h.Stats)
+	r.GET("/ips", h.AuthMiddleware(), h.PermissionMiddleware("view_ips"), h.JSONIPs)
+	r.GET("/ips_automate", h.AuthMiddleware(), h.PermissionMiddleware("view_ips"), h.AutomateIPs)
+	r.GET("/api/ips", h.AuthMiddleware(), h.PermissionMiddleware("view_ips"), h.IPsPaginated)
+	r.GET("/api/stats", h.AuthMiddleware(), h.PermissionMiddleware("view_stats"), h.Stats)
 	r.GET("/health", h.Health)
 	r.GET("/ready", h.Ready)
 	r.GET("/metrics", h.MetricsAuthMiddleware(), gin.WrapH(promhttp.Handler()))
@@ -526,7 +533,7 @@ func (h *APIHandler) MetricsAuthMiddleware() gin.HandlerFunc {
 }
 
 func (h *APIHandler) AdminOnlyMiddleware() gin.HandlerFunc {
-	return h.RBACMiddleware("admin")
+	return h.PermissionMiddleware("manage_admins")
 }
 
 func (h *APIHandler) ShowLogin(c *gin.Context) {

@@ -172,21 +172,35 @@
 
     <div class="main-content">
         <div class="table-card" style="padding: 1.5rem; margin-bottom: 2rem;">
-            <div style="display: flex; gap: 10px; align-items: center; justify-content: center; margin-bottom: 1rem;">
+            <div style="display: flex; gap: 10px; align-items: center; justify-content: center; margin-bottom: 1.5rem;">
                 <input type="text" id="newUsername" class="filter-input" style="flex: 1; max-width: 250px;" placeholder="New Username">
                 <input type="password" id="newPassword" class="filter-input" style="flex: 1; max-width: 250px;" placeholder="New Password">
                 <button class="btn btn-danger" onclick="createAdmin()">Create Admin</button>
             </div>
-            <div style="display: flex; gap: 20px; align-items: center; justify-content: center; color: var(--secondary-color); font-size: 0.9rem;">
-                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                    <input type="checkbox" id="perm_gui_read" checked> GUI Read
-                </label>
-                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                    <input type="checkbox" id="perm_gui_write"> GUI Write
-                </label>
-                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                    <input type="checkbox" id="perm_webhook"> Webhook Access
-                </label>
+            
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; color: var(--secondary-color); font-size: 0.85rem; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 1.5rem;">
+                <div>
+                    <div style="font-weight: bold; color: var(--vibrant-red); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px;">Monitoring</div>
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-bottom: 5px;"><input type="checkbox" id="perm_view_ips" checked> View IPs</label>
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-bottom: 5px;"><input type="checkbox" id="perm_view_stats" checked> View Stats</label>
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;"><input type="checkbox" id="perm_view_audit_logs"> View Audit Logs</label>
+                </div>
+                <div>
+                    <div style="font-weight: bold; color: var(--vibrant-red); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px;">Enforcement</div>
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-bottom: 5px;"><input type="checkbox" id="perm_block_ips"> Block IPs</label>
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-bottom: 5px;"><input type="checkbox" id="perm_unblock_ips"> Unblock IPs</label>
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;"><input type="checkbox" id="perm_manage_whitelist"> Manage Whitelist</label>
+                </div>
+                <div>
+                    <div style="font-weight: bold; color: var(--vibrant-red); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px;">System</div>
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-bottom: 5px;"><input type="checkbox" id="perm_manage_webhooks"> Manage Webhooks</label>
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-bottom: 5px;"><input type="checkbox" id="perm_manage_api_tokens"> API Tokens</label>
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;"><input type="checkbox" id="perm_manage_admins"> User Management</label>
+                </div>
+                <div>
+                    <div style="font-weight: bold; color: var(--vibrant-red); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px;">Utility</div>
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;"><input type="checkbox" id="perm_export_data"> Data Export</label>
+                </div>
             </div>
         </div>
 
@@ -232,20 +246,30 @@
 ...
     <!-- Permissions Modal -->
     <div id="permissionsModal" class="modal">
-        <div class="modal-content">
+        <div class="modal-content" style="max-width: 600px;">
             <span class="close" onclick="closePermissionsModal()">×</span>
-            <h3 style="margin-top: 0;">Manage Permissions</h3>
+            <h3 style="margin-top: 0; margin-bottom: 1.5rem;">Manage Permissions</h3>
             <input type="hidden" id="permUsername">
-            <div style="display: flex; flex-direction: column; gap: 15px; margin-bottom: 2rem;">
-                <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
-                    <input type="checkbox" id="edit_gui_read"> GUI Access (Read)
-                </label>
-                <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
-                    <input type="checkbox" id="edit_gui_write"> GUI Access (Write/Modify)
-                </label>
-                <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
-                    <input type="checkbox" id="edit_webhook"> Webhook Access (API)
-                </label>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 25px; margin-bottom: 2rem; color: #fff; font-size: 0.9rem;">
+                <div>
+                    <div style="font-weight: bold; color: var(--vibrant-red); margin-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 5px;">Monitoring</div>
+                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin-bottom: 8px;"><input type="checkbox" id="edit_view_ips"> View IPs</label>
+                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin-bottom: 8px;"><input type="checkbox" id="edit_view_stats"> View Stats</label>
+                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin-bottom: 8px;"><input type="checkbox" id="edit_view_audit_logs"> View Audit Logs</label>
+                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;"><input type="checkbox" id="edit_export_data"> Data Export</label>
+                </div>
+                <div>
+                    <div style="font-weight: bold; color: var(--vibrant-red); margin-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 5px;">Enforcement</div>
+                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin-bottom: 8px;"><input type="checkbox" id="edit_block_ips"> Block IPs</label>
+                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin-bottom: 8px;"><input type="checkbox" id="edit_unblock_ips"> Unblock IPs</label>
+                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;"><input type="checkbox" id="edit_manage_whitelist"> Manage Whitelist</label>
+                    
+                    <div style="font-weight: bold; color: var(--vibrant-red); margin-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 5px; margin-top: 15px;">System</div>
+                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin-bottom: 8px;"><input type="checkbox" id="edit_manage_webhooks"> Manage Webhooks</label>
+                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin-bottom: 8px;"><input type="checkbox" id="edit_manage_api_tokens"> API Tokens</label>
+                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;"><input type="checkbox" id="edit_manage_admins"> User Management</label>
+                </div>
             </div>
             <button class="btn btn-danger" style="width: 100%;" onclick="savePermissions()">Save Permissions</button>
         </div>
@@ -289,11 +313,18 @@
             }, 4000);
         }
 
+        const PERM_KEYS = [
+            'view_ips', 'view_stats', 'view_audit_logs', 'export_data',
+            'block_ips', 'unblock_ips', 'manage_whitelist',
+            'manage_webhooks', 'manage_api_tokens', 'manage_admins'
+        ];
+
         function getSelectedPerms(prefix) {
             const perms = [];
-            if (document.getElementById(prefix + 'gui_read').checked) perms.push('gui_read');
-            if (document.getElementById(prefix + 'gui_write').checked) perms.push('gui_write');
-            if (document.getElementById(prefix + 'webhook').checked) perms.push('webhook_access');
+            PERM_KEYS.forEach(k => {
+                const el = document.getElementById(prefix + k);
+                if (el && el.checked) perms.push(k);
+            });
             return perms.join(',');
         }
 
@@ -326,9 +357,10 @@
         function openPermissionsModal(username, currentPerms) {
             document.getElementById('permUsername').value = username;
             const perms = currentPerms.split(',');
-            document.getElementById('edit_gui_read').checked = perms.includes('gui_read');
-            document.getElementById('edit_gui_write').checked = perms.includes('gui_write');
-            document.getElementById('edit_webhook').checked = perms.includes('webhook_access');
+            PERM_KEYS.forEach(k => {
+                const el = document.getElementById('edit_' + k);
+                if (el) el.checked = perms.includes(k);
+            });
             document.getElementById('permissionsModal').style.display = 'block';
         }
 
