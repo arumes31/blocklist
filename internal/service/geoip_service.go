@@ -51,20 +51,26 @@ func (s *GeoIPService) Start() {
 
 func (s *GeoIPService) getDBPath(edition string) string {
 	filename := edition + ".mmdb"
-	path := filepath.Join("/home/blocklist/geoip", filename)
-	dir := filepath.Dir(path)
+	primaryPath := filepath.Join("/home/blocklist/geoip", filename)
+	dir := filepath.Dir(primaryPath)
+	
+	// Try to ensure primary directory exists
 	if err := os.MkdirAll(dir, 0755); err != nil {
+		log.Printf("Warning: Failed to create primary GeoIP directory %s: %v. Falling back to /tmp.", dir, err)
 		return filepath.Join("/tmp", filename)
 	}
-	// Check if writable
+	
+	// Test if primary directory is writable
 	testFile := filepath.Join(dir, ".permtest")
 	f, err := os.Create(testFile)
 	if err != nil {
+		log.Printf("Warning: Primary GeoIP directory %s is not writable: %v. Falling back to /tmp. (Check volume permissions)", dir, err)
 		return filepath.Join("/tmp", filename)
 	}
 	f.Close()
 	_ = os.Remove(testFile)
-	return path
+	
+	return primaryPath
 }
 
 func (s *GeoIPService) Download(edition string) error {

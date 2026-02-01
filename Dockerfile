@@ -33,8 +33,9 @@ WORKDIR /home/blocklist/
 # Copy the binary from builder
 COPY --from=builder --chown=blocklist:blocklist /app/blocklist-server .
 
-# Create GeoIP directory and ensure permissions
-RUN mkdir -p /usr/share/GeoIP && chown blocklist:blocklist /usr/share/GeoIP
+# Create GeoIP directories and ensure permissions
+RUN mkdir -p /usr/share/GeoIP /home/blocklist/geoip && \
+    chown -R blocklist:blocklist /home/blocklist/
 
 USER blocklist
 
