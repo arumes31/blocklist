@@ -80,6 +80,7 @@ func (h *APIHandler) WS(c *gin.Context) {
 	}
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
+		zlog.Error().Err(err).Msg("WebSocket upgrade failed")
 		return
 	}
 	
