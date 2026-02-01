@@ -97,7 +97,7 @@
             backdrop-filter: blur(8px);
         }
         table { border-collapse: collapse; width: 100%; color: #fff; table-layout: fixed; }
-        th, td { text-align: left; padding: 0.75rem; border-bottom: 1px solid rgba(255,255,255,0.06); }
+        th, td { text-align: left; padding: 0.5rem; border-bottom: 1px solid rgba(255,255,255,0.06); }
         th {
             background-color: rgba(255,255,255,0.04);
             font-weight: 600;
@@ -265,7 +265,6 @@
         <div class="controls" style="display:flex; align-items:center; gap:0.5rem;">
             <button id="bulkUnblockBtn" class="btn btn-danger" style="display:none;" onclick="confirmBulkUnblock()">Bulk Unblock</button>
             <button id="togglePause" class="btn" aria-label="Toggle live update pause">Pause</button>
-            <button id="toggleDensity" class="btn" aria-label="Toggle table row density">Compact</button>
             <button id="toggleGeo" class="btn" aria-label="Toggle Geolocation column visibility">Geo</button>
             <span id="live-status" class="status-chip live">LIVE</span>
         </div>
@@ -1114,9 +1113,6 @@
         } else {
             setStatus('paused');
         }
-    });
-    document.getElementById('toggleDensity').addEventListener('click', () => {
-        document.body.classList.toggle('compact');
     });
     document.getElementById('toggleGeo').addEventListener('click', () => {
         document.body.classList.toggle('hide-geo');

@@ -169,3 +169,9 @@ func (p *PostgresRepository) LogAction(actor, action, target, reason string) err
 	_, err := p.db.Exec("INSERT INTO audit_logs (actor, action, target, reason) VALUES ($1, $2, $3, $4)", actor, action, target, reason)
 	return err
 }
+
+func (p *PostgresRepository) GetAuditLogs(limit int) ([]models.AuditLog, error) {
+	var logs []models.AuditLog
+	err := p.db.Select(&logs, "SELECT id, timestamp, actor, action, target, reason FROM audit_logs ORDER BY timestamp DESC LIMIT $1", limit)
+	return logs, err
+}

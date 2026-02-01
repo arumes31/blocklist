@@ -26,6 +26,15 @@ type WhitelistEntry struct {
 	ExpiresIn   string   `json:"expires_in,omitempty"`
 }
 
+type AuditLog struct {
+	ID        int    `json:"id" db:"id"`
+	Timestamp string `json:"timestamp" db:"timestamp"`
+	Actor     string `json:"actor" db:"actor"`
+	Action    string `json:"action" db:"action"`
+	Target    string `json:"target" db:"target"`
+	Reason    string `json:"reason" db:"reason"`
+}
+
 type AdminAccount struct {
 	Username     string `json:"username" db:"username"`
 	PasswordHash string `json:"password_hash" db:"password_hash"`

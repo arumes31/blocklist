@@ -235,9 +235,10 @@ func main() {
 
 	// Load Templates from embed.FS
 	templ := template.Must(template.New("").Funcs(map[string]interface{}{
-		"lower":   strings.ToLower,
-		"replace": strings.ReplaceAll,
-		"split":   strings.Split,
+		"lower":    strings.ToLower,
+		"replace":  strings.ReplaceAll,
+		"split":    strings.Split,
+		"contains": strings.Contains,
 	}).ParseFS(templateFS, "templates/*.html"))
 	r.SetHTMLTemplate(templ)
 

@@ -999,8 +999,14 @@ func (h *APIHandler) AdminManagement(c *gin.Context) {
 	for _, a := range admins {
 		adminMap[a.Username] = a
 	}
+	
+	logs, _ := h.pgRepo.GetAuditLogs(100)
+	userPerms, _ := c.Get("permissions")
+
 	c.HTML(http.StatusOK, "admin_management.html", gin.H{
-		"admins": adminMap,
+		"admins":      adminMap,
+		"audit_logs":   logs,
+		"permissions": userPerms.(string),
 	})
 }
 

@@ -242,6 +242,36 @@
                 </tbody>
             </table>
         </div>
+
+        {{ if contains .permissions "view_audit_logs" }}
+        <div style="margin-top: 3rem; margin-bottom: 1.5rem;">
+            <h3 style="border-bottom: 1px solid var(--border-red); padding-bottom: 0.5rem;">System Audit Logs</h3>
+        </div>
+        <div class="table-card">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Timestamp</th>
+                        <th>Actor</th>
+                        <th>Action</th>
+                        <th>Target</th>
+                        <th>Reason</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{ range $log := .audit_logs }}
+                    <tr style="font-size: 0.85rem;">
+                        <td style="color: var(--secondary-color); white-space: nowrap;"><span class="utc-timestamp">{{ $log.Timestamp }}</span></td>
+                        <td><span style="font-weight: 600;">{{ $log.Actor }}</span></td>
+                        <td><span class="status-chip live" style="background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.1); font-size: 0.75rem;">{{ $log.Action }}</span></td>
+                        <td style="font-family: monospace;">{{ $log.Target }}</td>
+                        <td style="color: var(--secondary-color);">{{ $log.Reason }}</td>
+                    </tr>
+                    {{ end }}
+                </tbody>
+            </table>
+        </div>
+        {{ end }}
     </div>
 ...
     <!-- Permissions Modal -->
