@@ -486,9 +486,9 @@ func (h *APIHandler) PermissionMiddleware(requiredPerm string) gin.HandlerFunc {
 
 		permStr := perms.(string)
 		
-		// System admin bypass
+		// System admin bypass (except for webhook_access by default)
 		username, _ := c.Get("username")
-		if username == h.cfg.GUIAdmin {
+		if username == h.cfg.GUIAdmin && requiredPerm != "webhook_access" {
 			c.Next()
 			return
 		}
@@ -860,10 +860,28 @@ func (h *APIHandler) Webhook(c *gin.Context) {
 	}
 
 	if !authenticated {
-		// Fallback to basic credentials in body
-		if data.Username != h.cfg.GUIAdmin || data.Password != h.cfg.GUIPassword {
-			c.JSON(401, gin.H{"error": "Unauthorized"})
-			return
+		if h.pgRepo != nil {
+			// Verify against database user permissions
+			admin, err := h.pgRepo.GetAdmin(data.Username)
+			if err != nil || admin == nil {
+				c.JSON(401, gin.H{"error": "Unauthorized user"})
+				return
+			}
+			if err := bcrypt.CompareHashAndPassword([]byte(admin.PasswordHash), []byte(data.Password)); err != nil {
+				c.JSON(401, gin.H{"error": "Invalid credentials"})
+				return
+			}
+			// Check for webhook_access permission
+			if !strings.Contains(admin.Permissions, "webhook_access") {
+				c.JSON(403, gin.H{"error": "Webhook access denied for this user"})
+				return
+			}
+		} else {
+			// Database unavailable, fallback to hardcoded GUIAdmin config
+			if data.Username != h.cfg.GUIAdmin || data.Password != h.cfg.GUIPassword {
+				c.JSON(401, gin.H{"error": "Unauthorized (Database Offline)"})
+				return
+			}
 		}
 	}
 
