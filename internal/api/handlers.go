@@ -1412,7 +1412,9 @@ func (h *APIHandler) Settings(c *gin.Context) {
 	
 	// Get base URL from request
 	scheme := "http"
-	if c.Request.TLS != nil { scheme = "https" }
+	if c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https" {
+		scheme = "https"
+	}
 	baseURL := fmt.Sprintf("%s://%s", scheme, c.Request.Host)
 
 	c.HTML(http.StatusOK, "settings.html", gin.H{
