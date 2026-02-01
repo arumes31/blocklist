@@ -100,7 +100,7 @@
         <p>Security requirement: Two-factor authentication is mandatory. Scan the QR code with your authenticator app (Google Authenticator, Authy, etc.)</p>
         
         <div class="qr-container">
-            <img src="{{ .qr_image }}" alt="Scan this QR code">
+            <img src="{{ .qr_image | safeURL }}" alt="Scan this QR code">
         </div>
 
         <div class="secret-container">

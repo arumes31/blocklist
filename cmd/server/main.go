@@ -239,6 +239,8 @@ func main() {
 		"replace":  strings.ReplaceAll,
 		"split":    strings.Split,
 		"contains": strings.Contains,
+		"safeHTML": func(s string) template.HTML { return template.HTML(s) },
+		"safeURL":  func(s string) template.URL { return template.URL(s) },
 	}
 	
 	var templ *template.Template

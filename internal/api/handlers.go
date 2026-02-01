@@ -715,21 +715,31 @@ func (h *APIHandler) VerifyFirstFactor(c *gin.Context) {
 	// Check if TOTP is setup
 	if admin.Token == "" {
 		// Generate temporary TOTP secret for setup
-		key, _ := totp.Generate(totp.GenerateOpts{
+		key, err := totp.Generate(totp.GenerateOpts{
 			Issuer:      "Blocklist App",
 			AccountName: username,
 		})
+		if err != nil {
+			zlog.Error().Err(err).Msg("Failed to generate TOTP secret")
+			c.HTML(http.StatusOK, "login_error.html", gin.H{"error": "Internal error generating 2FA"})
+			return
+		}
 		
 		pngData, err := h.generateQRWithLogo(key.URL())
 		if err != nil {
 			zlog.Error().Err(err).Msg("Failed to generate QR with logo")
 			// Fallback to simple QR
-			simplePng, _ := qrcode.Encode(key.URL(), qrcode.Medium, 256)
+			simplePng, err2 := qrcode.Encode(key.URL(), qrcode.Medium, 256)
+			if err2 != nil {
+				zlog.Error().Err(err2).Msg("Failed to encode simple QR")
+				c.HTML(http.StatusOK, "login_error.html", gin.H{"error": "Internal error generating QR code"})
+				return
+			}
 			pngData = simplePng
 		}
 		imgBase64 := base64.StdEncoding.EncodeToString(pngData)
 
-		c.HTML(http.StatusOK, "login_totp_setup.html", gin.H{
+		c.HTML(http.StatusOK, "login_totp_setup_step.html", gin.H{
 			"username": username,
 			"password": password,
 			"qr_image": "data:image/png;base64," + imgBase64,
