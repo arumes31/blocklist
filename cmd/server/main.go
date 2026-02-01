@@ -258,6 +258,13 @@ func main() {
 			c.Next()
 			return
 		}
+
+		// Bypass CSRF for API requests using Bearer tokens
+		if strings.HasPrefix(c.GetHeader("Authorization"), "Bearer ") {
+			c.Next()
+			return
+		}
+
 		origin := c.GetHeader("Origin")
 		ref := c.GetHeader("Referer")
 		host := c.Request.Host
@@ -277,9 +284,14 @@ func main() {
 			}
 		}
 
-		// In case of localhost development or missing headers in non-browser clients
-		if !ok && (host == "localhost:5000" || host == "127.0.0.1:5000") && (origin == "" && ref == "") {
-			ok = true
+		// In case of non-browser clients (like curl) that don't send Origin/Referer
+		// but aren't using session cookies. Note: AuthMiddleware will still verify credentials.
+		if !ok && origin == "" && ref == "" {
+			// Check if there's a session cookie. If not, it's likely a non-browser API client.
+			session := sessions.Default(c)
+			if session.Get("logged_in") == nil {
+				ok = true
+			}
 		}
 
 		if !ok {
