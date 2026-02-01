@@ -1648,6 +1648,7 @@ func (h *APIHandler) OpenAPI(c *gin.Context) {
             "/api/v1/ips": gin.H{
                 "get": gin.H{
                     "summary": "List blocked IPs with advanced filtering",
+                    "tags": []string{"Data Retrieval"},
                     "parameters": []gin.H{
                         {"name": "limit", "in": "query", "description": "Number of records to return", "schema": gin.H{"type": "integer", "default": 500}},
                         {"name": "cursor", "in": "query", "description": "Pagination cursor (timestamp score)", "schema": gin.H{"type": "string"}},
@@ -1679,6 +1680,7 @@ func (h *APIHandler) OpenAPI(c *gin.Context) {
             "/api/v1/stats": gin.H{
                 "get": gin.H{
                     "summary": "Get aggregate blocking statistics",
+                    "tags": []string{"Monitoring"},
                     "responses": gin.H{
                         "200": gin.H{
                             "description": "Statistics object",
@@ -1689,9 +1691,11 @@ func (h *APIHandler) OpenAPI(c *gin.Context) {
                     },
                 },
             },
-            "/webhook": gin.H{
+            "/api/v1/webhook": gin.H{
                 "post": gin.H{
-                    "summary": "Automated ban/unban endpoint",
+                    "summary": "Ban or Unban an IP via Webhook",
+                    "description": "Primary endpoint for automation. Supports Bearer Token, Session, or HMAC signature (X-Webhook-Signature).",
+                    "tags": []string{"Enforcement"},
                     "requestBody": gin.H{
                         "required": true,
                         "content": gin.H{
@@ -1699,18 +1703,67 @@ func (h *APIHandler) OpenAPI(c *gin.Context) {
                                 "schema": gin.H{
                                     "type": "object",
                                     "properties": gin.H{
-                                        "ip":       gin.H{"type": "string"},
-                                        "reason":   gin.H{"type": "string"},
-                                        "act":      gin.H{"type": "string", "enum": []string{"ban", "unban"}},
-                                        "username": gin.H{"type": "string"},
-                                        "password": gin.H{"type": "string"},
+                                        "ip":       gin.H{"type": "string", "example": "1.2.3.4", "description": "IPv4 or IPv6 address"},
+                                        "act":      gin.H{"type": "string", "enum": []string{"ban", "unban"}, "description": "Action to perform"},
+                                        "reason":   gin.H{"type": "string", "example": "Brute force attack", "description": "Reason for the action"},
+                                        "ttl":      gin.H{"type": "integer", "example": 86400, "description": "Time-to-live in seconds (ephemeral blocks only)"},
+                                        "persist":  gin.H{"type": "boolean", "default": false, "description": "If true, IP is stored in the database indefinitely"},
                                     },
-                                    "required": []string{"ip", "act", "username", "password"},
+                                    "required": []string{"ip", "act"},
                                 },
                             },
                         },
                     },
-                    "responses": gin.H{"200": gin.H{"description": "Action performed"}},
+                    "responses": gin.H{
+                        "200": gin.H{"description": "Action successfully queued or performed"},
+                        "400": gin.H{"description": "Invalid IP format or missing parameters"},
+                        "401": gin.H{"description": "Unauthorized"},
+                    },
+                },
+            },
+            "/block": gin.H{
+                "post": gin.H{
+                    "summary": "Block a new IP (Dashboard UI Endpoint)",
+                    "tags": []string{"Enforcement (UI)"},
+                    "requestBody": gin.H{
+                        "required": true,
+                        "content": gin.H{
+                            "application/json": gin.H{
+                                "schema": gin.H{
+                                    "type": "object",
+                                    "properties": gin.H{
+                                        "ip":      gin.H{"type": "string"},
+                                        "reason":  gin.H{"type": "string"},
+                                        "persist": gin.H{"type": "boolean"},
+                                        "ttl":     gin.H{"type": "integer"},
+                                    },
+                                    "required": []string{"ip"},
+                                },
+                            },
+                        },
+                    },
+                    "responses": gin.H{"200": gin.H{"description": "IP blocked"}},
+                },
+            },
+            "/unblock": gin.H{
+                "post": gin.H{
+                    "summary": "Unblock an IP (Dashboard UI Endpoint)",
+                    "tags": []string{"Enforcement (UI)"},
+                    "requestBody": gin.H{
+                        "required": true,
+                        "content": gin.H{
+                            "application/json": gin.H{
+                                "schema": gin.H{
+                                    "type": "object",
+                                    "properties": gin.H{
+                                        "ip": gin.H{"type": "string"},
+                                    },
+                                    "required": []string{"ip"},
+                                },
+                            },
+                        },
+                    },
+                    "responses": gin.H{"200": gin.H{"description": "IP unblocked"}},
                 },
             },
         },
