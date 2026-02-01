@@ -233,13 +233,22 @@ func main() {
 	loginLimiter := createLimiter(cfg.RateLimitLogin, cfg.RatePeriod, "limiter_login")
 	webhookLimiter := createLimiter(cfg.RateLimitWebhook, cfg.RatePeriod, "limiter_webhook")
 
-	// Load Templates from embed.FS
-	templ := template.Must(template.New("").Funcs(map[string]interface{}{
+	// Load Templates: Prefer filesystem for development/runtime updates, fallback to embed.FS
+	funcMap := template.FuncMap{
 		"lower":    strings.ToLower,
 		"replace":  strings.ReplaceAll,
 		"split":    strings.Split,
 		"contains": strings.Contains,
-	}).ParseFS(templateFS, "templates/*.html"))
+	}
+	
+	var templ *template.Template
+	if _, err := os.Stat("cmd/server/templates"); err == nil {
+		templ = template.Must(template.New("").Funcs(funcMap).ParseGlob("cmd/server/templates/*.html"))
+		zlog.Info().Msg("Templates loaded from filesystem")
+	} else {
+		templ = template.Must(template.New("").Funcs(funcMap).ParseFS(templateFS, "templates/*.html"))
+		zlog.Info().Msg("Templates loaded from embed.FS")
+	}
 	r.SetHTMLTemplate(templ)
 
 	// Security headers middleware
@@ -302,21 +311,29 @@ func main() {
 		c.Next()
 	})
 
-	// Serve Static Files from embed.FS
-	staticRoot, _ := fs.Sub(staticFS, "static")
-	r.StaticFS("/static", http.FS(staticRoot))
+	// Serve Static Files: Prefer filesystem, fallback to embed.FS
+	serveStatic := func(urlPath, diskPath, embedPath string) {
+		if _, err := os.Stat(diskPath); err == nil {
+			r.Static(urlPath, diskPath)
+			zlog.Info().Str("url", urlPath).Str("disk", diskPath).Msg("Serving static files from disk")
+		} else {
+			sub, _ := fs.Sub(staticFS, embedPath)
+			r.StaticFS(urlPath, http.FS(sub))
+			zlog.Info().Str("url", urlPath).Str("embed", embedPath).Msg("Serving static files from embed.FS")
+		}
+	}
 
-	jsRoot, _ := fs.Sub(staticFS, "static/js")
-	r.StaticFS("/js", http.FS(jsRoot))
-
-	cdRoot, _ := fs.Sub(staticFS, "static/cd")
-	r.StaticFS("/cd", http.FS(cdRoot))
-
-	flagsRoot, _ := fs.Sub(staticFS, "static/flags")
-	r.StaticFS("/flags", http.FS(flagsRoot))
+	serveStatic("/static", "cmd/server/static", "static")
+	serveStatic("/js", "cmd/server/static/js", "static/js")
+	serveStatic("/cd", "cmd/server/static/cd", "static/cd")
+	serveStatic("/flags", "cmd/server/static/flags", "static/flags")
 
 	// Serve favicon
 	r.GET("/favicon.ico", func(c *gin.Context) {
+		if data, err := os.ReadFile("cmd/server/static/cd/favicon-color.png"); err == nil {
+			c.Data(http.StatusOK, "image/png", data)
+			return
+		}
 		file, err := staticFS.ReadFile("static/cd/favicon-color.png")
 		if err != nil {
 			c.AbortWithStatus(http.StatusNotFound)

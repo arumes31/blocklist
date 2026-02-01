@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IP Analytics - Threat Map</title>
+    <link rel="stylesheet" href="/cd/flag-icon.min.css">
+    <link rel="stylesheet" href="/js/leaflet.css">
+    <link rel="icon" type="image/x-icon" href="/cd/favicon-color.png" />
+    <script src="/js/htmx.min.js"></script>
+    <script src="/js/json-enc.js"></script>
+    <script src="/js/leaflet.js"></script>
+    <script src="/js/chart.js"></script>
+    <style>
+        :root {
+            --primary-red: #ff0000;
+            --dark-red: #8b0000;
+            --vibrant-red: #ff4d4d;
+            --glass-bg: rgba(20, 20, 20, 0.85);
+            --border-red: rgba(255, 0, 0, 0.3);
+            --secondary-color: #b3b3b3;
+        }
+        body {
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            background-color: #000;
+            color: #fff;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .header-container {
+            background: var(--glass-bg);
+            padding: 0.8rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            backdrop-filter: blur(8px);
+            border-bottom: 1px solid var(--border-red);
+            z-index: 100;
+        }
+        .banner img { height: 32px; }
+        .btn {
+            padding: 0.5rem 1rem;
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s;
+            text-decoration: none;
+            background: rgba(255,255,255,0.05);
+            color: #fff;
+        }
+        .btn:hover { background: rgba(255,255,255,0.1); }
+        
+        .main-layout {
+            flex: 1;
+            display: grid;
+            grid-template-columns: 3fr 1fr;
+            gap: 1rem;
+            padding: 1rem;
+            box-sizing: border-box;
+            overflow: hidden;
+        }
+        
+        .card {
+            background: rgba(20,20,20,0.85);
+            border: 1px solid var(--border-red);
+            border-radius: 12px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        #threat-map {
+            flex: 1;
+            width: 100%;
+            background: #0a0a0a;
+        }
+        
+        .side-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            overflow-y: auto;
+        }
+        
+        .chart-container {
+            padding: 1rem;
+            flex: 1;
+            min-height: 300px;
+        }
+        
+        .stats-summary {
+            padding: 1rem;
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 0.8rem;
+        }
+        
+        .stat-item {
+            background: rgba(255,255,255,0.03);
+            padding: 0.8rem;
+            border-radius: 8px;
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+        .stat-label { font-size: 0.75rem; color: var(--secondary-color); text-transform: uppercase; }
+        .stat-value { font-size: 1.2rem; font-weight: 700; margin-top: 2px; }
+
+        #live-status {
+            padding: 0.2rem 0.6rem;
+            border-radius: 999px;
+            font-size: 0.75rem;
+            background: rgba(40,167,69,0.2);
+            border: 1px solid rgba(40,167,69,0.4);
+            color: #fff;
+        }
+        
+        .leaflet-container {
+            background: #0a0a0a !important;
+        }
+    </style>
+</head>
+<body>
+
+<div class="header-container">
+    <div style="display: flex; align-items: center; gap: 2rem;">
+        <a href="/dashboard" class="banner">
+            <img src="/cd/logo.png" alt="logo">
+        </a>
+        <h2 style="margin: 0; font-size: 1.2rem;">Threat Analytics</h2>
+    </div>
+    <div style="display: flex; align-items: center; gap: 1rem;">
+        <span id="live-status">LIVE</span>
+        <a href="/dashboard" class="btn">Back to Dashboard</a>
+    </div>
+</div>
+
+<div class="main-layout">
+    <div class="card">
+        <div id="threat-map"></div>
+    </div>
+    <div class="side-panel">
+        <div class="card chart-container">
+            <h3 style="font-size: 0.9rem; margin-top: 0; border-bottom: 1px solid var(--border-red); padding-bottom: 5px;">Country Distribution</h3>
+            <div style="flex: 1; position: relative;">
+                <canvas id="countryChart"></canvas>
+            </div>
+        </div>
+        <div class="card stats-summary">
+            <div class="stat-item">
+                <div class="stat-label">Total IPs Blocked</div>
+                <div id="stat-total" class="stat-value">{{ .total_ips }}</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">Banned (Last 24h)</div>
+                <div id="stat-day" class="stat-value">{{ .stats.day }}</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">Banned (Last Hour)</div>
+                <div id="stat-hour" class="stat-value">{{ .stats.hour }}</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">Blocks Per Minute</div>
+                <div id="bpm-display" class="stat-value">0.0 BPM</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let countryChart = null;
+    let map = null;
+    let markers = null;
+    let worldLayer = null;
+
+    async function initMap() {
+        map = L.map('threat-map', {
+            center: [20, 0],
+            zoom: 2,
+            zoomControl: true,
+            attributionControl: false,
+            minZoom: 2
+        });
+
+        // Load local world GeoJSON
+        try {
+            const response = await fetch('/js/world.json');
+            const worldData = await response.json();
+            
+            worldLayer = L.geoJSON(worldData, {
+                style: {
+                    fillColor: '#1a1a1a',
+                    weight: 1,
+                    opacity: 1,
+                    color: '#333',
+                    fillOpacity: 1
+                }
+            }).addTo(map);
+        } catch (e) {
+            console.error("Failed to load map data", e);
+        }
+
+        markers = L.layerGroup().addTo(map);
+        fetchLatestData();
+    }
+
+    function initChart(data) {
+        const ctx = document.getElementById('countryChart').getContext('2d');
+        const labels = data.map(c => c.country || 'Unknown');
+        const values = data.map(c => c.count);
+        
+        countryChart = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: labels,
+                datasets: [{
+                    data: values,
+                    backgroundColor: [
+                        '#ff0000', '#8b0000', '#ff4d4d', '#444', '#222', '#666', '#999'
+                    ],
+                    borderWidth: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: { color: '#fff', boxWidth: 10, font: { size: 9 } }
+                    }
+                }
+            }
+        });
+    }
+
+    async function fetchLatestData() {
+        const res = await fetch('/api/v1/ips?limit=500');
+        if (res.ok) {
+            const payload = await res.json();
+            updateMap(payload.items || []);
+        }
+
+        const statsRes = await fetch('/api/stats');
+        if (statsRes.ok) {
+            const s = await statsRes.json();
+            initChart(s.top_countries || []);
+            updateStats(s);
+        }
+    }
+
+    function updateMap(items) {
+        markers.clearLayers();
+        items.forEach(it => {
+            if (it.data && it.data.geolocation && it.data.geolocation.latitude) {
+                const geo = it.data.geolocation;
+                L.circleMarker([geo.latitude, geo.longitude], {
+                    radius: 4,
+                    fillColor: "#ff0000",
+                    color: "#fff",
+                    weight: 0.5,
+                    opacity: 1,
+                    fillOpacity: 0.8
+                }).addTo(markers).bindPopup(`<b>${it.ip}</b><br>${geo.city}, ${geo.country}<br>${it.data.reason}`);
+            }
+        });
+    }
+
+    function updateStats(s) {
+        if (typeof s.total === 'number') document.getElementById('stat-total').textContent = s.total;
+        if (typeof s.day === 'number') document.getElementById('stat-day').textContent = s.day;
+        if (typeof s.hour === 'number') document.getElementById('stat-hour').textContent = s.hour;
+        if (typeof s.blocks_minute === 'number') document.getElementById('bpm-display').textContent = s.blocks_minute.toFixed(1) + ' BPM';
+        
+        if (countryChart && Array.isArray(s.top_countries)) {
+            countryChart.data.labels = s.top_countries.map(c => c.country || 'Unknown');
+            countryChart.data.datasets[0].data = s.top_countries.map(c => c.count);
+            countryChart.update();
+        }
+    }
+
+    // WebSocket for real-time updates
+    const socket = new WebSocket((window.location.protocol === 'https:' ? 'wss://' : 'ws://') + window.location.host + '/ws');
+    socket.onmessage = function(event) {
+        const msg = JSON.parse(event.data);
+        if (msg.action === 'block') {
+            const it = msg.data;
+            if (it.data && it.data.geolocation && it.data.geolocation.latitude) {
+                const geo = it.data.geolocation;
+                L.circleMarker([geo.latitude, geo.longitude], {
+                    radius: 6, // Pulsing effect
+                    fillColor: "#ff0000",
+                    color: "#fff",
+                    weight: 1,
+                    opacity: 1,
+                    fillOpacity: 1
+                }).addTo(markers)
+                  .bindPopup(`<b>${it.ip}</b><br>${geo.city}, ${geo.country}<br>${it.data.reason}`)
+                  .openPopup();
+                
+                // Refresh stats after a short delay
+                setTimeout(fetchLatestData, 2000);
+            }
+        }
+    };
+
+    window.onload = initMap;
+</script>
+
+</body>
+</html>
