@@ -1185,7 +1185,7 @@ func (h *APIHandler) Webhook(c *gin.Context) {
 			
 			// System admin bypass for body-auth
 			if admin.Username == h.cfg.GUIAdmin {
-				authenticated = true
+				// Authenticated
 			} else {
 				// Check for granular permission
 				hasAccess := false
@@ -1199,12 +1199,11 @@ func (h *APIHandler) Webhook(c *gin.Context) {
 					c.JSON(403, gin.H{"error": fmt.Sprintf("Webhook access denied for this user (requires %s)", requiredPerm)})
 					return
 				}
-				authenticated = true
 			}
 		} else {
 			// Database unavailable, fallback to hardcoded GUIAdmin config
 			if data.Username == h.cfg.GUIAdmin && data.Password == h.cfg.GUIPassword {
-				authenticated = true
+				// Authenticated
 			} else {
 				c.JSON(401, gin.H{"error": "Unauthorized (Database Offline)"})
 				return
