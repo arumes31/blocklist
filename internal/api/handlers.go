@@ -938,9 +938,12 @@ func (h *APIHandler) Webhook(c *gin.Context) {
 		Act      string `json:"act"`
 		Username string `json:"username"`
 		Password string `json:"password"`
+		TTL      int    `json:"ttl"`
+		Persist  bool   `json:"persist"`
 	}
 
 	if err := c.ShouldBindJSON(&data); err != nil {
+		zlog.Error().Err(err).Msg("Webhook: failed to bind JSON")
 		c.JSON(400, gin.H{"status": "invalid request"})
 		return
 	}
@@ -995,15 +998,32 @@ func (h *APIHandler) Webhook(c *gin.Context) {
 	timestamp := time.Now().UTC().Format("2006-01-02 15:04:05 UTC")
 	geo := h.ipService.GetGeoIP(data.IP)
 	now := time.Now().UTC()
+
+	expiresAt := ""
+	if !data.Persist {
+		tVal := 86400
+		if data.TTL > 0 {
+			tVal = data.TTL
+		}
+		expiresAt = now.Add(time.Duration(tVal) * time.Second).Format("2006-01-02 15:04:05 UTC")
+	}
+
 	entry := models.IPEntry{
 		Timestamp:   timestamp,
 		Geolocation: geo,
 		Reason:      data.Reason,
 		AddedBy:     "Webhook",
+		TTL:         data.TTL,
+		ExpiresAt:   expiresAt,
 	}
 
 	if data.Act == "ban" || data.Act == "ban-ip" {
-		_ = h.redisRepo.BlockIP(data.IP, entry)
+		if data.Persist && h.pgRepo != nil {
+			_ = h.pgRepo.CreatePersistentBlock(data.IP, entry)
+		} else {
+			_ = h.redisRepo.BlockIP(data.IP, entry)
+		}
+
 		_ = h.redisRepo.IndexIPTimestamp(data.IP, now)
 		_ = h.redisRepo.IncrTotal(1)
 		cc := ""
@@ -1011,6 +1031,11 @@ func (h *APIHandler) Webhook(c *gin.Context) {
 		_ = h.redisRepo.IncrCountry(cc, 1)
 		_ = h.redisRepo.IncrHourBucket(now, 1)
 		_ = h.redisRepo.IncrDayBucket(now, 1)
+		_ = h.redisRepo.IncrReason(entry.Reason, 1)
+		if geo != nil && geo.ASN != 0 {
+			_ = h.redisRepo.IncrASN(geo.ASN, geo.ASNOrg, 1)
+		}
+
 		metrics.MetricBlocksTotal.WithLabelValues("webhook").Inc()
 		h.hub.BroadcastEvent("block", map[string]interface{}{
 			"ip":   data.IP,
@@ -1023,6 +1048,10 @@ func (h *APIHandler) Webhook(c *gin.Context) {
 		
 		_ = h.redisRepo.ExecUnblockAtomic(data.IP)
 		
+		if h.pgRepo != nil {
+			_ = h.pgRepo.DeletePersistentBlock(data.IP)
+		}
+
 		if err == nil && e != nil {
 			cc := ""
 			if e.Geolocation != nil { cc = e.Geolocation.Country }
