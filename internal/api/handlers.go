@@ -67,24 +67,8 @@ var upgrader = websocket.Upgrader{
 	WriteBufferSize: 1024,
 	EnableCompression: true,
 	CheckOrigin: func(r *http.Request) bool {
-		origin := r.Header.Get("Origin")
-		if origin == "" || origin == "null" {
-			return true
-		}
-		u, err := url.Parse(origin)
-		if err != nil {
-			return false
-		}
-		host := r.Host
-		if u.Host == host {
-			return true
-		}
-		// Allow specific production domain
-		if strings.Contains(u.Host, "reitetschlaeger.com") || strings.Contains(u.Host, "localhost") || strings.Contains(u.Host, "127.0.0.1") {
-			return true
-		}
-		zlog.Warn().Str("origin", origin).Str("host", host).Msg("WebSocket Origin rejected")
-		return false
+		// More permissive for production behind proxies
+		return true
 	},
 }
 

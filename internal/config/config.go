@@ -58,7 +58,7 @@ func Load() *Config {
 		MetricsAllowedIPs:      getEnv("METRICS_ALLOWED_IPS", "127.0.0.1"),
 		EnableOutboundWebhooks: getEnvBool("ENABLE_OUTBOUND_WEBHOOKS", false),
 		RateLimit:              getEnvInt("RATE_LIMIT", 500),
-		RatePeriod:             getEnvInt("RATE_PERIOD", 1),
+		RatePeriod:             getEnvInt("RATE_PERIOD", 30),
 		RateLimitLogin:         getEnvInt("RATE_LIMIT_LOGIN", 10),
 		RateLimitWebhook:       getEnvInt("RATE_LIMIT_WEBHOOK", 100),
 	}

@@ -87,9 +87,21 @@ graph LR
 - **Build**: `docker build -t blocklist:go .`
 - **Run**: `docker compose -f docker-compose.go.yml up -d`
 
+## Granular Permissions
+
+The platform uses a detailed permission system for administrators:
+- **Monitoring**: `view_ips`, `view_stats`, `view_audit_logs`
+- **Enforcement**: `block_ips`, `unblock_ips`, `manage_whitelist`
+- **System**: `manage_webhooks`, `manage_api_tokens`, `manage_admins`
+- **Utility**: `export_data`
+
 ## Configuration
 - `SECRET_KEY`: Session encryption secret (required).
 - `GUIAdmin`/`GUIPassword`: Primary admin credentials.
+- `RATE_LIMIT`: Global requests per period (default: 500).
+- `RATE_PERIOD`: Rate limit window in seconds (default: 30).
+- `RATE_LIMIT_LOGIN`: Login-specific limit (default: 10).
+- `RATE_LIMIT_WEBHOOK`: Webhook-specific limit (default: 100).
 - `METRICS_ALLOWED_IPS`: Comma-separated list of trusted IPs for `/metrics`.
 - `ENABLE_OUTBOUND_WEBHOOKS`: Set to `true` to enable outbound notifications (default: `false`).
 - `WEBHOOK_SECRET`: HMAC secret for signing outbound webhook payloads.
