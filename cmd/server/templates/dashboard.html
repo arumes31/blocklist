@@ -238,6 +238,54 @@
         .compact table td, .compact table th { padding: 0.5rem; }
         /* Hide Geo column */
         .hide-geo #ipTable th:nth-child(7), .hide-geo #ipTable td:nth-child(7) { display: none; }
+
+        /* Compact Country Dropdown */
+        .country-dropdown {
+            position: relative;
+            flex: 1;
+            min-width: 150px;
+        }
+        .country-popup {
+            display: none;
+            position: absolute;
+            top: 100%;
+            left: 0;
+            width: 250px;
+            max-height: 400px;
+            background: #1a1a1a;
+            border: 1px solid var(--border-red);
+            border-radius: 8px;
+            z-index: 1000;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+            padding: 10px;
+            margin-top: 5px;
+        }
+        .country-popup.active { display: block; }
+        .country-list {
+            max-height: 300px;
+            overflow-y: auto;
+            margin-top: 10px;
+        }
+        .country-option {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px;
+            cursor: pointer;
+            border-radius: 4px;
+            transition: background 0.2s;
+        }
+        .country-option:hover { background: rgba(255,255,255,0.05); }
+        .country-option input { cursor: pointer; }
+        .country-search {
+            width: 100%;
+            padding: 8px;
+            background: #000;
+            border: 1px solid rgba(255,255,255,0.1);
+            color: #fff;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
     </style>
 </head>
 <body>
@@ -280,258 +328,267 @@
     <div class="search-container">
         <div style="display: flex; gap: 10px; margin-bottom: 10px; flex-wrap: wrap;">
             <input type="text" id="filterInput" class="filter-input" style="flex: 2; min-width: 200px;" placeholder="Quick Search (IP, Reason...)" oninput="debouncedFilterTable()">
-            <select id="countryFilter" class="filter-input" style="flex: 1; min-width: 120px; height: auto;" multiple onchange="applyServerSearch()">
-                <option value="" disabled>Select Countries</option>
-                <option value="AF">Afghanistan</option>
-                <option value="AX">Åland Islands</option>
-                <option value="AL">Albania</option>
-                <option value="DZ">Algeria</option>
-                <option value="AS">American Samoa</option>
-                <option value="AD">Andorra</option>
-                <option value="AO">Angola</option>
-                <option value="AI">Anguilla</option>
-                <option value="AQ">Antarctica</option>
-                <option value="AG">Antigua and Barbuda</option>
-                <option value="AR">Argentina</option>
-                <option value="AM">Armenia</option>
-                <option value="AW">Aruba</option>
-                <option value="AU">Australia</option>
-                <option value="AT">Austria</option>
-                <option value="AZ">Azerbaijan</option>
-                <option value="BS">Bahamas</option>
-                <option value="BH">Bahrain</option>
-                <option value="BD">Bangladesh</option>
-                <option value="BB">Barbados</option>
-                <option value="BY">Belarus</option>
-                <option value="BE">Belgium</option>
-                <option value="BZ">Belize</option>
-                <option value="BJ">Benin</option>
-                <option value="BM">Bermuda</option>
-                <option value="BT">Bhutan</option>
-                <option value="BO">Bolivia</option>
-                <option value="BQ">Bonaire, Sint Eustatius and Saba</option>
-                <option value="BA">Bosnia and Herzegovina</option>
-                <option value="BW">Botswana</option>
-                <option value="BV">Bouvet Island</option>
-                <option value="BR">Brazil</option>
-                <option value="IO">British Indian Ocean Territory</option>
-                <option value="BN">Brunei Darussalam</option>
-                <option value="BG">Bulgaria</option>
-                <option value="BF">Burkina Faso</option>
-                <option value="BI">Burundi</option>
-                <option value="CV">Cabo Verde</option>
-                <option value="KH">Cambodia</option>
-                <option value="CM">Cameroon</option>
-                <option value="CA">Canada</option>
-                <option value="KY">Cayman Islands</option>
-                <option value="CF">Central African Republic</option>
-                <option value="TD">Chad</option>
-                <option value="CL">Chile</option>
-                <option value="CN">China</option>
-                <option value="CX">Christmas Island</option>
-                <option value="CC">Cocos (Keeling) Islands</option>
-                <option value="CO">Colombia</option>
-                <option value="KM">Comoros</option>
-                <option value="CG">Congo</option>
-                <option value="CD">Congo (Democratic Republic of the)</option>
-                <option value="CK">Cook Islands</option>
-                <option value="CR">Costa Rica</option>
-                <option value="CI">Côte d'Ivoire</option>
-                <option value="HR">Croatia</option>
-                <option value="CU">Cuba</option>
-                <option value="CW">Curaçao</option>
-                <option value="CY">Cyprus</option>
-                <option value="CZ">Czechia</option>
-                <option value="DK">Denmark</option>
-                <option value="DJ">Djibouti</option>
-                <option value="DM">Dominica</option>
-                <option value="DO">Dominican Republic</option>
-                <option value="EC">Ecuador</option>
-                <option value="EG">Egypt</option>
-                <option value="SV">El Salvador</option>
-                <option value="GQ">Equatorial Guinea</option>
-                <option value="ER">Eritrea</option>
-                <option value="EE">Estonia</option>
-                <option value="SZ">Eswatini</option>
-                <option value="ET">Ethiopia</option>
-                <option value="FK">Falkland Islands (Malvinas)</option>
-                <option value="FO">Faroe Islands</option>
-                <option value="FJ">Fiji</option>
-                <option value="FI">Finland</option>
-                <option value="FR">France</option>
-                <option value="GF">French Guiana</option>
-                <option value="PF">French Polynesia</option>
-                <option value="TF">French Southern Territories</option>
-                <option value="GA">Gabon</option>
-                <option value="GM">Gambia</option>
-                <option value="GE">Georgia</option>
-                <option value="DE">Germany</option>
-                <option value="GH">Ghana</option>
-                <option value="GI">Gibraltar</option>
-                <option value="GR">Greece</option>
-                <option value="GL">Greenland</option>
-                <option value="GD">Grenada</option>
-                <option value="GP">Guadeloupe</option>
-                <option value="GU">Guam</option>
-                <option value="GT">Guatemala</option>
-                <option value="GG">Guernsey</option>
-                <option value="GN">Guinea</option>
-                <option value="GW">Guinea-Bissau</option>
-                <option value="GY">Guyana</option>
-                <option value="HT">Haiti</option>
-                <option value="HM">Heard Island and McDonald Islands</option>
-                <option value="VA">Holy See</option>
-                <option value="HN">Honduras</option>
-                <option value="HK">Hong Kong</option>
-                <option value="HU">Hungary</option>
-                <option value="IS">Iceland</option>
-                <option value="IN">India</option>
-                <option value="ID">Indonesia</option>
-                <option value="IR">Iran (Islamic Republic of)</option>
-                <option value="IQ">Iraq</option>
-                <option value="IE">Ireland</option>
-                <option value="IM">Isle of Man</option>
-                <option value="IL">Israel</option>
-                <option value="IT">Italy</option>
-                <option value="JM">Jamaica</option>
-                <option value="JP">Japan</option>
-                <option value="JE">Jersey</option>
-                <option value="JO">Jordan</option>
-                <option value="KZ">Kazakhstan</option>
-                <option value="KE">Kenya</option>
-                <option value="KI">Kiribati</option>
-                <option value="KP">Korea (Democratic People's Republic of)</option>
-                <option value="KR">Korea (Republic of)</option>
-                <option value="KW">Kuwait</option>
-                <option value="KG">Kyrgyzstan</option>
-                <option value="LA">Lao People's Democratic Republic</option>
-                <option value="LV">Latvia</option>
-                <option value="LB">Lebanon</option>
-                <option value="LS">Lesotho</option>
-                <option value="LR">Liberia</option>
-                <option value="LY">Libya</option>
-                <option value="LI">Liechtenstein</option>
-                <option value="LT">Lithuania</option>
-                <option value="LU">Luxembourg</option>
-                <option value="MO">Macao</option>
-                <option value="MG">Madagascar</option>
-                <option value="MW">Malawi</option>
-                <option value="MY">Malaysia</option>
-                <option value="MV">Maldives</option>
-                <option value="ML">Mali</option>
-                <option value="MT">Malta</option>
-                <option value="MH">Marshall Islands</option>
-                <option value="MQ">Martinique</option>
-                <option value="MR">Mauritania</option>
-                <option value="MU">Mauritius</option>
-                <option value="YT">Mayotte</option>
-                <option value="MX">Mexico</option>
-                <option value="FM">Micronesia (Federated States of)</option>
-                <option value="MD">Moldova (Republic of)</option>
-                <option value="MC">Monaco</option>
-                <option value="MN">Mongolia</option>
-                <option value="ME">Montenegro</option>
-                <option value="MS">Montserrat</option>
-                <option value="MA">Morocco</option>
-                <option value="MZ">Mozambique</option>
-                <option value="MM">Myanmar</option>
-                <option value="NA">Namibia</option>
-                <option value="NR">Nauru</option>
-                <option value="NP">Nepal</option>
-                <option value="NL">Netherlands</option>
-                <option value="NC">New Caledonia</option>
-                <option value="NZ">New Zealand</option>
-                <option value="NI">Nicaragua</option>
-                <option value="NE">Niger</option>
-                <option value="NG">Nigeria</option>
-                <option value="NU">Niue</option>
-                <option value="NF">Norfolk Island</option>
-                <option value="MK">North Macedonia</option>
-                <option value="MP">Northern Mariana Islands</option>
-                <option value="NO">Norway</option>
-                <option value="OM">Oman</option>
-                <option value="PK">Pakistan</option>
-                <option value="PW">Palau</option>
-                <option value="PS">Palestine, State of</option>
-                <option value="PA">Panama</option>
-                <option value="PG">Papua New Guinea</option>
-                <option value="PY">Paraguay</option>
-                <option value="PE">Peru</option>
-                <option value="PH">Philippines</option>
-                <option value="PN">Pitcairn</option>
-                <option value="PL">Poland</option>
-                <option value="PT">Portugal</option>
-                <option value="PR">Puerto Rico</option>
-                <option value="QA">Qatar</option>
-                <option value="RE">Réunion</option>
-                <option value="RO">Romania</option>
-                <option value="RU">Russian Federation</option>
-                <option value="RW">Rwanda</option>
-                <option value="BL">Saint Barthélemy</option>
-                <option value="SH">Saint Helena, Ascension and Tristan da Cunha</option>
-                <option value="KN">Saint Kitts and Nevis</option>
-                <option value="LC">Saint Lucia</option>
-                <option value="MF">Saint Martin (French part)</option>
-                <option value="PM">Saint Pierre and Miquelon</option>
-                <option value="VC">Saint Vincent and the Grenadines</option>
-                <option value="WS">Samoa</option>
-                <option value="SM">San Marino</option>
-                <option value="ST">Sao Tome and Principe</option>
-                <option value="SA">Saudi Arabia</option>
-                <option value="SN">Senegal</option>
-                <option value="RS">Serbia</option>
-                <option value="SC">Seychelles</option>
-                <option value="SL">Sierra Leone</option>
-                <option value="SG">Singapore</option>
-                <option value="SX">Sint Maarten (Dutch part)</option>
-                <option value="SK">Slovakia</option>
-                <option value="SI">Slovenia</option>
-                <option value="SB">Solomon Islands</option>
-                <option value="SO">Somalia</option>
-                <option value="ZA">South Africa</option>
-                <option value="GS">South Georgia and the South Sandwich Islands</option>
-                <option value="SS">South Sudan</option>
-                <option value="ES">Spain</option>
-                <option value="LK">Sri Lanka</option>
-                <option value="SD">Sudan</option>
-                <option value="SR">Suriname</option>
-                <option value="SJ">Svalbard and Jan Mayen</option>
-                <option value="SE">Sweden</option>
-                <option value="CH">Switzerland</option>
-                <option value="SY">Syrian Arab Republic</option>
-                <option value="TW">Taiwan, Province of China</option>
-                <option value="TJ">Tajikistan</option>
-                <option value="TZ">Tanzania, United Republic of</option>
-                <option value="TH">Thailand</option>
-                <option value="TL">Timor-Leste</option>
-                <option value="TG">Togo</option>
-                <option value="TK">Tokelau</option>
-                <option value="TO">Tonga</option>
-                <option value="TT">Trinidad and Tobago</option>
-                <option value="TN">Tunisia</option>
-                <option value="TR">Turkey</option>
-                <option value="TM">Turkmenistan</option>
-                <option value="TC">Turks and Caicos Islands</option>
-                <option value="TV">Tuvalu</option>
-                <option value="UG">Uganda</option>
-                <option value="UA">Ukraine</option>
-                <option value="AE">United Arab Emirates</option>
-                <option value="GB">United Kingdom of Great Britain and Northern Ireland</option>
-                <option value="UM">United States Minor Outlying Islands</option>
-                <option value="US">United States of America</option>
-                <option value="UY">Uruguay</option>
-                <option value="UZ">Uzbekistan</option>
-                <option value="VU">Vanuatu</option>
-                <option value="VE">Venezuela (Bolivarian Republic of)</option>
-                <option value="VN">Viet Nam</option>
-                <option value="VG">Virgin Islands (British)</option>
-                <option value="VI">Virgin Islands (U.S.)</option>
-                <option value="WF">Wallis and Futuna</option>
-                <option value="EH">Western Sahara</option>
-                <option value="YE">Yemen</option>
-                <option value="ZM">Zambia</option>
-                <option value="ZW">Zimbabwe</option>
-            </select>
+            
+            <div class="country-dropdown">
+                <button type="button" class="filter-input" style="width: 100%; text-align: left; display: flex; justify-content: space-between; align-items: center;" onclick="toggleCountryDropdown()">
+                    <span id="countryLabel">All Countries</span>
+                    <span>▼</span>
+                </button>
+                <div class="country-popup" id="countryPopup">
+                    <input type="text" id="countrySearch" class="country-search" placeholder="Search countries..." oninput="filterCountryList()">
+                    <div class="country-list" id="countryList">
+                        <label class="country-option"><input type="checkbox" value="AF" onchange="applyServerSearch()"> Afghanistan</label>
+                        <label class="country-option"><input type="checkbox" value="AX" onchange="applyServerSearch()"> Åland Islands</label>
+                        <label class="country-option"><input type="checkbox" value="AL" onchange="applyServerSearch()"> Albania</label>
+                        <label class="country-option"><input type="checkbox" value="DZ" onchange="applyServerSearch()"> Algeria</label>
+                        <label class="country-option"><input type="checkbox" value="AS" onchange="applyServerSearch()"> American Samoa</label>
+                        <label class="country-option"><input type="checkbox" value="AD" onchange="applyServerSearch()"> Andorra</label>
+                        <label class="country-option"><input type="checkbox" value="AO" onchange="applyServerSearch()"> Angola</label>
+                        <label class="country-option"><input type="checkbox" value="AI" onchange="applyServerSearch()"> Anguilla</label>
+                        <label class="country-option"><input type="checkbox" value="AQ" onchange="applyServerSearch()"> Antarctica</label>
+                        <label class="country-option"><input type="checkbox" value="AG" onchange="applyServerSearch()"> Antigua and Barbuda</label>
+                        <label class="country-option"><input type="checkbox" value="AR" onchange="applyServerSearch()"> Argentina</label>
+                        <label class="country-option"><input type="checkbox" value="AM" onchange="applyServerSearch()"> Armenia</label>
+                        <label class="country-option"><input type="checkbox" value="AW" onchange="applyServerSearch()"> Aruba</label>
+                        <label class="country-option"><input type="checkbox" value="AU" onchange="applyServerSearch()"> Australia</label>
+                        <label class="country-option"><input type="checkbox" value="AT" onchange="applyServerSearch()"> Austria</label>
+                        <label class="country-option"><input type="checkbox" value="AZ" onchange="applyServerSearch()"> Azerbaijan</label>
+                        <label class="country-option"><input type="checkbox" value="BS" onchange="applyServerSearch()"> Bahamas</label>
+                        <label class="country-option"><input type="checkbox" value="BH" onchange="applyServerSearch()"> Bahrain</label>
+                        <label class="country-option"><input type="checkbox" value="BD" onchange="applyServerSearch()"> Bangladesh</label>
+                        <label class="country-option"><input type="checkbox" value="BB" onchange="applyServerSearch()"> Barbados</label>
+                        <label class="country-option"><input type="checkbox" value="BY" onchange="applyServerSearch()"> Belarus</label>
+                        <label class="country-option"><input type="checkbox" value="BE" onchange="applyServerSearch()"> Belgium</label>
+                        <label class="country-option"><input type="checkbox" value="BZ" onchange="applyServerSearch()"> Belize</label>
+                        <label class="country-option"><input type="checkbox" value="BJ" onchange="applyServerSearch()"> Benin</label>
+                        <label class="country-option"><input type="checkbox" value="BM" onchange="applyServerSearch()"> Bermuda</label>
+                        <label class="country-option"><input type="checkbox" value="BT" onchange="applyServerSearch()"> Bhutan</label>
+                        <label class="country-option"><input type="checkbox" value="BO" onchange="applyServerSearch()"> Bolivia</label>
+                        <label class="country-option"><input type="checkbox" value="BQ" onchange="applyServerSearch()"> Bonaire, Sint Eustatius and Saba</label>
+                        <label class="country-option"><input type="checkbox" value="BA" onchange="applyServerSearch()"> Bosnia and Herzegovina</label>
+                        <label class="country-option"><input type="checkbox" value="BW" onchange="applyServerSearch()"> Botswana</label>
+                        <label class="country-option"><input type="checkbox" value="BV" onchange="applyServerSearch()"> Bouvet Island</label>
+                        <label class="country-option"><input type="checkbox" value="BR" onchange="applyServerSearch()"> Brazil</label>
+                        <label class="country-option"><input type="checkbox" value="IO" onchange="applyServerSearch()"> British Indian Ocean Territory</label>
+                        <label class="country-option"><input type="checkbox" value="BN" onchange="applyServerSearch()"> Brunei Darussalam</label>
+                        <label class="country-option"><input type="checkbox" value="BG" onchange="applyServerSearch()"> Bulgaria</label>
+                        <label class="country-option"><input type="checkbox" value="BF" onchange="applyServerSearch()"> Burkina Faso</label>
+                        <label class="country-option"><input type="checkbox" value="BI" onchange="applyServerSearch()"> Burundi</label>
+                        <label class="country-option"><input type="checkbox" value="CV" onchange="applyServerSearch()"> Cabo Verde</label>
+                        <label class="country-option"><input type="checkbox" value="KH" onchange="applyServerSearch()"> Cambodia</label>
+                        <label class="country-option"><input type="checkbox" value="CM" onchange="applyServerSearch()"> Cameroon</label>
+                        <label class="country-option"><input type="checkbox" value="CA" onchange="applyServerSearch()"> Canada</label>
+                        <label class="country-option"><input type="checkbox" value="KY" onchange="applyServerSearch()"> Cayman Islands</label>
+                        <label class="country-option"><input type="checkbox" value="CF" onchange="applyServerSearch()"> Central African Republic</label>
+                        <label class="country-option"><input type="checkbox" value="TD" onchange="applyServerSearch()"> Chad</label>
+                        <label class="country-option"><input type="checkbox" value="CL" onchange="applyServerSearch()"> Chile</label>
+                        <label class="country-option"><input type="checkbox" value="CN" onchange="applyServerSearch()"> China</label>
+                        <label class="country-option"><input type="checkbox" value="CX" onchange="applyServerSearch()"> Christmas Island</label>
+                        <label class="country-option"><input type="checkbox" value="CC" onchange="applyServerSearch()"> Cocos (Keeling) Islands</label>
+                        <label class="country-option"><input type="checkbox" value="CO" onchange="applyServerSearch()"> Colombia</label>
+                        <label class="country-option"><input type="checkbox" value="KM" onchange="applyServerSearch()"> Comoros</label>
+                        <label class="country-option"><input type="checkbox" value="CG" onchange="applyServerSearch()"> Congo</label>
+                        <label class="country-option"><input type="checkbox" value="CD" onchange="applyServerSearch()"> Congo (Democratic Republic of the)</label>
+                        <label class="country-option"><input type="checkbox" value="CK" onchange="applyServerSearch()"> Cook Islands</label>
+                        <label class="country-option"><input type="checkbox" value="CR" onchange="applyServerSearch()"> Costa Rica</label>
+                        <label class="country-option"><input type="checkbox" value="CI" onchange="applyServerSearch()"> Côte d'Ivoire</label>
+                        <label class="country-option"><input type="checkbox" value="HR" onchange="applyServerSearch()"> Croatia</label>
+                        <label class="country-option"><input type="checkbox" value="CU" onchange="applyServerSearch()"> Cuba</label>
+                        <label class="country-option"><input type="checkbox" value="CW" onchange="applyServerSearch()"> Curaçao</label>
+                        <label class="country-option"><input type="checkbox" value="CY" onchange="applyServerSearch()"> Cyprus</label>
+                        <label class="country-option"><input type="checkbox" value="CZ" onchange="applyServerSearch()"> Czechia</label>
+                        <label class="country-option"><input type="checkbox" value="DK" onchange="applyServerSearch()"> Denmark</label>
+                        <label class="country-option"><input type="checkbox" value="DJ" onchange="applyServerSearch()"> Djibouti</label>
+                        <label class="country-option"><input type="checkbox" value="DM" onchange="applyServerSearch()"> Dominica</label>
+                        <label class="country-option"><input type="checkbox" value="DO" onchange="applyServerSearch()"> Dominican Republic</label>
+                        <label class="country-option"><input type="checkbox" value="EC" onchange="applyServerSearch()"> Ecuador</label>
+                        <label class="country-option"><input type="checkbox" value="EG" onchange="applyServerSearch()"> Egypt</label>
+                        <label class="country-option"><input type="checkbox" value="SV" onchange="applyServerSearch()"> El Salvador</label>
+                        <label class="country-option"><input type="checkbox" value="GQ" onchange="applyServerSearch()"> Equatorial Guinea</label>
+                        <label class="country-option"><input type="checkbox" value="ER" onchange="applyServerSearch()"> Eritrea</label>
+                        <label class="country-option"><input type="checkbox" value="EE" onchange="applyServerSearch()"> Estonia</label>
+                        <label class="country-option"><input type="checkbox" value="SZ" onchange="applyServerSearch()"> Eswatini</label>
+                        <label class="country-option"><input type="checkbox" value="ET" onchange="applyServerSearch()"> Ethiopia</label>
+                        <label class="country-option"><input type="checkbox" value="FK" onchange="applyServerSearch()"> Falkland Islands (Malvinas)</label>
+                        <label class="country-option"><input type="checkbox" value="FO" onchange="applyServerSearch()"> Faroe Islands</label>
+                        <label class="country-option"><input type="checkbox" value="FJ" onchange="applyServerSearch()"> Fiji</label>
+                        <label class="country-option"><input type="checkbox" value="FI" onchange="applyServerSearch()"> Finland</label>
+                        <label class="country-option"><input type="checkbox" value="FR" onchange="applyServerSearch()"> France</label>
+                        <label class="country-option"><input type="checkbox" value="GF" onchange="applyServerSearch()"> French Guiana</label>
+                        <label class="country-option"><input type="checkbox" value="PF" onchange="applyServerSearch()"> French Polynesia</label>
+                        <label class="country-option"><input type="checkbox" value="TF" onchange="applyServerSearch()"> French Southern Territories</label>
+                        <label class="country-option"><input type="checkbox" value="GA" onchange="applyServerSearch()"> Gabon</label>
+                        <label class="country-option"><input type="checkbox" value="GM" onchange="applyServerSearch()"> Gambia</label>
+                        <label class="country-option"><input type="checkbox" value="GE" onchange="applyServerSearch()"> Georgia</label>
+                        <label class="country-option"><input type="checkbox" value="DE" onchange="applyServerSearch()"> Germany</label>
+                        <label class="country-option"><input type="checkbox" value="GH" onchange="applyServerSearch()"> Ghana</label>
+                        <label class="country-option"><input type="checkbox" value="GI" onchange="applyServerSearch()"> Gibraltar</label>
+                        <label class="country-option"><input type="checkbox" value="GR" onchange="applyServerSearch()"> Greece</label>
+                        <label class="country-option"><input type="checkbox" value="GL" onchange="applyServerSearch()"> Greenland</label>
+                        <label class="country-option"><input type="checkbox" value="GD" onchange="applyServerSearch()"> Grenada</label>
+                        <label class="country-option"><input type="checkbox" value="GP" onchange="applyServerSearch()"> Guadeloupe</label>
+                        <label class="country-option"><input type="checkbox" value="GU" onchange="applyServerSearch()"> Guam</label>
+                        <label class="country-option"><input type="checkbox" value="GT" onchange="applyServerSearch()"> Guatemala</label>
+                        <label class="country-option"><input type="checkbox" value="GG" onchange="applyServerSearch()"> Guernsey</label>
+                        <label class="country-option"><input type="checkbox" value="GN" onchange="applyServerSearch()"> Guinea</label>
+                        <label class="country-option"><input type="checkbox" value="GW" onchange="applyServerSearch()"> Guinea-Bissau</label>
+                        <label class="country-option"><input type="checkbox" value="GY" onchange="applyServerSearch()"> Guyana</label>
+                        <label class="country-option"><input type="checkbox" value="HT" onchange="applyServerSearch()"> Haiti</label>
+                        <label class="country-option"><input type="checkbox" value="HM" onchange="applyServerSearch()"> Heard Island and McDonald Islands</label>
+                        <label class="country-option"><input type="checkbox" value="VA" onchange="applyServerSearch()"> Holy See</label>
+                        <label class="country-option"><input type="checkbox" value="HN" onchange="applyServerSearch()"> Honduras</label>
+                        <label class="country-option"><input type="checkbox" value="HK" onchange="applyServerSearch()"> Hong Kong</label>
+                        <label class="country-option"><input type="checkbox" value="HU" onchange="applyServerSearch()"> Hungary</label>
+                        <label class="country-option"><input type="checkbox" value="IS" onchange="applyServerSearch()"> Iceland</label>
+                        <label class="country-option"><input type="checkbox" value="IN" onchange="applyServerSearch()"> India</label>
+                        <label class="country-option"><input type="checkbox" value="ID" onchange="applyServerSearch()"> Indonesia</label>
+                        <label class="country-option"><input type="checkbox" value="IR" onchange="applyServerSearch()"> Iran (Islamic Republic of)</label>
+                        <label class="country-option"><input type="checkbox" value="IQ" onchange="applyServerSearch()"> Iraq</label>
+                        <label class="country-option"><input type="checkbox" value="IE" onchange="applyServerSearch()"> Ireland</label>
+                        <label class="country-option"><input type="checkbox" value="IM" onchange="applyServerSearch()"> Isle of Man</label>
+                        <label class="country-option"><input type="checkbox" value="IL" onchange="applyServerSearch()"> Israel</label>
+                        <label class="country-option"><input type="checkbox" value="IT" onchange="applyServerSearch()"> Italy</label>
+                        <label class="country-option"><input type="checkbox" value="JM" onchange="applyServerSearch()"> Jamaica</label>
+                        <label class="country-option"><input type="checkbox" value="JP" onchange="applyServerSearch()"> Japan</label>
+                        <label class="country-option"><input type="checkbox" value="JE" onchange="applyServerSearch()"> Jersey</label>
+                        <label class="country-option"><input type="checkbox" value="JO" onchange="applyServerSearch()"> Jordan</label>
+                        <label class="country-option"><input type="checkbox" value="KZ" onchange="applyServerSearch()"> Kazakhstan</label>
+                        <label class="country-option"><input type="checkbox" value="KE" onchange="applyServerSearch()"> Kenya</label>
+                        <label class="country-option"><input type="checkbox" value="KI" onchange="applyServerSearch()"> Kiribati</label>
+                        <label class="country-option"><input type="checkbox" value="KP" onchange="applyServerSearch()"> Korea (Democratic People's Republic of)</label>
+                        <label class="country-option"><input type="checkbox" value="KR" onchange="applyServerSearch()"> Korea (Republic of)</label>
+                        <label class="country-option"><input type="checkbox" value="KW" onchange="applyServerSearch()"> Kuwait</label>
+                        <label class="country-option"><input type="checkbox" value="KG" onchange="applyServerSearch()"> Kyrgyzstan</label>
+                        <label class="country-option"><input type="checkbox" value="LA" onchange="applyServerSearch()"> Lao People's Democratic Republic</label>
+                        <label class="country-option"><input type="checkbox" value="LV" onchange="applyServerSearch()"> Latvia</label>
+                        <label class="country-option"><input type="checkbox" value="LB" onchange="applyServerSearch()"> Lebanon</label>
+                        <label class="country-option"><input type="checkbox" value="LS" onchange="applyServerSearch()"> Lesotho</label>
+                        <label class="country-option"><input type="checkbox" value="LR" onchange="applyServerSearch()"> Liberia</label>
+                        <label class="country-option"><input type="checkbox" value="LY" onchange="applyServerSearch()"> Libya</label>
+                        <label class="country-option"><input type="checkbox" value="LI" onchange="applyServerSearch()"> Liechtenstein</label>
+                        <label class="country-option"><input type="checkbox" value="LT" onchange="applyServerSearch()"> Lithuania</label>
+                        <label class="country-option"><input type="checkbox" value="LU" onchange="applyServerSearch()"> Luxembourg</label>
+                        <label class="country-option"><input type="checkbox" value="MO" onchange="applyServerSearch()"> Macao</label>
+                        <label class="country-option"><input type="checkbox" value="MG" onchange="applyServerSearch()"> Madagascar</label>
+                        <label class="country-option"><input type="checkbox" value="MW" onchange="applyServerSearch()"> Malawi</label>
+                        <label class="country-option"><input type="checkbox" value="MY" onchange="applyServerSearch()"> Malaysia</label>
+                        <label class="country-option"><input type="checkbox" value="MV" onchange="applyServerSearch()"> Maldives</label>
+                        <label class="country-option"><input type="checkbox" value="ML" onchange="applyServerSearch()"> Mali</label>
+                        <label class="country-option"><input type="checkbox" value="MT" onchange="applyServerSearch()"> Malta</label>
+                        <label class="country-option"><input type="checkbox" value="MH" onchange="applyServerSearch()"> Marshall Islands</label>
+                        <label class="country-option"><input type="checkbox" value="MQ" onchange="applyServerSearch()"> Martinique</label>
+                        <label class="country-option"><input type="checkbox" value="MR" onchange="applyServerSearch()"> Mauritania</label>
+                        <label class="country-option"><input type="checkbox" value="MU" onchange="applyServerSearch()"> Mauritius</label>
+                        <label class="country-option"><input type="checkbox" value="YT" onchange="applyServerSearch()"> Mayotte</label>
+                        <label class="country-option"><input type="checkbox" value="MX" onchange="applyServerSearch()"> Mexico</label>
+                        <label class="country-option"><input type="checkbox" value="FM" onchange="applyServerSearch()"> Micronesia (Federated States of)</label>
+                        <label class="country-option"><input type="checkbox" value="MD" onchange="applyServerSearch()"> Moldova (Republic of)</label>
+                        <label class="country-option"><input type="checkbox" value="MC" onchange="applyServerSearch()"> Monaco</label>
+                        <label class="country-option"><input type="checkbox" value="MN" onchange="applyServerSearch()"> Mongolia</label>
+                        <label class="country-option"><input type="checkbox" value="ME" onchange="applyServerSearch()"> Montenegro</label>
+                        <label class="country-option"><input type="checkbox" value="MS" onchange="applyServerSearch()"> Montserrat</label>
+                        <label class="country-option"><input type="checkbox" value="MA" onchange="applyServerSearch()"> Morocco</label>
+                        <label class="country-option"><input type="checkbox" value="MZ" onchange="applyServerSearch()"> Mozambique</label>
+                        <label class="country-option"><input type="checkbox" value="MM" onchange="applyServerSearch()"> Myanmar</label>
+                        <label class="country-option"><input type="checkbox" value="NA" onchange="applyServerSearch()"> Namibia</label>
+                        <label class="country-option"><input type="checkbox" value="NR" onchange="applyServerSearch()"> Nauru</label>
+                        <label class="country-option"><input type="checkbox" value="NP" onchange="applyServerSearch()"> Nepal</label>
+                        <label class="country-option"><input type="checkbox" value="NL" onchange="applyServerSearch()"> Netherlands</label>
+                        <label class="country-option"><input type="checkbox" value="NC" onchange="applyServerSearch()"> New Caledonia</label>
+                        <label class="country-option"><input type="checkbox" value="NZ" onchange="applyServerSearch()"> New Zealand</label>
+                        <label class="country-option"><input type="checkbox" value="NI" onchange="applyServerSearch()"> Nicaragua</label>
+                        <label class="country-option"><input type="checkbox" value="NE" onchange="applyServerSearch()"> Niger</label>
+                        <label class="country-option"><input type="checkbox" value="NG" onchange="applyServerSearch()"> Nigeria</label>
+                        <label class="country-option"><input type="checkbox" value="NU" onchange="applyServerSearch()"> Niue</label>
+                        <label class="country-option"><input type="checkbox" value="NF" onchange="applyServerSearch()"> Norfolk Island</label>
+                        <label class="country-option"><input type="checkbox" value="MK" onchange="applyServerSearch()"> North Macedonia</label>
+                        <label class="country-option"><input type="checkbox" value="MP" onchange="applyServerSearch()"> Northern Mariana Islands</label>
+                        <label class="country-option"><input type="checkbox" value="NO" onchange="applyServerSearch()"> Norway</label>
+                        <label class="country-option"><input type="checkbox" value="OM" onchange="applyServerSearch()"> Oman</label>
+                        <label class="country-option"><input type="checkbox" value="PK" onchange="applyServerSearch()"> Pakistan</label>
+                        <label class="country-option"><input type="checkbox" value="PW" onchange="applyServerSearch()"> Palau</label>
+                        <label class="country-option"><input type="checkbox" value="PS" onchange="applyServerSearch()"> Palestine, State of</label>
+                        <label class="country-option"><input type="checkbox" value="PA" onchange="applyServerSearch()"> Panama</label>
+                        <label class="country-option"><input type="checkbox" value="PG" onchange="applyServerSearch()"> Papua New Guinea</label>
+                        <label class="country-option"><input type="checkbox" value="PY" onchange="applyServerSearch()"> Paraguay</label>
+                        <label class="country-option"><input type="checkbox" value="PE" onchange="applyServerSearch()"> Peru</label>
+                        <label class="country-option"><input type="checkbox" value="PH" onchange="applyServerSearch()"> Philippines</label>
+                        <label class="country-option"><input type="checkbox" value="PN" onchange="applyServerSearch()"> Pitcairn</label>
+                        <label class="country-option"><input type="checkbox" value="PL" onchange="applyServerSearch()"> Poland</label>
+                        <label class="country-option"><input type="checkbox" value="PT" onchange="applyServerSearch()"> Portugal</label>
+                        <label class="country-option"><input type="checkbox" value="PR" onchange="applyServerSearch()"> Puerto Rico</label>
+                        <label class="country-option"><input type="checkbox" value="QA" onchange="applyServerSearch()"> Qatar</label>
+                        <label class="country-option"><input type="checkbox" value="RE" onchange="applyServerSearch()"> Réunion</label>
+                        <label class="country-option"><input type="checkbox" value="RO" onchange="applyServerSearch()"> Romania</label>
+                        <label class="country-option"><input type="checkbox" value="RU" onchange="applyServerSearch()"> Russian Federation</label>
+                        <label class="country-option"><input type="checkbox" value="RW" onchange="applyServerSearch()"> Rwanda</label>
+                        <label class="country-option"><input type="checkbox" value="BL" onchange="applyServerSearch()"> Saint Barthélemy</label>
+                        <label class="country-option"><input type="checkbox" value="SH" onchange="applyServerSearch()"> Saint Helena, Ascension and Tristan da Cunha</label>
+                        <label class="country-option"><input type="checkbox" value="KN" onchange="applyServerSearch()"> Saint Kitts and Nevis</label>
+                        <label class="country-option"><input type="checkbox" value="LC" onchange="applyServerSearch()"> Saint Lucia</label>
+                        <label class="country-option"><input type="checkbox" value="MF" onchange="applyServerSearch()"> Saint Martin (French part)</label>
+                        <label class="country-option"><input type="checkbox" value="PM" onchange="applyServerSearch()"> Saint Pierre and Miquelon</label>
+                        <label class="country-option"><input type="checkbox" value="VC" onchange="applyServerSearch()"> Saint Vincent and the Grenadines</label>
+                        <label class="country-option"><input type="checkbox" value="WS" onchange="applyServerSearch()"> Samoa</label>
+                        <label class="country-option"><input type="checkbox" value="SM" onchange="applyServerSearch()"> San Marino</label>
+                        <label class="country-option"><input type="checkbox" value="ST" onchange="applyServerSearch()"> Sao Tome and Principe</option>
+                        <label class="country-option"><input type="checkbox" value="SA" onchange="applyServerSearch()"> Saudi Arabia</label>
+                        <label class="country-option"><input type="checkbox" value="SN" onchange="applyServerSearch()"> Senegal</label>
+                        <label class="country-option"><input type="checkbox" value="RS" onchange="applyServerSearch()"> Serbia</label>
+                        <label class="country-option"><input type="checkbox" value="SC" onchange="applyServerSearch()"> Seychelles</label>
+                        <label class="country-option"><input type="checkbox" value="SL" onchange="applyServerSearch()"> Sierra Leone</label>
+                        <label class="country-option"><input type="checkbox" value="SG" onchange="applyServerSearch()"> Singapore</label>
+                        <label class="country-option"><input type="checkbox" value="SX" onchange="applyServerSearch()"> Sint Maarten (Dutch part)</label>
+                        <label class="country-option"><input type="checkbox" value="SK" onchange="applyServerSearch()"> Slovakia</label>
+                        <label class="country-option"><input type="checkbox" value="SI" onchange="applyServerSearch()"> Slovenia</label>
+                        <label class="country-option"><input type="checkbox" value="SB" onchange="applyServerSearch()"> Solomon Islands</label>
+                        <label class="country-option"><input type="checkbox" value="SO" onchange="applyServerSearch()"> Somalia</label>
+                        <label class="country-option"><input type="checkbox" value="ZA" onchange="applyServerSearch()"> South Africa</label>
+                        <label class="country-option"><input type="checkbox" value="GS" onchange="applyServerSearch()"> South Georgia and the South Sandwich Islands</label>
+                        <label class="country-option"><input type="checkbox" value="SS" onchange="applyServerSearch()"> South Sudan</label>
+                        <label class="country-option"><input type="checkbox" value="ES" onchange="applyServerSearch()"> Spain</label>
+                        <label class="country-option"><input type="checkbox" value="LK" onchange="applyServerSearch()"> Sri Lanka</label>
+                        <label class="country-option"><input type="checkbox" value="SD" onchange="applyServerSearch()"> Sudan</label>
+                        <label class="country-option"><input type="checkbox" value="SR" onchange="applyServerSearch()"> Suriname</label>
+                        <label class="country-option"><input type="checkbox" value="SJ" onchange="applyServerSearch()"> Svalbard and Jan Mayen</label>
+                        <label class="country-option"><input type="checkbox" value="SE" onchange="applyServerSearch()"> Sweden</label>
+                        <label class="country-option"><input type="checkbox" value="CH" onchange="applyServerSearch()"> Switzerland</label>
+                        <label class="country-option"><input type="checkbox" value="SY" onchange="applyServerSearch()"> Syrian Arab Republic</label>
+                        <label class="country-option"><input type="checkbox" value="TW" onchange="applyServerSearch()"> Taiwan, Province of China</label>
+                        <label class="country-option"><input type="checkbox" value="TJ" onchange="applyServerSearch()"> Tajikistan</label>
+                        <label class="country-option"><input type="checkbox" value="TZ" onchange="applyServerSearch()"> Tanzania, United Republic of</label>
+                        <label class="country-option"><input type="checkbox" value="TH" onchange="applyServerSearch()"> Thailand</label>
+                        <label class="country-option"><input type="checkbox" value="TL" onchange="applyServerSearch()"> Timor-Leste</label>
+                        <label class="country-option"><input type="checkbox" value="TG" onchange="applyServerSearch()"> Togo</label>
+                        <label class="country-option"><input type="checkbox" value="TK" onchange="applyServerSearch()"> Tokelau</label>
+                        <label class="country-option"><input type="checkbox" value="TO" onchange="applyServerSearch()"> Tonga</label>
+                        <label class="country-option"><input type="checkbox" value="TT" onchange="applyServerSearch()"> Trinidad and Tobago</label>
+                        <label class="country-option"><input type="checkbox" value="TN" onchange="applyServerSearch()"> Tunisia</label>
+                        <label class="country-option"><input type="checkbox" value="TR" onchange="applyServerSearch()"> Turkey</label>
+                        <label class="country-option"><input type="checkbox" value="TM" onchange="applyServerSearch()"> Turkmenistan</label>
+                        <label class="country-option"><input type="checkbox" value="TC" onchange="applyServerSearch()"> Turks and Caicos Islands</label>
+                        <label class="country-option"><input type="checkbox" value="TV" onchange="applyServerSearch()"> Tuvalu</label>
+                        <label class="country-option"><input type="checkbox" value="UG" onchange="applyServerSearch()"> Uganda</label>
+                        <label class="country-option"><input type="checkbox" value="UA" onchange="applyServerSearch()"> Ukraine</label>
+                        <label class="country-option"><input type="checkbox" value="AE" onchange="applyServerSearch()"> United Arab Emirates</label>
+                        <label class="country-option"><input type="checkbox" value="GB" onchange="applyServerSearch()"> United Kingdom of Great Britain and Northern Ireland</label>
+                        <label class="country-option"><input type="checkbox" value="UM" onchange="applyServerSearch()"> United States Minor Outlying Islands</label>
+                        <label class="country-option"><input type="checkbox" value="US" onchange="applyServerSearch()"> United States of America</label>
+                        <label class="country-option"><input type="checkbox" value="UY" onchange="applyServerSearch()"> Uruguay</label>
+                        <label class="country-option"><input type="checkbox" value="UZ" onchange="applyServerSearch()"> Uzbekistan</label>
+                        <label class="country-option"><input type="checkbox" value="VU" onchange="applyServerSearch()"> Vanuatu</label>
+                        <label class="country-option"><input type="checkbox" value="VE" onchange="applyServerSearch()"> Venezuela (Bolivarian Republic of)</label>
+                        <label class="country-option"><input type="checkbox" value="VN" onchange="applyServerSearch()"> Viet Nam</label>
+                        <label class="country-option"><input type="checkbox" value="VG" onchange="applyServerSearch()"> Virgin Islands (British)</label>
+                        <label class="country-option"><input type="checkbox" value="VI" onchange="applyServerSearch()"> Virgin Islands (U.S.)</label>
+                        <label class="country-option"><input type="checkbox" value="WF" onchange="applyServerSearch()"> Wallis and Futuna</label>
+                        <label class="country-option"><input type="checkbox" value="EH" onchange="applyServerSearch()"> Western Sahara</label>
+                        <label class="country-option"><input type="checkbox" value="YE" onchange="applyServerSearch()"> Yemen</label>
+                        <label class="country-option"><input type="checkbox" value="ZM" onchange="applyServerSearch()"> Zambia</label>
+                        <label class="country-option"><input type="checkbox" value="ZW" onchange="applyServerSearch()"> Zimbabwe</label>
+                    </div>
+                </div>
+            </div>
             <input type="text" id="addedByFilter" class="filter-input" style="flex: 1; min-width: 120px;" placeholder="Added By..." oninput="debouncedFilterTable()">
             <input type="datetime-local" id="fromDateFilter" class="filter-input" style="flex: 1; min-width: 160px;" onchange="applyServerSearch()" title="From Date">
             <input type="datetime-local" id="toDateFilter" class="filter-input" style="flex: 1; min-width: 160px;" onchange="applyServerSearch()" title="To Date">
@@ -682,6 +739,32 @@
                         hx-target="closest tr" hx-swap="outerHTML swap:0.5s" title="Unblock this IP">Unblock</button>
             </td>
         </tr>`;
+    }
+
+    function toggleCountryDropdown() {
+        document.getElementById('countryPopup').classList.toggle('active');
+    }
+
+    // Close dropdown when clicking outside
+    document.addEventListener('click', function(event) {
+        const dropdown = document.querySelector('.country-dropdown');
+        const popup = document.getElementById('countryPopup');
+        if (dropdown && !dropdown.contains(event.target)) {
+            popup.classList.remove('active');
+        }
+    });
+
+    function filterCountryList() {
+        const search = document.getElementById('countrySearch').value.toLowerCase();
+        const options = document.querySelectorAll('.country-option');
+        options.forEach(opt => {
+            const name = opt.innerText.toLowerCase();
+            if (name.includes(search)) {
+                opt.style.display = 'flex';
+            } else {
+                opt.style.display = 'none';
+            }
+        });
     }
 
     async function fetchPage(nextCursor){
@@ -872,10 +955,17 @@
         debounceTimeout = setTimeout(applyServerSearch, 350);
     }
 
-    async function applyServerSearch(){
-        const countrySelect = document.getElementById('countryFilter');
-        const selectedCountries = Array.from(countrySelect.selectedOptions).map(opt => opt.value).filter(val => val !== "");
+        const countrySelect = document.getElementById('countryPopup');
+        const checkboxes = countrySelect.querySelectorAll('input[type="checkbox"]:checked');
+        const selectedCountries = Array.from(checkboxes).map(cb => cb.value);
         
+        const label = document.getElementById('countryLabel');
+        if (selectedCountries.length === 0) {
+            label.textContent = 'All Countries';
+        } else {
+            label.textContent = `${selectedCountries.length} Countries Selected`;
+        }
+
         currentFilters = {
             query: document.getElementById('filterInput').value.trim(),
             country: selectedCountries.join(','),
@@ -910,11 +1000,18 @@
 
         document.getElementById('filterInput').value = currentFilters.query;
         
-        const countrySelect = document.getElementById('countryFilter');
-        const countries = currentFilters.country.split(',');
-        Array.from(countrySelect.options).forEach(opt => {
-            opt.selected = countries.includes(opt.value);
+        const countries = currentFilters.country.split(',').filter(c => c !== "");
+        const checkboxes = document.querySelectorAll('#countryList input[type="checkbox"]');
+        checkboxes.forEach(cb => {
+            cb.checked = countries.includes(cb.value);
         });
+        
+        const label = document.getElementById('countryLabel');
+        if (countries.length === 0) {
+            label.textContent = 'All Countries';
+        } else {
+            label.textContent = `${countries.length} Countries Selected`;
+        }
 
         document.getElementById('addedByFilter').value = currentFilters.addedBy;
 ...
@@ -925,11 +1022,18 @@
         
         document.getElementById('filterInput').value = filters.query || "";
         
-        const countrySelect = document.getElementById('countryFilter');
-        const countries = (filters.country || "").split(',');
-        Array.from(countrySelect.options).forEach(opt => {
-            opt.selected = countries.includes(opt.value);
+        const countries = (filters.country || "").split(',').filter(c => c !== "");
+        const checkboxes = document.querySelectorAll('#countryList input[type="checkbox"]');
+        checkboxes.forEach(cb => {
+            cb.checked = countries.includes(cb.value);
         });
+
+        const label = document.getElementById('countryLabel');
+        if (countries.length === 0) {
+            label.textContent = 'All Countries';
+        } else {
+            label.textContent = `${countries.length} Countries Selected`;
+        }
 
         document.getElementById('addedByFilter').value = filters.addedBy || "";
 
@@ -999,15 +1103,16 @@
         currentFilters[key] = "";
         const idMap = {
             query: 'filterInput',
-            country: 'countryFilter',
+            country: 'countryPopup',
             addedBy: 'addedByFilter',
             from: 'fromDateFilter',
             to: 'toDateFilter'
         };
         const el = document.getElementById(idMap[key]);
         if (el) {
-            if (el.tagName === 'SELECT' && el.multiple) {
-                Array.from(el.options).forEach(opt => opt.selected = false);
+            if (key === 'country') {
+                const checkboxes = el.querySelectorAll('input[type="checkbox"]');
+                checkboxes.forEach(cb => cb.checked = false);
             } else {
                 el.value = "";
             }
@@ -1016,9 +1121,9 @@
     }
 
     window.removeCountry = function(code) {
-        const countrySelect = document.getElementById('countryFilter');
-        Array.from(countrySelect.options).forEach(opt => {
-            if (opt.value === code) opt.selected = false;
+        const checkboxes = document.querySelectorAll('#countryList input[type="checkbox"]');
+        checkboxes.forEach(cb => {
+            if (cb.value === code) cb.checked = false;
         });
         applyServerSearch();
     }
