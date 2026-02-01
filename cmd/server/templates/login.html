@@ -179,7 +179,7 @@
         </div>
         {{ end }}
 
-        <form id="loginForm" method="POST" action="{{ if .is_sudo }}/sudo{{ else }}/login{{ end }}">
+        <form id="loginForm" method="POST" action="{{ if .is_sudo }}/sudo?next={{ .next }}{{ else }}/login{{ end }}">
             {{ if eq .step "totp" }}
                 <div class="form-group">
                     <label for="totp">2FA Token</label>

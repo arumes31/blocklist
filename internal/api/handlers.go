@@ -839,7 +839,7 @@ func (h *APIHandler) SudoMiddleware() gin.HandlerFunc {
 }
 
 func (h *APIHandler) ShowSudo(c *gin.Context) {
-	c.HTML(http.StatusOK, "login.html", gin.H{"step": "totp", "is_sudo": true, "next": c.Query("next")})
+	c.HTML(http.StatusOK, "login.html", gin.H{"step": "totp", "is_sudo": true, "next": c.Query("next"), "username": c.GetString("username")})
 }
 
 func (h *APIHandler) VerifySudo(c *gin.Context) {
@@ -847,12 +847,17 @@ func (h *APIHandler) VerifySudo(c *gin.Context) {
 	username := session.Get("username").(string)
 	totpCode := c.PostForm("totp")
 	next := c.PostForm("next")
+	if next == "" {
+		next = c.Query("next")
+	}
 
 	admin, _ := h.pgRepo.GetAdmin(username)
 	if admin != nil && totp.Validate(totpCode, admin.Token) {
 		session.Set("sudo_time", time.Now().Unix())
 		_ = session.Save()
-		if next == "" { next = "/dashboard" }
+		if next == "" {
+			next = "/dashboard"
+		}
 		c.Redirect(http.StatusFound, next)
 		return
 	}

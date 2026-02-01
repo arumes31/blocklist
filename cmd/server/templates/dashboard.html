@@ -739,6 +739,7 @@
     let inflight = null; // AbortController for in-flight fetch
     let paused = false;
     let updateQueue = [];
+    let lastBlockTime = {{ if .stats.last_block_ts }}{{ .stats.last_block_ts }}{{ else }}0{{ end }};
     const tbody = document.getElementById('ipTableBody');
 
     function rowHTML(ip, data){
@@ -904,7 +905,11 @@
                 document.getElementById('bpm-display').textContent = s.blocks_minute.toFixed(1) + ' BPM';
             }
             if (s.last_block_ts > 0) {
-                const diff = Math.floor((Date.now() / 1000) - s.last_block_ts);
+                lastBlockTime = s.last_block_ts;
+            }
+            
+            if (lastBlockTime > 0) {
+                const diff = Math.floor((Date.now() / 1000) - lastBlockTime);
                 let text = "just now";
                 if (diff > 0) {
                     if (diff < 60) text = diff + "s ago";
@@ -988,6 +993,10 @@
             const h = document.getElementById('stat-hour'); if (h) h.textContent = (parseInt(h.textContent||'0')+1).toString();
             const d = document.getElementById('stat-day'); if (d) d.textContent = (parseInt(d.textContent||'0')+1).toString();
             const t = document.getElementById('stat-total'); if (t) t.textContent = (parseInt(t.textContent||'0')+1).toString();
+            
+            // Update BPM and Last Block
+            document.getElementById('last-block-display').textContent = 'Last: just now';
+            lastBlockTime = Date.now() / 1000;
         } else if (msg.action === 'unblock') {
             const ip = msg.data.ip;
             const id = 'row-' + ip.toLowerCase().replace(/\./g,'-').replace(/:/g,'-');
