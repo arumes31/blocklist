@@ -41,9 +41,7 @@
         .header-container h2 {
             margin: 0;
             font-weight: 600;
-            display: flex;
-            align-items: center;
-            gap: 1rem;
+            color: #fff;
         }
         .banner img { height: 40px; filter: drop-shadow(0 0 6px rgba(255,0,0,0.4)); }
         .main-content { padding: 2rem; }
@@ -247,15 +245,17 @@
         <div class="banner">
             <img src="/cd/logo.png" alt="logo">
         </div> 
-        <h2>
-            Blocklist Dashboard 
-            <button onclick="openModal('blockModal')" class="btn btn-danger">Block IP</button>
-            <a href="/whitelist" class="btn btn-dark" style="min-width: 100px;">Whitelist</a>
-            <a href="/settings" class="btn btn-dark" style="min-width: 100px;">Settings</a>
-            {{ if eq .username .admin_username }}
-            <a href="/admin_management" class="btn btn-dark" style="min-width: 100px;">Admins</a>
-            {{ end }}
-        </h2>
+        <div style="display: flex; align-items: center; gap: 1.5rem;">
+            <h2 style="margin: 0;">Blocklist Dashboard</h2>
+            <div style="display: flex; gap: 0.8rem;">
+                <button onclick="openModal('blockModal')" class="btn btn-danger">Block IP</button>
+                <a href="/whitelist" class="btn btn-dark" style="min-width: 120px;">Whitelist</a>
+                <a href="/settings" class="btn btn-dark" style="min-width: 120px;">Settings</a>
+                {{ if eq .username .admin_username }}
+                <a href="/admin_management" class="btn btn-dark" style="min-width: 120px;">Admins</a>
+                {{ end }}
+            </div>
+        </div>
     </div>
     <div style="display: flex; align-items: center; gap: 1rem;">
         <div class="controls" style="display:flex; align-items:center; gap:0.5rem;">

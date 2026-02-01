@@ -6,86 +6,181 @@
     <link rel="icon" type="image/x-icon" href="/cd/favicon-color.png" />
     <script src="/js/htmx.min.js"></script>
     <style>
-        :root { --primary-red: #ff0000; --dark-red: #8b0000; --border-red: rgba(255, 0, 0, 0.3); }
-        body { font-family: 'Segoe UI', sans-serif; background: #000; color: #fff; margin: 0; padding: 2rem; }
-        .card { background: rgba(20,20,20,0.85); border: 1px solid var(--border-red); border-radius: 12px; padding: 1.5rem; margin-bottom: 2rem; }
-        h2 { border-bottom: 1px solid var(--border-red); padding-bottom: 0.5rem; }
-        .btn { padding: 0.6rem 1.2rem; border-radius: 6px; cursor: pointer; font-weight: 600; border: 1px solid rgba(255,255,255,0.15); background: rgba(255,255,255,0.05); color: #fff; text-decoration: none; }
-        .btn-danger { background: var(--dark-red); }
+        :root {
+            --primary-red: #ff0000;
+            --dark-red: #8b0000;
+            --vibrant-red: #ff4d4d;
+            --glass-bg: rgba(20, 20, 20, 0.85);
+            --border-red: rgba(255, 0, 0, 0.3);
+            --secondary-color: #b3b3b3;
+            --success-color: #28a745;
+            --danger-color: #dc3545;
+        }
+        body {
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            background-color: #000;
+            color: #fff;
+        }
+        .header-container {
+            background: var(--glass-bg);
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 12px rgba(255,0,0,0.15);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            backdrop-filter: blur(8px);
+            border-bottom: 1px solid var(--border-red);
+        }
+        .header-container h2 {
+            margin: 0;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            color: #fff;
+        }
+        .header-container img { height: 40px; filter: drop-shadow(0 0 6px rgba(255,0,0,0.4)); }
+        
+        .main-content { padding: 2rem; }
+
+        .card {
+            background: rgba(20,20,20,0.85);
+            border: 1px solid var(--border-red);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+            backdrop-filter: blur(8px);
+        }
+        h3 { border-bottom: 1px solid var(--border-red); padding-bottom: 0.5rem; margin-top: 0; }
+        
+        .btn {
+            padding: 0.6rem 1.2rem;
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(255,255,255,0.05);
+            color: #fff;
+            box-shadow: 0 0 10px rgba(255,0,0,0.08);
+        }
+        .btn-danger { background: linear-gradient(45deg, var(--dark-red), var(--primary-red)); border-color: var(--border-red); }
+        .btn-dark { background: rgba(255,255,255,0.08); }
+        .btn:hover { transform: translateY(-1px); box-shadow: 0 0 16px rgba(255,0,0,0.2); }
+
+        .filter-input {
+            padding: 0.8rem 1rem;
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 8px;
+            font-size: 1rem;
+            background: rgba(255,255,255,0.05);
+            color: #fff;
+            outline: none;
+        }
+        .filter-input:focus { border-color: var(--primary-red); box-shadow: 0 0 0 2px rgba(255,0,0,0.2); }
+
         .form-group { margin-bottom: 1rem; }
-        label { display: block; margin-bottom: 0.4rem; }
-        input, select { width: 100%; padding: 0.6rem; background: #111; border: 1px solid #333; color: #fff; border-radius: 4px; box-sizing: border-box; }
-        table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
-        th, td { text-align: left; padding: 0.75rem; border-bottom: 1px solid #222; }
-        code { background: #222; padding: 0.2rem 0.4rem; border-radius: 4px; font-family: monospace; }
+        label { display: block; margin-bottom: 0.4rem; color: var(--secondary-color); font-size: 0.9rem; }
+        
+        table { border-collapse: collapse; width: 100%; color: #fff; margin-top: 1rem; }
+        th, td { text-align: left; padding: 0.75rem; border-bottom: 1px solid rgba(255,255,255,0.06); }
+        th {
+            background-color: rgba(255,255,255,0.04);
+            font-weight: 600;
+            color: var(--secondary-color);
+            text-transform: uppercase;
+            font-size: 0.85rem;
+            letter-spacing: 0.05em;
+        }
+        tr:hover { background-color: rgba(255,255,255,0.02); }
+        code { background: rgba(255,255,255,0.1); padding: 0.2rem 0.4rem; border-radius: 4px; font-family: monospace; color: var(--vibrant-red); }
+        pre { background: rgba(0,0,0,0.3); padding: 1rem; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); overflow-x: auto; }
     </style>
 </head>
 <body>
-    <a href="/dashboard" class="btn">Back to Dashboard</a>
-    <h1>Settings & Integrations</h1>
-
-    <div class="card">
-        <h2>Outbound Webhooks</h2>
-        <p>Configure external services to be notified of block/unblock events.</p>
-        <form hx-post="/api/v1/settings/webhooks" hx-target="#webhook-list" hx-swap="afterbegin">
-            <div style="display: grid; grid-template-columns: 2fr 1fr 1fr auto; gap: 10px; align-items: end;">
-                <div class="form-group">
-                    <label>URL</label>
-                    <input type="url" name="url" placeholder="https://example.com/webhook" required>
-                </div>
-                <div class="form-group">
-                    <label>Secret (HMAC)</label>
-                    <input type="text" name="secret" placeholder="optional signature key">
-                </div>
-                <div class="form-group">
-                    <label>Events</label>
-                    <input type="text" name="events" value="block,unblock" placeholder="comma separated">
-                </div>
-                <button type="submit" class="btn" style="margin-bottom: 1rem;">Add Webhook</button>
-            </div>
-        </form>
-
-        <table>
-            <thead>
-                <tr>
-                    <th>URL</th>
-                    <th>Events</th>
-                    <th>Status</th>
-                    <th>Action</th>
-                </tr>
-            </thead>
-            <tbody id="webhook-list">
-                {{ range $i, $w := .webhooks }}
-                <tr>
-                    <td>{{ $w.URL }}</td>
-                    <td>{{ $w.Events }}</td>
-                    <td>{{ if $w.Active }}✅ Active{{ else }}❌ Inactive{{ end }}</td>
-                    <td>
-                        <button class="btn btn-danger" hx-delete="/api/v1/settings/webhooks/{{ $w.ID }}" hx-target="closest tr" hx-swap="outerHTML">Delete</button>
-                    </td>
-                </tr>
-                {{ end }}
-            </tbody>
-        </table>
+    <div class="header-container">
+        <div style="display: flex; align-items: center; gap: 2rem;">
+            <img src="/cd/logo.png" alt="Logo">
+            <h2>Settings & Integrations</h2>
+        </div>
+        <div style="display: flex; align-items: center; gap: 1rem;">
+            <a href="/dashboard" class="btn btn-dark" style="min-width: 150px;">Back to Dashboard</a>
+            <a href="/logout" class="btn" style="background: rgba(255,255,255,0.08);">Logout</a>
+        </div>
     </div>
 
-    <div class="card">
-        <h2>Source Adapters</h2>
-        <h3>Fail2ban</h3>
-        <p>Configure Fail2ban to push bans to this app. Add an action file <code>/etc/fail2ban/action.d/blocklist.conf</code>:</p>
-        <pre><code>[Definition]
+    <div class="main-content">
+        <div class="card">
+            <h3>Outbound Webhooks</h3>
+            <p style="color: var(--secondary-color);">Configure external services to be notified of block/unblock events.</p>
+            <form hx-post="/api/v1/settings/webhooks" hx-target="#webhook-list" hx-swap="afterbegin">
+                <div style="display: grid; grid-template-columns: 2fr 1fr 1fr auto; gap: 10px; align-items: end;">
+                    <div class="form-group">
+                        <label>URL</label>
+                        <input type="url" name="url" class="filter-input" style="width: 100%; box-sizing: border-box;" placeholder="https://example.com/webhook" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Secret (HMAC)</label>
+                        <input type="text" name="secret" class="filter-input" style="width: 100%; box-sizing: border-box;" placeholder="optional signature key">
+                    </div>
+                    <div class="form-group">
+                        <label>Events</label>
+                        <input type="text" name="events" class="filter-input" style="width: 100%; box-sizing: border-box;" value="block,unblock" placeholder="comma separated">
+                    </div>
+                    <button type="submit" class="btn btn-danger" style="margin-bottom: 1rem;">Add Webhook</button>
+                </div>
+            </form>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th>URL</th>
+                        <th>Events</th>
+                        <th>Status</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody id="webhook-list">
+                    {{ range $i, $w := .webhooks }}
+                    <tr>
+                        <td><code>{{ $w.URL }}</code></td>
+                        <td>{{ $w.Events }}</td>
+                        <td>{{ if $w.Active }}<span class="btn btn-success" style="padding: 0.2rem 0.5rem; font-size: 0.7rem; pointer-events: none;">ACTIVE</span>{{ else }}<span class="btn btn-dark" style="padding: 0.2rem 0.5rem; font-size: 0.7rem; pointer-events: none;">INACTIVE</span>{{ end }}</td>
+                        <td>
+                            <button class="btn btn-danger" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;" hx-delete="/api/v1/settings/webhooks/{{ $w.ID }}" hx-target="closest tr" hx-swap="outerHTML">Delete</button>
+                        </td>
+                    </tr>
+                    {{ end }}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="card">
+            <h3>Source Adapters</h3>
+            <h4 style="color: var(--vibrant-red); margin-bottom: 0.5rem;">Fail2ban</h4>
+            <p style="color: var(--secondary-color);">Configure Fail2ban to push bans to this app. Add an action file <code>/etc/fail2ban/action.d/blocklist.conf</code>:</p>
+            <pre><code>[Definition]
 actionban = curl -X POST -H "Content-Type: application/json" -d '{"ip":"&lt;ip&gt;","act":"ban","reason":"fail2ban-&lt;name&gt;","username":"{{ .admin_user }}","password":"YOUR_PASSWORD"}' {{ .base_url }}/webhook
 actionunban = curl -X POST -H "Content-Type: application/json" -d '{"ip":"&lt;ip&gt;","act":"unban","username":"{{ .admin_user }}","password":"YOUR_PASSWORD"}' {{ .base_url }}/webhook
 </code></pre>
 
-        <h3>Suricata / IDS</h3>
-        <p>Ingest Suricata alerts via custom script or file beat pushing to <code>/api/v1/webhook</code>.</p>
-    </div>
+            <h4 style="color: var(--vibrant-red); margin-bottom: 0.5rem; margin-top: 1.5rem;">Suricata / IDS</h4>
+            <p style="color: var(--secondary-color);">Ingest Suricata alerts via custom script or file beat pushing to <code>/api/v1/webhook</code>.</p>
+        </div>
 
-    <div class="card">
-        <h2>API Access</h2>
-        <p>Your base API URL is: <code>{{ .base_url }}/api/v1</code></p>
-        <p>Use Bearer tokens for authentication. Tokens can be managed in the Admin panel.</p>
+        <div class="card">
+            <h3>API Access</h3>
+            <p style="color: var(--secondary-color);">Your base API URL is: <code>{{ .base_url }}/api/v1</code></p>
+            <p style="color: var(--secondary-color);">Use Bearer tokens for authentication. Tokens can be managed in the Admin panel.</p>
+        </div>
     </div>
-</body>
 </html>
