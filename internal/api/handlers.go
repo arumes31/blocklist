@@ -1591,8 +1591,17 @@ func (h *APIHandler) Settings(c *gin.Context) {
 	webhooks, _ := h.pgRepo.GetActiveWebhooks()
 	tokens, _ := h.pgRepo.GetAPITokens(username.(string))
 	
+	userPerms, _ := c.Get("permissions")
+	hasGlobalTokensPerm := false
+	for _, p := range strings.Split(userPerms.(string), ",") {
+		if strings.TrimSpace(p) == "manage_global_tokens" {
+			hasGlobalTokensPerm = true
+			break
+		}
+	}
+
 	var allTokens []models.APIToken
-	if username == h.cfg.GUIAdmin {
+	if hasGlobalTokensPerm {
 		allTokens, _ = h.pgRepo.GetAllAPITokens()
 	}
 	
@@ -1604,12 +1613,13 @@ func (h *APIHandler) Settings(c *gin.Context) {
 	baseURL := fmt.Sprintf("%s://%s", scheme, c.Request.Host)
 
 	c.HTML(http.StatusOK, "settings.html", gin.H{
-		"webhooks":   webhooks,
-		"tokens":     tokens,
-		"all_tokens": allTokens,
-		"admin_user": h.cfg.GUIAdmin,
-		"base_url":   baseURL,
-		"username":   username,
+		"webhooks":            webhooks,
+		"tokens":              tokens,
+		"all_tokens":          allTokens,
+		"admin_user":          h.cfg.GUIAdmin,
+		"base_url":            baseURL,
+		"username":            username,
+		"manage_global_tokens": hasGlobalTokensPerm,
 	})
 }
 
@@ -1684,10 +1694,18 @@ func (h *APIHandler) DeleteAPIToken(c *gin.Context) {
 }
 
 func (h *APIHandler) AdminRevokeAPIToken(c *gin.Context) {
-	username, _ := c.Get("username")
 	id, _ := strconv.Atoi(c.Param("id"))
 	
-	if username == h.cfg.GUIAdmin {
+	userPerms, _ := c.Get("permissions")
+	hasGlobalTokensPerm := false
+	for _, p := range strings.Split(userPerms.(string), ",") {
+		if strings.TrimSpace(p) == "manage_global_tokens" {
+			hasGlobalTokensPerm = true
+			break
+		}
+	}
+
+	if hasGlobalTokensPerm {
 		_ = h.pgRepo.DeleteAPITokenByID(id)
 		c.Status(http.StatusOK)
 	} else {

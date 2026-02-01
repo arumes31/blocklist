@@ -165,8 +165,11 @@
             <h2>Admin Management</h2>
         </div>
         <div style="display: flex; align-items: center; gap: 1rem;">
-            {{ if eq .username .admin_username }}
+            {{ if contains .permissions "manage_global_tokens" }}
             <a href="/settings#global-tokens" class="btn btn-dark" style="min-width: 150px;">Global API Tokens</a>
+            {{ end }}
+            {{ if contains .permissions "view_audit_logs" }}
+            <a href="#audit-log-section" class="btn btn-dark" style="min-width: 150px;">Audit Log</a>
             {{ end }}
             <a href="/dashboard" class="btn btn-dark" style="min-width: 150px;">Back to Dashboard</a>
             <a href="/logout" class="btn" style="background: rgba(255,255,255,0.08);">Logout</a>
@@ -205,6 +208,7 @@
                     <div style="font-weight: bold; color: var(--vibrant-red); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px;">System</div>
                     <label title="Configure outbound webhooks" style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-bottom: 5px;"><input type="checkbox" id="perm_manage_webhooks"> Manage Webhooks</label>
                     <label title="Manage API tokens" style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-bottom: 5px;"><input type="checkbox" id="perm_manage_api_tokens"> API Tokens</label>
+                    <label title="Manage API tokens for all users" style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-bottom: 5px;"><input type="checkbox" id="perm_manage_global_tokens"> Global API Tokens</label>
                     <label title="Create, edit, and delete admin users" style="display: flex; align-items: center; gap: 8px; cursor: pointer;"><input type="checkbox" id="perm_manage_admins"> User Management</label>
                 </div>
                 <div>
@@ -254,7 +258,7 @@
         </div>
 
         {{ if contains .permissions "view_audit_logs" }}
-        <div style="margin-top: 3rem; margin-bottom: 1.5rem;">
+        <div id="audit-log-section" style="margin-top: 3rem; margin-bottom: 1.5rem;">
             <h3 style="border-bottom: 1px solid var(--border-red); padding-bottom: 0.5rem;">System Audit Logs</h3>
         </div>
         <div class="table-card">
@@ -308,6 +312,7 @@
                     <div style="font-weight: bold; color: var(--vibrant-red); margin-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 5px; margin-top: 15px;">System</div>
                     <label title="Configure outbound webhooks" style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin-bottom: 8px;"><input type="checkbox" id="edit_manage_webhooks"> Manage Webhooks</label>
                     <label title="Manage API tokens" style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin-bottom: 8px;"><input type="checkbox" id="edit_manage_api_tokens"> API Tokens</label>
+                    <label title="Manage API tokens for all users" style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin-bottom: 8px;"><input type="checkbox" id="edit_manage_global_tokens"> Global API Tokens</label>
                     <label title="Create, edit, and delete admin users" style="display: flex; align-items: center; gap: 10px; cursor: pointer;"><input type="checkbox" id="edit_manage_admins"> User Management</label>
                 </div>
             </div>
@@ -356,7 +361,7 @@
         const PERM_KEYS = [
             'view_ips', 'view_stats', 'view_audit_logs', 'export_data',
             'block_ips', 'unblock_ips', 'manage_whitelist',
-            'manage_webhooks', 'manage_api_tokens', 'manage_admins'
+            'manage_webhooks', 'manage_api_tokens', 'manage_global_tokens', 'manage_admins'
         ];
 
         function getSelectedPerms(prefix) {
@@ -372,7 +377,7 @@
             const mapping = {
                 'auditor': ['view_ips', 'view_stats', 'view_audit_logs'],
                 'operator': ['view_ips', 'view_stats', 'block_ips', 'unblock_ips', 'manage_whitelist'],
-                'security': ['manage_webhooks', 'manage_api_tokens', 'manage_admins']
+                'security': ['manage_webhooks', 'manage_api_tokens', 'manage_global_tokens', 'manage_admins']
             };
             
             PERM_KEYS.forEach(k => {
