@@ -1225,11 +1225,16 @@ func (h *APIHandler) Webhook(c *gin.Context) {
 		expiresAt = now.Add(time.Duration(tVal) * time.Second).Format("2006-01-02 15:04:05 UTC")
 	}
 
+	addedBy := "Webhook"
+	if data.Username != "" {
+		addedBy = fmt.Sprintf("Webhook (%s)", data.Username)
+	}
+
 	entry := models.IPEntry{
 		Timestamp:   timestamp,
 		Geolocation: geo,
 		Reason:      data.Reason,
-		AddedBy:     "Webhook",
+		AddedBy:     addedBy,
 		TTL:         data.TTL,
 		ExpiresAt:   expiresAt,
 	}
@@ -1304,10 +1309,12 @@ func (h *APIHandler) Webhook2(c *gin.Context) {
 	// automated whitelist for the calling IP
 	clientIP := c.ClientIP()
 	geo := h.ipService.GetGeoIP(clientIP)
+	username, _ := c.Get("username")
+	
 	entry := models.WhitelistEntry{
 		Timestamp:   time.Now().UTC().Format("2006-01-02 15:04:05 UTC"),
 		Geolocation: geo,
-		AddedBy:     "WebhookAuto",
+		AddedBy:     fmt.Sprintf("WebhookAuto (%s)", username),
 		Reason:      "Automated Whitelist",
 	}
 	_ = h.redisRepo.WhitelistIP(clientIP, entry)

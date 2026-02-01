@@ -283,7 +283,7 @@
             
             // Filter blocks: if it's from Webhook, only show if toggle is ON
             const filteredBlocks = blocks.filter(it => {
-                const isWebhook = it.data && it.data.added_by === 'Webhook';
+                const isWebhook = it.data && it.data.added_by && it.data.added_by.includes('Webhook');
                 if (isWebhook) return showWebhookBlock;
                 return true; // Always show manual blocks
             });
@@ -297,10 +297,8 @@
             if (wres.ok) {
                 const whitelists = await wres.json();
                 // Filter whitelists: normally we only want to show webhook whitelists as requested
-                // but usually manual whitelists are also interesting.
-                // The request said "webhooks (whitelist)", so I'll follow that.
                 const filteredWhitelists = whitelists.filter(it => {
-                    return it.data && it.data.added_by === 'WebhookAuto';
+                    return it.data && it.data.added_by && it.data.added_by.includes('WebhookAuto');
                 });
                 allItems = allItems.concat(filteredWhitelists.map(it => ({ ...it, type: 'whitelist' })));
             }
@@ -323,6 +321,7 @@
                 const geo = it.data.geolocation;
                 const color = it.type === 'whitelist' ? "#00ff00" : "#ff0000";
                 const label = it.type === 'whitelist' ? "WHITELIST" : "BLOCK";
+                const ts = it.data.timestamp ? new Date(it.data.timestamp).toLocaleString() : 'N/A';
                 
                 L.circleMarker([geo.latitude, geo.longitude], {
                     radius: 4,
@@ -331,7 +330,15 @@
                     weight: 0.5,
                     opacity: 1,
                     fillOpacity: 0.8
-                }).addTo(markers).bindPopup(`<b>[${label}] ${it.ip}</b><br>${geo.city}, ${geo.country}<br>${it.data.reason}`);
+                }).addTo(markers).bindPopup(`
+                    <b>[${label}] ${it.ip}</b><br>
+                    ${geo.city}, ${geo.country}<br>
+                    <i>${it.data.reason}</i><br>
+                    <div style="margin-top: 5px; font-size: 0.75rem; border-top: 1px solid #444; padding-top: 5px;">
+                        <b>Source:</b> ${it.data.added_by}<br>
+                        <b>Activity:</b> ${ts}
+                    </div>
+                `);
             }
         });
     }
@@ -353,7 +360,8 @@
         if (msg.action === 'block' || msg.action === 'whitelist') {
             const it = msg.data;
             const type = msg.action;
-            const isWebhook = it.data && (it.data.added_by === 'Webhook' || it.data.added_by === 'WebhookAuto');
+            const addedBy = it.data && it.data.added_by ? it.data.added_by : "";
+            const isWebhook = addedBy.includes('Webhook');
             
             // Check if we should show this live update
             if (isWebhook) {
@@ -365,6 +373,7 @@
                 const geo = it.data.geolocation;
                 const color = type === 'whitelist' ? "#00ff00" : "#ff0000";
                 const label = type === 'whitelist' ? "LIVE WHITELIST" : "LIVE BLOCK";
+                const ts = it.data.timestamp ? new Date(it.data.timestamp).toLocaleString() : 'Just Now';
                 
                 // Create a pulsing live marker
                 const liveIcon = L.divIcon({
@@ -375,7 +384,15 @@
                 
                 const liveMarker = L.marker([geo.latitude, geo.longitude], { icon: liveIcon })
                     .addTo(liveMarkers)
-                    .bindPopup(`<b>${label}: ${it.ip}</b><br>${geo.city}, ${geo.country}<br>${it.data.reason}`)
+                    .bindPopup(`
+                        <b>${label}: ${it.ip}</b><br>
+                        ${geo.city}, ${geo.country}<br>
+                        <i>${it.data.reason}</i><br>
+                        <div style="margin-top: 5px; font-size: 0.75rem; border-top: 1px solid #444; padding-top: 5px;">
+                            <b>Source:</b> ${it.data.added_by}<br>
+                            <b>Activity:</b> ${ts}
+                        </div>
+                    `)
                     .openPopup();
                 
                 // Remove the pulse after 10 seconds
