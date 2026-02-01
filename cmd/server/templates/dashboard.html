@@ -318,6 +318,10 @@
             <div id="stat-day" style="font-size:1.6rem; font-weight:700; color:#fff;">{{ .stats.day }}</div>
         </div>
         <div class="table-card" style="padding:1rem;">
+            <div style="font-size:0.85rem; color:var(--secondary-color);">IPs banned (total)</div>
+            <div id="stat-total" style="font-size:1.6rem; font-weight:700; color:#fff;">{{ .stats.total }}</div>
+        </div>
+        <div class="table-card" style="padding:1rem;">
             <div style="font-size:0.85rem; color:var(--secondary-color);">Top countries</div>
             <div id="stat-countries" style="display:flex; gap:0.75rem; align-items:center; margin-top:0.4rem;">
                 {{ range $i, $c := .stats.top_countries }}
@@ -523,6 +527,7 @@
             const s = await r.json();
             if (typeof s.hour === 'number') document.getElementById('stat-hour').textContent = s.hour;
             if (typeof s.day === 'number') document.getElementById('stat-day').textContent = s.day;
+            if (typeof s.total === 'number') document.getElementById('stat-total').textContent = s.total;
             if (Array.isArray(s.top_countries)) {
                 const wrap = document.getElementById('stat-countries');
                 wrap.innerHTML = s.top_countries.slice(0,3).map(c => `

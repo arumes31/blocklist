@@ -23,31 +23,15 @@ func NewGeoIPService(cfg *config.Config) *GeoIPService {
 	return &GeoIPService{cfg: cfg}
 }
 
-func (s *GeoIPService) getDBPath() string {
-	path := "/home/blocklist/geoip/GeoLite2-City.mmdb"
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return "/tmp/GeoLite2-City.mmdb"
-	}
-	// Check if writable
-	testFile := filepath.Join(dir, ".permtest")
-	f, err := os.Create(testFile)
-	if err != nil {
-		return "/tmp/GeoLite2-City.mmdb"
-	}
-	f.Close()
-	_ = os.Remove(testFile)
-	return path
-}
-
 func (s *GeoIPService) Start() {
-	dbPath := s.getDBPath()
-	
-	// 1. Initial Check
-	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
-		log.Printf("GeoIP database missing at %s. Starting initial download...", dbPath)
-		if err := s.Download(); err != nil {
-			log.Printf("Failed to download GeoIP database: %v", err)
+	// 1. Initial Check for both City and ASN
+	for _, edition := range []string{"GeoLite2-City", "GeoLite2-ASN"} {
+		dbPath := s.getDBPath(edition)
+		if _, err := os.Stat(dbPath); os.IsNotExist(err) {
+			log.Printf("GeoIP %s database missing at %s. Starting initial download...", edition, dbPath)
+			if err := s.Download(edition); err != nil {
+				log.Printf("Failed to download %s database: %v", edition, err)
+			}
 		}
 	}
 
@@ -55,15 +39,35 @@ func (s *GeoIPService) Start() {
 	ticker := time.NewTicker(72 * time.Hour)
 	go func() {
 		for range ticker.C {
-			log.Println("Starting scheduled GeoIP database update...")
-			if err := s.Download(); err != nil {
-				log.Printf("Failed to update GeoIP database: %v", err)
+			log.Printf("Starting scheduled GeoIP database update...")
+			for _, edition := range []string{"GeoLite2-City", "GeoLite2-ASN"} {
+				if err := s.Download(edition); err != nil {
+					log.Printf("Failed to update %s database: %v", edition, err)
+				}
 			}
 		}
 	}()
 }
 
-func (s *GeoIPService) Download() error {
+func (s *GeoIPService) getDBPath(edition string) string {
+	filename := edition + ".mmdb"
+	path := filepath.Join("/home/blocklist/geoip", filename)
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return filepath.Join("/tmp", filename)
+	}
+	// Check if writable
+	testFile := filepath.Join(dir, ".permtest")
+	f, err := os.Create(testFile)
+	if err != nil {
+		return filepath.Join("/tmp", filename)
+	}
+	f.Close()
+	_ = os.Remove(testFile)
+	return path
+}
+
+func (s *GeoIPService) Download(edition string) error {
 	accountID := s.cfg.GeoIPAccountID
 	licenseKey := s.cfg.GeoIPLicenseKey
 
@@ -71,8 +75,7 @@ func (s *GeoIPService) Download() error {
 		return fmt.Errorf("GEOIPUPDATE_ACCOUNT_ID or GEOIPUPDATE_LICENSE_KEY not set")
 	}
 
-	// MaxMind modern permalink URL for GeoLite2-City
-	url := "https://download.maxmind.com/geoip/databases/GeoLite2-City/download?suffix=tar.gz"
+	url := fmt.Sprintf("https://download.maxmind.com/geoip/databases/%s/download?suffix=tar.gz", edition)
 	
 	log.Printf("Attempting GeoIP download from %s using AccountID: %s", url, accountID)
 	
@@ -112,7 +115,7 @@ func (s *GeoIPService) Download() error {
 		}
 
 		if strings.HasSuffix(header.Name, ".mmdb") {
-			destPath := s.getDBPath()
+			destPath := s.getDBPath(edition)
 			// Ensure directory exists
 			if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
 				return err

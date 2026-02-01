@@ -8,7 +8,7 @@ import (
 
 func TestGeoIPService_Download_NoConfig(t *testing.T) {
 	svc := NewGeoIPService(&config.Config{})
-	err := svc.Download()
+	err := svc.Download("GeoLite2-City")
 	if err == nil {
 		t.Error("expected error when no config is provided")
 	}
