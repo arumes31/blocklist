@@ -58,14 +58,14 @@ graph LR
 ## API Endpoints
 
 ### Automated Webhooks
-- **`POST /webhook`**: Legacy endpoint for ban/unban actions.
-    - **Example**: `curl -X POST -H "Content-Type: application/json" -d '{"ip":"1.2.3.4","act":"ban","reason":"manual","username":"admin","password":"password"}' http://localhost:5000/webhook`
 - **`POST /api/v1/webhook`**: Authenticated webhook (HMAC supported).
     - **Example**: `curl -X POST -H "Authorization: Bearer YOUR_TOKEN" -H "Content-Type: application/json" -d '{"ip":"1.2.3.4","act":"ban","reason":"manual"}' http://localhost:5000/api/v1/webhook`
 - **`POST /api/v1/webhook2_whitelist`**: Automatically whitelists the caller's IP.
 
 ### Data & Stats
 - **`GET /api/v1/ips`**: Paginated list of blocked IPs with advanced filters.
+- **`GET /api/v1/ips_list`**: Simple JSON array of all blocked IP addresses.
+- **`GET /api/v1/raw`**: Plain-text list of blocked IPs.
 - **`GET /api/v1/ips/export`**: Export data in CSV or NDJSON format.
 - **`GET /api/v1/stats`**: Aggregate statistics including top countries, ASNs, and reasons.
 

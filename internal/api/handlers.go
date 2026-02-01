@@ -177,8 +177,8 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 	{
 		// Data viewing requires view_ips and main limiter
 		v1auth.GET("/ips", h.mainLimiter, h.PermissionMiddleware("view_ips"), h.IPsPaginated)
+		v1auth.GET("/ips_list", h.mainLimiter, h.PermissionMiddleware("view_ips"), h.JSONIPs)
 		v1auth.GET("/whitelists", h.mainLimiter, h.PermissionMiddleware("view_ips"), h.JSONWhitelists)
-		v1auth.GET("/ips_automate", h.mainLimiter, h.PermissionMiddleware("view_ips"), h.AutomateIPs)
 		
 		// Exports require export_data
 		v1auth.GET("/ips/export", h.mainLimiter, h.PermissionMiddleware("export_data"), h.SudoMiddleware(), h.ExportIPs)
@@ -246,13 +246,6 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 		}
 	}
 
-	// Legacy / Compatibility routes
-	r.POST("/webhook", h.AuthMiddleware(), h.webhookLimiter, h.Webhook)
-	r.GET("/raw", h.RawIPs) // Public
-	r.GET("/ips", h.AuthMiddleware(), h.mainLimiter, h.PermissionMiddleware("view_ips"), h.JSONIPs)
-	r.GET("/ips_automate", h.AuthMiddleware(), h.mainLimiter, h.PermissionMiddleware("view_ips"), h.AutomateIPs)
-	r.GET("/api/ips", h.AuthMiddleware(), h.mainLimiter, h.PermissionMiddleware("view_ips"), h.IPsPaginated)
-	r.GET("/api/stats", h.AuthMiddleware(), h.mainLimiter, h.PermissionMiddleware("view_stats"), h.Stats)
 	r.GET("/health", h.Health)
 	r.GET("/ready", h.Ready)
 	r.GET("/metrics", h.MetricsAuthMiddleware(), gin.WrapH(promhttp.Handler()))
@@ -588,9 +581,12 @@ func (h *APIHandler) PermissionMiddleware(requiredPerm string) gin.HandlerFunc {
 
 		permStr := perms.(string)
 		
-		// System admin bypass (except for webhook_access by default)
+		// System admin bypass (except for granular webhooks by default)
 		username, _ := c.Get("username")
-		if username == h.cfg.GUIAdmin && requiredPerm != "webhook_access" {
+		if username == h.cfg.GUIAdmin && 
+		   requiredPerm != "webhook_ban" && 
+		   requiredPerm != "webhook_unban" && 
+		   requiredPerm != "webhook_whitelist" {
 			c.Next()
 			return
 		}
@@ -1134,27 +1130,42 @@ func (h *APIHandler) Webhook(c *gin.Context) {
 		return
 	}
 
+	// Determine required permission based on action
+	requiredPerm := ""
+	if data.Act == "ban" || data.Act == "ban-ip" {
+		requiredPerm = "webhook_ban"
+	} else if data.Act == "unban" || data.Act == "delete-ban" {
+		requiredPerm = "webhook_unban"
+	} else {
+		c.JSON(501, gin.H{"status": "action not implemented"})
+		return
+	}
+
 	if !authenticated {
 		// Check if already authenticated via Middleware (Bearer token or Session)
-		if _, exists := c.Get("username"); exists {
-			perms, _ := c.Get("permissions")
-			permStr := perms.(string)
-			
-			hasWebhookAccess := false
-			for _, p := range strings.Split(permStr, ",") {
-				if strings.TrimSpace(p) == "webhook_access" {
-					hasWebhookAccess = true
-					break
-				}
-			}
-
-			if hasWebhookAccess {
+		if username, exists := c.Get("username"); exists {
+			// System admin bypass
+			if username.(string) == h.cfg.GUIAdmin {
 				authenticated = true
 			} else {
-				username, _ := c.Get("username")
-				zlog.Warn().Str("username", username.(string)).Str("permissions", permStr).Msg("Webhook access denied: insufficient permissions")
-				c.JSON(403, gin.H{"error": "Webhook access denied (insufficient permissions)"})
-				return
+				perms, _ := c.Get("permissions")
+				permStr := perms.(string)
+				
+				hasAccess := false
+				for _, p := range strings.Split(permStr, ",") {
+					if strings.TrimSpace(p) == requiredPerm {
+						hasAccess = true
+						break
+					}
+				}
+
+				if hasAccess {
+					authenticated = true
+				} else {
+					zlog.Warn().Str("username", username.(string)).Str("permissions", permStr).Str("required", requiredPerm).Msg("Webhook access denied: insufficient permissions")
+					c.JSON(403, gin.H{"error": fmt.Sprintf("Webhook access denied (requires %s)", requiredPerm)})
+					return
+				}
 			}
 		}
 	}
@@ -1171,21 +1182,30 @@ func (h *APIHandler) Webhook(c *gin.Context) {
 				c.JSON(401, gin.H{"error": "Invalid credentials"})
 				return
 			}
-			// Check for webhook_access permission
-			hasWebhookAccess := false
-			for _, p := range strings.Split(admin.Permissions, ",") {
-				if strings.TrimSpace(p) == "webhook_access" {
-					hasWebhookAccess = true
-					break
+			
+			// System admin bypass for body-auth
+			if admin.Username == h.cfg.GUIAdmin {
+				authenticated = true
+			} else {
+				// Check for granular permission
+				hasAccess := false
+				for _, p := range strings.Split(admin.Permissions, ",") {
+					if strings.TrimSpace(p) == requiredPerm {
+						hasAccess = true
+						break
+					}
 				}
-			}
-			if !hasWebhookAccess {
-				c.JSON(403, gin.H{"error": "Webhook access denied for this user"})
-				return
+				if !hasAccess {
+					c.JSON(403, gin.H{"error": fmt.Sprintf("Webhook access denied for this user (requires %s)", requiredPerm)})
+					return
+				}
+				authenticated = true
 			}
 		} else {
 			// Database unavailable, fallback to hardcoded GUIAdmin config
-			if data.Username != h.cfg.GUIAdmin || data.Password != h.cfg.GUIPassword {
+			if data.Username == h.cfg.GUIAdmin && data.Password == h.cfg.GUIPassword {
+				authenticated = true
+			} else {
 				c.JSON(401, gin.H{"error": "Unauthorized (Database Offline)"})
 				return
 			}
@@ -1270,22 +1290,29 @@ func (h *APIHandler) Webhook2(c *gin.Context) {
 	}
 	perms, _ := c.Get("permissions")
 	permStr := perms.(string)
-	hasWebhookAccess := false
-	for _, p := range strings.Split(permStr, ",") {
-		if strings.TrimSpace(p) == "webhook_access" {
-			hasWebhookAccess = true
-			break
+	username, _ := c.Get("username")
+
+	hasAccess := false
+	if username.(string) == h.cfg.GUIAdmin {
+		hasAccess = true
+	} else {
+		for _, p := range strings.Split(permStr, ",") {
+			if strings.TrimSpace(p) == "webhook_whitelist" {
+				hasAccess = true
+				break
+			}
 		}
 	}
-	if !hasWebhookAccess {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Webhook access denied"})
+
+	if !hasAccess {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Webhook access denied (requires webhook_whitelist)"})
 		return
 	}
 
 	// automated whitelist for the calling IP
 	clientIP := c.ClientIP()
 	geo := h.ipService.GetGeoIP(clientIP)
-	username, _ := c.Get("username")
+	username, _ = c.Get("username")
 	
 	entry := models.WhitelistEntry{
 		Timestamp:   time.Now().UTC().Format("2006-01-02 15:04:05 UTC"),
@@ -1590,20 +1617,6 @@ func (h *APIHandler) ExportIPs(c *gin.Context) {
 }
 
 // Stats returns hour/day/total and top countries.
-func (h *APIHandler) AutomateIPs(c *gin.Context) {
-	var ips []string
-	err := h.redisRepo.GetCache("cached_ips_automate", &ips)
-	if err != nil {
-		// Fallback to all raw IPs if cache is empty
-		combined := h.getCombinedIPs()
-		ips = make([]string, 0, len(combined))
-		for ip := range combined {
-			ips = append(ips, ip)
-		}
-	}
-	c.JSON(http.StatusOK, ips)
-}
-
 func (h *APIHandler) Ready(c *gin.Context) {
     dep := map[string]interface{}{"redis": true, "geoip": "unknown"}
     if h.redisRepo != nil {
@@ -1703,6 +1716,34 @@ func (h *APIHandler) OpenAPI(c *gin.Context) {
                                     },
                                 },
                             },
+                        },
+                    },
+                },
+            },
+            "/api/v1/ips_list": gin.H{
+                "get": gin.H{
+                    "summary": "Get simple JSON array of all blocked IPs",
+                    "tags": []string{"Data Retrieval"},
+                    "responses": gin.H{
+                        "200": gin.H{
+                            "description": "Simple list of IPs",
+                            "content": gin.H{
+                                "application/json": gin.H{
+                                    "schema": gin.H{"type": "array", "items": gin.H{"type": "string"}},
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+            "/api/v1/raw": gin.H{
+                "get": gin.H{
+                    "summary": "Get plain-text list of blocked IPs",
+                    "tags": []string{"Data Retrieval"},
+                    "responses": gin.H{
+                        "200": gin.H{
+                            "description": "Newline-separated list of IPs",
+                            "content": gin.H{"text/plain": gin.H{"schema": gin.H{"type": "string"}}},
                         },
                     },
                 },

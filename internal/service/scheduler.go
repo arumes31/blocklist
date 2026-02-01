@@ -26,17 +26,6 @@ func (s *SchedulerService) Start() {
 			}
 		}
 	}()
-
-	// Cache updater for ips_automate
-	cacheTicker := time.NewTicker(30 * time.Second)
-	go func() {
-		for range cacheTicker.C {
-			if acquired, _ := s.redisRepo.AcquireLock("lock_ips_automate_update", 25*time.Second); acquired {
-				s.UpdateAutomateCache()
-				_ = s.redisRepo.ReleaseLock("lock_ips_automate_update")
-			}
-		}
-	}()
 }
 
 func (s *SchedulerService) CleanOldIPs(hashKey string) {
@@ -82,53 +71,5 @@ func (s *SchedulerService) CleanOldIPs(hashKey string) {
 			}
 			log.Printf("Deleted %s from %s (expired at %s)", ip, hashKey, expireTime.Format(time.RFC3339))
 		}
-	}
-}
-
-func (s *SchedulerService) UpdateAutomateCache() {
-	if s.redisRepo == nil { return }
-	data, err := s.redisRepo.HGetAllRaw("ips")
-	if err != nil {
-		return
-	}
-
-	now := time.Now().UTC()
-	filteredIPs := []string{}
-	// Rule for automate: newly added (last 1 min) or expiring soon (next 6 mins)
-	// (Matching original Python logic roughly)
-
-	for ip, jsonStr := range data {
-		var entry struct {
-			Timestamp string `json:"timestamp"`
-			ExpiresAt string `json:"expires_at"`
-		}
-		if err := json.Unmarshal([]byte(jsonStr), &entry); err != nil {
-			continue
-		}
-
-		startTime, _ := time.Parse("2006-01-02 15:04:05 UTC", entry.Timestamp)
-		
-		expireTime := time.Time{}
-		if entry.ExpiresAt != "" {
-			expireTime, _ = time.Parse("2006-01-02 15:04:05 UTC", entry.ExpiresAt)
-		} else if !startTime.IsZero() {
-			expireTime = startTime.Add(24 * time.Hour)
-		}
-
-		if startTime.IsZero() || expireTime.IsZero() { continue }
-
-		// newly added
-		if now.Sub(startTime) <= 1*time.Minute {
-			filteredIPs = append(filteredIPs, ip)
-			continue
-		}
-
-		// expiring soon
-		if expireTime.Sub(now) <= 6*time.Minute {
-			filteredIPs = append(filteredIPs, ip)
-		}
-	}
-	if err := s.redisRepo.SetCache("cached_ips_automate", filteredIPs, 5*time.Minute); err != nil {
-		log.Printf("Error updating automate cache: %v", err)
 	}
 }
