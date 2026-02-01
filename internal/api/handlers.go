@@ -249,9 +249,6 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 	r.GET("/health", h.Health)
 	r.GET("/ready", h.Ready)
 	r.GET("/metrics", h.MetricsAuthMiddleware(), gin.WrapH(promhttp.Handler()))
-
-	// Compatibility / Legacy routes
-	r.GET("/api/ips", h.AuthMiddleware(), h.mainLimiter, h.PermissionMiddleware("view_ips"), h.IPsPaginated)
 }
 
 // Improvement 3: Cache persistent blocks in Redis

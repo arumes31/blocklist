@@ -806,7 +806,7 @@
         if (currentFilters.from) params.append('from', new Date(currentFilters.from).toISOString());
         if (currentFilters.to) params.append('to', new Date(currentFilters.to).toISOString());
 
-        const url = `/api/ips?${params.toString()}`;
+        const url = `/api/v1/ips?${params.toString()}`;
         const res = await fetch(url, { headers: { 'Accept': 'application/json' }, signal: inflight.signal }).catch(() => null);
         if (!res || !res.ok) return { items: [], next: null };
         const payload = await res.json();
