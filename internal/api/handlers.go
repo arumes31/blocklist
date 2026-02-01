@@ -80,7 +80,10 @@ func (h *APIHandler) WS(c *gin.Context) {
 	}
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
-		zlog.Error().Err(err).Msg("WebSocket upgrade failed")
+		zlog.Error().Err(err).
+			Str("headers", fmt.Sprintf("%v", c.Request.Header)).
+			Str("host", c.Request.Host).
+			Msg("WebSocket upgrade failed")
 		return
 	}
 	
@@ -699,6 +702,7 @@ func (h *APIHandler) UnblockIP(c *gin.Context) {
 		IP string `json:"ip"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
+		zlog.Error().Err(err).Msg("UnblockIP: invalid request body")
 		c.JSON(http.StatusBadRequest, gin.H{"status": "error"})
 		return
 	}
