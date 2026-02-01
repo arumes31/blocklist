@@ -958,9 +958,21 @@ func (h *APIHandler) Webhook(c *gin.Context) {
 		// Check if already authenticated via Middleware (Bearer token or Session)
 		if _, exists := c.Get("username"); exists {
 			perms, _ := c.Get("permissions")
-			if strings.Contains(perms.(string), "webhook_access") {
+			permStr := perms.(string)
+			
+			hasWebhookAccess := false
+			for _, p := range strings.Split(permStr, ",") {
+				if strings.TrimSpace(p) == "webhook_access" {
+					hasWebhookAccess = true
+					break
+				}
+			}
+
+			if hasWebhookAccess {
 				authenticated = true
 			} else {
+				username, _ := c.Get("username")
+				zlog.Warn().Str("username", username.(string)).Str("permissions", permStr).Msg("Webhook access denied: insufficient permissions")
 				c.JSON(403, gin.H{"error": "Webhook access denied (insufficient permissions)"})
 				return
 			}
@@ -980,7 +992,14 @@ func (h *APIHandler) Webhook(c *gin.Context) {
 				return
 			}
 			// Check for webhook_access permission
-			if !strings.Contains(admin.Permissions, "webhook_access") {
+			hasWebhookAccess := false
+			for _, p := range strings.Split(admin.Permissions, ",") {
+				if strings.TrimSpace(p) == "webhook_access" {
+					hasWebhookAccess = true
+					break
+				}
+			}
+			if !hasWebhookAccess {
 				c.JSON(403, gin.H{"error": "Webhook access denied for this user"})
 				return
 			}
@@ -1077,7 +1096,15 @@ func (h *APIHandler) Webhook2(c *gin.Context) {
 		return
 	}
 	perms, _ := c.Get("permissions")
-	if !strings.Contains(perms.(string), "webhook_access") {
+	permStr := perms.(string)
+	hasWebhookAccess := false
+	for _, p := range strings.Split(permStr, ",") {
+		if strings.TrimSpace(p) == "webhook_access" {
+			hasWebhookAccess = true
+			break
+		}
+	}
+	if !hasWebhookAccess {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Webhook access denied"})
 		return
 	}
@@ -1598,28 +1625,29 @@ func (h *APIHandler) CreateAPIToken(c *gin.Context) {
 		return
 	}
 
-	// Validate permissions (must be a subset of user's perms)
+	// Validate permissions
 	finalPerms := ""
 	if requestedPerms != "" {
-		uPerms := strings.Split(userPerms.(string), ",")
 		rPerms := strings.Split(requestedPerms, ",")
-		validPerms := []string{}
-		for _, rp := range rPerms {
-			rp = strings.TrimSpace(rp)
-			for _, up := range uPerms {
-				if rp == strings.TrimSpace(up) {
-					validPerms = append(validPerms, rp)
-					break
+		
+		if username == h.cfg.GUIAdmin {
+			// Superuser can grant any permissions to a token
+			finalPerms = requestedPerms
+		} else {
+			// Other users can only grant a subset of their own permissions
+			uPerms := strings.Split(userPerms.(string), ",")
+			validPerms := []string{}
+			for _, rp := range rPerms {
+				rp = strings.TrimSpace(rp)
+				for _, up := range uPerms {
+					if rp == strings.TrimSpace(up) {
+						validPerms = append(validPerms, rp)
+						break
+					}
 				}
 			}
+			finalPerms = strings.Join(validPerms, ",")
 		}
-		finalPerms = strings.Join(validPerms, ",")
-	} else {
-		// Default to all user perms if none specified? 
-		// Actually user requested "Allow users to select a subset". 
-		// If empty, let's keep it restricted or default to nothing.
-		// Safety first: if empty, no perms.
-		finalPerms = ""
 	}
 
 	// Generate random token
