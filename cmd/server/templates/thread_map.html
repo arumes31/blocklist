@@ -271,7 +271,13 @@
                 });
             }
         });
-        heatmapLayer = L.heatLayer([], { radius: 25, blur: 15, max: 1.0, gradient: {0.4: 'blue', 0.65: 'lime', 1: 'red'} });
+        heatmapLayer = L.heatLayer([], { 
+            radius: 20, 
+            blur: 15, 
+            max: 1.0, 
+            minOpacity: 0.4,
+            gradient: {0.4: 'blue', 0.6: 'cyan', 0.7: 'lime', 0.8: 'yellow', 1.0: 'red'} 
+        });
         lineLayer = L.layerGroup().addTo(map);
         liveMarkers = L.layerGroup().addTo(map);
 
@@ -291,6 +297,7 @@
         
         if (isHeatmap) {
             map.addLayer(heatmapLayer);
+            heatmapLayer.redraw();
         } else if (isCluster) {
             map.addLayer(clusterLayer);
         } else {
@@ -412,11 +419,14 @@
 
                 markerLayer.addLayer(marker);
                 clusterLayer.addLayer(marker);
-                heatData.push([geo.latitude, geo.longitude, 0.5]);
+                heatData.push([geo.latitude, geo.longitude, 1.0]); // Full intensity
             }
         });
 
         heatmapLayer.setLatLngs(heatData);
+        if (map.hasLayer(heatmapLayer)) {
+            heatmapLayer.redraw();
+        }
     }
 
     function updateStats(s) {
