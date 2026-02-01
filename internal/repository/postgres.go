@@ -69,13 +69,13 @@ func (p *PostgresRepository) GetAllAdmins() ([]models.AdminAccount, error) {
 }
 
 func (p *PostgresRepository) CreateAPIToken(token models.APIToken) error {
-	_, err := p.db.NamedExec("INSERT INTO api_tokens (token_hash, name, username, role, expires_at) VALUES (:token_hash, :name, :username, :role, :expires_at)", token)
+	_, err := p.db.NamedExec("INSERT INTO api_tokens (token_hash, name, username, role, permissions, expires_at) VALUES (:token_hash, :name, :username, :role, :permissions, :expires_at)", token)
 	return err
 }
 
 func (p *PostgresRepository) GetAPITokenByHash(hash string) (*models.APIToken, error) {
 	var token models.APIToken
-	err := p.db.Get(&token, "SELECT id, token_hash, name, username, role, created_at, expires_at, last_used FROM api_tokens WHERE token_hash = $1", hash)
+	err := p.db.Get(&token, "SELECT id, token_hash, name, username, role, permissions, created_at, expires_at, last_used FROM api_tokens WHERE token_hash = $1", hash)
 	if err != nil {
 		return nil, err
 	}
@@ -84,13 +84,13 @@ func (p *PostgresRepository) GetAPITokenByHash(hash string) (*models.APIToken, e
 
 func (p *PostgresRepository) GetAPITokens(username string) ([]models.APIToken, error) {
 	var tokens []models.APIToken
-	err := p.db.Select(&tokens, "SELECT id, name, username, role, created_at, expires_at, last_used FROM api_tokens WHERE username = $1 ORDER BY created_at DESC", username)
+	err := p.db.Select(&tokens, "SELECT id, name, username, role, permissions, created_at, expires_at, last_used FROM api_tokens WHERE username = $1 ORDER BY created_at DESC", username)
 	return tokens, err
 }
 
 func (p *PostgresRepository) GetAllAPITokens() ([]models.APIToken, error) {
 	var tokens []models.APIToken
-	err := p.db.Select(&tokens, "SELECT id, name, username, role, created_at, expires_at, last_used FROM api_tokens ORDER BY created_at DESC")
+	err := p.db.Select(&tokens, "SELECT id, name, username, role, permissions, created_at, expires_at, last_used FROM api_tokens ORDER BY created_at DESC")
 	return tokens, err
 }
 

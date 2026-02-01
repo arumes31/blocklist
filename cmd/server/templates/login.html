@@ -168,7 +168,9 @@
     <div class="container" id="loginContainer">
         <h2>
             <a href="/dashboard"><img src="/cd/logo.png" alt="logo" style="height: 60px; width: auto;"></a>
-            <div style="margin-top: 15px; font-size: 1.2rem; color: var(--primary-red); font-weight: bold;">Authentication</div>
+            <div style="margin-top: 15px; font-size: 1.2rem; color: var(--primary-red); font-weight: bold;">
+                {{ if .is_sudo }}Sudo Mode Verification{{ else }}Authentication{{ end }}
+            </div>
         </h2>
 
         {{ if .error }}
@@ -177,16 +179,20 @@
         </div>
         {{ end }}
 
-        <form id="loginForm" method="POST" action="/login">
+        <form id="loginForm" method="POST" action="{{ if .is_sudo }}/sudo{{ else }}/login{{ end }}">
             {{ if eq .step "totp" }}
                 <div class="form-group">
                     <label for="totp">2FA Token</label>
                     <input type="text" id="totp" name="totp" required inputmode="numeric" placeholder="6-digit code" autofocus>
                 </div>
-                <input type="hidden" name="username" value="{{ .username }}">
-                <input type="hidden" name="password" value="{{ .password }}">
-                <input type="submit" value="Authorize Access">
-                <button type="button" class="small-button" style="margin-top: 15px; width: 100%;" onclick="window.location.href='/login'">Go Back</button>
+                {{ if .is_sudo }}
+                    <input type="hidden" name="next" value="{{ .next }}">
+                {{ else }}
+                    <input type="hidden" name="username" value="{{ .username }}">
+                    <input type="hidden" name="password" value="{{ .password }}">
+                {{ end }}
+                <input type="submit" value="{{ if .is_sudo }}Verify Identity{{ else }}Authorize Access{{ end }}">
+                <button type="button" class="small-button" style="margin-top: 15px; width: 100%;" onclick="window.location.href='{{ if .is_sudo }}/dashboard{{ else }}/login{{ end }}'">{{ if .is_sudo }}Cancel{{ else }}Go Back{{ end }}</button>
             {{ else }}
                 <div class="form-group">
                     <label for="username">Username</label>

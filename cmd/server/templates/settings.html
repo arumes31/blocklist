@@ -212,10 +212,25 @@ actionunban = curl -X POST -H "Content-Type: application/json" -d '{"ip":"&lt;ip
             
             <div style="margin-top: 1.5rem; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 1.5rem;">
                 <h4 style="color: #fff; margin-bottom: 1rem;">My API Tokens</h4>
-                <form hx-post="/api/v1/settings/tokens" hx-target="#token-list" hx-swap="innerHTML">
+                <form id="tokenForm" hx-post="/api/v1/settings/tokens" hx-target="#token-list" hx-swap="innerHTML" onsubmit="prepareTokenPerms()">
                     <div style="display: flex; gap: 10px; margin-bottom: 1rem;">
                         <input type="text" name="name" class="filter-input" placeholder="Token Name (e.g. CI/CD)" required style="flex: 1;">
+                        <input type="hidden" name="permissions" id="tokenPermsInput">
                         <button type="submit" class="btn btn-danger">Create Token</button>
+                    </div>
+                    <div style="margin-bottom: 1.5rem;">
+                        <div style="font-size: 0.8rem; color: var(--secondary-color); margin-bottom: 8px;">Scoped Permissions (Optional - Defaults to restricted):</div>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; font-size: 0.8rem;">
+                            <label><input type="checkbox" class="token-perm" value="view_ips"> View IPs</label>
+                            <label><input type="checkbox" class="token-perm" value="block_ips"> Block IPs</label>
+                            <label><input type="checkbox" class="token-perm" value="unblock_ips"> Unblock IPs</label>
+                            <label><input type="checkbox" class="token-perm" value="webhook_access"> Webhook Access</label>
+                            <label><input type="checkbox" class="token-perm" value="export_data"> Export Data</label>
+                        </div>
+                        <div style="margin-top: 10px; display: flex; gap: 10px;">
+                            <button type="button" class="btn btn-dark" style="padding: 0.2rem 0.5rem; font-size: 0.7rem;" onclick="setTokenTemplate('fail2ban')">Fail2ban Template</button>
+                            <button type="button" class="btn btn-dark" style="padding: 0.2rem 0.5rem; font-size: 0.7rem;" onclick="setTokenTemplate('auditor')">Auditor Template</button>
+                        </div>
                     </div>
                 </form>
                 
@@ -341,6 +356,29 @@ actionunban = curl -X POST -H "Content-Type: application/json" -d '{"ip":"&lt;ip
         
         // Initial convert
         convertTimestamps();
+
+        function prepareTokenPerms() {
+            const checkboxes = document.querySelectorAll('.token-perm:checked');
+            const perms = Array.from(checkboxes).map(cb => cb.value).join(',');
+            document.getElementById('tokenPermsInput').value = perms;
+        }
+
+        function setTokenTemplate(type) {
+            const checkboxes = document.querySelectorAll('.token-perm');
+            checkboxes.forEach(cb => cb.checked = false);
+            
+            const perms = {
+                'fail2ban': ['block_ips', 'webhook_access'],
+                'auditor': ['view_ips', 'export_data']
+            };
+            
+            if (perms[type]) {
+                perms[type].forEach(p => {
+                    const cb = document.querySelector(`.token-perm[value="${p}"]`);
+                    if (cb) cb.checked = true;
+                });
+            }
+        }
     </script>
 </body>
 </html>

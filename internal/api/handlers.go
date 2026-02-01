@@ -158,6 +158,8 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 	
 	r.GET("/logout", h.Logout)
 	r.GET("/ws", h.WS)
+	r.GET("/sudo", h.AuthMiddleware(), h.ShowSudo)
+	r.POST("/sudo", h.AuthMiddleware(), h.VerifySudo)
 
 	// API Versioning (Improvement 5)
 	v1 := r.Group("/api/v1")
@@ -177,7 +179,7 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 		v1auth.GET("/ips_automate", h.mainLimiter, h.PermissionMiddleware("view_ips"), h.AutomateIPs)
 		
 		// Exports require export_data
-		v1auth.GET("/ips/export", h.mainLimiter, h.PermissionMiddleware("export_data"), h.ExportIPs)
+		v1auth.GET("/ips/export", h.mainLimiter, h.PermissionMiddleware("export_data"), h.SudoMiddleware(), h.ExportIPs)
 		
 		// Stats require view_stats
 		v1auth.GET("/stats", h.mainLimiter, h.PermissionMiddleware("view_stats"), h.Stats)
@@ -204,7 +206,7 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 		// API Tokens
 		auth.POST("/api/v1/settings/tokens", h.PermissionMiddleware("manage_api_tokens"), h.CreateAPIToken)
 		auth.DELETE("/api/v1/settings/tokens/:id", h.PermissionMiddleware("manage_api_tokens"), h.DeleteAPIToken)
-		auth.DELETE("/api/v1/admin/tokens/:id", h.PermissionMiddleware("manage_admins"), h.AdminRevokeAPIToken)
+		auth.DELETE("/api/v1/admin/tokens/:id", h.PermissionMiddleware("manage_admins"), h.SudoMiddleware(), h.AdminRevokeAPIToken)
 
 		// Enforcement actions
 		auth.POST("/block", h.PermissionMiddleware("block_ips"), h.BlockIP)
@@ -223,7 +225,7 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 		{
 			admin.GET("", h.AdminManagement)
 			admin.POST("/create", h.CreateAdmin)
-			admin.POST("/delete", h.DeleteAdmin)
+			admin.POST("/delete", h.SudoMiddleware(), h.DeleteAdmin)
 			admin.POST("/change_password", h.ChangeAdminPassword)
 			admin.POST("/change_totp", h.ChangeAdminTOTP)
 			admin.POST("/change_permissions", h.ChangeAdminPermissions)
@@ -407,6 +409,7 @@ func (h *APIHandler) AuthMiddleware() gin.HandlerFunc {
 				_ = h.pgRepo.UpdateTokenLastUsed(token.ID)
 				c.Set("username", token.Username)
 				c.Set("role", token.Role)
+				c.Set("permissions", token.Permissions)
 				c.Next()
 				return
 			}
@@ -590,6 +593,7 @@ func (h *APIHandler) Login(c *gin.Context) {
 		session.Set("username", username)
 		session.Set("client_ip", c.ClientIP())
 		session.Set("login_time", time.Now().UTC().Format(time.RFC3339))
+		session.Set("sudo_time", time.Now().Unix()) // Initial sudo mode
 		admin, _ := h.pgRepo.GetAdmin(username)
 		if admin != nil {
 			session.Set("role", admin.Role)
@@ -606,6 +610,62 @@ func (h *APIHandler) Login(c *gin.Context) {
 		"username": username,
 		"password": password,
 		"step":     "totp",
+	})
+}
+
+func (h *APIHandler) SudoMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		session := sessions.Default(c)
+		sudoTime := session.Get("sudo_time")
+		
+		isFresh := false
+		if sudoTime != nil {
+			ts := sudoTime.(int64)
+			if time.Now().Unix()-ts < 300 { // 5 minutes
+				isFresh = true
+			}
+		}
+
+		if !isFresh {
+			if c.GetHeader("HX-Request") != "" {
+				// For HTMX, trigger a modal or redirect
+				c.Header("HX-Trigger", "openSudoModal")
+				c.AbortWithStatus(http.StatusForbidden)
+			} else {
+				// Standard redirect
+				c.Redirect(http.StatusFound, "/sudo?next="+c.Request.URL.Path)
+				c.Abort()
+			}
+			return
+		}
+		c.Next()
+	}
+}
+
+func (h *APIHandler) ShowSudo(c *gin.Context) {
+	c.HTML(http.StatusOK, "login.html", gin.H{"step": "totp", "is_sudo": true, "next": c.Query("next")})
+}
+
+func (h *APIHandler) VerifySudo(c *gin.Context) {
+	session := sessions.Default(c)
+	username := session.Get("username").(string)
+	totpCode := c.PostForm("totp")
+	next := c.PostForm("next")
+
+	admin, _ := h.pgRepo.GetAdmin(username)
+	if admin != nil && totp.Validate(totpCode, admin.Token) {
+		session.Set("sudo_time", time.Now().Unix())
+		_ = session.Save()
+		if next == "" { next = "/dashboard" }
+		c.Redirect(http.StatusFound, next)
+		return
+	}
+
+	c.HTML(http.StatusOK, "login.html", gin.H{
+		"error":   "Invalid TOTP code",
+		"step":    "totp",
+		"is_sudo": true,
+		"next":    next,
 	})
 }
 
@@ -992,6 +1052,9 @@ func (h *APIHandler) CreateAdmin(c *gin.Context) {
 }
 
 func (h *APIHandler) ChangeAdminPermissions(c *gin.Context) {
+	session := sessions.Default(c)
+	actor, _ := session.Get("username").(string)
+
 	var req struct {
 		Username    string `json:"username"`
 		Permissions string `json:"permissions"`
@@ -1006,11 +1069,19 @@ func (h *APIHandler) ChangeAdminPermissions(c *gin.Context) {
 		return
 	}
 
+	// Get old perms for logging
+	oldAdmin, _ := h.pgRepo.GetAdmin(req.Username)
+	oldPerms := ""
+	if oldAdmin != nil { oldPerms = oldAdmin.Permissions }
+
 	err := h.pgRepo.UpdateAdminPermissions(req.Username, req.Permissions)
 	if err != nil {
 		c.JSON(500, gin.H{"error": "database error"})
 		return
 	}
+
+	// Enriched audit log
+	_ = h.pgRepo.LogAction(actor, "CHANGE_PERMISSIONS", req.Username, fmt.Sprintf("From [%s] to [%s]", oldPerms, req.Permissions))
 
 	c.JSON(200, gin.H{"status": "success"})
 }
@@ -1442,50 +1513,51 @@ func (h *APIHandler) Settings(c *gin.Context) {
 func (h *APIHandler) CreateAPIToken(c *gin.Context) {
 	username, _ := c.Get("username")
 	role, _ := c.Get("role")
+	userPerms, _ := c.Get("permissions")
 	name := c.PostForm("name")
+	requestedPerms := c.PostForm("permissions")
 	
 	if name == "" {
 		c.String(http.StatusBadRequest, "Token name required")
 		return
 	}
 
+	// Validate permissions (must be a subset of user's perms)
+	finalPerms := ""
+	if requestedPerms != "" {
+		uPerms := strings.Split(userPerms.(string), ",")
+		rPerms := strings.Split(requestedPerms, ",")
+		validPerms := []string{}
+		for _, rp := range rPerms {
+			rp = strings.TrimSpace(rp)
+			for _, up := range uPerms {
+				if rp == strings.TrimSpace(up) {
+					validPerms = append(validPerms, rp)
+					break
+				}
+			}
+		}
+		finalPerms = strings.Join(validPerms, ",")
+	} else {
+		// Default to all user perms if none specified? 
+		// Actually user requested "Allow users to select a subset". 
+		// If empty, let's keep it restricted or default to nothing.
+		// Safety first: if empty, no perms.
+		finalPerms = ""
+	}
+
 	// Generate random token
-	rawToken := make([]byte, 32)
-	_, _ = io.ReadFull(strings.NewReader(strconv.FormatInt(time.Now().UnixNano(), 10) + username.(string)), rawToken) // Simple seed entropy
-	// Better random
-	// In handlers.go imports, crypto/rand is not imported? 
-	// We should use a proper random source if available, or just a UUID.
-	// For simplicity in this context, we can use a helper or just h.authService.
-	// Let's use a simpler random string generation
-	
-	// Re-use totp generation logic or similar? No.
-	// Let's just use 32 bytes of random data encoded as hex
-	b := make([]byte, 24)
-	// crypto/rand is not imported in handlers.go, only crypto/hmac, crypto/sha256.
-	// We can use math/rand seeded or time.
-	// Actually, we can assume 'blocklist/internal/service' has something or we just add it.
-	// Let's rely on time + user + salt for now or import crypto/rand if possible.
-	// Since I can't easily add imports without rewriting the whole file, I'll use sha256 of time.
-	
 	hash := sha256.New()
 	hash.Write([]byte(fmt.Sprintf("%s-%s-%d", username, name, time.Now().UnixNano())))
-	rawTokenStr := hex.EncodeToString(hash.Sum(nil)) // This is the "raw" token we give to user
-	
-	// We store the hash of this token? Or just the token?
-	// GetAPITokenByHash searches by token_hash.
-	// If we store raw token, it's less secure.
-	// But GetAPITokenByHash implies we search by equality.
-	// Let's assume we store the token as is for this MVP or use the token as the "key".
-	// The Middleware `GetAPITokenByHash(tokenStr)` implies strict equality lookup.
+	rawTokenStr := hex.EncodeToString(hash.Sum(nil))
 	
 	token := models.APIToken{
-		TokenHash: rawTokenStr, // In a real app, we should hash this AGAIN before storage.
-		Name:      name,
-		Username:  username.(string),
-		Role:      role.(string),
+		TokenHash:   rawTokenStr,
+		Name:        name,
+		Username:    username.(string),
+		Role:        role.(string),
+		Permissions: finalPerms,
 	}
-	// Note: In `AuthMiddleware`, we lookup by the token provided in header.
-	// So `TokenHash` in DB is the token itself in this implementation (simple bearer).
 	
 	err := h.pgRepo.CreateAPIToken(token)
 	if err != nil {
@@ -1493,15 +1565,9 @@ func (h *APIHandler) CreateAPIToken(c *gin.Context) {
 		return
 	}
 
-	// Return the raw token to the user via a modal or alert
-	// Since this is HTMX, we can return a partial with the token.
-	// Or we render the row + an OOB swap to show the token.
-	
 	c.Header("HX-Trigger", fmt.Sprintf(`{"newToken": "%s"}`, rawTokenStr))
 	
-	// Return updated list
 	tokens, _ := h.pgRepo.GetAPITokens(username.(string))
-	// We need to render the token list template fragment
 	c.HTML(http.StatusOK, "settings_tokens_list.html", gin.H{"tokens": tokens})
 }
 

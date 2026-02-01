@@ -177,6 +177,13 @@
                 <input type="password" id="newPassword" class="filter-input" style="flex: 1; max-width: 250px;" placeholder="New Password">
                 <button class="btn btn-danger" onclick="createAdmin()">Create Admin</button>
             </div>
+
+            <div style="text-align: center; margin-bottom: 1.5rem;">
+                <span style="font-size: 0.8rem; color: var(--secondary-color); margin-right: 10px;">Role Templates:</span>
+                <button class="btn btn-dark" style="padding: 0.3rem 0.7rem; font-size: 0.75rem;" onclick="setRole('auditor')">Auditor</button>
+                <button class="btn btn-dark" style="padding: 0.3rem 0.7rem; font-size: 0.75rem;" onclick="setRole('operator')">Operator</button>
+                <button class="btn btn-dark" style="padding: 0.3rem 0.7rem; font-size: 0.75rem;" onclick="setRole('security')">Security Admin</button>
+            </div>
             
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; color: var(--secondary-color); font-size: 0.85rem; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 1.5rem;">
                 <div>
@@ -356,6 +363,19 @@
                 if (el && el.checked) perms.push(k);
             });
             return perms.join(',');
+        }
+
+        function setRole(role) {
+            const mapping = {
+                'auditor': ['view_ips', 'view_stats', 'view_audit_logs'],
+                'operator': ['view_ips', 'view_stats', 'block_ips', 'unblock_ips', 'manage_whitelist'],
+                'security': ['manage_webhooks', 'manage_api_tokens', 'manage_admins']
+            };
+            
+            PERM_KEYS.forEach(k => {
+                const el = document.getElementById('perm_' + k);
+                if (el) el.checked = mapping[role].includes(k);
+            });
         }
 
         function createAdmin() {

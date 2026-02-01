@@ -44,14 +44,15 @@ type AdminAccount struct {
 }
 
 type APIToken struct {
-	ID        int      `json:"id" db:"id"`
-	TokenHash string   `json:"-" db:"token_hash"`
-	Name      string   `json:"name" db:"name"`
-	Username  string   `json:"username" db:"username"`
-	Role      string   `json:"role" db:"role"`
-	CreatedAt string   `json:"created_at" db:"created_at"`
-	ExpiresAt *string  `json:"expires_at" db:"expires_at"`
-	LastUsed  *string  `json:"last_used" db:"last_used"`
+	ID          int      `json:"id" db:"id"`
+	TokenHash   string   `json:"-" db:"token_hash"`
+	Name        string   `json:"name" db:"name"`
+	Username    string   `json:"username" db:"username"`
+	Role        string   `json:"role" db:"role"`
+	Permissions string   `json:"permissions" db:"permissions"`
+	CreatedAt   string   `json:"created_at" db:"created_at"`
+	ExpiresAt   *string  `json:"expires_at" db:"expires_at"`
+	LastUsed    *string  `json:"last_used" db:"last_used"`
 }
 
 type SavedView struct {
