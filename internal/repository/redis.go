@@ -382,7 +382,23 @@ return removed
 
 // ExecBlockAtomic executes atomic block writes (hash, zset, counters)
 func (r *RedisRepository) ExecBlockAtomic(ip string, entry models.IPEntry, now time.Time) error {
-...
+	defer r.trackDuration("ExecBlockAtomic", time.Now())
+	data, err := json.Marshal(entry)
+	if err != nil { return err }
+	country := ""
+	asnKey := ""
+	if entry.Geolocation != nil {
+		country = entry.Geolocation.Country
+		if entry.Geolocation.ASN != 0 {
+			asnKey = fmt.Sprintf("%d|%s", entry.Geolocation.ASN, entry.Geolocation.ASNOrg)
+		}
+	}
+	hourKey := fmt.Sprintf("stats:hour:%s", now.UTC().Format("2006010215"))
+	dayKey := fmt.Sprintf("stats:day:%s", now.UTC().Format("20060102"))
+	_, err = r.client.Eval(r.ctx, blockAtomicScript, []string{}, ip, string(data), fmt.Sprintf("%d", now.Unix()), country, hourKey, dayKey, entry.Reason, asnKey).Result()
+	return err
+}
+
 // ExecUnblockAtomic removes ip from hash and ZSET atomically; caller may adjust counters separately
 func (r *RedisRepository) ExecUnblockAtomic(ip string) error {
 	defer r.trackDuration("ExecUnblockAtomic", time.Now())
