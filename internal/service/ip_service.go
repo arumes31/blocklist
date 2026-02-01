@@ -277,14 +277,14 @@ func (s *IPService) ExportIPs(ctx context.Context, query string, country string,
 	}
 
 	// We use ZRange to get all members if possible, or iterate in batches
-	// For now, let's fetch the last 10000 entries
+	// Fetch up to 1,000,000 entries for export
 	args := &redis.ZRangeArgs{
 		Key:     "ips_by_ts",
 		Start:   "+inf",
 		Stop:    "-inf",
 		ByScore: true,
 		Rev:     true,
-		Count:   10000,
+		Count:   1000000,
 	}
 	
 	zs, err := s.redisRepo.ZRangeArgsWithScores(ctx, *args)
