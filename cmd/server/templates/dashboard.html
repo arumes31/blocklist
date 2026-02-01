@@ -1060,7 +1060,10 @@
         }
 
         document.getElementById('addedByFilter').value = currentFilters.addedBy;
-...
+        document.getElementById('fromDateFilter').value = currentFilters.from || "";
+        document.getElementById('toDateFilter').value = currentFilters.to || "";
+    }
+
     window.loadView = function(filterJson) {
         if (!filterJson) return;
         const filters = JSON.parse(filterJson);
