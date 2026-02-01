@@ -955,6 +955,7 @@
         debounceTimeout = setTimeout(applyServerSearch, 350);
     }
 
+    async function applyServerSearch(){
         const countrySelect = document.getElementById('countryPopup');
         const checkboxes = countrySelect.querySelectorAll('input[type="checkbox"]:checked');
         const selectedCountries = Array.from(checkboxes).map(cb => cb.value);
