@@ -209,25 +209,29 @@ func main() {
 	})
 	r.Use(sessions.Sessions("blocklist_session", store))
 
-	// Rate Limiting
-	rate := limiter.Rate{
-		Period: time.Duration(cfg.RatePeriod) * time.Second,
-		Limit:  int64(cfg.RateLimit),
+	// Rate Limiting Helpers
+	createLimiter := func(limit int, period int, prefix string) gin.HandlerFunc {
+		rate := limiter.Rate{
+			Period: time.Duration(period) * time.Second,
+			Limit:  int64(limit),
+		}
+		limiterClient := rdb.NewClient(&rdb.Options{
+			Addr:     fmt.Sprintf("%s:%d", cfg.RedisHost, cfg.RedisPort),
+			Password: cfg.RedisPassword,
+			DB:       cfg.RedisLimDB,
+		})
+		limitStore, err := sredis.NewStoreWithOptions(limiterClient, limiter.StoreOptions{
+			Prefix: prefix,
+		})
+		if err != nil {
+			zlog.Fatal().Err(err).Msgf("Failed to create limiter store: %s", prefix)
+		}
+		return mgin.NewMiddleware(limiter.New(limitStore, rate))
 	}
-	limiterClient := rdb.NewClient(&rdb.Options{
-		Addr:     fmt.Sprintf("%s:%d", cfg.RedisHost, cfg.RedisPort),
-		Password: cfg.RedisPassword,
-		DB:       cfg.RedisLimDB,
-	})
-	limitStore, err := sredis.NewStoreWithOptions(limiterClient, limiter.StoreOptions{
-		Prefix: "limiter_go",
-	})
-	if err != nil {
-		zlog.Fatal().Err(err).Msg("Failed to create limiter store")
-	}
-	rateLimiter := limiter.New(limitStore, rate)
-	// Don't apply globally yet, apply to the main app groups below
-	rateMiddleware := mgin.NewMiddleware(rateLimiter)
+
+	mainLimiter := createLimiter(cfg.RateLimit, cfg.RatePeriod, "limiter_main")
+	loginLimiter := createLimiter(cfg.RateLimitLogin, cfg.RatePeriod, "limiter_login")
+	webhookLimiter := createLimiter(cfg.RateLimitWebhook, cfg.RatePeriod, "limiter_webhook")
 
 	// Load Templates from embed.FS
 	templ := template.Must(template.New("").Funcs(map[string]interface{}{
@@ -298,11 +302,9 @@ func main() {
 	flagsRoot, _ := fs.Sub(staticFS, "static/flags")
 	r.StaticFS("/flags", http.FS(flagsRoot))
 
-	// Apply Rate Limiting to all application routes (not static files)
-	r.Use(rateMiddleware)
-
 	// 6. Initialize API Handler
 	handler := api.NewAPIHandler(cfg, redisRepo, pgRepo, authService, ipService, hub, webhookService)
+	handler.SetLimiters(mainLimiter, loginLimiter, webhookLimiter)
 	handler.RegisterRoutes(r)
 
 	// 7. Run Server with Graceful Shutdown

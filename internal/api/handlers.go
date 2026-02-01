@@ -39,6 +39,9 @@ type APIHandler struct {
 	ipService      *service.IPService
 	hub            *Hub
 	webhookService *service.WebhookService
+	mainLimiter    gin.HandlerFunc
+	loginLimiter   gin.HandlerFunc
+	webhookLimiter gin.HandlerFunc
 }
 
 func NewAPIHandler(cfg *config.Config, r *repository.RedisRepository, pg *repository.PostgresRepository, auth *service.AuthService, ip *service.IPService, hub *Hub, wh *service.WebhookService) *APIHandler {
@@ -51,6 +54,12 @@ func NewAPIHandler(cfg *config.Config, r *repository.RedisRepository, pg *reposi
 		hub:            hub,
 		webhookService: wh,
 	}
+}
+
+func (h *APIHandler) SetLimiters(main, login, webhook gin.HandlerFunc) {
+	h.mainLimiter = main
+	h.loginLimiter = login
+	h.webhookLimiter = webhook
 }
 
 var upgrader = websocket.Upgrader{
@@ -151,9 +160,15 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 	r.Use(h.PrometheusMiddleware())
 	// Public UI routes
 	r.GET("/", func(c *gin.Context) { c.Redirect(http.StatusFound, "/dashboard") })
-	r.GET("/login", h.ShowLogin)
-	r.POST("/login", h.Login)
-	r.POST("/login/verify", h.VerifyFirstFactor) // New Step
+	
+	login := r.Group("/login")
+	login.Use(h.loginLimiter)
+	{
+		login.GET("", h.ShowLogin)
+		login.POST("", h.Login)
+		login.POST("/verify", h.VerifyFirstFactor)
+	}
+	
 	r.GET("/logout", h.Logout)
 	r.GET("/ws", h.WS)
 
@@ -166,25 +181,26 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 	v1auth := v1.Group("/")
 	v1auth.Use(h.AuthMiddleware())
 	{
-		// Webhooks require webhook_access
-		v1auth.POST("/webhook", h.PermissionMiddleware("webhook_access"), h.Webhook)
-		v1auth.POST("/webhook2_whitelist", h.PermissionMiddleware("webhook_access"), h.Webhook2)
+		// Webhooks require webhook_access and specific limiter
+		v1auth.POST("/webhook", h.webhookLimiter, h.PermissionMiddleware("webhook_access"), h.Webhook)
+		v1auth.POST("/webhook2_whitelist", h.webhookLimiter, h.PermissionMiddleware("webhook_access"), h.Webhook2)
 		
-		// Data viewing requires view_ips
-		v1auth.GET("/ips", h.PermissionMiddleware("view_ips"), h.IPsPaginated)
-		v1auth.GET("/ips_automate", h.PermissionMiddleware("view_ips"), h.AutomateIPs)
+		// Data viewing requires view_ips and main limiter
+		v1auth.GET("/ips", h.mainLimiter, h.PermissionMiddleware("view_ips"), h.IPsPaginated)
+		v1auth.GET("/ips_automate", h.mainLimiter, h.PermissionMiddleware("view_ips"), h.AutomateIPs)
 		
 		// Exports require export_data
-		v1auth.GET("/ips/export", h.PermissionMiddleware("export_data"), h.ExportIPs)
+		v1auth.GET("/ips/export", h.mainLimiter, h.PermissionMiddleware("export_data"), h.ExportIPs)
 		
 		// Stats require view_stats
-		v1auth.GET("/stats", h.PermissionMiddleware("view_stats"), h.Stats)
+		v1auth.GET("/stats", h.mainLimiter, h.PermissionMiddleware("view_stats"), h.Stats)
 	}
 	r.GET("/openapi.json", h.OpenAPI)
 
 	// Protected UI routes
 	auth := r.Group("/")
 	auth.Use(h.AuthMiddleware())
+	auth.Use(h.mainLimiter)
 	{
 		// Dashboard requires view_ips and view_stats
 		auth.GET("/dashboard", h.PermissionMiddleware("view_ips"), h.Dashboard)
@@ -224,12 +240,12 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 	}
 
 	// Legacy / Compatibility routes
-	r.POST("/webhook", h.AuthMiddleware(), h.PermissionMiddleware("webhook_access"), h.Webhook)
+	r.POST("/webhook", h.AuthMiddleware(), h.webhookLimiter, h.PermissionMiddleware("webhook_access"), h.Webhook)
 	r.GET("/raw", h.RawIPs) // Public
-	r.GET("/ips", h.AuthMiddleware(), h.PermissionMiddleware("view_ips"), h.JSONIPs)
-	r.GET("/ips_automate", h.AuthMiddleware(), h.PermissionMiddleware("view_ips"), h.AutomateIPs)
-	r.GET("/api/ips", h.AuthMiddleware(), h.PermissionMiddleware("view_ips"), h.IPsPaginated)
-	r.GET("/api/stats", h.AuthMiddleware(), h.PermissionMiddleware("view_stats"), h.Stats)
+	r.GET("/ips", h.AuthMiddleware(), h.mainLimiter, h.PermissionMiddleware("view_ips"), h.JSONIPs)
+	r.GET("/ips_automate", h.AuthMiddleware(), h.mainLimiter, h.PermissionMiddleware("view_ips"), h.AutomateIPs)
+	r.GET("/api/ips", h.AuthMiddleware(), h.mainLimiter, h.PermissionMiddleware("view_ips"), h.IPsPaginated)
+	r.GET("/api/stats", h.AuthMiddleware(), h.mainLimiter, h.PermissionMiddleware("view_stats"), h.Stats)
 	r.GET("/health", h.Health)
 	r.GET("/ready", h.Ready)
 	r.GET("/metrics", h.MetricsAuthMiddleware(), gin.WrapH(promhttp.Handler()))

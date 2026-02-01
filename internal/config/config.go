@@ -30,6 +30,8 @@ type Config struct {
 	EnableOutboundWebhooks bool
 	RateLimit              int
 	RatePeriod             int
+	RateLimitLogin         int
+	RateLimitWebhook       int
 }
 
 func Load() *Config {
@@ -57,6 +59,8 @@ func Load() *Config {
 		EnableOutboundWebhooks: getEnvBool("ENABLE_OUTBOUND_WEBHOOKS", false),
 		RateLimit:              getEnvInt("RATE_LIMIT", 500),
 		RatePeriod:             getEnvInt("RATE_PERIOD", 1),
+		RateLimitLogin:         getEnvInt("RATE_LIMIT_LOGIN", 10),
+		RateLimitWebhook:       getEnvInt("RATE_LIMIT_WEBHOOK", 100),
 	}
 }
 
