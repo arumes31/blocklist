@@ -147,7 +147,7 @@ func main() {
 				PasswordHash: hash,
 				Token:        token,
 				Role:         "admin",
-				Permissions:  "gui_read,gui_write,webhook_access",
+				Permissions:  "gui_read,gui_write", // webhook_access excluded by default
 			})
 			if err != nil {
 				zlog.Error().Err(err).Msg("Failed to seed admin user")

@@ -208,9 +208,42 @@ actionunban = curl -X POST -H "Content-Type: application/json" -d '{"ip":"&lt;ip
         <div class="card">
             <h3>API Access</h3>
             <p style="color: var(--secondary-color);">Your base API URL is: <code>{{ .base_url }}/api/v1</code></p>
-            <p style="color: var(--secondary-color);">Use Bearer tokens for authentication. Tokens can be managed in the Admin panel.</p>
+            <p style="color: var(--secondary-color);">Use Bearer tokens for authentication. Tokens are managed below.</p>
             
-            <h4 style="color: var(--vibrant-red); margin-top: 1.5rem; margin-bottom: 0.5rem;">Examples</h4>
+            <div style="margin-top: 1.5rem; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 1.5rem;">
+                <h4 style="color: #fff; margin-bottom: 1rem;">My API Tokens</h4>
+                <form hx-post="/api/v1/settings/tokens" hx-target="#token-list" hx-swap="innerHTML">
+                    <div style="display: flex; gap: 10px; margin-bottom: 1rem;">
+                        <input type="text" name="name" class="filter-input" placeholder="Token Name (e.g. CI/CD)" required style="flex: 1;">
+                        <button type="submit" class="btn btn-danger">Create Token</button>
+                    </div>
+                </form>
+                
+                <table style="font-size: 0.9rem;">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Created</th>
+                            <th>Last Used</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="token-list">
+                        {{ range .tokens }}
+                        <tr>
+                            <td>{{ .Name }}</td>
+                            <td><span class="utc-timestamp">{{ .CreatedAt }}</span></td>
+                            <td>{{ if .LastUsed }}<span class="utc-timestamp">{{ .LastUsed }}</span>{{ else }}-{{ end }}</td>
+                            <td>
+                                <button class="btn btn-danger" style="padding: 0.2rem 0.6rem; font-size: 0.8rem;" hx-delete="/api/v1/settings/tokens/{{ .ID }}" hx-target="closest tr" hx-swap="outerHTML">Revoke</button>
+                            </td>
+                        </tr>
+                        {{ end }}
+                    </tbody>
+                </table>
+            </div>
+
+            <h4 style="color: var(--vibrant-red); margin-top: 2rem; margin-bottom: 0.5rem;">Examples</h4>
             
             <div style="margin-bottom: 1rem;">
                 <p style="color: var(--secondary-color); margin-bottom: 0.5rem; font-size: 0.9rem;"><strong>Curl - Block an IP</strong></p>
@@ -242,17 +275,42 @@ actionunban = curl -X POST -H "Content-Type: application/json" -d '{"ip":"&lt;ip
             }, 4000);
         }
 
+        function convertTimestamps() {
+            const utcTimestamps = document.querySelectorAll('.utc-timestamp:not([data-converted])');
+            utcTimestamps.forEach(function(timestamp) {
+                const date = new Date(timestamp.innerText);
+                timestamp.innerText = date.toLocaleString();
+                timestamp.setAttribute('data-converted', 'true');
+            });
+        }
+
         document.body.addEventListener('htmx:afterOnLoad', function(evt) {
+            convertTimestamps(); // Convert for new rows
             if (evt.detail.xhr.status === 200) {
                 if (evt.detail.requestConfig.verb === 'post') {
-                    showToast('Webhook added successfully', 'success');
+                    // Check for token creation trigger
+                    const trigger = evt.detail.xhr.getResponseHeader("HX-Trigger");
+                    if (trigger) {
+                        try {
+                            const data = JSON.parse(trigger);
+                            if (data.newToken) {
+                                prompt("API Token Created! Copy it now, you won't see it again:", data.newToken);
+                            }
+                        } catch(e) {}
+                    }
+                    if (evt.detail.target.id === 'webhook-list') {
+                        showToast('Webhook added successfully', 'success');
+                    }
                 } else if (evt.detail.requestConfig.verb === 'delete') {
-                    showToast('Webhook deleted successfully', 'success');
+                    showToast('Item deleted successfully', 'success');
                 }
             } else {
                 showToast('Action failed: ' + (evt.detail.xhr.responseText || 'Server error'), 'danger');
             }
         });
+        
+        // Initial convert
+        convertTimestamps();
     </script>
 </body>
 </html>

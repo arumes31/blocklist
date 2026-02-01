@@ -82,6 +82,17 @@ func (p *PostgresRepository) GetAPITokenByHash(hash string) (*models.APIToken, e
 	return &token, nil
 }
 
+func (p *PostgresRepository) GetAPITokens(username string) ([]models.APIToken, error) {
+	var tokens []models.APIToken
+	err := p.db.Select(&tokens, "SELECT id, name, username, role, created_at, expires_at, last_used FROM api_tokens WHERE username = $1 ORDER BY created_at DESC", username)
+	return tokens, err
+}
+
+func (p *PostgresRepository) DeleteAPIToken(id int, username string) error {
+	_, err := p.db.Exec("DELETE FROM api_tokens WHERE id = $1 AND username = $2", id, username)
+	return err
+}
+
 func (p *PostgresRepository) UpdateTokenLastUsed(id int) error {
 	_, err := p.db.Exec("UPDATE api_tokens SET last_used = NOW() WHERE id = $1", id)
 	return err
