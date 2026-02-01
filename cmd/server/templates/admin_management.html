@@ -238,19 +238,15 @@
                                 {{ end }}
                             </div>
                         </td>
-                        <td>
-                            <div style="display: flex; gap: 8px;">
-                                <button class="btn btn-success" style="padding: 0.4rem 0.8rem; font-size: 0.8rem;" onclick="showQR('{{ $username }}')">Show QR</button>
+                            <td>
+                                {{ if ne $username $.admin_username }}
                                 <button class="btn btn-dark" style="padding: 0.4rem 0.8rem; font-size: 0.8rem;" onclick="openPasswordModal('{{ $username }}')">Password</button>
-                                {{ if ne $username "admin" }}
-                                <button class="btn btn-dark" style="padding: 0.4rem 0.8rem; font-size: 0.8rem;" onclick="openPermissionsModal('{{ $username }}', '{{ $data.Permissions }}')">Perms</button>
-                                <button class="btn btn-dark" style="padding: 0.4rem 0.8rem; font-size: 0.8rem; background: #ff980033;" onclick="openTotpModal('{{ $username }}')">TOTP</button>
-                                <button class="btn btn-danger" style="padding: 0.4rem 0.8rem; font-size: 0.8rem;" onclick="deleteAdmin('{{ $username }}')">Delete</button>
-                                {{ else }}
-                                <span style="font-size: 0.8rem; color: var(--secondary-color); font-style: italic; margin-left: 10px;">System Root (Protected)</span>
                                 {{ end }}
-                            </div>
-                        </td>
+                                <button class="btn btn-dark" style="padding: 0.4rem 0.8rem; font-size: 0.8rem; background: #ff980033;" onclick="clearTotp('{{ $username }}')">Clear TOTP</button>
+                                {{ if ne $username $.admin_username }}
+                                <button class="btn btn-danger" style="padding: 0.4rem 0.8rem; font-size: 0.8rem;" onclick="deleteAdmin('{{ $username }}')">Delete</button>
+                                {{ end }}
+                            </td>
                     </tr>
                     {{ end }}
                 </tbody>
@@ -333,17 +329,7 @@
         </div>
     </div>
 
-    <!-- TOTP Change Modal -->
-    <div id="totpModal" class="modal">
-        <div class="modal-content">
-            <span class="close" onclick="closeTotpModal()">×</span>
-            <h3 style="margin-top: 0;">Change TOTP</h3>
-            <input type="hidden" id="totpUsername">
-            <p style="color: var(--secondary-color); margin-bottom: 1.5rem;">Click "Generate" to create a new TOTP token and QR code. This will invalidate the previous token.</p>
-            <button class="btn btn-danger" style="width: 100%; margin-bottom: 1.5rem;" onclick="changeTotp()">Generate New Secret</button>
-            <div id="newQrCode" style="text-align: center; background: white; padding: 1rem; border-radius: 8px; display: none;"></div>
-        </div>
-    </div>
+    <div id="toast" class="toast"></div>
 
     <script>
         function showToast(message, type = 'success') {
@@ -503,18 +489,10 @@
             });
         }
 
-        function openTotpModal(username) {
-            document.getElementById('totpUsername').value = username;
-            document.getElementById('newQrCode').innerHTML = '';
-            document.getElementById('totpModal').style.display = 'block';
-        }
-
-        function closeTotpModal() {
-            document.getElementById('totpModal').style.display = 'none';
-        }
-
-        function changeTotp() {
-            const username = document.getElementById('totpUsername').value;
+        function clearTotp(username) {
+            if (!confirm('Are you sure you want to clear TOTP for ' + username + '? The user will be forced to setup 2FA again on their next login.')) {
+                return;
+            }
             fetch('/admin_management/change_totp', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -523,17 +501,13 @@
             .then(response => response.json())
             .then(data => {
                 if (data.status === 'success') {
-                    showToast('TOTP changed successfully! Scan the new QR code below.', 'success');
-                    const qrCodeDiv = document.getElementById('newQrCode');
-                    qrCodeDiv.style.display = 'block';
-                    qrCodeDiv.innerHTML = `<img src="${data.qr_image}" alt="New QR Code" style="max-width: 100%;">`;
+                    showToast('TOTP cleared successfully!', 'success');
                 } else {
-                    showToast(data.error || 'Failed to change TOTP', 'danger');
+                    showToast(data.error || 'Failed to clear TOTP', 'danger');
                 }
             })
-            .catch(error => {
-                console.error('Error:', error);
-                showToast('Failed to change TOTP', 'danger');
+            .catch(err => {
+                showToast('Failed to clear TOTP', 'danger');
             });
         }
     </script>

@@ -127,7 +127,7 @@ func main() {
 	// 2. Initialize Services
 	authService := service.NewAuthService(pgRepo, redisRepo)
 	ipService := service.NewIPService(cfg, redisRepo, pgRepo)
-	webhookService := service.NewWebhookService(pgRepo, cfg)
+	webhookService := service.NewWebhookService(pgRepo, redisRepo, cfg)
 	scheduler := service.NewSchedulerService(redisRepo)
 	geoUpdater := service.NewGeoIPService(cfg)
 
@@ -158,9 +158,10 @@ func main() {
 	// 3. Start Schedulers
 	scheduler.Start()
 	geoUpdater.Start()
+	webhookService.Start(context.Background())
 
 	// 4. Initialize WebSocket Hub
-	hub := api.NewHub()
+	hub := api.NewHub(redisRepo.GetClient())
 	go hub.Run()
 
 	// 5. Setup Gin

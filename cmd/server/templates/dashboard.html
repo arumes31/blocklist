@@ -5,9 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>IP Dashboard</title>
     <link rel="stylesheet" href="/cd/flag-icon.min.css">
+    <link rel="stylesheet" href="/js/leaflet.css">
     <link rel="icon" type="image/x-icon" href="/cd/favicon-color.png" />
     <script src="/js/htmx.min.js"></script>
     <script src="/js/json-enc.js"></script>
+    <script src="/js/leaflet.js"></script>
+    <script src="/js/chart.js"></script>
     <style>
         :root {
             --primary-red: #ff0000;
@@ -303,6 +306,7 @@
                 <button onclick="openModal('blockModal')" class="btn btn-danger">Block IP</button>
                 <a href="/whitelist" class="btn btn-dark" style="min-width: 120px;">Whitelist</a>
                 <a href="/settings" class="btn btn-dark" style="min-width: 120px;">Settings</a>
+                <a href="/docs" class="btn btn-dark" style="min-width: 120px;">API Docs</a>
                 {{ if eq .username .admin_username }}
                 <a href="/admin_management" class="btn btn-dark" style="min-width: 120px;">Admins</a>
                 {{ end }}
@@ -311,7 +315,6 @@
     </div>
     <div style="display: flex; align-items: center; gap: 1rem;">
         <div class="controls" style="display:flex; align-items:center; gap:0.5rem;">
-            <button id="bulkUnblockBtn" class="btn btn-danger" style="display:none;" onclick="confirmBulkUnblock()">Bulk Unblock</button>
             <button id="togglePause" class="btn" aria-label="Toggle live update pause">Pause</button>
             <button id="toggleGeo" class="btn" aria-label="Toggle Geolocation column visibility">Geo</button>
             <span id="live-status" class="status-chip live">LIVE</span>
@@ -332,6 +335,21 @@
 </div>
 
 <div class="main-content">
+    <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
+        <div class="table-card" style="height: 400px; position: relative;">
+            <div id="threat-map" style="height: 100%; width: 100%;"></div>
+            <div style="position: absolute; top: 10px; right: 10px; z-index: 1000; background: rgba(0,0,0,0.7); padding: 5px 10px; border-radius: 4px; border: 1px solid var(--border-red); font-size: 0.8rem;">
+                LIVE THREAT MAP
+            </div>
+        </div>
+        <div class="table-card" style="padding: 1rem; display: flex; flex-direction: column;">
+            <h3 style="font-size: 1rem; margin-bottom: 1rem; border-bottom: 1px solid var(--border-red); padding-bottom: 5px;">Country Distribution</h3>
+            <div style="flex: 1; position: relative;">
+                <canvas id="countryChart"></canvas>
+            </div>
+        </div>
+    </div>
+
     <div class="search-container">
         <div style="display: flex; gap: 10px; margin-bottom: 10px; flex-wrap: wrap;">
             <input type="text" id="filterInput" class="filter-input" style="flex: 2; min-width: 200px;" placeholder="Quick Search (IP, Reason...)" oninput="debouncedFilterTable()">
@@ -684,6 +702,14 @@
     <div id="scroll-sentinel" class="loading" style="display:none;"><span class="spinner"></span> Loading...</div>
 </div>
 
+<div id="bulkActionBar" style="display: none; position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: rgba(20,20,20,0.95); border: 1px solid var(--border-red); border-radius: 12px; padding: 1rem 2rem; z-index: 1001; box-shadow: 0 10px 40px rgba(255,0,0,0.3); align-items: center; gap: 2rem; backdrop-filter: blur(10px);">
+    <div style="font-weight: bold; color: #fff;"><span id="selectedCount">0</span> IPs Selected</div>
+    <div style="display: flex; gap: 1rem;">
+        <button class="btn btn-success" onclick="confirmBulkUnblock()">Unblock All</button>
+        <button class="btn btn-dark" onclick="clearSelection()">Cancel</button>
+    </div>
+</div>
+
 <div id="blockModal" class="modal">
     <div class="modal-content">
         <h3>Block New IP</h3>
@@ -728,6 +754,67 @@
     let paused = false;
     let updateQueue = [];
     const tbody = document.getElementById('ipTableBody');
+
+    // Task 4: Initialize Map
+    const map = L.map('threat-map', {
+        center: [20, 0],
+        zoom: 2,
+        zoomControl: false,
+        attributionControl: false
+    });
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        maxZoom: 19
+    }).addTo(map);
+    const markers = L.layerGroup().addTo(map);
+
+    // Task 4: Initialize Chart
+    let countryChart = null;
+    function initChart(data) {
+        const ctx = document.getElementById('countryChart').getContext('2d');
+        const labels = data.map(c => c.country);
+        const values = data.map(c => c.count);
+        
+        countryChart = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: labels,
+                datasets: [{
+                    data: values,
+                    backgroundColor: [
+                        '#ff0000', '#8b0000', '#ff4d4d', '#444', '#222'
+                    ],
+                    borderWidth: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: { color: '#fff', boxWidth: 12, font: { size: 10 } }
+                    }
+                }
+            }
+        });
+    }
+
+    function updateMap(items) {
+        markers.clearLayers();
+        items.forEach(it => {
+            if (it.data && it.data.geolocation && it.data.geolocation.latitude) {
+                const geo = it.data.geolocation;
+                L.circleMarker([geo.latitude, geo.longitude], {
+                    radius: 5,
+                    fillColor: "#ff0000",
+                    color: "#000",
+                    weight: 1,
+                    opacity: 1,
+                    fillOpacity: 0.8
+                }).addTo(markers).bindPopup(`<b>${it.ip}</b><br>${geo.city}, ${geo.country}<br>${it.data.reason}`);
+            }
+        });
+    }
 
     function rowHTML(ip, data){
         const geo = data && data.geolocation && data.geolocation.country ? `<span class="flag-icon flag-icon-${data.geolocation.country.toLowerCase()}"></span> ${data.geolocation.city||''} (${data.geolocation.country})` : '<span style="color: #888;">N/A</span>';
@@ -830,7 +917,15 @@
         items = page.items;
         cursor = page.next;
         renderWindow(items);
+        updateMap(items);
         if (cursor) observeScroll();
+        
+        // Initial stats for chart
+        const r = await fetch('/api/stats');
+        if (r.ok) {
+            const s = await r.json();
+            initChart(s.top_countries);
+        }
     }
 
     function observeScroll(){
@@ -909,6 +1004,12 @@
                         <span class="flag-icon flag-icon-${(c.country||'').toLowerCase()}"></span><span style="color:#fff; font-weight:600;">${c.count||0}</span>
                     </span>
                 `).join('');
+
+                if (countryChart) {
+                    countryChart.data.labels = s.top_countries.map(c => c.country);
+                    countryChart.data.datasets[0].data = s.top_countries.map(c => c.count);
+                    countryChart.update();
+                }
             }
             if (Array.isArray(s.top_asns)) {
                 const wrap = document.getElementById('stat-asns');
@@ -958,6 +1059,7 @@
             if (currentFilters.addedBy && entry.data.added_by !== currentFilters.addedBy) return;
             
             items.unshift(entry);
+            updateMap(items.slice(0, 100)); // Update map with latest 100
             const tbodyEl = document.getElementById('ipTableBody');
             const temp = document.createElement('tbody');
             temp.innerHTML = rowHTML(ip, entry.data);
@@ -1229,13 +1331,21 @@
 
     window.updateBulkUI = function() {
         const selected = document.querySelectorAll('.ip-checkbox:checked').length;
-        const btn = document.getElementById('bulkUnblockBtn');
+        const bar = document.getElementById('bulkActionBar');
+        const count = document.getElementById('selectedCount');
         if (selected > 0) {
-            btn.style.display = 'inline-flex';
-            btn.textContent = `Unblock ${selected} IPs`;
+            bar.style.display = 'flex';
+            count.textContent = selected;
         } else {
-            btn.style.display = 'none';
+            bar.style.display = 'none';
         }
+    }
+
+    window.clearSelection = function() {
+        const checkboxes = document.querySelectorAll('.ip-checkbox');
+        checkboxes.forEach(c => c.checked = false);
+        document.getElementById('selectAll').checked = false;
+        updateBulkUI();
     }
 
     window.confirmBulkUnblock = function() {

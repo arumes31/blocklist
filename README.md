@@ -37,8 +37,12 @@ graph LR
 ## Key Features
 
 - **Advanced Filtering**: Server-side filtering by IP, Reason, Country, Added By, and Date Range (ISO8601).
-- **Real-time Updates**: Live dashboard updates via WebSockets with PING/PONG keep-alive.
-- **RBAC & Security**: Role-Based Access Control (Viewer, Operator, Admin) and API Token authentication.
+- **Real-time Updates**: Live dashboard updates via WebSockets, now scaled with **Redis Pub/Sub** for multi-instance support.
+- **Visual Threat Intelligence**: Integrated **Live Threat Map** (Leaflet) and distribution charts (Chart.js) for instant situational awareness.
+- **Reliable Webhooks**: Persistent **Task Queue** for outbound notifications with automatic retries and exponential backoff.
+- **Bulk Operations**: Multi-select interface for batch unblocking and management.
+- **Security Hardening**: Session invalidation on permission changes and mandatory 2FA setup.
+- **Interactive API Docs**: Embedded **API Reference** via RapiDoc/Scalar at `/docs`.
 - **GeoIP Enrichment**: Automated ASN, Country, and City detection for all entries.
 - **Observability**: Prometheus metrics for latency and operations, protected by IP-based ACL.
 - **Hardened Deployment**: Non-root Docker images based on Alpine 3.21 with conditional `:latest` tagging.
@@ -96,15 +100,36 @@ The platform uses a detailed permission system for administrators:
 - **Utility**: `export_data`
 
 ## Configuration
-- `SECRET_KEY`: Session encryption secret (required).
-- `GUIAdmin`/`GUIPassword`: Primary admin credentials.
-- `RATE_LIMIT`: Global requests per period (default: 500).
-- `RATE_PERIOD`: Rate limit window in seconds (default: 30).
-- `RATE_LIMIT_LOGIN`: Login-specific limit (default: 10).
-- `RATE_LIMIT_WEBHOOK`: Webhook-specific limit (default: 100).
-- `METRICS_ALLOWED_IPS`: Comma-separated list of trusted IPs for `/metrics`.
-- `ENABLE_OUTBOUND_WEBHOOKS`: Set to `true` to enable outbound notifications (default: `false`).
-- `WEBHOOK_SECRET`: HMAC secret for signing outbound webhook payloads.
+
+The application is configured via environment variables:
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `SECRET_KEY` | Key for session signing and encryption | `change-me` |
+| `PORT` | Listening port | `5000` |
+| `REDIS_HOST` | Redis server hostname | `localhost` |
+| `REDIS_PORT` | Redis server port | `6379` |
+| `REDIS_PASSWORD` | Redis password | (empty) |
+| `REDIS_DB` | Redis database for IP storage | `0` |
+| `REDIS_LIM_DB` | Redis database for rate limiting | `1` |
+| `POSTGRES_URL` | PostgreSQL connection string | `postgres://...` |
+| `GUIAdmin` | Primary administrator username | `admin` |
+| `GUIPassword` | Primary administrator password | `password` |
+| `GUIToken` | Primary administrator 2FA seed (optional) | (empty) |
+| `DISABLE_GUIADMIN_LOGIN` | Disable login for the default admin user | `false` |
+| `LOGWEB` | Enable verbose web logging (debug level) | `false` |
+| `BLOCKED_RANGES` | Comma-separated list of subnets to whitelist | (empty) |
+| `WEBHOOK_SECRET` | Secret key for incoming webhook HMAC verification | (empty) |
+| `GEOIPUPDATE_ACCOUNT_ID` | MaxMind Account ID | (empty) |
+| `GEOIPUPDATE_LICENSE_KEY` | MaxMind License Key | (empty) |
+| `TRUSTED_PROXIES` | Comma-separated list of trusted proxy IPs | `127.0.0.1` |
+| `USE_CLOUDFLARE` | Enable Cloudflare specific header handling | `false` |
+| `ENABLE_OUTBOUND_WEBHOOKS` | Master switch for outbound notifications | `false` |
+| `RATE_LIMIT` | Global API rate limit (requests) | `500` |
+| `RATE_PERIOD` | Rate limit window (seconds) | `30` |
+| `RATE_LIMIT_LOGIN` | Rate limit for login attempts | `10` |
+| `RATE_LIMIT_WEBHOOK` | Rate limit for incoming webhooks | `100` |
+| `METRICS_ALLOWED_IPS` | IPs allowed to access Prometheus metrics | `127.0.0.1` |
 
 ## Testing
 Comprehensive unit, functional, and integration tests using `miniredis` and `testcontainers-go`.

@@ -1,32 +1,43 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"sync"
 
 	"github.com/gorilla/websocket"
+	"github.com/redis/go-redis/v9"
+	zlog "github.com/rs/zerolog/log"
 )
 
 type Hub struct {
 	clients    map[*websocket.Conn]bool
-	broadcast  chan []byte
 	register   chan *websocket.Conn
 	unregister chan *websocket.Conn
 	stop       chan struct{}
 	mu         sync.Mutex
+	redis      *redis.Client
+	channel    string
 }
 
-func NewHub() *Hub {
+func NewHub(rdb *redis.Client) *Hub {
 	return &Hub{
 		clients:    make(map[*websocket.Conn]bool),
-		broadcast:  make(chan []byte),
 		register:   make(chan *websocket.Conn),
 		unregister: make(chan *websocket.Conn),
 		stop:       make(chan struct{}),
+		redis:      rdb,
+		channel:    "blocklist_events",
 	}
 }
 
 func (h *Hub) Run() {
+	ctx := context.Background()
+	pubsub := h.redis.Subscribe(ctx, h.channel)
+	defer pubsub.Close()
+
+	ch := pubsub.Channel()
+
 	for {
 		select {
 		case <-h.stop:
@@ -42,10 +53,10 @@ func (h *Hub) Run() {
 				client.Close()
 			}
 			h.mu.Unlock()
-		case message := <-h.broadcast:
+		case msg := <-ch:
 			h.mu.Lock()
 			for client := range h.clients {
-				err := client.WriteMessage(websocket.TextMessage, message)
+				err := client.WriteMessage(websocket.TextMessage, []byte(msg.Payload))
 				if err != nil {
 					client.Close()
 					delete(h.clients, client)
@@ -62,11 +73,10 @@ func (h *Hub) BroadcastEvent(action string, data interface{}) {
 		"data":   data,
 	}
 	msg, _ := json.Marshal(event)
-	select {
-	case h.broadcast <- msg:
-	case <-h.stop:
-	default:
-		// Drop if no one is listening or hub stopped
+	
+	err := h.redis.Publish(context.Background(), h.channel, msg).Err()
+	if err != nil {
+		zlog.Error().Err(err).Msg("Failed to publish event to Redis")
 	}
 }
 

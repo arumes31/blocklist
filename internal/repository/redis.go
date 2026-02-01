@@ -342,6 +342,10 @@ func (r *RedisRepository) ReleaseLock(key string) error {
 	return r.client.Del(r.ctx, key).Err()
 }
 
+func (r *RedisRepository) GetClient() *redis.Client {
+	return r.client
+}
+
 // Atomic block operation: writes hash, updates ZSET, and increments counters in one script
 var blockAtomicScript = `
 local ip = ARGV[1]

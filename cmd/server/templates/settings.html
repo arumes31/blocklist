@@ -151,7 +151,7 @@
             <h3>Outbound Webhooks</h3>
             <p style="color: var(--secondary-color);">Configure external services to be notified of block/unblock events.</p>
             <form hx-post="/api/v1/settings/webhooks" hx-target="#webhook-list" hx-swap="afterbegin">
-                <div style="display: grid; grid-template-columns: 2fr 1fr 1fr auto; gap: 10px; align-items: end;">
+                <div style="display: grid; grid-template-columns: 1.5fr 1fr 1fr 1fr auto; gap: 10px; align-items: end;">
                     <div class="form-group">
                         <label>URL</label>
                         <input type="url" name="url" class="filter-input" style="width: 100%; box-sizing: border-box;" placeholder="https://example.com/webhook" required>
@@ -164,6 +164,10 @@
                         <label>Events</label>
                         <input type="text" name="events" class="filter-input" style="width: 100%; box-sizing: border-box;" value="block,unblock" placeholder="comma separated">
                     </div>
+                    <div class="form-group">
+                        <label>Geo Filter</label>
+                        <input type="text" name="geo_filter" class="filter-input" style="width: 100%; box-sizing: border-box;" placeholder="e.g. US,CN,RU">
+                    </div>
                     <button type="submit" class="btn btn-danger" style="margin-bottom: 1rem;">Add Webhook</button>
                 </div>
             </form>
@@ -173,6 +177,7 @@
                     <tr>
                         <th>URL</th>
                         <th>Events</th>
+                        <th>Geo Filter</th>
                         <th>Status</th>
                         <th>Action</th>
                     </tr>
@@ -182,6 +187,7 @@
                     <tr>
                         <td><code>{{ $w.URL }}</code></td>
                         <td>{{ $w.Events }}</td>
+                        <td>{{ if $w.GeoFilter }}<code>{{ $w.GeoFilter }}</code>{{ else }}ALL{{ end }}</td>
                         <td>{{ if $w.Active }}<span class="btn btn-success" style="padding: 0.2rem 0.5rem; font-size: 0.7rem; pointer-events: none;">ACTIVE</span>{{ else }}<span class="btn btn-dark" style="padding: 0.2rem 0.5rem; font-size: 0.7rem; pointer-events: none;">INACTIVE</span>{{ end }}</td>
                         <td>
                             <button class="btn btn-danger" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;" hx-delete="/api/v1/settings/webhooks/{{ $w.ID }}" hx-target="closest tr" hx-swap="outerHTML">Delete</button>
@@ -239,6 +245,7 @@ actionunban = curl -X POST -H "Content-Type: application/json" -d '{"ip":"&lt;ip
                     <thead>
                         <tr>
                             <th>Name</th>
+                            <th>Permissions</th>
                             <th>Created</th>
                             <th>Last Used</th>
                             <th>Action</th>
@@ -248,6 +255,31 @@ actionunban = curl -X POST -H "Content-Type: application/json" -d '{"ip":"&lt;ip
                         {{ range .tokens }}
                         <tr>
                             <td>{{ .Name }}</td>
+                            <td>
+                                <div class="perm-display" id="perm-display-{{ .ID }}">
+                                    {{ if .Permissions }}
+                                        {{ range $p := split .Permissions "," }}
+                                        <span style="background: rgba(255,0,0,0.1); padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; margin-right: 4px;">{{ $p }}</span>
+                                        {{ end }}
+                                    {{ else }}
+                                        <span style="color: var(--secondary-color); font-size: 0.75rem;">None</span>
+                                    {{ end }}
+                                    <button class="btn btn-dark" style="padding: 0.1rem 0.4rem; font-size: 0.7rem; margin-left: 5px;" onclick="editTokenPerms('{{ .ID }}', '{{ .Permissions }}')">Edit</button>
+                                </div>
+                                <div class="perm-edit" id="perm-edit-{{ .ID }}" style="display: none;">
+                                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px; font-size: 0.75rem; margin-bottom: 5px;">
+                                        <label><input type="checkbox" class="token-edit-perm-{{ .ID }}" value="view_ips"> View</label>
+                                        <label><input type="checkbox" class="token-edit-perm-{{ .ID }}" value="block_ips"> Block</label>
+                                        <label><input type="checkbox" class="token-edit-perm-{{ .ID }}" value="unblock_ips"> Unblock</label>
+                                        <label><input type="checkbox" class="token-edit-perm-{{ .ID }}" value="webhook_access"> Webhook</label>
+                                        <label><input type="checkbox" class="token-edit-perm-{{ .ID }}" value="export_data"> Export</label>
+                                    </div>
+                                    <div style="display: flex; gap: 5px;">
+                                        <button class="btn btn-danger" style="padding: 0.1rem 0.4rem; font-size: 0.7rem;" onclick="saveTokenPerms('{{ .ID }}')">Save</button>
+                                        <button class="btn btn-dark" style="padding: 0.1rem 0.4rem; font-size: 0.7rem;" onclick="cancelEditTokenPerms('{{ .ID }}')">Cancel</button>
+                                    </div>
+                                </div>
+                            </td>
                             <td><span class="utc-timestamp">{{ .CreatedAt }}</span></td>
                             <td>{{ if .LastUsed }}<span class="utc-timestamp">{{ .LastUsed }}</span>{{ else }}-{{ end }}</td>
                             <td>
@@ -422,6 +454,45 @@ actionunban = curl -X POST -H "Content-Type: application/json" -d '{"ip":"&lt;ip
                     if (cb) cb.checked = true;
                 });
             }
+        }
+
+        function editTokenPerms(id, currentPerms) {
+            document.getElementById('perm-display-' + id).style.display = 'none';
+            document.getElementById('perm-edit-' + id).style.display = 'block';
+            
+            const perms = currentPerms.split(',');
+            const checkboxes = document.querySelectorAll('.token-edit-perm-' + id);
+            checkboxes.forEach(cb => {
+                cb.checked = perms.includes(cb.value);
+            });
+        }
+
+        function cancelEditTokenPerms(id) {
+            document.getElementById('perm-display-' + id).style.display = 'block';
+            document.getElementById('perm-edit-' + id).style.display = 'none';
+        }
+
+        function saveTokenPerms(id) {
+            const checkboxes = document.querySelectorAll('.token-edit-perm-' + id + ':checked');
+            const permissions = Array.from(checkboxes).map(cb => cb.value).join(',');
+            
+            fetch('/api/v1/settings/tokens/' + id + '/permissions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ permissions })
+            })
+            .then(response => {
+                if (response.ok) {
+                    showToast('Permissions updated successfully', 'success');
+                    // Refresh the token list
+                    htmx.trigger('#tokenForm', 'newToken'); // This is a bit hacky but should work to refresh the list if tokenForm targets it
+                    // Better: just reload the page or use HTMX to refresh the list
+                    location.reload(); 
+                } else {
+                    response.text().then(text => showToast('Failed: ' + text, 'danger'));
+                }
+            })
+            .catch(err => showToast('Error updating permissions', 'danger'));
         }
     </script>
 </body>

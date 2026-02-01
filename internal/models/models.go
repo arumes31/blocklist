@@ -36,11 +36,12 @@ type AuditLog struct {
 }
 
 type AdminAccount struct {
-	Username     string `json:"username" db:"username"`
-	PasswordHash string `json:"password_hash" db:"password_hash"`
-	Token        string `json:"token" db:"token"`
-	Role         string `json:"role" db:"role"`
-	Permissions  string `json:"permissions" db:"permissions"`
+	Username       string `json:"username" db:"username"`
+	PasswordHash   string `json:"password_hash" db:"password_hash"`
+	Token          string `json:"token" db:"token"`
+	Role           string `json:"role" db:"role"`
+	Permissions    string `json:"permissions" db:"permissions"`
+	SessionVersion int    `json:"session_version" db:"session_version"`
 }
 
 type APIToken struct {
@@ -68,6 +69,7 @@ type OutboundWebhook struct {
 	URL       string `json:"url" db:"url"`
 	Events    string `json:"events" db:"events"`
 	Secret    string `json:"secret" db:"secret"`
+	GeoFilter string `json:"geo_filter" db:"geo_filter"`
 	Active    bool   `json:"active" db:"active"`
 	CreatedAt string `json:"created_at" db:"created_at"`
 }

@@ -28,6 +28,10 @@ import (
 	"github.com/skip2/go-qrcode"
 	zlog "github.com/rs/zerolog/log"
 	"golang.org/x/crypto/bcrypt"
+	"image"
+	"image/draw"
+	"image/png"
+	"os"
 )
 
 type APIHandler struct {
@@ -169,6 +173,7 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 
 	v1auth := v1.Group("/")
 	v1auth.Use(h.AuthMiddleware())
+	v1auth.Use(h.SessionCheckMiddleware())
 	{
 		// Data viewing requires view_ips and main limiter
 		v1auth.GET("/ips", h.mainLimiter, h.PermissionMiddleware("view_ips"), h.IPsPaginated)
@@ -182,14 +187,18 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 	}
 
 	// Webhooks handle their own granular permission checks and multiple auth types
-	v1.POST("/webhook", h.AuthMiddleware(), h.webhookLimiter, h.Webhook)
-	v1.POST("/webhook2_whitelist", h.AuthMiddleware(), h.webhookLimiter, h.Webhook2)
+	v1.POST("/webhook", h.AuthMiddleware(), h.SessionCheckMiddleware(), h.webhookLimiter, h.Webhook)
+	v1.POST("/webhook2_whitelist", h.AuthMiddleware(), h.SessionCheckMiddleware(), h.webhookLimiter, h.Webhook2)
 	
 	r.GET("/openapi.json", h.OpenAPI)
+	r.GET("/docs", func(c *gin.Context) {
+		c.HTML(http.StatusOK, "docs.html", nil)
+	})
 
 	// Protected UI routes
 	auth := r.Group("/")
 	auth.Use(h.AuthMiddleware())
+	auth.Use(h.SessionCheckMiddleware())
 	auth.Use(h.mainLimiter)
 	{
 		// Dashboard requires view_ips and view_stats
@@ -207,6 +216,7 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 		// API Tokens
 		auth.POST("/api/v1/settings/tokens", h.PermissionMiddleware("manage_api_tokens"), h.CreateAPIToken)
 		auth.DELETE("/api/v1/settings/tokens/:id", h.PermissionMiddleware("manage_api_tokens"), h.DeleteAPIToken)
+		auth.POST("/api/v1/settings/tokens/:id/permissions", h.PermissionMiddleware("manage_api_tokens"), h.UpdateAPITokenPermissions)
 		auth.DELETE("/api/v1/admin/tokens/:id", h.PermissionMiddleware("manage_admins"), h.SudoMiddleware(), h.AdminRevokeAPIToken)
 
 		// Enforcement actions
@@ -505,6 +515,47 @@ func (h *APIHandler) RBACMiddleware(requiredRole string) gin.HandlerFunc {
 	}
 }
 
+func (h *APIHandler) SessionCheckMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		session := sessions.Default(c)
+		username := session.Get("username")
+		if username == nil {
+			c.Next()
+			return
+		}
+
+		sVersion := session.Get("session_version")
+		if sVersion == nil {
+			// Old session, force logout
+			session.Clear()
+			_ = session.Save()
+			c.Redirect(http.StatusFound, "/login")
+			c.Abort()
+			return
+		}
+
+		admin, err := h.pgRepo.GetAdmin(username.(string))
+		if err != nil || admin == nil {
+			session.Clear()
+			_ = session.Save()
+			c.Redirect(http.StatusFound, "/login")
+			c.Abort()
+			return
+		}
+
+		if admin.SessionVersion > sVersion.(int) {
+			zlog.Info().Str("username", admin.Username).Msg("Session version mismatch, forcing logout")
+			session.Clear()
+			_ = session.Save()
+			c.Redirect(http.StatusFound, "/login")
+			c.Abort()
+			return
+		}
+
+		c.Next()
+	}
+}
+
 func (h *APIHandler) PermissionMiddleware(requiredPerm string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		perms, exists := c.Get("permissions")
@@ -575,9 +626,59 @@ func (h *APIHandler) ShowLogin(c *gin.Context) {
 	c.HTML(http.StatusOK, "login.html", nil)
 }
 
+func (h *APIHandler) generateQRWithLogo(url string) ([]byte, error) {
+	// Generate QR code with High error correction
+	qr, err := qrcode.New(url, qrcode.High)
+	if err != nil {
+		return nil, err
+	}
+	
+	// Create image from QR code
+	img := qr.Image(256)
+	
+	// Try to load logo
+	logoFile, err := os.Open("cmd/server/static/cd/favicon-color.png")
+	if err != nil {
+		// Fallback to plain QR if logo not found
+		return qr.PNG(256)
+	}
+	defer logoFile.Close()
+	
+	logoImg, _, err := image.Decode(logoFile)
+	if err != nil {
+		return qr.PNG(256)
+	}
+	
+	// Prepare overlay
+	canvas := image.NewRGBA(img.Bounds())
+	draw.Draw(canvas, img.Bounds(), img, image.Point{}, draw.Src)
+	
+	// Calculate position (center)
+	logoBounds := logoImg.Bounds()
+	center := 256 / 2
+	x0 := center - (logoBounds.Dx() / 2)
+	y0 := center - (logoBounds.Dy() / 2)
+	
+	// Draw logo
+	draw.Draw(canvas, logoBounds.Add(image.Pt(x0, y0)), logoImg, image.Point{}, draw.Over)
+	
+	// Encode back to PNG
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, canvas); err != nil {
+		return qr.PNG(256)
+	}
+	
+	return buf.Bytes(), nil
+}
+
 func (h *APIHandler) VerifyFirstFactor(c *gin.Context) {
 	username := c.PostForm("username")
 	password := c.PostForm("password")
+
+	if h.cfg.DisableGUIAdminLogin && username == h.cfg.GUIAdmin {
+		c.HTML(http.StatusOK, "login_error.html", gin.H{"error": "GUIAdmin login is disabled"})
+		return
+	}
 
 	admin, err := h.pgRepo.GetAdmin(username)
 	if err != nil {
@@ -588,6 +689,32 @@ func (h *APIHandler) VerifyFirstFactor(c *gin.Context) {
 	err = bcrypt.CompareHashAndPassword([]byte(admin.PasswordHash), []byte(password))
 	if err != nil {
 		c.HTML(http.StatusOK, "login_error.html", gin.H{"error": "Access Denied"})
+		return
+	}
+
+	// Check if TOTP is setup
+	if admin.Token == "" {
+		// Generate temporary TOTP secret for setup
+		key, _ := totp.Generate(totp.GenerateOpts{
+			Issuer:      "Blocklist App",
+			AccountName: username,
+		})
+		
+		pngData, err := h.generateQRWithLogo(key.URL())
+		if err != nil {
+			zlog.Error().Err(err).Msg("Failed to generate QR with logo")
+			// Fallback to simple QR
+			simplePng, _ := qrcode.Encode(key.URL(), qrcode.Medium, 256)
+			pngData = simplePng
+		}
+		imgBase64 := base64.StdEncoding.EncodeToString(pngData)
+
+		c.HTML(http.StatusOK, "login_totp_setup.html", gin.H{
+			"username": username,
+			"password": password,
+			"qr_image": "data:image/png;base64," + imgBase64,
+			"secret":   key.Secret(),
+		})
 		return
 	}
 
@@ -602,6 +729,28 @@ func (h *APIHandler) Login(c *gin.Context) {
 	username := c.PostForm("username")
 	password := c.PostForm("password")
 	totpCode := c.PostForm("totp")
+	setupSecret := c.PostForm("setup_secret")
+
+	if h.cfg.DisableGUIAdminLogin && username == h.cfg.GUIAdmin {
+		c.HTML(http.StatusOK, "login_error.html", gin.H{"error": "GUIAdmin login is disabled"})
+		return
+	}
+
+	// If it's a setup attempt
+	if setupSecret != "" {
+		if totp.Validate(totpCode, setupSecret) {
+			// Save the secret to the user
+			_ = h.pgRepo.UpdateAdminToken(username, setupSecret)
+		} else {
+			c.HTML(http.StatusOK, "login.html", gin.H{
+				"error":    "Invalid TOTP code during setup. Please try again.",
+				"username": username,
+				"password": password,
+			})
+			return
+		}
+	}
+
 	if h.authService.CheckAuth(username, password, totpCode) {
 		session := sessions.Default(c)
 		session.Set("logged_in", true)
@@ -613,6 +762,7 @@ func (h *APIHandler) Login(c *gin.Context) {
 		if admin != nil {
 			session.Set("role", admin.Role)
 			session.Set("permissions", admin.Permissions)
+			session.Set("session_version", admin.SessionVersion)
 		}
 		if err := session.Save(); err != nil {
 			zlog.Error().Err(err).Msg("Failed to save session during login")
@@ -1239,6 +1389,11 @@ func (h *APIHandler) ChangeAdminPassword(c *gin.Context) {
 		return
 	}
 
+	if req.Username == h.cfg.GUIAdmin {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Password for GUIAdmin cannot be changed via UI"})
+		return
+	}
+
 	hash, _ := h.authService.HashPassword(req.NewPassword)
 	err := h.pgRepo.UpdateAdminPassword(req.Username, hash)
 	if err != nil {
@@ -1258,18 +1413,10 @@ func (h *APIHandler) ChangeAdminTOTP(c *gin.Context) {
 		return
 	}
 
-	key, _ := totp.Generate(totp.GenerateOpts{
-		Issuer:      "Blocklist App",
-		AccountName: req.Username,
-	})
+	// Clear TOTP secret to force re-setup on next login
+	_ = h.pgRepo.UpdateAdminToken(req.Username, "")
 
-	_ = h.pgRepo.UpdateAdminToken(req.Username, key.Secret())
-
-	var png []byte
-	png, _ = qrcode.Encode(key.URL(), qrcode.Medium, 256)
-	imgBase64 := base64.StdEncoding.EncodeToString(png)
-
-	c.JSON(200, gin.H{"status": "success", "qr_image": "data:image/png;base64," + imgBase64})
+	c.JSON(200, gin.H{"status": "success"})
 }
 
 func (h *APIHandler) GetQR(c *gin.Context) {
@@ -1282,8 +1429,12 @@ func (h *APIHandler) GetQR(c *gin.Context) {
 
 	// Reconstruct the TOTP URL
 	url := fmt.Sprintf("otpauth://totp/Blocklist%%20App:%s?secret=%s&issuer=Blocklist%%20App", username, admin.Token)
-	png, _ := qrcode.Encode(url, qrcode.Medium, 256)
-	c.Data(200, "image/png", png)
+	pngData, err := h.generateQRWithLogo(url)
+	if err != nil {
+		simplePng, _ := qrcode.Encode(url, qrcode.Medium, 256)
+		pngData = simplePng
+	}
+	c.Data(200, "image/png", pngData)
 }
 
 func (h *APIHandler) RawIPs(c *gin.Context) {
@@ -1693,6 +1844,29 @@ func (h *APIHandler) DeleteAPIToken(c *gin.Context) {
 	c.Status(http.StatusOK)
 }
 
+func (h *APIHandler) UpdateAPITokenPermissions(c *gin.Context) {
+	username, _ := c.Get("username")
+	id, _ := strconv.Atoi(c.Param("id"))
+	
+	var req struct {
+		Permissions string `json:"permissions"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+		return
+	}
+
+	// Basic security: In a real app, we'd verify the user owns this token or is admin.
+	// Since we use AuthMiddleware, we have the username.
+	err := h.pgRepo.UpdateAPITokenPermissions(id, username.(string), req.Permissions)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update permissions"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "success"})
+}
+
 func (h *APIHandler) AdminRevokeAPIToken(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
 	
@@ -1718,6 +1892,7 @@ func (h *APIHandler) AddOutboundWebhook(c *gin.Context) {
 	wh.URL = c.PostForm("url")
 	wh.Secret = c.PostForm("secret")
 	wh.Events = c.PostForm("events")
+	wh.GeoFilter = c.PostForm("geo_filter")
 	wh.Active = true
 
 	err := h.pgRepo.CreateOutboundWebhook(wh)
@@ -1728,8 +1903,6 @@ func (h *APIHandler) AddOutboundWebhook(c *gin.Context) {
 
 	// Return table row for HTMX
 	c.HTML(http.StatusOK, "settings.html", gin.H{"webhooks": []models.OutboundWebhook{wh}})
-	// Actually we should return just the row fragment, but for now this is ok if htmx targets correctly
-	// Better: return just the row.
 }
 
 func (h *APIHandler) DeleteOutboundWebhook(c *gin.Context) {

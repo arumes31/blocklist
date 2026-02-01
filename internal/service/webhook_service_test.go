@@ -12,25 +12,30 @@ import (
 
 func TestWebhookService_Notify_Disabled(t *testing.T) {
 	cfg := &config.Config{EnableOutboundWebhooks: false}
-	svc := NewWebhookService(nil, cfg)
+	svc := NewWebhookService(nil, nil, cfg)
 
 	// This should return immediately
 	svc.Notify(context.Background(), "block", map[string]string{"ip": "1.1.1.1"})
 }
 
-func TestWebhookService_SendWithRetry(t *testing.T) {
+func TestWebhookService_ProcessTask(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer server.Close()
 
-	svc := NewWebhookService(nil, &config.Config{EnableOutboundWebhooks: true})
-	wh := models.OutboundWebhook{
-		URL:    server.URL,
-		Events: "block",
-		Secret: "secret",
+	svc := NewWebhookService(nil, nil, &config.Config{EnableOutboundWebhooks: true})
+	task := WebhookTask{
+		Webhook: models.OutboundWebhook{
+			URL:    server.URL,
+			Events: "block",
+			Secret: "secret",
+		},
+		Event:   "block",
+		Payload: []byte(`{"ip":"1.1.1.1"}`),
+		Attempt: 1,
 	}
 
-	// Test direct send
-	svc.sendWithRetry(wh, "block", []byte(`{"ip":"1.1.1.1"}`), 1)
+	// Test direct process
+	svc.processTask(task)
 }

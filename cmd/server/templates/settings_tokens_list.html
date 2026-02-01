@@ -1,6 +1,31 @@
 {{ range .tokens }}
 <tr>
     <td>{{ .Name }}</td>
+    <td>
+        <div class="perm-display" id="perm-display-{{ .ID }}">
+            {{ if .Permissions }}
+                {{ range $p := split .Permissions "," }}
+                <span style="background: rgba(255,0,0,0.1); padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; margin-right: 4px;">{{ $p }}</span>
+                {{ end }}
+            {{ else }}
+                <span style="color: var(--secondary-color); font-size: 0.75rem;">None</span>
+            {{ end }}
+            <button class="btn btn-dark" style="padding: 0.1rem 0.4rem; font-size: 0.7rem; margin-left: 5px;" onclick="editTokenPerms('{{ .ID }}', '{{ .Permissions }}')">Edit</button>
+        </div>
+        <div class="perm-edit" id="perm-edit-{{ .ID }}" style="display: none;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px; font-size: 0.75rem; margin-bottom: 5px;">
+                <label><input type="checkbox" class="token-edit-perm-{{ .ID }}" value="view_ips"> View</label>
+                <label><input type="checkbox" class="token-edit-perm-{{ .ID }}" value="block_ips"> Block</label>
+                <label><input type="checkbox" class="token-edit-perm-{{ .ID }}" value="unblock_ips"> Unblock</label>
+                <label><input type="checkbox" class="token-edit-perm-{{ .ID }}" value="webhook_access"> Webhook</label>
+                <label><input type="checkbox" class="token-edit-perm-{{ .ID }}" value="export_data"> Export</label>
+            </div>
+            <div style="display: flex; gap: 5px;">
+                <button class="btn btn-danger" style="padding: 0.1rem 0.4rem; font-size: 0.7rem;" onclick="saveTokenPerms('{{ .ID }}')">Save</button>
+                <button class="btn btn-dark" style="padding: 0.1rem 0.4rem; font-size: 0.7rem;" onclick="cancelEditTokenPerms('{{ .ID }}')">Cancel</button>
+            </div>
+        </div>
+    </td>
     <td><span class="utc-timestamp">{{ .CreatedAt }}</span></td>
     <td>{{ if .LastUsed }}<span class="utc-timestamp">{{ .LastUsed }}</span>{{ else }}-{{ end }}</td>
     <td>

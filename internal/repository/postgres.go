@@ -28,7 +28,7 @@ func NewPostgresRepository(url string) (*PostgresRepository, error) {
 
 func (p *PostgresRepository) GetAdmin(username string) (*models.AdminAccount, error) {
 	var admin models.AdminAccount
-	err := p.db.Get(&admin, "SELECT username, password_hash, token, role, permissions FROM admins WHERE username = $1", username)
+	err := p.db.Get(&admin, "SELECT username, password_hash, token, role, permissions, session_version FROM admins WHERE username = $1", username)
 	if err != nil {
 		return nil, err
 	}
@@ -38,22 +38,28 @@ func (p *PostgresRepository) GetAdmin(username string) (*models.AdminAccount, er
 func (p *PostgresRepository) CreateAdmin(admin models.AdminAccount) error {
 	if admin.Role == "" { admin.Role = "operator" }
 	if admin.Permissions == "" { admin.Permissions = "gui_read" }
-	_, err := p.db.NamedExec("INSERT INTO admins (username, password_hash, token, role, permissions) VALUES (:username, :password_hash, :token, :role, :permissions)", admin)
+	if admin.SessionVersion == 0 { admin.SessionVersion = 1 }
+	_, err := p.db.NamedExec("INSERT INTO admins (username, password_hash, token, role, permissions, session_version) VALUES (:username, :password_hash, :token, :role, :permissions, :session_version)", admin)
 	return err
 }
 
 func (p *PostgresRepository) UpdateAdminPassword(username, hash string) error {
-	_, err := p.db.Exec("UPDATE admins SET password_hash = $1 WHERE username = $2", hash, username)
+	_, err := p.db.Exec("UPDATE admins SET password_hash = $1, session_version = session_version + 1 WHERE username = $2", hash, username)
 	return err
 }
 
 func (p *PostgresRepository) UpdateAdminToken(username, token string) error {
-	_, err := p.db.Exec("UPDATE admins SET token = $1 WHERE username = $2", token, username)
+	_, err := p.db.Exec("UPDATE admins SET token = $1, session_version = session_version + 1 WHERE username = $2", token, username)
 	return err
 }
 
 func (p *PostgresRepository) UpdateAdminPermissions(username, permissions string) error {
-	_, err := p.db.Exec("UPDATE admins SET permissions = $1 WHERE username = $2", permissions, username)
+	_, err := p.db.Exec("UPDATE admins SET permissions = $1, session_version = session_version + 1 WHERE username = $2", permissions, username)
+	return err
+}
+
+func (p *PostgresRepository) IncrementSessionVersion(username string) error {
+	_, err := p.db.Exec("UPDATE admins SET session_version = session_version + 1 WHERE username = $1", username)
 	return err
 }
 
@@ -64,7 +70,7 @@ func (p *PostgresRepository) DeleteAdmin(username string) error {
 
 func (p *PostgresRepository) GetAllAdmins() ([]models.AdminAccount, error) {
 	var admins []models.AdminAccount
-	err := p.db.Select(&admins, "SELECT username, password_hash, token, role, permissions FROM admins")
+	err := p.db.Select(&admins, "SELECT username, password_hash, token, role, permissions, session_version FROM admins")
 	return admins, err
 }
 
@@ -104,6 +110,11 @@ func (p *PostgresRepository) DeleteAPITokenByID(id int) error {
 	return err
 }
 
+func (p *PostgresRepository) UpdateAPITokenPermissions(id int, username, permissions string) error {
+	_, err := p.db.Exec("UPDATE api_tokens SET permissions = $1 WHERE id = $2 AND username = $3", permissions, id, username)
+	return err
+}
+
 func (p *PostgresRepository) UpdateTokenLastUsed(id int) error {
 	_, err := p.db.Exec("UPDATE api_tokens SET last_used = NOW() WHERE id = $1", id)
 	return err
@@ -127,7 +138,7 @@ func (p *PostgresRepository) DeleteSavedView(id int, username string) error {
 
 func (p *PostgresRepository) GetActiveWebhooks() ([]models.OutboundWebhook, error) {
 	var webhooks []models.OutboundWebhook
-	err := p.db.Select(&webhooks, "SELECT id, url, events, secret, active, created_at FROM outbound_webhooks WHERE active = TRUE")
+	err := p.db.Select(&webhooks, "SELECT id, url, events, secret, geo_filter, active, created_at FROM outbound_webhooks WHERE active = TRUE")
 	return webhooks, err
 }
 
@@ -137,7 +148,7 @@ func (p *PostgresRepository) LogWebhookDelivery(logEntry models.WebhookLog) erro
 }
 
 func (p *PostgresRepository) CreateOutboundWebhook(wh models.OutboundWebhook) error {
-	_, err := p.db.NamedExec("INSERT INTO outbound_webhooks (url, events, secret, active) VALUES (:url, :events, :secret, :active)", wh)
+	_, err := p.db.NamedExec("INSERT INTO outbound_webhooks (url, events, secret, geo_filter, active) VALUES (:url, :events, :secret, :geo_filter, :active)", wh)
 	return err
 }
 

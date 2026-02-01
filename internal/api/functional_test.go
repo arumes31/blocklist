@@ -33,8 +33,8 @@ func setupTestRouter(rRepo *repository.RedisRepository) *gin.Engine {
 	// Minimal service/handler setup
 	ipSvc := service.NewIPService(cfg, rRepo, nil)
 	authSvc := service.NewAuthService(nil, rRepo)
-	webhookSvc := service.NewWebhookService(nil, cfg)
-	hub := NewHub()
+	webhookSvc := service.NewWebhookService(nil, rRepo, cfg)
+	hub := NewHub(rRepo.GetClient())
 	
 	h := NewAPIHandler(cfg, rRepo, nil, authSvc, ipSvc, hub, webhookSvc)
 	
