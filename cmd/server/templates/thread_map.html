@@ -150,7 +150,7 @@
     <div style="display: flex; align-items: center; gap: 1rem;">
         <div style="display: flex; gap: 1rem; font-size: 0.8rem; background: rgba(255,255,255,0.05); padding: 5px 15px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1);">
             <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
-                <input type="checkbox" id="toggleBlockIPs" onchange="fetchLatestData()" checked> Block IPs
+                <input type="checkbox" id="toggleBlockIPs" onchange="fetchLatestData()" checked> Blocked IPs
             </label>
             <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
                 <input type="checkbox" id="toggleWhitelistIPs" onchange="fetchLatestData()"> Whitelisted IPs
@@ -280,10 +280,9 @@
             const res = await fetch('/api/v1/ips?limit=500');
             if (res.ok) {
                 const payload = await res.json();
-                const blocks = payload.items || [];
-                // In this case, "Block IPs" means ALL blocks.
-                allItems = allItems.concat(blocks.map(it => ({ ...it, type: 'block' })));
-            }
+                            const blocks = payload.items || [];
+                            // In this case, "Blocked IPs" means ALL blocks.
+                            allItems = allItems.concat(blocks.map(it => ({ ...it, type: 'block' })));            }
         }
 
         // Fetch Whitelists if enabled
