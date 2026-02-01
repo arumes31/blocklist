@@ -122,14 +122,14 @@
         }
 
         @keyframes spawn-pulse {
-            0% { transform: translate(-50%, -50%) scale(0.1); opacity: 0.8; box-shadow: 0 0 0 0 rgba(255, 0, 0, 0.7); }
+            0% { transform: translate(-50%, -50%) scale(0.1); opacity: 0.8; box-shadow: 0 0 0 0 var(--pulse-color, rgba(255, 0, 0, 0.7)); }
             70% { transform: translate(-50%, -50%) scale(2.5); opacity: 0.3; box-shadow: 0 0 0 20px rgba(255, 0, 0, 0); }
             100% { transform: translate(-50%, -50%) scale(1); opacity: 1; box-shadow: 0 0 0 0 rgba(255, 0, 0, 0); }
         }
         .live-spawn-marker {
             width: 12px;
             height: 12px;
-            background: var(--primary-red);
+            background: var(--pulse-color, var(--primary-red));
             border: 2px solid #fff;
             border-radius: 50%;
             position: absolute;
@@ -148,6 +148,14 @@
         <h2 style="margin: 0; font-size: 1.2rem;">Thread Map</h2>
     </div>
     <div style="display: flex; align-items: center; gap: 1rem;">
+        <div style="display: flex; gap: 1rem; font-size: 0.8rem; background: rgba(255,255,255,0.05); padding: 5px 15px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1);">
+            <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                <input type="checkbox" id="toggleWebhookBlock" onchange="fetchLatestData()"> Webhooks (Block)
+            </label>
+            <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                <input type="checkbox" id="toggleWebhookWhitelist" onchange="fetchLatestData()"> Webhooks (Whitelist)
+            </label>
+        </div>
         <span id="live-status">LIVE</span>
         <a href="/dashboard" class="btn">Back to Dashboard</a>
     </div>
@@ -262,11 +270,43 @@
     }
 
     async function fetchLatestData() {
+        const showWebhookBlock = document.getElementById('toggleWebhookBlock').checked;
+        const showWebhookWhitelist = document.getElementById('toggleWebhookWhitelist').checked;
+
+        let allItems = [];
+
+        // Fetch Blocks
         const res = await fetch('/api/v1/ips?limit=500');
         if (res.ok) {
             const payload = await res.json();
-            updateMap(payload.items || []);
+            const blocks = payload.items || [];
+            
+            // Filter blocks: if it's from Webhook, only show if toggle is ON
+            const filteredBlocks = blocks.filter(it => {
+                const isWebhook = it.data && it.data.added_by === 'Webhook';
+                if (isWebhook) return showWebhookBlock;
+                return true; // Always show manual blocks
+            });
+            
+            allItems = allItems.concat(filteredBlocks.map(it => ({ ...it, type: 'block' })));
         }
+
+        // Fetch Whitelists if enabled
+        if (showWebhookWhitelist) {
+            const wres = await fetch('/api/v1/whitelists');
+            if (wres.ok) {
+                const whitelists = await wres.json();
+                // Filter whitelists: normally we only want to show webhook whitelists as requested
+                // but usually manual whitelists are also interesting.
+                // The request said "webhooks (whitelist)", so I'll follow that.
+                const filteredWhitelists = whitelists.filter(it => {
+                    return it.data && it.data.added_by === 'WebhookAuto';
+                });
+                allItems = allItems.concat(filteredWhitelists.map(it => ({ ...it, type: 'whitelist' })));
+            }
+        }
+
+        updateMap(allItems);
 
         const statsRes = await fetch('/api/stats');
         if (statsRes.ok) {
@@ -281,14 +321,17 @@
         items.forEach(it => {
             if (it.data && it.data.geolocation && it.data.geolocation.latitude) {
                 const geo = it.data.geolocation;
+                const color = it.type === 'whitelist' ? "#00ff00" : "#ff0000";
+                const label = it.type === 'whitelist' ? "WHITELIST" : "BLOCK";
+                
                 L.circleMarker([geo.latitude, geo.longitude], {
                     radius: 4,
-                    fillColor: "#ff0000",
+                    fillColor: color,
                     color: "#fff",
                     weight: 0.5,
                     opacity: 1,
                     fillOpacity: 0.8
-                }).addTo(markers).bindPopup(`<b>${it.ip}</b><br>${geo.city}, ${geo.country}<br>${it.data.reason}`);
+                }).addTo(markers).bindPopup(`<b>[${label}] ${it.ip}</b><br>${geo.city}, ${geo.country}<br>${it.data.reason}`);
             }
         });
     }
@@ -304,21 +347,35 @@
     const socket = new WebSocket((window.location.protocol === 'https:' ? 'wss://' : 'ws://') + window.location.host + '/ws');
     socket.onmessage = function(event) {
         const msg = JSON.parse(event.data);
-        if (msg.action === 'block') {
+        const showWebhookBlock = document.getElementById('toggleWebhookBlock').checked;
+        const showWebhookWhitelist = document.getElementById('toggleWebhookWhitelist').checked;
+
+        if (msg.action === 'block' || msg.action === 'whitelist') {
             const it = msg.data;
+            const type = msg.action;
+            const isWebhook = it.data && (it.data.added_by === 'Webhook' || it.data.added_by === 'WebhookAuto');
+            
+            // Check if we should show this live update
+            if (isWebhook) {
+                if (type === 'block' && !showWebhookBlock) return;
+                if (type === 'whitelist' && !showWebhookWhitelist) return;
+            }
+
             if (it.data && it.data.geolocation && it.data.geolocation.latitude) {
                 const geo = it.data.geolocation;
+                const color = type === 'whitelist' ? "#00ff00" : "#ff0000";
+                const label = type === 'whitelist' ? "LIVE WHITELIST" : "LIVE BLOCK";
                 
                 // Create a pulsing live marker
                 const liveIcon = L.divIcon({
                     className: 'live-spawn-container',
-                    html: '<div class="live-spawn-marker"></div>',
+                    html: `<div class="live-spawn-marker" style="--pulse-color: ${color}"></div>`,
                     iconSize: [0, 0]
                 });
                 
                 const liveMarker = L.marker([geo.latitude, geo.longitude], { icon: liveIcon })
                     .addTo(liveMarkers)
-                    .bindPopup(`<b>LIVE BLOCK: ${it.ip}</b><br>${geo.city}, ${geo.country}<br>${it.data.reason}`)
+                    .bindPopup(`<b>${label}: ${it.ip}</b><br>${geo.city}, ${geo.country}<br>${it.data.reason}`)
                     .openPopup();
                 
                 // Remove the pulse after 10 seconds
@@ -326,9 +383,11 @@
                     liveMarkers.removeLayer(liveMarker);
                 }, 10000);
 
-                // Update total/stats optimistically
-                const totalEl = document.getElementById('stat-total');
-                if (totalEl) totalEl.textContent = (parseInt(totalEl.textContent) + 1).toString();
+                // Update total/stats optimistically for blocks
+                if (type === 'block') {
+                    const totalEl = document.getElementById('stat-total');
+                    if (totalEl) totalEl.textContent = (parseInt(totalEl.textContent) + 1).toString();
+                }
                 
                 // Refresh full data after a short delay to update chart and persistent markers
                 setTimeout(fetchLatestData, 3000);

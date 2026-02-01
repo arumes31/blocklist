@@ -177,6 +177,7 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 	{
 		// Data viewing requires view_ips and main limiter
 		v1auth.GET("/ips", h.mainLimiter, h.PermissionMiddleware("view_ips"), h.IPsPaginated)
+		v1auth.GET("/whitelists", h.mainLimiter, h.PermissionMiddleware("view_ips"), h.JSONWhitelists)
 		v1auth.GET("/ips_automate", h.mainLimiter, h.PermissionMiddleware("view_ips"), h.AutomateIPs)
 		
 		// Exports require export_data
@@ -1079,6 +1080,12 @@ func (h *APIHandler) AddWhitelist(c *gin.Context) {
 		Reason:      req.Reason,
 	}
 	_ = h.redisRepo.WhitelistIP(req.IP, entry)
+	
+	h.hub.BroadcastEvent("whitelist", map[string]interface{}{
+		"ip":   req.IP,
+		"data": entry,
+	})
+
 	c.JSON(200, gin.H{"status": "success"})
 }
 
@@ -1091,6 +1098,11 @@ func (h *APIHandler) RemoveWhitelist(c *gin.Context) {
 		return
 	}
 	_ = h.redisRepo.RemoveFromWhitelist(req.IP)
+	
+	h.hub.BroadcastEvent("unwhitelist", map[string]interface{}{
+		"ip": req.IP,
+	})
+
 	c.JSON(200, gin.H{"status": "success"})
 }
 
@@ -1299,6 +1311,12 @@ func (h *APIHandler) Webhook2(c *gin.Context) {
 		Reason:      "Automated Whitelist",
 	}
 	_ = h.redisRepo.WhitelistIP(clientIP, entry)
+	
+	h.hub.BroadcastEvent("whitelist", map[string]interface{}{
+		"ip":   clientIP,
+		"data": entry,
+	})
+
 	c.JSON(http.StatusOK, gin.H{"status": "IP added", "ip": clientIP})
 }
 
@@ -1465,6 +1483,24 @@ func (h *APIHandler) GetQR(c *gin.Context) {
 		pngData = simplePng
 	}
 	c.Data(200, "image/png", pngData)
+}
+
+func (h *APIHandler) JSONWhitelists(c *gin.Context) {
+	ips, err := h.redisRepo.GetWhitelistedIPs()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch whitelists"})
+		return
+	}
+	
+	type item struct {
+		IP   string                 `json:"ip"`
+		Data models.WhitelistEntry  `json:"data"`
+	}
+	list := make([]item, 0, len(ips))
+	for ip, data := range ips {
+		list = append(list, item{IP: ip, Data: data})
+	}
+	c.JSON(http.StatusOK, list)
 }
 
 func (h *APIHandler) RawIPs(c *gin.Context) {
