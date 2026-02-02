@@ -1292,11 +1292,8 @@ func (h *APIHandler) Webhook(c *gin.Context) {
 			targetIP = c.ClientIP()
 		}
 		
-		if !h.ipService.IsValidIP(targetIP) {
-			// In case it's already whitelisted or in a protected range
-			// We can still proceed if the user wants to explicitly whitelist it, 
-			// but IsValidIP usually checks if it's NOT whitelisted yet.
-		}
+		// Proceeding with whitelist even if IsValidIP returns false (e.g. already whitelisted or protected range)
+		// as explicit whitelisting should override those checks.
 
 		geo := h.ipService.GetGeoIP(targetIP)
 		
