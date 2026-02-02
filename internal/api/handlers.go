@@ -1582,6 +1582,12 @@ func (h *APIHandler) OpenAPI(c *gin.Context) {
             {"url": "/"},
         },
         "components": gin.H{
+            "securitySchemes": gin.H{
+                "BearerAuth": gin.H{
+                    "type": "http",
+                    "scheme": "bearer",
+                },
+            },
             "schemas": gin.H{
                 "IPEntry": gin.H{
                     "type": "object",
@@ -1612,7 +1618,8 @@ func (h *APIHandler) OpenAPI(c *gin.Context) {
                     "properties": gin.H{
                         "hour":  gin.H{"type": "integer"},
                         "day":   gin.H{"type": "integer"},
-                        "total": gin.H{"type": "integer"},
+                        "total": gin.H{"type": "integer", "description": "Persistent total bans ever recorded"},
+                        "active_blocks": gin.H{"type": "integer", "description": "Currently active blocks in system"},
                         "top_countries": gin.H{
                             "type": "array",
                             "items": gin.H{
@@ -1627,11 +1634,15 @@ func (h *APIHandler) OpenAPI(c *gin.Context) {
                 },
             },
         },
+        "security": []gin.H{
+            {"BearerAuth": []string{}},
+        },
         "paths": gin.H{
             "/api/v1/ips": gin.H{
                 "get": gin.H{
                     "summary": "List blocked IPs with advanced filtering",
                     "tags": []string{"Data Retrieval"},
+                    "security": []gin.H{{"BearerAuth": []string{}}},
                     "parameters": []gin.H{
                         {"name": "limit", "in": "query", "description": "Number of records to return", "schema": gin.H{"type": "integer", "default": 500}},
                         {"name": "cursor", "in": "query", "description": "Pagination cursor (timestamp score)", "schema": gin.H{"type": "string"}},
@@ -1664,6 +1675,7 @@ func (h *APIHandler) OpenAPI(c *gin.Context) {
                 "get": gin.H{
                     "summary": "Get simple JSON array of all blocked IPs",
                     "tags": []string{"Data Retrieval"},
+                    "security": []gin.H{{"BearerAuth": []string{}}},
                     "responses": gin.H{
                         "200": gin.H{
                             "description": "Simple list of IPs",
@@ -1680,6 +1692,7 @@ func (h *APIHandler) OpenAPI(c *gin.Context) {
                 "get": gin.H{
                     "summary": "Get plain-text list of blocked IPs",
                     "tags": []string{"Data Retrieval"},
+                    "security": []gin.H{{"BearerAuth": []string{}}},
                     "responses": gin.H{
                         "200": gin.H{
                             "description": "Newline-separated list of IPs",
@@ -1692,6 +1705,7 @@ func (h *APIHandler) OpenAPI(c *gin.Context) {
                 "get": gin.H{
                     "summary": "Get aggregate blocking statistics",
                     "tags": []string{"Monitoring"},
+                    "security": []gin.H{{"BearerAuth": []string{}}},
                     "responses": gin.H{
                         "200": gin.H{
                             "description": "Statistics object",
@@ -1704,9 +1718,10 @@ func (h *APIHandler) OpenAPI(c *gin.Context) {
             },
             "/api/v1/webhook": gin.H{
                 "post": gin.H{
-                    "summary": "Ban or Unban an IP via Webhook",
-                    "description": "Primary endpoint for automation. Supports Bearer Token, Session, or HMAC signature (X-Webhook-Signature).",
+                    "summary": "Perform Enforcement Action (Ban/Unban/Whitelist)",
+                    "description": "Unified endpoint for all automated actions. Requires a Bearer Token.",
                     "tags": []string{"Enforcement"},
+                    "security": []gin.H{{"BearerAuth": []string{}}},
                     "requestBody": gin.H{
                         "required": true,
                         "content": gin.H{
@@ -1714,21 +1729,22 @@ func (h *APIHandler) OpenAPI(c *gin.Context) {
                                 "schema": gin.H{
                                     "type": "object",
                                     "properties": gin.H{
-                                        "ip":       gin.H{"type": "string", "example": "1.2.3.4", "description": "IPv4 or IPv6 address"},
-                                        "act":      gin.H{"type": "string", "enum": []string{"ban", "unban"}, "description": "Action to perform"},
+                                        "ip":       gin.H{"type": "string", "example": "1.2.3.4", "description": "IPv4 or IPv6 address. Optional for 'whitelist' (defaults to caller IP)."},
+                                        "act":      gin.H{"type": "string", "enum": []string{"ban", "unban", "whitelist"}, "description": "Action to perform"},
                                         "reason":   gin.H{"type": "string", "example": "Brute force attack", "description": "Reason for the action"},
                                         "ttl":      gin.H{"type": "integer", "example": 86400, "description": "Time-to-live in seconds (ephemeral blocks only)"},
                                         "persist":  gin.H{"type": "boolean", "default": false, "description": "If true, IP is stored in the database indefinitely"},
                                     },
-                                    "required": []string{"ip", "act"},
+                                    "required": []string{"act"},
                                 },
                             },
                         },
                     },
                     "responses": gin.H{
-                        "200": gin.H{"description": "Action successfully queued or performed"},
+                        "200": gin.H{"description": "Action successfully performed"},
                         "400": gin.H{"description": "Invalid IP format or missing parameters"},
                         "401": gin.H{"description": "Unauthorized"},
+                        "403": gin.H{"description": "Forbidden - Insufficient permissions"},
                     },
                 },
             },
