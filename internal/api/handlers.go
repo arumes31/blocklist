@@ -420,6 +420,7 @@ func (h *APIHandler) DashboardTable(c *gin.Context) {
 func (h *APIHandler) Health(c *gin.Context) {
 	status := "UP"
 	dbStatus := "OK"
+	readDbStatus := "OK"
 	redisStatus := "OK"
 	if h.redisRepo != nil {
 		if _, err := h.redisRepo.HGetAllRaw("ips"); err != nil {
@@ -435,8 +436,20 @@ func (h *APIHandler) Health(c *gin.Context) {
 			dbStatus = "ERROR"
 			status = "DEGRADED"
 		}
+		// Check read replica if it's different from primary
+		// We'll add a Ping method to repository later if needed, 
+		// for now we just use a simple read-only query.
+		if _, err := h.pgRepo.GetPersistentCount(); err != nil {
+			readDbStatus = "ERROR"
+			status = "DEGRADED"
+		}
 	}
-	c.JSON(200, gin.H{"status": status, "postgres": dbStatus, "redis": redisStatus})
+	c.JSON(200, gin.H{
+		"status": status, 
+		"postgres": dbStatus, 
+		"postgres_read": readDbStatus,
+		"redis": redisStatus,
+	})
 }
 
 func (h *APIHandler) isIPInCIDRs(ipStr string, cidrs string) bool {
@@ -511,7 +524,7 @@ func (h *APIHandler) AuthMiddleware() gin.HandlerFunc {
 						return
 					}
 
-					_ = h.pgRepo.UpdateTokenLastUsed(token.ID)
+					_ = h.pgRepo.UpdateTokenLastUsed(token.ID, c.ClientIP())
 					c.Set("username", token.Username)
 					c.Set("role", token.Role)
 					c.Set("permissions", token.Permissions)

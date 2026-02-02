@@ -149,7 +149,7 @@ func (p *PostgresRepository) CreateAPIToken(token models.APIToken) error {
 
 func (p *PostgresRepository) GetAPITokenByHash(hash string) (*models.APIToken, error) {
 	var token models.APIToken
-	err := p.readDb.Get(&token, "SELECT id, token_hash, name, username, role, permissions, allowed_ips, created_at, expires_at, last_used FROM api_tokens WHERE token_hash = $1", hash)
+	err := p.readDb.Get(&token, "SELECT id, token_hash, name, username, role, permissions, allowed_ips, created_at, expires_at, last_used, last_used_ip FROM api_tokens WHERE token_hash = $1", hash)
 	if err != nil {
 		return nil, err
 	}
@@ -158,13 +158,13 @@ func (p *PostgresRepository) GetAPITokenByHash(hash string) (*models.APIToken, e
 
 func (p *PostgresRepository) GetAPITokens(username string) ([]models.APIToken, error) {
 	var tokens []models.APIToken
-	err := p.readDb.Select(&tokens, "SELECT id, name, username, role, permissions, allowed_ips, created_at, expires_at, last_used FROM api_tokens WHERE username = $1 ORDER BY created_at DESC", username)
+	err := p.readDb.Select(&tokens, "SELECT id, name, username, role, permissions, allowed_ips, created_at, expires_at, last_used, last_used_ip FROM api_tokens WHERE username = $1 ORDER BY created_at DESC", username)
 	return tokens, err
 }
 
 func (p *PostgresRepository) GetAllAPITokens() ([]models.APIToken, error) {
 	var tokens []models.APIToken
-	err := p.readDb.Select(&tokens, "SELECT id, name, username, role, permissions, allowed_ips, created_at, expires_at, last_used FROM api_tokens ORDER BY created_at DESC")
+	err := p.readDb.Select(&tokens, "SELECT id, name, username, role, permissions, allowed_ips, created_at, expires_at, last_used, last_used_ip FROM api_tokens ORDER BY created_at DESC")
 	return tokens, err
 }
 
@@ -183,8 +183,8 @@ func (p *PostgresRepository) UpdateAPITokenPermissions(id int, username, permiss
 	return err
 }
 
-func (p *PostgresRepository) UpdateTokenLastUsed(id int) error {
-	_, err := p.db.Exec("UPDATE api_tokens SET last_used = NOW() WHERE id = $1", id)
+func (p *PostgresRepository) UpdateTokenLastUsed(id int, ip string) error {
+	_, err := p.db.Exec("UPDATE api_tokens SET last_used = NOW(), last_used_ip = $1 WHERE id = $2", ip, id)
 	return err
 }
 

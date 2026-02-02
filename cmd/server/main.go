@@ -441,8 +441,14 @@ func main() {
 	<-quit
 	zlog.Info().Msg("Shutting down server...")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	// 1. Stop Asynq components first
+	asynqScheduler.Shutdown()
+	asynqServer.Shutdown()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+	
+	// 2. Shutdown HTTP Server
 	if err := srv.Shutdown(ctx); err != nil {
 		zlog.Fatal().Err(err).Msg("Server forced to shutdown")
 	}

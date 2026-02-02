@@ -1,0 +1,1 @@
+ALTER TABLE api_tokens ADD COLUMN IF NOT EXISTS last_used_ip TEXT DEFAULT '';

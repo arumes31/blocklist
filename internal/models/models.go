@@ -56,6 +56,7 @@ type APIToken struct {
 	CreatedAt   string   `json:"created_at" db:"created_at"`
 	ExpiresAt   *string  `json:"expires_at" db:"expires_at"`
 	LastUsed    *string  `json:"last_used" db:"last_used"`
+	LastUsedIP  string   `json:"last_used_ip" db:"last_used_ip"`
 }
 
 type SavedView struct {
