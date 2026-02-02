@@ -177,6 +177,7 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 		v1auth.GET("/ips", h.mainLimiter, h.PermissionMiddleware("view_ips"), h.IPsPaginated)
 		v1auth.GET("/ips_list", h.mainLimiter, h.PermissionMiddleware("view_ips"), h.JSONIPs)
 		v1auth.GET("/whitelists", h.mainLimiter, h.PermissionMiddleware("view_ips"), h.JSONWhitelists)
+		v1auth.GET("/ips/:ip/details", h.mainLimiter, h.PermissionMiddleware("view_ips"), h.GetIPDetails)
 		
 		// Exports require export_data
 		v1auth.GET("/ips/export", h.mainLimiter, h.PermissionMiddleware("export_data"), h.SudoMiddleware(), h.ExportIPs)
@@ -1459,6 +1460,19 @@ func (h *APIHandler) JSONIPs(c *gin.Context) {
 		list = append(list, ip)
 	}
 	c.JSON(http.StatusOK, list)
+}
+
+func (h *APIHandler) GetIPDetails(c *gin.Context) {
+	ip := c.Param("ip")
+	
+	entry, _ := h.redisRepo.GetIPEntry(ip)
+	history, _ := h.pgRepo.GetIPHistory(ip)
+	
+	c.JSON(http.StatusOK, gin.H{
+		"ip":      ip,
+		"current": entry,
+		"history": history,
+	})
 }
 
 // IPsPaginated provides server-side pagination and search across all records.

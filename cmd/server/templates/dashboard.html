@@ -289,6 +289,70 @@
             border-radius: 4px;
             box-sizing: border-box;
         }
+
+        /* Side Panel (Detail Drawer) */
+        .side-panel {
+            position: fixed;
+            top: 0;
+            right: -500px;
+            width: 450px;
+            height: 100%;
+            background: rgba(15, 15, 15, 0.98);
+            border-left: 1px solid var(--border-red);
+            z-index: 1500;
+            transition: right 0.3s ease-out;
+            box-shadow: -10px 0 30px rgba(0,0,0,0.5);
+            backdrop-filter: blur(10px);
+            padding: 2rem;
+            overflow-y: auto;
+            color: #fff;
+        }
+        .side-panel.active { right: 0; }
+        .side-panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            padding-bottom: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        .side-panel-close {
+            background: transparent;
+            border: none;
+            color: var(--secondary-color);
+            font-size: 1.5rem;
+            cursor: pointer;
+        }
+        .history-item {
+            padding: 10px;
+            border-left: 2px solid var(--vibrant-red);
+            background: rgba(255,255,255,0.03);
+            margin-bottom: 10px;
+            border-radius: 0 4px 4px 0;
+        }
+        .history-item .ts { font-size: 0.75rem; color: var(--secondary-color); }
+        .history-item .actor { font-size: 0.85rem; font-weight: bold; margin: 4px 0; }
+        
+        /* Reason Presets */
+        .reason-presets {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 10px;
+        }
+        .reason-chip {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .reason-chip:hover {
+            background: rgba(255,0,0,0.1);
+            border-color: var(--vibrant-red);
+        }
     </style>
 </head>
 <body>
@@ -706,6 +770,13 @@
         <div class="form-group">
             <label>Reason</label>
             <input type="text" id="blockReason" class="form-control" placeholder="e.g. Brute force">
+            <div class="reason-presets">
+                <div class="reason-chip" onclick="setReason('Brute Force')">Brute Force</div>
+                <div class="reason-chip" onclick="setReason('Scraping')">Scraping</div>
+                <div class="reason-chip" onclick="setReason('DDoS')">DDoS</div>
+                <div class="reason-chip" onclick="setReason('Vulnerability Scan')">Vulnerability Scan</div>
+                <div class="reason-chip" onclick="setReason('Spam')">Spam</div>
+            </div>
         </div>
         <div class="form-group">
             <label>TTL (seconds, default 86400)</label>
@@ -719,6 +790,19 @@
         <div style="display: flex; gap: 10px; margin-top: 2rem;">
             <button onclick="confirmBlock()" class="btn btn-danger" style="flex: 1;">Block IP</button>
             <button onclick="closeModal('blockModal')" class="btn btn-secondary" style="flex: 1; background: #eee; color: #333;">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<!-- IP Detail Side Panel -->
+<div id="sidePanel" class="side-panel">
+    <div class="side-panel-header">
+        <h3 style="margin:0;">IP Details</h3>
+        <button class="side-panel-close" onclick="closeSidePanel()">×</button>
+    </div>
+    <div id="sidePanelContent">
+        <div style="text-align: center; padding: 2rem;">
+            <span class="spinner"></span> Loading details...
         </div>
     </div>
 </div>
@@ -751,7 +835,9 @@
         const expiresHTML = expires === 'Never' ? 'Never' : `<span class="utc-timestamp">${expires}</span>`;
         return `<tr id="row-${ip.toLowerCase().replace(/\./g,'-').replace(/:/g,'-')}">
             <td><input type="checkbox" class="ip-checkbox" value="${ip}" onclick="updateBulkUI()"></td>
-            <td style="font-family: monospace; font-weight: 600;">${ip}</td>
+            <td style="font-family: monospace; font-weight: 600;">
+                <a href="javascript:void(0)" onclick="showIPDetails('${ip}')" style="color: var(--vibrant-red); text-decoration: none; border-bottom: 1px dashed rgba(255,0,0,0.3);">${ip}</a>
+            </td>
             <td><span class="utc-timestamp">${ts}</span></td>
             <td>${expiresHTML}</td>
             <td><span style="font-size: 0.9rem; color: var(--secondary-color);">${reason}</span></td>
@@ -763,6 +849,68 @@
                         hx-target="closest tr" hx-swap="outerHTML swap:0.5s" title="Unblock this IP">Unblock</button>
             </td>
         </tr>`;
+    }
+
+    function setReason(r) {
+        document.getElementById('blockReason').value = r;
+    }
+
+    async function showIPDetails(ip) {
+        const panel = document.getElementById('sidePanel');
+        const content = document.getElementById('sidePanelContent');
+        panel.classList.add('active');
+        content.innerHTML = '<div style="text-align: center; padding: 2rem;"><span class="spinner"></span> Loading details...</div>';
+
+        try {
+            const res = await fetch(`/api/v1/ips/${ip}/details`);
+            const data = await res.json();
+            
+            let historyHTML = data.history.map(h => `
+                <div class="history-item">
+                    <div class="ts">${new Date(h.timestamp).toLocaleString()}</div>
+                    <div class="actor">Action: <span style="color:var(--vibrant-red)">${h.action}</span> by ${h.actor}</div>
+                    <div style="font-size:0.8rem; color:#ccc;">${h.reason || 'No reason provided'}</div>
+                </div>
+            `).join('');
+
+            if (data.history.length === 0) historyHTML = '<p style="color:var(--secondary-color)">No history found for this IP.</p>';
+
+            const current = data.current;
+            const geo = current && current.geolocation ? `
+                <div style="margin-top:1rem; padding:1rem; background:rgba(255,255,255,0.05); border-radius:8px;">
+                    <div style="font-weight:bold; margin-bottom:5px;">Geolocation</div>
+                    <div class="flag-icon flag-icon-${current.geolocation.country.toLowerCase()}"></div> ${current.geolocation.city || ''} (${current.geolocation.country})
+                    <div style="font-size:0.8rem; color:var(--secondary-color); margin-top:5px;">ASN: ${current.geolocation.asn} - ${current.geolocation.asn_org}</div>
+                </div>
+            ` : '';
+
+            content.innerHTML = `
+                <div style="font-size: 1.2rem; font-family: monospace; color: var(--vibrant-red); margin-bottom: 1.5rem;">${ip}</div>
+                <div style="margin-bottom: 2rem;">
+                    <h4 style="margin-bottom:10px; color:var(--secondary-color); text-transform:uppercase; font-size:0.8rem;">Current Status</h4>
+                    ${current ? `
+                        <div class="status-chip live" style="display:inline-block">BLOCKED</div>
+                        <div style="margin-top:10px; font-size:0.9rem;">
+                            <div>Reason: ${current.reason}</div>
+                            <div>Added By: ${current.added_by}</div>
+                            <div>Expires: ${current.expires_at || 'Never'}</div>
+                        </div>
+                        ${geo}
+                    ` : '<div class="status-chip offline" style="display:inline-block">NOT BLOCKED</div>'}
+                </div>
+                
+                <h4 style="margin-bottom:15px; color:var(--secondary-color); text-transform:uppercase; font-size:0.8rem;">Audit Trail</h4>
+                <div class="history-list">
+                    ${historyHTML}
+                </div>
+            `;
+        } catch (e) {
+            content.innerHTML = '<div style="color:var(--primary-red)">Failed to load details.</div>';
+        }
+    }
+
+    function closeSidePanel() {
+        document.getElementById('sidePanel').classList.remove('active');
     }
 
     function toggleCountryDropdown() {
@@ -1222,6 +1370,14 @@
     // UI Helpers
     function openModal(id) { document.getElementById(id).style.display = 'block'; }
     function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+
+    // Close on Escape
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            document.querySelectorAll('.modal').forEach(m => m.style.display = 'none');
+            closeSidePanel();
+        }
+    });
 
     function showToast(message, type = 'success') {
         const container = document.getElementById('toast-container');

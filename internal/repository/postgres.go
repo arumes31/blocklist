@@ -244,3 +244,9 @@ func (p *PostgresRepository) GetAuditLogs(limit int) ([]models.AuditLog, error) 
 	err := p.db.Select(&logs, "SELECT id, timestamp, actor, action, target, reason FROM audit_logs ORDER BY timestamp DESC LIMIT $1", limit)
 	return logs, err
 }
+
+func (p *PostgresRepository) GetIPHistory(ip string) ([]models.AuditLog, error) {
+	var logs []models.AuditLog
+	err := p.db.Select(&logs, "SELECT id, timestamp, actor, action, target, reason FROM audit_logs WHERE target = $1 ORDER BY timestamp DESC", ip)
+	return logs, err
+}
