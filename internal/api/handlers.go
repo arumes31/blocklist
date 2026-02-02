@@ -584,8 +584,6 @@ func (h *APIHandler) PermissionMiddleware(requiredPerm string) gin.HandlerFunc {
 		// System admin bypass
 		username, _ := c.Get("username")
 		if username == h.cfg.GUIAdmin && 
-		   requiredPerm != "webhook_ban" && 
-		   requiredPerm != "webhook_unban" && 
 		   requiredPerm != "webhook_whitelist" {
 			c.Next()
 			return
@@ -1133,9 +1131,9 @@ func (h *APIHandler) Webhook(c *gin.Context) {
 	// Determine required permission based on action
 	requiredPerm := ""
 	if data.Act == "ban" || data.Act == "ban-ip" {
-		requiredPerm = "webhook_ban"
+		requiredPerm = "block_ips"
 	} else if data.Act == "unban" || data.Act == "delete-ban" {
-		requiredPerm = "webhook_unban"
+		requiredPerm = "unblock_ips"
 	} else {
 		c.JSON(501, gin.H{"status": "action not implemented"})
 		return
