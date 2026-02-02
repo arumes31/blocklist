@@ -151,7 +151,8 @@ func (h *APIHandler) isValidRedirect(target string) bool {
 	}
 	// Only allow local paths starting with /
 	// Disallow // which some browsers interpret as protocol-relative (e.g. //evil.com)
-	return strings.HasPrefix(target, "/") && !strings.HasPrefix(target, "//")
+	// Disallow /\ which can be used to trick some parsers
+	return strings.HasPrefix(target, "/") && !strings.HasPrefix(target, "//") && !strings.HasPrefix(target, "/\\")
 }
 
 func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
