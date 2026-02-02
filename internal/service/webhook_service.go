@@ -1,55 +1,35 @@
 package service
 
 import (
-	"bytes"
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
-	"fmt"
-	"io"
 	"log"
-	"net/http"
 	"strings"
-	"time"
 
 	"blocklist/internal/config"
 	"blocklist/internal/models"
 	"blocklist/internal/repository"
+	"blocklist/internal/tasks"
+	"github.com/hibiken/asynq"
 )
 
-type WebhookTask struct {
-	Webhook models.OutboundWebhook `json:"webhook"`
-	Event   string                 `json:"event"`
-	Payload []byte                 `json:"payload"`
-	Attempt int                    `json:"attempt"`
-}
-
 type WebhookService struct {
-	pgRepo    *repository.PostgresRepository
-	redisRepo *repository.RedisRepository
-	cfg       *config.Config
-	client    *http.Client
-	queueKey  string
+	pgRepo      *repository.PostgresRepository
+	cfg         *config.Config
+	asynqClient *asynq.Client
 }
 
-func NewWebhookService(pg *repository.PostgresRepository, redis *repository.RedisRepository, cfg *config.Config) *WebhookService {
+func NewWebhookService(pg *repository.PostgresRepository, cfg *config.Config, redisOpts asynq.RedisClientOpt) *WebhookService {
 	return &WebhookService{
-		pgRepo:    pg,
-		redisRepo: redis,
-		cfg:       cfg,
-		client: &http.Client{
-			Timeout: 10 * time.Second,
-		},
-		queueKey: "webhook_tasks",
+		pgRepo:      pg,
+		cfg:         cfg,
+		asynqClient: asynq.NewClient(redisOpts),
 	}
 }
 
+// Start is deprecated/no-op as workers are now handled by asynq.Server in main
 func (s *WebhookService) Start(ctx context.Context) {
-	for i := 0; i < 5; i++ { // 5 workers
-		go s.worker(ctx)
-	}
+	// No-op
 }
 
 func (s *WebhookService) Notify(ctx context.Context, event string, data interface{}) {
@@ -88,88 +68,21 @@ func (s *WebhookService) Notify(ctx context.Context, event string, data interfac
 				}
 			}
 			
-			task := WebhookTask{
-				Webhook: wh,
-				Event:   event,
-				Payload: payload,
-				Attempt: 1,
-			}
-			s.enqueue(task)
-		}
-	}
-}
-
-func (s *WebhookService) enqueue(task WebhookTask) {
-	data, _ := json.Marshal(task)
-	_ = s.redisRepo.GetClient().LPush(context.Background(), s.queueKey, data).Err()
-}
-
-func (s *WebhookService) worker(ctx context.Context) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-			res, err := s.redisRepo.GetClient().BRPop(ctx, 0, s.queueKey).Result()
+			task, err := tasks.NewWebhookDeliveryTask(wh.ID, event, payload)
 			if err != nil {
+				log.Printf("Error creating task: %v", err)
 				continue
 			}
-
-			var task WebhookTask
-			if err := json.Unmarshal([]byte(res[1]), &task); err != nil {
-				continue
+			
+			if _, err := s.asynqClient.Enqueue(task); err != nil {
+				log.Printf("Error enqueuing task: %v", err)
 			}
-
-			s.processTask(task)
 		}
 	}
 }
 
-func (s *WebhookService) processTask(task WebhookTask) {
-	req, err := http.NewRequest("POST", task.Webhook.URL, bytes.NewBuffer(task.Payload))
-	if err != nil {
-		log.Printf("Error creating webhook request: %v", err)
-		return
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Blocklist-Event", task.Event)
-	req.Header.Set("X-Blocklist-Attempt", fmt.Sprintf("%d", task.Attempt))
-
-	if task.Webhook.Secret != "" {
-		mac := hmac.New(sha256.New, []byte(task.Webhook.Secret))
-		mac.Write(task.Payload)
-		signature := hex.EncodeToString(mac.Sum(nil))
-		req.Header.Set("X-Blocklist-Signature", signature)
-	}
-
-	resp, err := s.client.Do(req)
-	
-	logEntry := models.WebhookLog{
-		WebhookID: task.Webhook.ID,
-		Event:     task.Event,
-		Payload:   string(task.Payload),
-		Attempt:   task.Attempt,
-	}
-
-	if err != nil {
-		logEntry.Error = err.Error()
-	} else {
-		logEntry.StatusCode = resp.StatusCode
-		body, _ := io.ReadAll(resp.Body)
-		logEntry.ResponseBody = string(body)
-		resp.Body.Close()
-	}
-
-	if s.pgRepo != nil {
-		_ = s.pgRepo.LogWebhookDelivery(logEntry)
-	}
-
-	if (err != nil || logEntry.StatusCode >= 400) && task.Attempt < 3 {
-		// Re-enqueue with delay
-		time.AfterFunc(time.Duration(task.Attempt*task.Attempt)*time.Minute, func() {
-			task.Attempt++
-			s.enqueue(task)
-		})
+func (s *WebhookService) Close() {
+	if s.asynqClient != nil {
+		s.asynqClient.Close()
 	}
 }

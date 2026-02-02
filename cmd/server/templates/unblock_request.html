@@ -129,7 +129,7 @@
         {{ end }}
     </div>
 
-    <script>
+    <script nonce="{{ .nonce }}">
         const form = document.getElementById('unblockForm');
         if (form) {
             form.onsubmit = async (e) => {

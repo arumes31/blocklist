@@ -34,6 +34,10 @@ import (
 	mgin "github.com/ulule/limiter/v3/drivers/middleware/gin"
 	sredis "github.com/ulule/limiter/v3/drivers/store/redis"
 	rdb "github.com/redis/go-redis/v9"
+	"github.com/hibiken/asynq"
+	"blocklist/internal/tasks"
+	"crypto/rand"
+	"encoding/base64"
 )
 
 //go:embed templates/*.html
@@ -131,7 +135,11 @@ func main() {
 	// 2. Initialize Services
 	authService := service.NewAuthService(pgRepo, redisRepo)
 	ipService := service.NewIPService(cfg, redisRepo, pgRepo)
-	webhookService := service.NewWebhookService(pgRepo, redisRepo, cfg)
+	
+	redisOpts := asynq.RedisClientOpt{Addr: fmt.Sprintf("%s:%d", cfg.RedisHost, cfg.RedisPort), Password: cfg.RedisPassword, DB: cfg.RedisDB}
+	webhookService := service.NewWebhookService(pgRepo, cfg, redisOpts)
+	defer webhookService.Close()
+
 	scheduler := service.NewSchedulerService(redisRepo, pgRepo, cfg)
 	geoUpdater := service.NewGeoIPService(cfg)
 
@@ -154,10 +162,30 @@ func main() {
 		}
 	}
 
-	// 3. Start Schedulers
+	// 3. Start Schedulers & Task Workers
 	scheduler.Start()
 	geoUpdater.Start()
-	webhookService.Start(context.Background())
+	
+	// Initialize Asynq Server
+	asynqServer := asynq.NewServer(
+		redisOpts,
+		asynq.Config{
+			Concurrency: 10,
+			Queues: map[string]int{
+				"default": 5,
+			},
+			Logger: log.New(os.Stderr, "asynq: ", log.LstdFlags),
+		},
+	)
+	
+	asynqMux := asynq.NewServeMux()
+	asynqMux.Handle(tasks.TypeWebhookDelivery, tasks.NewWebhookTaskHandler(pgRepo))
+
+	go func() {
+		if err := asynqServer.Run(asynqMux); err != nil {
+			zlog.Fatal().Err(err).Msg("Failed to run asynq server")
+		}
+	}()
 
 	// 4. Initialize WebSocket Hub
 	hub := api.NewHub(redisRepo.GetClient())
@@ -253,13 +281,36 @@ func main() {
 	}
 	r.SetHTMLTemplate(templ)
 
-	// Security headers middleware
+	// Security headers middleware with CSP and Nonce
 	r.Use(func(c *gin.Context) {
+		// Generate Nonce
+		nonceBytes := make([]byte, 16)
+		if _, err := rand.Read(nonceBytes); err != nil {
+			zlog.Error().Err(err).Msg("Failed to generate nonce")
+		}
+		nonce := base64.StdEncoding.EncodeToString(nonceBytes)
+		
+		// Set in context for templates
+		c.Set("nonce", nonce)
+
 		c.Header("X-Content-Type-Options", "nosniff")
 		c.Header("X-Frame-Options", "DENY")
 		c.Header("Referrer-Policy", "same-origin")
-		// Relaxed CSP for inline scripts used in templates; tighten in prod as feasible
-		c.Header("Content-Security-Policy", "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self' ws: wss:")
+		
+		// Strict Transport Security (HSTS)
+		if cfg.UseCloudflare || c.Request.TLS != nil {
+			c.Header("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload")
+		}
+
+		// Content Security Policy (CSP)
+		// We allow 'self', data: images, and inline styles/scripts ONLY if they match the nonce.
+		// Note: 'unsafe-inline' is still often needed for some libraries if they don't support nonces properly,
+		// but we aim to use nonces. If a library inserts style tags without nonce, it might break.
+		// For now, we add 'nonce-...' and fallbacks.
+		// ws: and wss: are allowed for WebSocket connections.
+		csp := fmt.Sprintf("default-src 'self'; img-src 'self' data:; style-src 'self' 'nonce-%s' 'unsafe-inline'; script-src 'self' 'nonce-%s'; connect-src 'self' ws: wss:", nonce, nonce)
+		c.Header("Content-Security-Policy", csp)
+		
 		c.Next()
 	})
 

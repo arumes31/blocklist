@@ -204,12 +204,11 @@
                 </tbody>
             </table>
         </div>
-    </div>
+        </div>
     
-    <script>
-        function showToast(message, type = 'success') {
-            const container = document.getElementById('toast-container');
-            const toast = document.createElement('div');
+        <script nonce="{{ .nonce }}">
+            function showToast(message, type = 'success') {
+                const container = document.getElementById('toast-container');            const toast = document.createElement('div');
             toast.className = `toast ${type}`;
             toast.innerHTML = `<span>${message}</span>`;
             container.appendChild(toast);

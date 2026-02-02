@@ -120,9 +120,9 @@
         </form>
     </div>
 
-    <script>
+    <script nonce="{{ .nonce }}">
         function copySecret() {
-            const secret = document.getElementById('secret-key').innerText;
+            var secretText = document.getElementById("secret-code");
             navigator.clipboard.writeText(secret).then(() => {
                 const btn = document.querySelector('.btn-copy');
                 btn.innerText = 'COPIED!';
