@@ -58,9 +58,10 @@ graph LR
 ## API Endpoints
 
 ### Automated Webhooks
-- **`POST /api/v1/webhook`**: Authenticated webhook (HMAC supported).
-    - **Example**: `curl -X POST -H "Authorization: Bearer YOUR_TOKEN" -H "Content-Type: application/json" -d '{"ip":"1.2.3.4","act":"ban","reason":"manual"}' http://localhost:5000/api/v1/webhook`
-- **`POST /api/v1/webhook2_whitelist`**: Automatically whitelists the caller's IP.
+- **`POST /api/v1/webhook`**: Authenticated webhook. Supports `ban`, `unban`, and `whitelist` actions.
+    - **Example (Block)**: `curl -X POST -H "Authorization: Bearer YOUR_TOKEN" -H "Content-Type: application/json" -d '{"ip":"1.2.3.4","act":"ban","reason":"manual"}' http://localhost:5000/api/v1/webhook`
+    - **Example (Whitelist)**: `curl -X POST -H "Authorization: Bearer YOUR_TOKEN" -H "Content-Type: application/json" -d '{"ip":"1.2.3.4","act":"whitelist","reason":"trusted"}' http://localhost:5000/api/v1/webhook`
+    - *Note: If no IP is provided for the whitelist action, the caller's source IP is used.*
 
 ### Data & Stats
 - **`GET /api/v1/ips`**: Paginated list of blocked IPs with advanced filters.
