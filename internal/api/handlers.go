@@ -228,8 +228,8 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 		auth.POST("/bulk_unblock", h.PermissionMiddleware("unblock_ips"), h.BulkUnblock)
 		
 		// Whitelist management
-		auth.GET("/whitelist", h.PermissionMiddleware("manage_whitelist"), h.Whitelist)
-		auth.POST("/add_whitelist", h.PermissionMiddleware("manage_whitelist"), h.AddWhitelist)
+		auth.GET("/whitelist", h.PermissionMiddleware("manage_whitelist", "whitelist_ips"), h.Whitelist)
+		auth.POST("/add_whitelist", h.PermissionMiddleware("manage_whitelist", "whitelist_ips"), h.AddWhitelist)
 		auth.POST("/remove_whitelist", h.PermissionMiddleware("manage_whitelist"), h.RemoveWhitelist)
 
 		// Admin management
@@ -570,7 +570,7 @@ func (h *APIHandler) SessionCheckMiddleware() gin.HandlerFunc {
 	}
 }
 
-func (h *APIHandler) PermissionMiddleware(requiredPerm string) gin.HandlerFunc {
+func (h *APIHandler) PermissionMiddleware(requiredPerms ...string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		perms, exists := c.Get("permissions")
 		if !exists {
@@ -583,19 +583,45 @@ func (h *APIHandler) PermissionMiddleware(requiredPerm string) gin.HandlerFunc {
 		
 		// System admin bypass
 		username, _ := c.Get("username")
-		if username == h.cfg.GUIAdmin && 
-		   requiredPerm != "webhook_whitelist" {
-			c.Next()
-			return
+		if username == h.cfg.GUIAdmin {
+			// Check if any of the required perms is whitelist_ips, 
+			// if so, even admin must have it? 
+			// Actually looking at previous code, GUIAdmin had bypass for most things except webhook_whitelist.
+			// Let's stick to the pattern.
+			bypass := true
+			for _, rp := range requiredPerms {
+				if rp == "whitelist_ips" {
+					// We might want to keep the restriction if it's strictly for webhooks,
+					// but usually admin bypasses everything.
+					// The previous code had: requiredPerm != "webhook_whitelist"
+					// So if requiredPerm was webhook_whitelist, bypass was false.
+				}
+			}
+			// To match previous logic exactly:
+			for _, rp := range requiredPerms {
+				if rp == "whitelist_ips" {
+					bypass = false
+					break
+				}
+			}
+
+			if bypass {
+				c.Next()
+				return
+			}
 		}
 
 		userPerms := strings.Split(permStr, ",")
 		hasPerm := false
 		for _, p := range userPerms {
-			if strings.TrimSpace(p) == requiredPerm {
-				hasPerm = true
-				break
+			p = strings.TrimSpace(p)
+			for _, rp := range requiredPerms {
+				if p == rp {
+					hasPerm = true
+					break
+				}
 			}
+			if hasPerm { break }
 		}
 
 		if !hasPerm {
@@ -1294,7 +1320,7 @@ func (h *APIHandler) Webhook2(c *gin.Context) {
 		hasAccess = true
 	} else {
 		for _, p := range strings.Split(permStr, ",") {
-			if strings.TrimSpace(p) == "webhook_whitelist" {
+			if strings.TrimSpace(p) == "whitelist_ips" {
 				hasAccess = true
 				break
 			}
@@ -1302,7 +1328,7 @@ func (h *APIHandler) Webhook2(c *gin.Context) {
 	}
 
 	if !hasAccess {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Webhook access denied (requires webhook_whitelist)"})
+		c.JSON(http.StatusForbidden, gin.H{"error": "Webhook access denied (requires whitelist_ips)"})
 		return
 	}
 

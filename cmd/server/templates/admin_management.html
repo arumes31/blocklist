@@ -205,7 +205,8 @@
                     <div style="font-weight: bold; color: var(--vibrant-red); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px;">Enforcement</div>
                     <label title="Block IPs via the GUI or Webhook" style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-bottom: 5px;"><input type="checkbox" id="perm_block_ips"> Block IPs</label>
                     <label title="Unblock IPs via the GUI or Webhook" style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-bottom: 5px;"><input type="checkbox" id="perm_unblock_ips"> Unblock IPs</label>
-                    <label title="Manage whitelist via the GUI" style="display: flex; align-items: center; gap: 8px; cursor: pointer;"><input type="checkbox" id="perm_manage_whitelist"> Manage Whitelist</label>
+                    <label title="Add and Remove IPs from the whitelist" style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-bottom: 5px;"><input type="checkbox" id="perm_manage_whitelist"> Manage Whitelist</label>
+                    <label title="Only add IPs to the whitelist (no removal)" style="display: flex; align-items: center; gap: 8px; cursor: pointer;"><input type="checkbox" id="perm_whitelist_ips"> Whitelist IPs</label>
                 </div>
                 <div>
                     <div style="font-weight: bold; color: var(--vibrant-red); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px;">System</div>
@@ -215,8 +216,8 @@
                     <label title="Create, edit, and delete admin users" style="display: flex; align-items: center; gap: 8px; cursor: pointer;"><input type="checkbox" id="perm_manage_admins"> User Management</label>
                 </div>
                 <div>
-                    <div style="font-weight: bold; color: var(--vibrant-red); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px;">Webhooks</div>
-                    <label title="Allow whitelisting IPs via incoming webhooks" style="display: flex; align-items: center; gap: 8px; cursor: pointer;"><input type="checkbox" id="perm_webhook_whitelist"> Webhook (Whitelist)</label>
+                    <div style="font-weight: bold; color: var(--vibrant-red); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px;">Utility</div>
+                    <label title="Download CSV/JSON exports" style="display: flex; align-items: center; gap: 8px; cursor: pointer;"><input type="checkbox" id="perm_export_data"> Data Export</label>
                 </div>
                 <div>
                     <div style="font-weight: bold; color: var(--vibrant-red); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px;">Utility</div>
@@ -310,13 +311,11 @@
                     <div style="font-weight: bold; color: var(--vibrant-red); margin-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 5px; margin-top: 15px;">Enforcement</div>
                     <label title="Block IPs via the GUI or Webhook" style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin-bottom: 8px;"><input type="checkbox" id="edit_block_ips"> Block IPs</label>
                     <label title="Unblock IPs via the GUI or Webhook" style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin-bottom: 8px;"><input type="checkbox" id="edit_unblock_ips"> Unblock IPs</label>
-                    <label title="Manage whitelist via the GUI" style="display: flex; align-items: center; gap: 10px; cursor: pointer;"><input type="checkbox" id="edit_manage_whitelist"> Manage Whitelist</label>
+                    <label title="Add and Remove IPs from the whitelist" style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin-bottom: 8px;"><input type="checkbox" id="edit_manage_whitelist"> Manage Whitelist</label>
+                    <label title="Only add IPs to the whitelist (no removal)" style="display: flex; align-items: center; gap: 10px; cursor: pointer;"><input type="checkbox" id="edit_whitelist_ips"> Whitelist IPs</label>
                 </div>
                 <div>
-                    <div style="font-weight: bold; color: var(--vibrant-red); margin-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 5px;">Webhooks</div>
-                    <label title="Allow whitelisting IPs via incoming webhooks" style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin-bottom: 8px;"><input type="checkbox" id="edit_webhook_whitelist"> Webhook (Whitelist)</label>
-                    
-                    <div style="font-weight: bold; color: var(--vibrant-red); margin-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 5px; margin-top: 15px;">System</div>
+                    <div style="font-weight: bold; color: var(--vibrant-red); margin-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 5px;">System</div>
                     <label title="Configure outbound webhooks" style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin-bottom: 8px;"><input type="checkbox" id="edit_manage_webhooks"> Manage Webhooks</label>
                     <label title="Manage API tokens" style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin-bottom: 8px;"><input type="checkbox" id="edit_manage_api_tokens"> API Tokens</label>
                     <label title="Manage API tokens for all users" style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin-bottom: 8px;"><input type="checkbox" id="edit_manage_global_tokens"> Global API Tokens</label>
@@ -355,9 +354,8 @@
 
         const PERM_KEYS = [
             'gui_read', 'gui_write', 'view_ips', 'view_stats', 'view_audit_logs', 'export_data',
-            'block_ips', 'unblock_ips', 'manage_whitelist',
-            'manage_webhooks', 'manage_api_tokens', 'manage_global_tokens', 'manage_admins',
-            'webhook_whitelist'
+            'block_ips', 'unblock_ips', 'manage_whitelist', 'whitelist_ips',
+            'manage_webhooks', 'manage_api_tokens', 'manage_global_tokens', 'manage_admins'
         ];
 
         function getSelectedPerms(prefix) {
