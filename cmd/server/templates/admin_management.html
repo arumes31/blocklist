@@ -172,6 +172,9 @@
             <a href="#audit-log-section" class="btn btn-dark" style="min-width: 150px;">Audit Log</a>
             {{ end }}
             <a href="/dashboard" class="btn btn-dark" style="min-width: 150px;">Back to Dashboard</a>
+            {{ if or (eq .username .admin_username) (contains .permissions "manage_admins") }}
+            <a href="/admin_management" class="btn btn-dark" style="min-width: 120px;">Admins</a>
+            {{ end }}
             <a href="/logout" class="btn" style="background: rgba(255,255,255,0.08);">Logout</a>
         </div>
     </div>

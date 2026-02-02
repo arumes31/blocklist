@@ -142,6 +142,9 @@
         </div>
         <div style="display: flex; align-items: center; gap: 1rem;">
             <a href="/dashboard" class="btn btn-dark" style="min-width: 150px;">Back to Dashboard</a>
+            {{ if or (eq .username .admin_username) (contains .permissions "manage_admins") }}
+            <a href="/admin_management" class="btn btn-dark" style="min-width: 120px;">Admins</a>
+            {{ end }}
             <a href="/logout" class="btn" style="background: rgba(255,255,255,0.08);">Logout</a>
         </div>
     </div>
@@ -350,6 +353,14 @@ actionunban = curl -X POST -H "Content-Type: application/json" -d '{"ip":"&lt;ip
   -H "Content-Type: application/json" \
   -d '{"ip": "1.2.3.4", "act": "unban"}'</code></pre>
                     </div>
+
+                    <div style="margin-top: 1rem;">
+                        <p style="color: var(--secondary-color); margin-bottom: 0.2rem; font-size: 0.8rem;">Add IP to Whitelist (Webhook style)</p>
+                        <pre style="font-size: 0.75rem;"><code>curl -X POST {{ .base_url }}/api/v1/webhook2_whitelist \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"ip": "1.2.3.4", "reason": "trusted service"}'</code></pre>
+                    </div>
                 </div>
 
                 <!-- WGET Examples -->
@@ -371,12 +382,20 @@ actionunban = curl -X POST -H "Content-Type: application/json" -d '{"ip":"&lt;ip
      {{ .base_url }}/api/v1/webhook -O -</code></pre>
                     </div>
 
-                    <div>
+                    <div style="margin-bottom: 1rem;">
                         <p style="color: var(--secondary-color); margin-bottom: 0.2rem; font-size: 0.8rem;">Unblock an IP (POST)</p>
                         <pre style="font-size: 0.75rem;"><code>wget --header="Authorization: Bearer YOUR_TOKEN" \
      --header="Content-Type: application/json" \
      --post-data='{"ip":"1.2.3.4","act":"unban"}' \
      {{ .base_url }}/api/v1/webhook -O -</code></pre>
+                    </div>
+
+                    <div>
+                        <p style="color: var(--secondary-color); margin-bottom: 0.2rem; font-size: 0.8rem;">Add IP to Whitelist (POST)</p>
+                        <pre style="font-size: 0.75rem;"><code>wget --header="Authorization: Bearer YOUR_TOKEN" \
+     --header="Content-Type: application/json" \
+     --post-data='{"ip":"1.2.3.4","reason":"trusted"}' \
+     {{ .base_url }}/api/v1/webhook2_whitelist -O -</code></pre>
                     </div>
                 </div>
             </div>

@@ -181,6 +181,9 @@
         </div>
         <span id="live-status">LIVE</span>
         <a href="/dashboard" class="btn">Back to Dashboard</a>
+        {{ if or (eq .username .admin_username) (contains .permissions "manage_admins") }}
+        <a href="/admin_management" class="btn btn-dark" style="padding: 0.5rem 1rem; font-size: 0.9rem;">Admins</a>
+        {{ end }}
     </div>
 </div>
 

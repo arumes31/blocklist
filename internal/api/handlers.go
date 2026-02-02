@@ -192,8 +192,15 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 	v1.POST("/webhook2_whitelist", h.AuthMiddleware(), h.SessionCheckMiddleware(), h.webhookLimiter, h.Webhook2)
 	
 	r.GET("/openapi.json", h.OpenAPI)
-	r.GET("/docs", func(c *gin.Context) {
-		c.HTML(http.StatusOK, "docs.html", nil)
+	r.GET("/docs", h.AuthMiddleware(), h.SessionCheckMiddleware(), func(c *gin.Context) {
+		session := sessions.Default(c)
+		username := session.Get("username")
+		permissions, _ := c.Get("permissions")
+		c.HTML(http.StatusOK, "docs.html", gin.H{
+			"username":       username,
+			"permissions":    permissions,
+			"admin_username": h.cfg.GUIAdmin,
+		})
 	})
 
 	// Protected UI routes
@@ -293,12 +300,14 @@ func (h *APIHandler) Dashboard(c *gin.Context) {
 	for _, r := range topReason { reasons = append(reasons, map[string]interface{}{"Reason": r.Reason, "Count": r.Count}) }
 
 	views, _ := h.pgRepo.GetSavedViews(username)
+	permissions, _ := c.Get("permissions")
 
 	c.HTML(http.StatusOK, "dashboard.html", gin.H{
 		"ips":            ips,
 		"total_ips":      totalCount,
 		"admin_username": h.cfg.GUIAdmin,
 		"username":       username,
+		"permissions":    permissions,
 		"views":          views,
 		"stats": gin.H{
 			"hour":           hour,
@@ -317,6 +326,9 @@ func (h *APIHandler) Dashboard(c *gin.Context) {
 func (h *APIHandler) ThreadMap(c *gin.Context) {
 	ips := h.getCombinedIPs()
 	totalCount := len(ips)
+	session := sessions.Default(c)
+	username := session.Get("username").(string)
+	permissions, _ := c.Get("permissions")
 
 	hour, day, _, top, _, _, _, _, _, _ := h.ipService.Stats(c.Request.Context())
 	
@@ -324,7 +336,10 @@ func (h *APIHandler) ThreadMap(c *gin.Context) {
 	for _, t := range top { tops = append(tops, map[string]interface{}{"Country": t.Country, "Count": t.Count}) }
 
 	c.HTML(http.StatusOK, "thread_map.html", gin.H{
-		"total_ips": totalCount,
+		"total_ips":      totalCount,
+		"admin_username": h.cfg.GUIAdmin,
+		"username":       username,
+		"permissions":    permissions,
 		"stats": gin.H{
 			"hour":          hour,
 			"day":           day,
@@ -1052,9 +1067,16 @@ func (h *APIHandler) Whitelist(c *gin.Context) {
 		}
 	}
 
+	session := sessions.Default(c)
+	username := session.Get("username").(string)
+	permissions, _ := c.Get("permissions")
+
 	c.HTML(http.StatusOK, "whitelist.html", gin.H{
 		"whitelisted_ips": ips,
 		"blocked_subnets": subnets,
+		"admin_username":  h.cfg.GUIAdmin,
+		"username":        username,
+		"permissions":     permissions,
 	})
 }
 
@@ -1922,9 +1944,10 @@ func (h *APIHandler) Settings(c *gin.Context) {
 		"webhooks":            webhooks,
 		"tokens":              tokens,
 		"all_tokens":          allTokens,
-		"admin_user":          h.cfg.GUIAdmin,
+		"admin_username":      h.cfg.GUIAdmin,
 		"base_url":            baseURL,
 		"username":            username,
+		"permissions":         userPerms,
 		"manage_global_tokens": hasGlobalTokensPerm,
 	})
 }
@@ -1955,11 +1978,18 @@ func (h *APIHandler) CreateAPIToken(c *gin.Context) {
 			validPerms := []string{}
 			for _, rp := range rPerms {
 				rp = strings.TrimSpace(rp)
+				if rp == "" { continue }
+				found := false
 				for _, up := range uPerms {
 					if rp == strings.TrimSpace(up) {
 						validPerms = append(validPerms, rp)
+						found = true
 						break
 					}
+				}
+				if !found {
+					c.String(http.StatusForbidden, fmt.Sprintf("insufficient permissions to grant: %s", rp))
+					return
 				}
 			}
 			finalPerms = strings.Join(validPerms, ",")
@@ -2024,11 +2054,17 @@ func (h *APIHandler) UpdateAPITokenPermissions(c *gin.Context) {
 			for _, rp := range rPerms {
 				rp = strings.TrimSpace(rp)
 				if rp == "" { continue }
+				found := false
 				for _, up := range uPerms {
 					if rp == strings.TrimSpace(up) {
 						validPerms = append(validPerms, rp)
+						found = true
 						break
 					}
+				}
+				if !found {
+					c.JSON(http.StatusForbidden, gin.H{"error": fmt.Sprintf("insufficient permissions to grant: %s", rp)})
+					return
 				}
 			}
 			finalPerms = strings.Join(validPerms, ",")

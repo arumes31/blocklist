@@ -308,7 +308,7 @@
                 <a href="/whitelist" class="btn btn-dark" style="min-width: 120px;">Whitelist</a>
                 <a href="/settings" class="btn btn-dark" style="min-width: 120px;">Settings</a>
                 <a href="/docs" class="btn btn-dark" style="min-width: 120px;">API Docs</a>
-                {{ if eq .username .admin_username }}
+                {{ if or (eq .username .admin_username) (contains .permissions "manage_admins") }}
                 <a href="/admin_management" class="btn btn-dark" style="min-width: 120px;">Admins</a>
                 {{ end }}
             </div>
