@@ -203,7 +203,7 @@ func main() {
 	store.Options(sessions.Options{
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   false, // Temporarily false to debug proxy/TLS issues
+		Secure:   cfg.UseCloudflare, // Auto-enable secure cookies if proxying via Cloudflare/HTTPS
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   86400 * 7, // 1 week
 	})

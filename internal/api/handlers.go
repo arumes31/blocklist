@@ -145,6 +145,15 @@ func (h *APIHandler) PrometheusMiddleware() gin.HandlerFunc {
 	}
 }
 
+func (h *APIHandler) isValidRedirect(target string) bool {
+	if target == "" {
+		return false
+	}
+	// Only allow local paths starting with /
+	// Disallow // which some browsers interpret as protocol-relative (e.g. //evil.com)
+	return strings.HasPrefix(target, "/") && !strings.HasPrefix(target, "//")
+}
+
 func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 	r.Use(h.PrometheusMiddleware())
 	// Public UI routes
@@ -160,8 +169,8 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 	
 	r.GET("/logout", h.Logout)
 	r.GET("/ws", h.WS)
-	r.GET("/sudo", h.AuthMiddleware(), h.ShowSudo)
-	r.POST("/sudo", h.AuthMiddleware(), h.VerifySudo)
+	r.GET("/sudo", h.AuthMiddleware(), h.loginLimiter, h.ShowSudo)
+	r.POST("/sudo", h.AuthMiddleware(), h.loginLimiter, h.VerifySudo)
 
 	// API Versioning (Improvement 5)
 	v1 := r.Group("/api/v1")
@@ -876,7 +885,8 @@ func (h *APIHandler) VerifySudo(c *gin.Context) {
 	if admin != nil && totp.Validate(totpCode, admin.Token) {
 		session.Set("sudo_time", time.Now().Unix())
 		_ = session.Save()
-		if next == "" {
+		
+		if !h.isValidRedirect(next) {
 			next = "/dashboard"
 		}
 		c.Redirect(http.StatusFound, next)
