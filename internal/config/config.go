@@ -19,13 +19,11 @@ type Config struct {
 	GUIToken               string
 	LogWeb                 bool
 	BlockedRanges          string
-	Webhook2AllowedIPs     string
 	GeoIPAccountID         string
 	GeoIPLicenseKey        string
 	TrustedProxies         string
 	UseCloudflare          bool
 	Port                   string
-	WebhookSecret          string
 	MetricsAllowedIPs      string
 	EnableOutboundWebhooks bool
 	DisableGUIAdminLogin   bool
@@ -49,13 +47,11 @@ func Load() *Config {
 		GUIToken:               getEnv("GUIToken", ""),
 		LogWeb:                 getEnvBool("LOGWEB", false),
 		BlockedRanges:          getEnv("BLOCKED_RANGES", ""),
-		Webhook2AllowedIPs:     getEnv("WEBHOOK2_ALLOWED_IPS", "127.0.0.1"),
 		GeoIPAccountID:         getEnv("GEOIPUPDATE_ACCOUNT_ID", ""),
 		GeoIPLicenseKey:        getEnv("GEOIPUPDATE_LICENSE_KEY", ""),
 		TrustedProxies:         getEnv("TRUSTED_PROXIES", "127.0.0.1"),
 		UseCloudflare:          getEnvBool("USE_CLOUDFLARE", false),
 		Port:                   getEnv("PORT", "5000"),
-		WebhookSecret:          getEnv("WEBHOOK_SECRET", ""),
 		MetricsAllowedIPs:      getEnv("METRICS_ALLOWED_IPS", "127.0.0.1"),
 		EnableOutboundWebhooks: getEnvBool("ENABLE_OUTBOUND_WEBHOOKS", false),
 		DisableGUIAdminLogin:   getEnvBool("DISABLE_GUIADMIN_LOGIN", false),

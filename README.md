@@ -121,7 +121,6 @@ The application is configured via environment variables:
 | `DISABLE_GUIADMIN_LOGIN` | Disable login for the default admin user | `false` |
 | `LOGWEB` | Enable verbose web logging (debug level) | `false` |
 | `BLOCKED_RANGES` | Comma-separated list of subnets to whitelist | (empty) |
-| `WEBHOOK_SECRET` | Secret key for incoming webhook HMAC verification | (empty) |
 | `GEOIPUPDATE_ACCOUNT_ID` | MaxMind Account ID | (empty) |
 | `GEOIPUPDATE_LICENSE_KEY` | MaxMind License Key | (empty) |
 | `TRUSTED_PROXIES` | Comma-separated list of trusted proxy IPs | `127.0.0.1` |

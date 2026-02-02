@@ -7,7 +7,6 @@ import (
 	"blocklist/internal/repository"
 	"blocklist/internal/service"
 	"bytes"
-	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/csv"
@@ -1116,16 +1115,6 @@ func (h *APIHandler) RemoveWhitelist(c *gin.Context) {
 	c.JSON(200, gin.H{"status": "success"})
 }
 
-func (h *APIHandler) verifyHMAC(body []byte, signature string) bool {
-	if h.cfg.WebhookSecret == "" {
-		return false
-	}
-	mac := hmac.New(sha256.New, []byte(h.cfg.WebhookSecret))
-	mac.Write(body)
-	expectedMAC := hex.EncodeToString(mac.Sum(nil))
-	return hmac.Equal([]byte(signature), []byte(expectedMAC))
-}
-
 func (h *APIHandler) Webhook(c *gin.Context) {
 	// Webhook requires authentication (Bearer token via AuthMiddleware)
 	username, exists := c.Get("username")
@@ -1746,51 +1735,6 @@ func (h *APIHandler) OpenAPI(c *gin.Context) {
                         "401": gin.H{"description": "Unauthorized"},
                         "403": gin.H{"description": "Forbidden - Insufficient permissions"},
                     },
-                },
-            },
-            "/block": gin.H{
-                "post": gin.H{
-                    "summary": "Block a new IP (Dashboard UI Endpoint)",
-                    "tags": []string{"Enforcement (UI)"},
-                    "requestBody": gin.H{
-                        "required": true,
-                        "content": gin.H{
-                            "application/json": gin.H{
-                                "schema": gin.H{
-                                    "type": "object",
-                                    "properties": gin.H{
-                                        "ip":      gin.H{"type": "string"},
-                                        "reason":  gin.H{"type": "string"},
-                                        "persist": gin.H{"type": "boolean"},
-                                        "ttl":     gin.H{"type": "integer"},
-                                    },
-                                    "required": []string{"ip"},
-                                },
-                            },
-                        },
-                    },
-                    "responses": gin.H{"200": gin.H{"description": "IP blocked"}},
-                },
-            },
-            "/unblock": gin.H{
-                "post": gin.H{
-                    "summary": "Unblock an IP (Dashboard UI Endpoint)",
-                    "tags": []string{"Enforcement (UI)"},
-                    "requestBody": gin.H{
-                        "required": true,
-                        "content": gin.H{
-                            "application/json": gin.H{
-                                "schema": gin.H{
-                                    "type": "object",
-                                    "properties": gin.H{
-                                        "ip": gin.H{"type": "string"},
-                                    },
-                                    "required": []string{"ip"},
-                                },
-                            },
-                        },
-                    },
-                    "responses": gin.H{"200": gin.H{"description": "IP unblocked"}},
                 },
             },
         },
