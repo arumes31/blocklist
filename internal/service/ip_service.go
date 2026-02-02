@@ -107,6 +107,7 @@ func (s *IPService) IsValidIP(ipStr string) bool {
 	return true
 }
 
+// CalculateThreatScore computes a risk score (0-100) for an IP based on its history and current reason.
 func (s *IPService) CalculateThreatScore(ip string, reason string) int {
 	if s.redisRepo == nil { return 0 }
 	count, _ := s.redisRepo.GetIPBanCount(ip)

@@ -169,8 +169,8 @@ func main() {
 	}
 	r := gin.Default()
 
-	// Improvement: Reverse Proxy & Cloudflare Support
-	// Add common internal ranges: 127.0.0.1, Docker (172.16.0.0/12), Tailscale (100.64.0.0/10), Private (10.0.0.0/8, 192.168.0.0/16)
+	// Configure Trusted Proxies to handle requests from Docker, Tailscale, and private networks.
+	// This is critical for correct IP detection behind reverse proxies.
 	trustedProxies := []string{"127.0.0.1", "172.16.0.0/12", "100.64.0.0/10", "10.0.0.0/8", "192.168.0.0/16"}
 	if cfg.TrustedProxies != "" {
 		p := strings.Split(cfg.TrustedProxies, ",")

@@ -19,7 +19,7 @@ func NewPostgresRepository(url string) (*PostgresRepository, error) {
 		return nil, err
 	}
 
-	// Improvement 2: Connection Pooling
+	// Configure connection pooling to handle high concurrency
 	db.SetMaxOpenConns(25)
 	db.SetMaxIdleConns(25)
 	db.SetConnMaxLifetime(5 * time.Minute)

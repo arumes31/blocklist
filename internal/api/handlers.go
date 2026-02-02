@@ -46,6 +46,7 @@ type APIHandler struct {
 	webhookLimiter gin.HandlerFunc
 }
 
+// NewAPIHandler creates a new instance of APIHandler with the necessary dependencies.
 func NewAPIHandler(cfg *config.Config, r *repository.RedisRepository, pg *repository.PostgresRepository, auth *service.AuthService, ip *service.IPService, hub *Hub, wh *service.WebhookService) *APIHandler {
 	return &APIHandler{
 		cfg:            cfg,
@@ -156,6 +157,7 @@ func (h *APIHandler) isValidRedirect(target string) bool {
 	return strings.HasPrefix(target, "/") && !strings.HasPrefix(target, "//") && !strings.HasPrefix(target, "/\\")
 }
 
+// RegisterRoutes sets up all the API and UI routes for the application.
 func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 	r.Use(h.PrometheusMiddleware())
 	// Public UI routes
@@ -270,7 +272,7 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 	r.GET("/metrics", h.MetricsAuthMiddleware(), gin.WrapH(promhttp.Handler()))
 }
 
-// Improvement 3: Cache persistent blocks in Redis
+// getCombinedIPs fetches blocked IPs from Redis and enriches them with persistent blocks from Postgres (cached).
 func (h *APIHandler) getCombinedIPs() map[string]models.IPEntry {
 	ips, _ := h.redisRepo.GetBlockedIPs()
 	
@@ -292,6 +294,7 @@ func (h *APIHandler) getCombinedIPs() map[string]models.IPEntry {
 	return ips
 }
 
+// Dashboard renders the main dashboard page.
 func (h *APIHandler) Dashboard(c *gin.Context) {
 	username, _ := c.Get("username")
 
@@ -957,6 +960,7 @@ func (h *APIHandler) Logout(c *gin.Context) {
 	c.Redirect(http.StatusFound, "/login")
 }
 
+// BlockIP handles the request to block an IP address.
 func (h *APIHandler) BlockIP(c *gin.Context) {
 	username, _ := c.Get("username")
 
@@ -1030,6 +1034,7 @@ func (h *APIHandler) BlockIP(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "success"})
 }
 
+// UnblockIP handles the request to unblock an IP address.
 func (h *APIHandler) UnblockIP(c *gin.Context) {
 	username, _ := c.Get("username")
 
