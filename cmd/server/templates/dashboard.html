@@ -896,7 +896,9 @@
             }
             if (typeof s.total === 'number') {
                 document.getElementById('stat-total').textContent = s.total;
-                document.getElementById('total-ips-count').textContent = s.total;
+            }
+            if (typeof s.active_blocks === 'number') {
+                document.getElementById('total-ips-count').textContent = s.active_blocks;
             }
             if (typeof s.webhooks_hour === 'number') {
                 document.getElementById('stat-webhooks').textContent = s.webhooks_hour;

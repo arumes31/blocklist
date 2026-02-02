@@ -148,6 +148,7 @@ func (r *RedisRepository) ZRangeArgsWithScores(ctx context.Context, args redis.Z
 // Time-bucketed counters (hour/day) - these remain useful for trending
 func (r *RedisRepository) IncrHourBucket(ts time.Time, delta int64) error {
 	key := fmt.Sprintf("stats:hour:%s", ts.UTC().Format("2006010215"))
+	_ = r.client.IncrBy(r.ctx, "stats:total_ever", delta) // Also increment global total
 	return r.client.IncrBy(r.ctx, key, delta).Err()
 }
 func (r *RedisRepository) IncrDayBucket(ts time.Time, delta int64) error {
@@ -156,13 +157,7 @@ func (r *RedisRepository) IncrDayBucket(ts time.Time, delta int64) error {
 }
 
 func (r *RedisRepository) CountLastHour() (int, error) {
-	// Prefer ZSET if present
 	now := time.Now().UTC()
-	min := float64(now.Add(-1*time.Hour).Unix())
-	max := float64(now.Unix())
-	cnt, err := r.client.ZCount(r.ctx, "ips_by_ts", fmt.Sprintf("%f", min), fmt.Sprintf("%f", max)).Result()
-	if err == nil { return int(cnt), nil }
-	// Fallback to bucket key
 	v, e := r.client.Get(r.ctx, fmt.Sprintf("stats:hour:%s", now.Format("2006010215"))).Int()
 	if e == redis.Nil { return 0, nil }
 	return v, e
@@ -170,11 +165,13 @@ func (r *RedisRepository) CountLastHour() (int, error) {
 
 func (r *RedisRepository) CountLastDay() (int, error) {
 	now := time.Now().UTC()
-	min := float64(now.Add(-24*time.Hour).Unix())
-	max := float64(now.Unix())
-	cnt, err := r.client.ZCount(r.ctx, "ips_by_ts", fmt.Sprintf("%f", min), fmt.Sprintf("%f", max)).Result()
-	if err == nil { return int(cnt), nil }
 	v, e := r.client.Get(r.ctx, fmt.Sprintf("stats:day:%s", now.Format("20060102"))).Int()
+	if e == redis.Nil { return 0, nil }
+	return v, e
+}
+
+func (r *RedisRepository) CountTotalEver() (int, error) {
+	v, e := r.client.Get(r.ctx, "stats:total_ever").Int()
 	if e == redis.Nil { return 0, nil }
 	return v, e
 }
@@ -295,12 +292,17 @@ end
 return removed
 `
 
-// ExecBlockAtomic executes atomic block writes (hash, zset)
+// ExecBlockAtomic executes atomic block writes (hash, zset) and increments persistent counters
 func (r *RedisRepository) ExecBlockAtomic(ip string, entry models.IPEntry, now time.Time) error {
 	defer r.trackDuration("ExecBlockAtomic", time.Now())
 	data, err := json.Marshal(entry)
 	if err != nil { return err }
 	_, err = r.client.Eval(r.ctx, blockAtomicScript, []string{}, ip, string(data), fmt.Sprintf("%d", now.Unix())).Result()
+	if err == nil {
+		// Increment persistent counters
+		_ = r.IncrHourBucket(now, 1)
+		_ = r.IncrDayBucket(now, 1)
+	}
 	return err
 }
 

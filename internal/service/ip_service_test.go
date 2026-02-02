@@ -47,15 +47,15 @@ func TestIPService_Enhanced(t *testing.T) {
 		entry := models.IPEntry{Reason: "test", Timestamp: "2026-01-31 12:00:00 UTC"}
 		_ = rRepo.BlockIP("1.2.3.4", entry)
 
-		h, d, total, _, _, _, wh, lb, bm, err := svc.Stats(ctx)
+		h, d, total, active, _, _, _, wh, lb, bm, err := svc.Stats(ctx)
 		if err != nil {
 			t.Fatalf("Stats failed: %v", err)
 		}
-		if total != 1 {
-			t.Errorf("expected total 1, got %d", total)
+		if active != 1 {
+			t.Errorf("expected active 1, got %d", active)
 		}
 		// h and d might be 0 because we didn't update buckets or ZSET in this manual call
-		_ = h; _ = d; _ = wh; _ = lb; _ = bm
+		_ = h; _ = d; _ = wh; _ = lb; _ = bm; _ = total
 	})
 
 	t.Run("BulkBlock_Logic", func(t *testing.T) {

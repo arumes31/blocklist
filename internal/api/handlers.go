@@ -282,10 +282,9 @@ func (h *APIHandler) Dashboard(c *gin.Context) {
 	username, _ := c.Get("username")
 
 	ips := h.getCombinedIPs()
-	totalCount := len(ips)
 
 	// Preload stats for initial render
-	hour, day, _, top, topASN, topReason, wh, lb, bm, _ := h.ipService.Stats(c.Request.Context())
+	hour, day, totalEver, activeBlocks, top, topASN, topReason, wh, lb, bm, _ := h.ipService.Stats(c.Request.Context())
 	
 	tops := make([]map[string]interface{}, 0, len(top))
 	for _, t := range top { tops = append(tops, map[string]interface{}{"Country": t.Country, "Count": t.Count}) }
@@ -301,7 +300,7 @@ func (h *APIHandler) Dashboard(c *gin.Context) {
 
 	c.HTML(http.StatusOK, "dashboard.html", gin.H{
 		"ips":            ips,
-		"total_ips":      totalCount,
+		"total_ips":      activeBlocks, // Use value from Stats() for consistency
 		"admin_username": h.cfg.GUIAdmin,
 		"username":       username,
 		"permissions":    permissions,
@@ -309,7 +308,7 @@ func (h *APIHandler) Dashboard(c *gin.Context) {
 		"stats": gin.H{
 			"hour":           hour,
 			"day":            day,
-			"total":          totalCount,
+			"total":          totalEver, // Persistent total bans
 			"top_countries":  tops,
 			"top_asns":       asns,
 			"top_reasons":    reasons,
@@ -326,7 +325,7 @@ func (h *APIHandler) ThreadMap(c *gin.Context) {
 	username, _ := c.Get("username")
 	permissions, _ := c.Get("permissions")
 
-	hour, day, _, top, _, _, _, _, _, _ := h.ipService.Stats(c.Request.Context())
+	hour, day, _, _, top, _, _, _, _, _, _ := h.ipService.Stats(c.Request.Context())
 	
 	tops := make([]map[string]interface{}, 0, len(top))
 	for _, t := range top { tops = append(tops, map[string]interface{}{"Country": t.Country, "Count": t.Count}) }
@@ -953,15 +952,12 @@ func (h *APIHandler) BlockIP(c *gin.Context) {
 		_ = h.pgRepo.CreatePersistentBlock(req.IP, entry)
 		_ = h.pgRepo.LogAction(username.(string), "BLOCK_PERSISTENT", req.IP, req.Reason)
 	} else {
-		_ = h.redisRepo.BlockIP(req.IP, entry)
 		if h.pgRepo != nil {
 			_ = h.pgRepo.LogAction(username.(string), "BLOCK_EPHEMERAL", req.IP, req.Reason)
 		}
 	}
-	// index (tracked in Redis ZSET)
-	_ = h.redisRepo.IndexIPTimestamp(req.IP, now)
-	_ = h.redisRepo.IncrHourBucket(now, 1)
-	_ = h.redisRepo.IncrDayBucket(now, 1)
+	// Atomic operation updates hash, ZSET index, and persistent counters
+	_ = h.redisRepo.ExecBlockAtomic(req.IP, entry, now)
 
 	metrics.MetricBlocksTotal.WithLabelValues("gui").Inc()
 
@@ -1223,13 +1219,10 @@ func (h *APIHandler) Webhook(c *gin.Context) {
 	if data.Act == "ban" || data.Act == "ban-ip" {
 		if data.Persist && h.pgRepo != nil {
 			_ = h.pgRepo.CreatePersistentBlock(data.IP, entry)
-		} else {
-			_ = h.redisRepo.BlockIP(data.IP, entry)
 		}
-
-		_ = h.redisRepo.IndexIPTimestamp(data.IP, now)
-		_ = h.redisRepo.IncrHourBucket(now, 1)
-		_ = h.redisRepo.IncrDayBucket(now, 1)
+		
+		// Atomic operation updates hash, ZSET index, and persistent counters
+		_ = h.redisRepo.ExecBlockAtomic(data.IP, entry, now)
 
 		metrics.MetricBlocksTotal.WithLabelValues("webhook").Inc()
 		h.hub.BroadcastEvent("block", map[string]interface{}{
@@ -1790,12 +1783,12 @@ func (h *APIHandler) OpenAPI(c *gin.Context) {
 }
 
 func (h *APIHandler) Stats(c *gin.Context) {
-	hour, day, total, top, topASN, topReason, wh, lb, bm, err := h.ipService.Stats(c.Request.Context())
+	hour, day, totalEver, activeBlocks, top, topASN, topReason, wh, lb, bm, err := h.ipService.Stats(c.Request.Context())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "stats error"})
 		return
 	}
-	
+    
 	// shape to match frontend expectations
 	tops := make([]gin.H, 0, len(top))
 	for i, t := range top {
@@ -1818,7 +1811,8 @@ func (h *APIHandler) Stats(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"hour":           hour,
 		"day":            day,
-		"total":          total,
+		"total":          totalEver,
+		"active_blocks":  activeBlocks,
 		"top_countries":  tops,
 		"top_asns":       asns,
 		"top_reasons":    reasons,

@@ -226,17 +226,17 @@ func (s *IPService) ListIPsPaginated(ctx context.Context, limit int, cursor stri
 }
 
 // Stats computes counts for last hour/day/total and top countries, ASNs, and reasons.
-func (s *IPService) Stats(ctx context.Context) (hour int, day int, total int, top []struct{ Country string; Count int }, topASN []struct{ ASN uint; ASNOrg string; Count int }, topReason []struct{ Reason string; Count int }, webhooksHour int, lastBlockTs int64, blocksMinute int, err error) {
+func (s *IPService) Stats(ctx context.Context) (hour int, day int, totalEver int, activeBlocks int, top []struct{ Country string; Count int }, topASN []struct{ ASN uint; ASNOrg string; Count int }, topReason []struct{ Reason string; Count int }, webhooksHour int, lastBlockTs int64, blocksMinute int, err error) {
 	if s.redisRepo == nil {
-		return 0, 0, 0, nil, nil, nil, 0, 0, 0, nil
+		return 0, 0, 0, 0, nil, nil, nil, 0, 0, 0, nil
 	}
 
 	ips, err := s.redisRepo.GetBlockedIPs()
 	if err != nil {
-		return 0, 0, 0, nil, nil, nil, 0, 0, 0, err
+		return 0, 0, 0, 0, nil, nil, nil, 0, 0, 0, err
 	}
 
-	total = len(ips)
+	activeBlocks = len(ips)
 
 	countryMap := make(map[string]int)
 	asnMap := make(map[string]struct {
@@ -307,11 +307,12 @@ func (s *IPService) Stats(ctx context.Context) (hour int, day int, total int, to
 
 	h, _ := s.redisRepo.CountLastHour()
 	d, _ := s.redisRepo.CountLastDay()
+	totalEver, _ = s.redisRepo.CountTotalEver()
 	wh, _ := s.redisRepo.CountWebhooksLastHour()
 	lb, _ := s.redisRepo.GetLastBlockTime()
 	bm, _ := s.redisRepo.CountBlocksLastMinute()
 
-	return h, d, total, top, topASN, topReason, wh, lb, bm, nil
+	return h, d, totalEver, activeBlocks, top, topASN, topReason, wh, lb, bm, nil
 }
 
 // ExportIPs returns all IPs matching the filters for export purposes.
@@ -440,7 +441,6 @@ func (s *IPService) BulkBlock(ctx context.Context, ips []string, reason string, 
 			_ = s.pgRepo.CreatePersistentBlock(ip, entry)
 			_ = s.pgRepo.LogAction(addedBy, "BLOCK_PERSISTENT", ip, reason)
 		} else {
-			_ = s.redisRepo.BlockIP(ip, entry)
 			if s.pgRepo != nil {
 				_ = s.pgRepo.LogAction(addedBy, "BLOCK_EPHEMERAL", ip, reason)
 			}
