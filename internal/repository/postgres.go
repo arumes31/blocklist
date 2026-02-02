@@ -3,6 +3,7 @@ package repository
 import (
 	"blocklist/internal/models"
 	"encoding/json"
+	"fmt"
 	"time"
 	"github.com/jmoiron/sqlx"
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -33,6 +34,35 @@ func (p *PostgresRepository) GetAdmin(username string) (*models.AdminAccount, er
 		return nil, err
 	}
 	return &admin, nil
+}
+
+func (p *PostgresRepository) EnsurePartitions() error {
+	// Create partitions for current month and next 2 months
+	now := time.Now().UTC()
+	for i := 0; i <= 2; i++ {
+		target := now.AddDate(0, i, 0)
+		year := target.Year()
+		month := int(target.Month())
+		
+		// Start of month
+		start := time.Date(year, target.Month(), 1, 0, 0, 0, 0, time.UTC)
+		// Start of next month
+		end := start.AddDate(0, 1, 0)
+		
+		partitionName := fmt.Sprintf("y%dm%02d", year, month)
+		
+		tables := []string{"audit_logs", "webhook_logs"}
+		for _, table := range tables {
+			fullName := fmt.Sprintf("%s_%s", table, partitionName)
+			query := fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s PARTITION OF %s FOR VALUES FROM ('%s') TO ('%s')",
+				fullName, table, start.Format("2006-01-01"), end.Format("2006-01-01"))
+			_, err := p.db.Exec(query)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func (p *PostgresRepository) CreateAdmin(admin models.AdminAccount) error {

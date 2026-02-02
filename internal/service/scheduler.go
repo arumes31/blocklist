@@ -9,10 +9,11 @@ import (
 
 type SchedulerService struct {
 	redisRepo *repository.RedisRepository
+	pgRepo    *repository.PostgresRepository
 }
 
-func NewSchedulerService(r *repository.RedisRepository) *SchedulerService {
-	return &SchedulerService{redisRepo: r}
+func NewSchedulerService(r *repository.RedisRepository, p *repository.PostgresRepository) *SchedulerService {
+	return &SchedulerService{redisRepo: r, pgRepo: p}
 }
 
 func (s *SchedulerService) Start() {
@@ -22,6 +23,14 @@ func (s *SchedulerService) Start() {
 			if acquired, _ := s.redisRepo.AcquireLock("lock_cleanup", 10*time.Minute); acquired {
 				s.CleanOldIPs("ips")
 				s.CleanOldIPs("ips_webhook2_whitelist")
+				
+				if s.pgRepo != nil {
+					log.Printf("Managing database partitions...")
+					if err := s.pgRepo.EnsurePartitions(); err != nil {
+						log.Printf("Error ensuring partitions: %v", err)
+					}
+				}
+
 				_ = s.redisRepo.ReleaseLock("lock_cleanup")
 			}
 		}

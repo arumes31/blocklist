@@ -132,7 +132,7 @@ func main() {
 	authService := service.NewAuthService(pgRepo, redisRepo)
 	ipService := service.NewIPService(cfg, redisRepo, pgRepo)
 	webhookService := service.NewWebhookService(pgRepo, redisRepo, cfg)
-	scheduler := service.NewSchedulerService(redisRepo)
+	scheduler := service.NewSchedulerService(redisRepo, pgRepo)
 	geoUpdater := service.NewGeoIPService(cfg)
 
 	// Seed Admin User if missing
