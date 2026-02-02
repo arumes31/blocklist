@@ -356,10 +356,10 @@ actionunban = curl -X POST -H "Content-Type: application/json" -d '{"ip":"&lt;ip
 
                     <div style="margin-top: 1rem;">
                         <p style="color: var(--secondary-color); margin-bottom: 0.2rem; font-size: 0.8rem;">Add IP to Whitelist (Webhook style)</p>
-                        <pre style="font-size: 0.75rem;"><code>curl -X POST {{ .base_url }}/api/v1/webhook2_whitelist \
+                        <pre style="font-size: 0.75rem;"><code>curl -X POST {{ .base_url }}/api/v1/webhook \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"ip": "1.2.3.4", "reason": "trusted service"}'</code></pre>
+  -d '{"ip": "1.2.3.4", "act": "whitelist", "reason": "trusted service"}'</code></pre>
                     </div>
                 </div>
 
@@ -394,8 +394,8 @@ actionunban = curl -X POST -H "Content-Type: application/json" -d '{"ip":"&lt;ip
                         <p style="color: var(--secondary-color); margin-bottom: 0.2rem; font-size: 0.8rem;">Add IP to Whitelist (POST)</p>
                         <pre style="font-size: 0.75rem;"><code>wget --header="Authorization: Bearer YOUR_TOKEN" \
      --header="Content-Type: application/json" \
-     --post-data='{"ip":"1.2.3.4","reason":"trusted"}' \
-     {{ .base_url }}/api/v1/webhook2_whitelist -O -</code></pre>
+     --post-data='{"ip":"1.2.3.4","act":"whitelist","reason":"trusted"}' \
+     {{ .base_url }}/api/v1/webhook -O -</code></pre>
                     </div>
                 </div>
             </div>

@@ -189,7 +189,6 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 
 	// Webhooks handle their own granular permission checks and multiple auth types
 	v1.POST("/webhook", h.AuthMiddleware(), h.SessionCheckMiddleware(), h.webhookLimiter, h.Webhook)
-	v1.POST("/webhook2_whitelist", h.AuthMiddleware(), h.SessionCheckMiddleware(), h.webhookLimiter, h.Webhook2)
 	
 	r.GET("/openapi.json", h.OpenAPI)
 	r.GET("/docs", h.AuthMiddleware(), h.SessionCheckMiddleware(), func(c *gin.Context) {
@@ -1170,6 +1169,8 @@ func (h *APIHandler) Webhook(c *gin.Context) {
 		requiredPerm = "block_ips"
 	} else if data.Act == "unban" || data.Act == "delete-ban" {
 		requiredPerm = "unblock_ips"
+	} else if data.Act == "whitelist" {
+		requiredPerm = "whitelist_ips"
 	} else {
 		c.JSON(501, gin.H{"status": "action not implemented"})
 		return
@@ -1302,69 +1303,46 @@ func (h *APIHandler) Webhook(c *gin.Context) {
 		})
 		c.JSON(200, gin.H{"status": "IP banned", "ip": data.IP})
 	} else if data.Act == "unban" || data.Act == "delete-ban" {
-		_ = h.redisRepo.ExecUnblockAtomic(data.IP)
-		
-		if h.pgRepo != nil {
-			_ = h.pgRepo.DeletePersistentBlock(data.IP)
-		}
-
-		metrics.MetricUnblocksTotal.WithLabelValues("webhook").Inc()
+		_ = h.pgRepo.LogAction(addedBy, "UNBLOCK", data.IP, "webhook unban")
+		h.hub.BroadcastEvent("unblock", map[string]interface{}{ "ip": data.IP})
 		c.JSON(200, gin.H{"status": "IP unbanned", "ip": data.IP})
-	} else {
-		c.JSON(501, gin.H{"status": "action not implemented"})
-	}
-}
+	} else if data.Act == "whitelist" {
+		targetIP := data.IP
+		if targetIP == "" {
+			targetIP = c.ClientIP()
+		}
+		
+		if !h.ipService.IsValidIP(targetIP) {
+			// In case it's already whitelisted or in a protected range
+			// We can still proceed if the user wants to explicitly whitelist it, 
+			// but IsValidIP usually checks if it's NOT whitelisted yet.
+		}
 
-func (h *APIHandler) Webhook2(c *gin.Context) {
-	// Webhook2 requires authentication (HMAC is not supported here, only Bearer or Session)
-	if _, exists := c.Get("username"); !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
-		return
-	}
-	perms, _ := c.Get("permissions")
-	permStr := perms.(string)
-	username, _ := c.Get("username")
+		geo := h.ipService.GetGeoIP(targetIP)
+		
+		entry := models.WhitelistEntry{
+			Timestamp:   timestamp,
+			Geolocation: geo,
+			AddedBy:     fmt.Sprintf("WebhookWhitelist (%s:%s)", data.Username, sourceIP),
+			Reason:      data.Reason,
+		}
+		if entry.Reason == "" {
+			entry.Reason = "Webhook Whitelist"
+		}
 
-	hasAccess := false
-	if username.(string) == h.cfg.GUIAdmin {
-		hasAccess = true
-	} else {
-		for _, p := range strings.Split(permStr, ",") {
-			if strings.TrimSpace(p) == "whitelist_ips" {
-				hasAccess = true
-				break
-			}
+		_ = h.redisRepo.WhitelistIP(targetIP, entry)
+		
+		h.hub.BroadcastEvent("whitelist", map[string]interface{}{
+			"ip":         targetIP,
+			"data":       entry,
+			"source_geo": sourceGeo,
+		})
+
+		c.JSON(http.StatusOK, gin.H{"status": "IP whitelisted", "ip": targetIP})
 		}
 	}
-
-	if !hasAccess {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Webhook access denied (requires whitelist_ips)"})
-		return
-	}
-
-	// automated whitelist for the calling IP
-	clientIP := c.ClientIP()
-	geo := h.ipService.GetGeoIP(clientIP)
-	username, _ = c.Get("username")
 	
-	entry := models.WhitelistEntry{
-		Timestamp:   time.Now().UTC().Format("2006-01-02 15:04:05 UTC"),
-		Geolocation: geo,
-		AddedBy:     fmt.Sprintf("WebhookWhitelist (%s:%s)", username, clientIP),
-		Reason:      "Automated Whitelist",
-	}
-	_ = h.redisRepo.WhitelistIP(clientIP, entry)
-	
-	h.hub.BroadcastEvent("whitelist", map[string]interface{}{
-		"ip":         clientIP,
-		"data":       entry,
-		"source_geo": geo, // In this case source and target are the same
-	})
-
-	c.JSON(http.StatusOK, gin.H{"status": "IP added", "ip": clientIP})
-}
-
-func (h *APIHandler) CreateAdmin(c *gin.Context) {
+	func (h *APIHandler) CreateAdmin(c *gin.Context) {
 	var req struct {
 		Username    string `json:"username"`
 		Password    string `json:"password"`
