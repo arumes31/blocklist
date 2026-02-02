@@ -206,8 +206,8 @@
             <h4 style="color: var(--vibrant-red); margin-bottom: 0.5rem;">Fail2ban</h4>
             <p style="color: var(--secondary-color);">Configure Fail2ban to push bans to this app. Add an action file <code>/etc/fail2ban/action.d/blocklist.conf</code>:</p>
             <pre><code>[Definition]
-actionban = curl -X POST -H "Content-Type: application/json" -d '{"ip":"&lt;ip&gt;","act":"ban","reason":"fail2ban-&lt;name&gt;","username":"{{ .admin_user }}","password":"YOUR_PASSWORD"}' {{ .base_url }}/api/v1/webhook
-actionunban = curl -X POST -H "Content-Type: application/json" -d '{"ip":"&lt;ip&gt;","act":"unban","username":"{{ .admin_user }}","password":"YOUR_PASSWORD"}' {{ .base_url }}/api/v1/webhook
+actionban = curl -X POST -H "Authorization: Bearer YOUR_TOKEN" -H "Content-Type: application/json" -d '{"ip":"&lt;ip&gt;","act":"ban","reason":"fail2ban-&lt;name&gt;"}' {{ .base_url }}/api/v1/webhook
+actionunban = curl -X POST -H "Authorization: Bearer YOUR_TOKEN" -H "Content-Type: application/json" -d '{"ip":"&lt;ip&gt;","act":"unban"}' {{ .base_url }}/api/v1/webhook
 </code></pre>
 
             <h4 style="color: var(--vibrant-red); margin-bottom: 0.5rem; margin-top: 1.5rem;">Suricata / IDS</h4>

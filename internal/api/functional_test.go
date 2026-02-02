@@ -38,20 +38,10 @@ func setupTestRouter(rRepo *repository.RedisRepository) *gin.Engine {
 	
 	h := NewAPIHandler(cfg, rRepo, nil, authSvc, ipSvc, hub, webhookSvc)
 	
-	// Mock auth session for protected routes
-	router.Use(func(c *gin.Context) {
-		session := sessions.Default(c)
-		session.Set("logged_in", true)
-		session.Set("username", "admin")
-		session.Set("role", "admin")
-		session.Set("client_ip", "127.0.0.1")
-		_ = session.Save()
-		c.Next()
-	})
-
-	router.POST("/block", h.BlockIP)
-	router.POST("/unblock", h.UnblockIP)
-	router.POST("/api/v1/webhook", h.Webhook)
+	// Register routes with AuthMiddleware
+	router.POST("/block", h.AuthMiddleware(), h.BlockIP)
+	router.POST("/unblock", h.AuthMiddleware(), h.UnblockIP)
+	router.POST("/api/v1/webhook", h.AuthMiddleware(), h.Webhook)
 	
 	return router
 }
@@ -71,6 +61,7 @@ func TestFunctional_BlockUnblock(t *testing.T) {
 	body, _ := json.Marshal(blockReq)
 	req, _ := http.NewRequest("POST", "/block", bytes.NewBuffer(body))
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer test-token")
 	req.Header.Set("Origin", "http://localhost") // CSRF check bypass
 	
 	w := httptest.NewRecorder()
@@ -90,6 +81,7 @@ func TestFunctional_BlockUnblock(t *testing.T) {
 	body, _ = json.Marshal(unblockReq)
 	req, _ = http.NewRequest("POST", "/unblock", bytes.NewBuffer(body))
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer test-token")
 	req.Header.Set("Origin", "http://localhost")
 	
 	w = httptest.NewRecorder()
@@ -109,14 +101,13 @@ func TestFunctional_Webhook(t *testing.T) {
 	router := setupTestRouter(rRepo)
 
 	webhookReq := map[string]string{
-		"ip":       "5.6.7.8",
-		"act":      "ban",
-		"username": "admin",
-		"password": "password",
+		"ip":  "5.6.7.8",
+		"act": "ban",
 	}
 	body, _ := json.Marshal(webhookReq)
 	req, _ := http.NewRequest("POST", "/api/v1/webhook", bytes.NewBuffer(body))
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer test-token")
 	req.Header.Set("Origin", "http://localhost")
 	
 	w := httptest.NewRecorder()
