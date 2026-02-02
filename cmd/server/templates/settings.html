@@ -233,9 +233,10 @@ actionunban = curl -X POST -H "Content-Type: application/json" -d '{"ip":"&lt;ip
                             <label><input type="checkbox" class="token-perm" value="whitelist_ips"> Whitelist IPs</label>
                             <label><input type="checkbox" class="token-perm" value="export_data"> Export Data</label>
                         </div>
-                        <div style="margin-top: 10px; display: flex; gap: 10px;">
+                        <div style="margin-top: 10px; display: flex; gap: 10px; flex-wrap: wrap;">
                             <button type="button" class="btn btn-dark" style="padding: 0.2rem 0.5rem; font-size: 0.7rem;" onclick="setTokenTemplate('fail2ban')">Fail2ban Template</button>
                             <button type="button" class="btn btn-dark" style="padding: 0.2rem 0.5rem; font-size: 0.7rem;" onclick="setTokenTemplate('fortigate')">Fortigate Template</button>
+                            <button type="button" class="btn btn-dark" style="padding: 0.2rem 0.5rem; font-size: 0.7rem;" onclick="setTokenTemplate('webhook')">Webhook Template</button>
                             <button type="button" class="btn btn-dark" style="padding: 0.2rem 0.5rem; font-size: 0.7rem;" onclick="setTokenTemplate('auditor')">Auditor Template</button>
                         </div>
                     </div>
@@ -445,6 +446,7 @@ actionunban = curl -X POST -H "Content-Type: application/json" -d '{"ip":"&lt;ip
             const perms = {
                 'fail2ban': ['block_ips'],
                 'fortigate': ['block_ips', 'unblock_ips'],
+                'webhook': ['block_ips', 'unblock_ips', 'whitelist_ips'],
                 'auditor': ['view_ips', 'export_data']
             };
             

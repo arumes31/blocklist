@@ -2023,6 +2023,7 @@ func (h *APIHandler) UpdateAPITokenPermissions(c *gin.Context) {
 			validPerms := []string{}
 			for _, rp := range rPerms {
 				rp = strings.TrimSpace(rp)
+				if rp == "" { continue }
 				for _, up := range uPerms {
 					if rp == strings.TrimSpace(up) {
 						validPerms = append(validPerms, rp)
