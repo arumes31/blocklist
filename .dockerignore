@@ -38,3 +38,5 @@ Thumbs.db
 
 # Go
 vendor/
+**/*_test.go
+**/testdata/
