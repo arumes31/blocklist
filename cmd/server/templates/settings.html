@@ -224,6 +224,7 @@ actionunban = curl -X POST -H "Authorization: Bearer YOUR_TOKEN" -H "Content-Typ
                 <form id="tokenForm" hx-post="/api/v1/settings/tokens" hx-target="#token-list" hx-swap="innerHTML" hx-on:htmx:config-request="prepareTokenPerms()">
                     <div style="display: flex; gap: 10px; margin-bottom: 1rem;">
                         <input type="text" name="name" class="filter-input" placeholder="Token Name (e.g. CI/CD)" required style="flex: 1;">
+                        <input type="text" name="allowed_ips" class="filter-input" placeholder="Allowed Source IPs/CIDRs (comma-separated, optional)" style="flex: 1.5;">
                         <input type="hidden" name="permissions" id="tokenPermsInput">
                         <button type="submit" class="btn btn-danger">Create Token</button>
                     </div>
@@ -250,6 +251,7 @@ actionunban = curl -X POST -H "Authorization: Bearer YOUR_TOKEN" -H "Content-Typ
                         <tr>
                             <th>Name</th>
                             <th>Permissions</th>
+                            <th>IP Restrictions</th>
                             <th>Created</th>
                             <th>Last Used</th>
                             <th>Action</th>
@@ -283,6 +285,13 @@ actionunban = curl -X POST -H "Authorization: Bearer YOUR_TOKEN" -H "Content-Typ
                                         <button class="btn btn-dark" style="padding: 0.1rem 0.4rem; font-size: 0.7rem;" onclick="cancelEditTokenPerms('{{ .ID }}')">Cancel</button>
                                     </div>
                                 </div>
+                            </td>
+                            <td>
+                                {{ if .AllowedIPs }}
+                                    <code>{{ .AllowedIPs }}</code>
+                                {{ else }}
+                                    <span style="color: var(--secondary-color); font-size: 0.75rem;">None</span>
+                                {{ end }}
                             </td>
                             <td><span class="utc-timestamp">{{ .CreatedAt }}</span></td>
                             <td>{{ if .LastUsed }}<span class="utc-timestamp">{{ .LastUsed }}</span>{{ else }}-{{ end }}</td>

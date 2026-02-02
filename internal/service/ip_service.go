@@ -107,6 +107,31 @@ func (s *IPService) IsValidIP(ipStr string) bool {
 	return true
 }
 
+func (s *IPService) CalculateThreatScore(ip string, reason string) int {
+	if s.redisRepo == nil { return 0 }
+	count, _ := s.redisRepo.GetIPBanCount(ip)
+	
+	// Base score: 10 points per previous ban (including this one if already incremented, 
+	// but usually we call this before ExecBlockAtomic or we account for it)
+	score := int(count * 10) 
+	
+	// Bonus points for reason severity
+	reason = strings.ToLower(reason)
+	if strings.Contains(reason, "brute") || strings.Contains(reason, "ssh") || strings.Contains(reason, "login") {
+		score += 20
+	} else if strings.Contains(reason, "sql") || strings.Contains(reason, "inject") || strings.Contains(reason, "rce") {
+		score += 40
+	} else if strings.Contains(reason, "spam") {
+		score += 15
+	} else if strings.Contains(reason, "scanner") || strings.Contains(reason, "bot") {
+		score += 10
+	}
+	
+	if score > 100 { score = 100 }
+	if score < 0 { score = 0 }
+	return score
+}
+
 func (s *IPService) GetGeoIP(ipStr string) *models.GeoData {
 	if s.geoipReader == nil {
 		// Try to reopen if it was missing on start
@@ -435,6 +460,7 @@ func (s *IPService) BulkBlock(ctx context.Context, ips []string, reason string, 
 			AddedBy:     fmt.Sprintf("%s (%s)", addedBy, actorIP),
 			TTL:         ttl,
 			ExpiresAt:   expiresAt,
+			ThreatScore: s.CalculateThreatScore(ip, reason),
 		}
 		
 		if persist && s.pgRepo != nil {

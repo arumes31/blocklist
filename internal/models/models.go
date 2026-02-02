@@ -16,6 +16,7 @@ type IPEntry struct {
 	AddedBy     string   `json:"added_by"`
 	TTL         int      `json:"ttl,omitempty"`        // TTL in seconds
 	ExpiresAt   string   `json:"expires_at,omitempty"` // Absolute expiration time
+	ThreatScore int      `json:"threat_score,omitempty"`
 }
 
 type WhitelistEntry struct {
@@ -51,6 +52,7 @@ type APIToken struct {
 	Username    string   `json:"username" db:"username"`
 	Role        string   `json:"role" db:"role"`
 	Permissions string   `json:"permissions" db:"permissions"`
+	AllowedIPs  string   `json:"allowed_ips" db:"allowed_ips"` // Comma-separated CIDRs
 	CreatedAt   string   `json:"created_at" db:"created_at"`
 	ExpiresAt   *string  `json:"expires_at" db:"expires_at"`
 	LastUsed    *string  `json:"last_used" db:"last_used"`

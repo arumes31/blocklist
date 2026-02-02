@@ -148,4 +148,11 @@ func TestPostgresRepository_Integration(t *testing.T) {
 			t.Errorf("UpdateTokenLastUsed failed: %v", err)
 		}
 	})
+
+	t.Run("EnsurePartitions", func(t *testing.T) {
+		err := repo.EnsurePartitions(6)
+		if err != nil {
+			t.Errorf("EnsurePartitions failed: %v", err)
+		}
+	})
 }

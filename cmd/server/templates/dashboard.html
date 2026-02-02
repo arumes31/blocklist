@@ -741,6 +741,7 @@
                     <th>Date Added</th>
                     <th>Expires At</th>
                     <th>Reason</th>
+                    <th>Score</th>
                     <th>By</th>
                     <th>Geo</th>
                     <th>Action</th>
@@ -829,6 +830,12 @@
     function rowHTML(ip, data){
         const geo = data && data.geolocation && data.geolocation.country ? `<span class="flag-icon flag-icon-${data.geolocation.country.toLowerCase()}"></span> ${data.geolocation.city||''} (${data.geolocation.country})` : '<span style="color: #888;">N/A</span>';
         const reason = data && data.reason ? data.reason : 'N/A';
+        const score = data && data.threat_score ? data.threat_score : 0;
+        let scoreColor = '#888';
+        if (score >= 75) scoreColor = '#ff0000';
+        else if (score >= 50) scoreColor = '#ff8c00';
+        else if (score >= 25) scoreColor = '#ffd700';
+
         const addedBy = data && data.added_by ? data.added_by : 'Unknown';
         const ts = data && data.timestamp ? data.timestamp : '';
         const expires = data && data.expires_at ? data.expires_at : 'Never';
@@ -841,6 +848,7 @@
             <td><span class="utc-timestamp">${ts}</span></td>
             <td>${expiresHTML}</td>
             <td><span style="font-size: 0.9rem; color: var(--secondary-color);">${reason}</span></td>
+            <td><span style="font-weight: bold; color: ${scoreColor}">${score}</span></td>
             <td>${addedBy}</td>
             <td>${geo}</td>
             <td>

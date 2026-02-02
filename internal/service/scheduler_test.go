@@ -5,6 +5,6 @@ import (
 )
 
 func TestSchedulerService_CleanOldIPs_Nil(t *testing.T) {
-	svc := NewSchedulerService(nil, nil)
+	svc := NewSchedulerService(nil, nil, nil)
 	svc.CleanOldIPs("ips")
 }

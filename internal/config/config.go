@@ -31,6 +31,7 @@ type Config struct {
 	RatePeriod             int
 	RateLimitLogin         int
 	RateLimitWebhook       int
+	LogRetentionMonths     int
 }
 
 func Load() *Config {
@@ -59,6 +60,7 @@ func Load() *Config {
 		RatePeriod:             getEnvInt("RATE_PERIOD", 30),
 		RateLimitLogin:         getEnvInt("RATE_LIMIT_LOGIN", 10),
 		RateLimitWebhook:       getEnvInt("RATE_LIMIT_WEBHOOK", 100),
+		LogRetentionMonths:     getEnvInt("LOG_RETENTION_MONTHS", 6),
 	}
 }
 

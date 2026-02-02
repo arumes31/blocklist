@@ -3,6 +3,12 @@
         <td style="font-family: monospace; font-weight: 600;">{{ $ip }}</td>
         <td><span class="utc-timestamp">{{ $data.Timestamp }}</span></td>
         <td><span style="font-size: 0.9rem; color: var(--secondary-color);">{{ if $data.Reason }}{{ $data.Reason }}{{ else }}N/A{{ end }}</span></td>
+        <td>
+            {{ $score := $data.ThreatScore }}
+            <span style="font-weight: bold; color: {{ if ge $score 75 }}#ff0000{{ else if ge $score 50 }}#ff8c00{{ else if ge $score 25 }}#ffd700{{ else }}#888{{ end }}">
+                {{ $score }}
+            </span>
+        </td>
         <td>{{ if $data.AddedBy }}{{ $data.AddedBy }}{{ else }}Unknown{{ end }}</td>
         <td>
             {{ if $data.Geolocation }}

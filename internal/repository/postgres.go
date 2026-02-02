@@ -36,8 +36,8 @@ func (p *PostgresRepository) GetAdmin(username string) (*models.AdminAccount, er
 	return &admin, nil
 }
 
-func (p *PostgresRepository) EnsurePartitions() error {
-	// Create partitions for current month and next 2 months
+func (p *PostgresRepository) EnsurePartitions(retentionMonths int) error {
+	// 1. Create partitions for current month and next 2 months
 	now := time.Now().UTC()
 	for i := 0; i <= 2; i++ {
 		target := now.AddDate(0, i, 0)
@@ -62,6 +62,32 @@ func (p *PostgresRepository) EnsurePartitions() error {
 			}
 		}
 	}
+
+	// 2. Drop partitions older than retentionMonths
+	if retentionMonths > 0 {
+		cutoff := now.AddDate(0, -retentionMonths, 0)
+		// We iterate back a few more months to be sure we catch old ones if the job didn't run
+		for i := 1; i <= 12; i++ {
+			target := cutoff.AddDate(0, -i, 0)
+			year := target.Year()
+			month := int(target.Month())
+			partitionName := fmt.Sprintf("y%dm%02d", year, month)
+			
+			tables := []string{"audit_logs", "webhook_logs"}
+			for _, table := range tables {
+				fullName := fmt.Sprintf("%s_%s", table, partitionName)
+				// Check if partition exists before trying to drop (optional but cleaner)
+				// For Postgres, we can just use DROP TABLE IF EXISTS
+				query := fmt.Sprintf("DROP TABLE IF EXISTS %s", fullName)
+				_, err := p.db.Exec(query)
+				if err != nil {
+					// Log error but continue
+					fmt.Printf("Error dropping partition %s: %v\n", fullName, err)
+				}
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -105,13 +131,13 @@ func (p *PostgresRepository) GetAllAdmins() ([]models.AdminAccount, error) {
 }
 
 func (p *PostgresRepository) CreateAPIToken(token models.APIToken) error {
-	_, err := p.db.NamedExec("INSERT INTO api_tokens (token_hash, name, username, role, permissions, expires_at) VALUES (:token_hash, :name, :username, :role, :permissions, :expires_at)", token)
+	_, err := p.db.NamedExec("INSERT INTO api_tokens (token_hash, name, username, role, permissions, allowed_ips, expires_at) VALUES (:token_hash, :name, :username, :role, :permissions, :allowed_ips, :expires_at)", token)
 	return err
 }
 
 func (p *PostgresRepository) GetAPITokenByHash(hash string) (*models.APIToken, error) {
 	var token models.APIToken
-	err := p.db.Get(&token, "SELECT id, token_hash, name, username, role, permissions, created_at, expires_at, last_used FROM api_tokens WHERE token_hash = $1", hash)
+	err := p.db.Get(&token, "SELECT id, token_hash, name, username, role, permissions, allowed_ips, created_at, expires_at, last_used FROM api_tokens WHERE token_hash = $1", hash)
 	if err != nil {
 		return nil, err
 	}
@@ -120,13 +146,13 @@ func (p *PostgresRepository) GetAPITokenByHash(hash string) (*models.APIToken, e
 
 func (p *PostgresRepository) GetAPITokens(username string) ([]models.APIToken, error) {
 	var tokens []models.APIToken
-	err := p.db.Select(&tokens, "SELECT id, name, username, role, permissions, created_at, expires_at, last_used FROM api_tokens WHERE username = $1 ORDER BY created_at DESC", username)
+	err := p.db.Select(&tokens, "SELECT id, name, username, role, permissions, allowed_ips, created_at, expires_at, last_used FROM api_tokens WHERE username = $1 ORDER BY created_at DESC", username)
 	return tokens, err
 }
 
 func (p *PostgresRepository) GetAllAPITokens() ([]models.APIToken, error) {
 	var tokens []models.APIToken
-	err := p.db.Select(&tokens, "SELECT id, name, username, role, permissions, created_at, expires_at, last_used FROM api_tokens ORDER BY created_at DESC")
+	err := p.db.Select(&tokens, "SELECT id, name, username, role, permissions, allowed_ips, created_at, expires_at, last_used FROM api_tokens ORDER BY created_at DESC")
 	return tokens, err
 }
 

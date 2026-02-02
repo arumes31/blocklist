@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Unblock Request - Blocklist</title>
+    <link rel="icon" type="image/x-icon" href="/cd/favicon-color.png" />
+    <style>
+        :root {
+            --primary-red: #ff0000;
+            --dark-red: #8b0000;
+            --vibrant-red: #ff4d4d;
+            --glass-bg: rgba(20, 20, 20, 0.85);
+            --border-red: rgba(255, 0, 0, 0.3);
+            --secondary-color: #b3b3b3;
+        }
+        body {
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            background-color: #000;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+        }
+        .card {
+            background: var(--glass-bg);
+            border: 1px solid var(--border-red);
+            border-radius: 12px;
+            padding: 2.5rem;
+            width: 400px;
+            box-shadow: 0 10px 40px rgba(255,0,0,0.15);
+            backdrop-filter: blur(10px);
+            text-align: center;
+        }
+        .logo { height: 60px; margin-bottom: 1.5rem; filter: drop-shadow(0 0 8px rgba(255,0,0,0.4)); }
+        h2 { margin-top: 0; color: #fff; font-weight: 600; }
+        p { color: var(--secondary-color); font-size: 0.95rem; line-height: 1.5; }
+        .ip-box {
+            background: rgba(255,255,255,0.05);
+            padding: 0.8rem;
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 1.2rem;
+            color: var(--vibrant-red);
+            margin: 1.5rem 0;
+            border: 1px dashed var(--border-red);
+        }
+        .form-group { text-align: left; margin-bottom: 1.2rem; }
+        label { display: block; margin-bottom: 0.4rem; color: var(--secondary-color); font-size: 0.85rem; }
+        .input {
+            width: 100%;
+            padding: 0.8rem;
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 8px;
+            background: rgba(255,255,255,0.05);
+            color: #fff;
+            box-sizing: border-box;
+            outline: none;
+        }
+        .input:focus { border-color: var(--primary-red); box-shadow: 0 0 0 2px rgba(255,0,0,0.2); }
+        .btn {
+            width: 100%;
+            padding: 0.8rem;
+            background: linear-gradient(45deg, var(--dark-red), var(--primary-red));
+            border: none;
+            border-radius: 8px;
+            color: #fff;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            margin-top: 1rem;
+        }
+        .btn:hover { transform: translateY(-1px); box-shadow: 0 4px 15px rgba(255,0,0,0.4); }
+        .captcha-box {
+            background: rgba(255,0,0,0.1);
+            padding: 1rem;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+            font-weight: bold;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+            border: 1px solid var(--border-red);
+        }
+        .success-msg { color: #28a745; font-weight: 600; display: none; }
+        .error-msg { color: var(--vibrant-red); font-size: 0.85rem; margin-top: 0.5rem; display: none; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <img src="/cd/logo.png" alt="Logo" class="logo">
+        <h2>Unblock Request</h2>
+        
+        {{ if .blocked }}
+            <p>Your IP address is currently restricted on our platform.</p>
+            <div class="ip-box">{{ .ip }}</div>
+            <p style="font-size: 0.8rem;">Threat Score: <span style="color: var(--vibrant-red); font-weight: bold;">{{ .threat_score }}</span></p>
+
+            <form id="unblockForm">
+                <div class="form-group">
+                    <label>Reason for unblock</label>
+                    <textarea name="reason" class="input" rows="3" placeholder="Explain why this is a false positive..." required></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label>Security Check (Verification required)</label>
+                    <div class="captcha-box">
+                        <span>{{ .num1 }}</span>
+                        <span>+</span>
+                        <span>{{ .num2 }}</span>
+                        <span>=</span>
+                        <input type="number" name="answer" class="input" style="width: 80px; text-align: center; padding: 0.4rem;" required>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn">Submit Request</button>
+                <div id="error" class="error-msg"></div>
+            </form>
+            <div id="success" class="success-msg">
+                <p>Request submitted successfully! Our team has been notified and will review your case shortly.</p>
+            </div>
+        {{ else }}
+            <p>Your IP address is <strong>not</strong> currently blocked.</p>
+            <div class="ip-box">{{ .ip }}</div>
+            <p>If you are experiencing issues, please contact the administrator directly.</p>
+            <a href="/" class="btn" style="text-decoration: none; display: block;">Return to Home</a>
+        {{ end }}
+    </div>
+
+    <script>
+        const form = document.getElementById('unblockForm');
+        if (form) {
+            form.onsubmit = async (e) => {
+                e.preventDefault();
+                const errorEl = document.getElementById('error');
+                errorEl.style.display = 'none';
+                
+                const formData = new FormData(form);
+                const res = await fetch('/unblock-request', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await res.json();
+                if (res.ok) {
+                    form.style.display = 'none';
+                    document.getElementById('success').style.display = 'block';
+                } else {
+                    errorEl.textContent = data.error || 'An error occurred';
+                    errorEl.style.display = 'block';
+                }
+            };
+        }
+    </script>
+</body>
+</html>

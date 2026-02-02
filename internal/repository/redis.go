@@ -302,6 +302,7 @@ func (r *RedisRepository) ExecBlockAtomic(ip string, entry models.IPEntry, now t
 		// Increment persistent counters
 		_ = r.IncrHourBucket(now, 1)
 		_ = r.IncrDayBucket(now, 1)
+		_ = r.client.HIncrBy(r.ctx, "ips_ban_counts", ip, 1)
 	}
 	return err
 }
@@ -321,4 +322,14 @@ func (r *RedisRepository) GetTrueRedisCount() (int, error) {
 func (r *RedisRepository) GetZSetCount() (int, error) {
 	v, err := r.client.ZCard(r.ctx, "ips_by_ts").Result()
 	return int(v), err
+}
+
+func (r *RedisRepository) IncrIPBanCount(ip string) (int64, error) {
+	return r.client.HIncrBy(r.ctx, "ips_ban_counts", ip, 1).Result()
+}
+
+func (r *RedisRepository) GetIPBanCount(ip string) (int64, error) {
+	v, err := r.client.HGet(r.ctx, "ips_ban_counts", ip).Int64()
+	if err == redis.Nil { return 0, nil }
+	return v, err
 }

@@ -1,6 +1,7 @@
 package service
 
 import (
+	"blocklist/internal/config"
 	"blocklist/internal/repository"
 	"encoding/json"
 	"log"
@@ -10,10 +11,11 @@ import (
 type SchedulerService struct {
 	redisRepo *repository.RedisRepository
 	pgRepo    *repository.PostgresRepository
+	cfg       *config.Config
 }
 
-func NewSchedulerService(r *repository.RedisRepository, p *repository.PostgresRepository) *SchedulerService {
-	return &SchedulerService{redisRepo: r, pgRepo: p}
+func NewSchedulerService(r *repository.RedisRepository, p *repository.PostgresRepository, cfg *config.Config) *SchedulerService {
+	return &SchedulerService{redisRepo: r, pgRepo: p, cfg: cfg}
 }
 
 func (s *SchedulerService) Start() {
@@ -26,7 +28,11 @@ func (s *SchedulerService) Start() {
 				
 				if s.pgRepo != nil {
 					log.Printf("Managing database partitions...")
-					if err := s.pgRepo.EnsurePartitions(); err != nil {
+					retention := 6
+					if s.cfg != nil && s.cfg.LogRetentionMonths > 0 {
+						retention = s.cfg.LogRetentionMonths
+					}
+					if err := s.pgRepo.EnsurePartitions(retention); err != nil {
 						log.Printf("Error ensuring partitions: %v", err)
 					}
 				}

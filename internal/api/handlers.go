@@ -13,6 +13,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -172,6 +173,9 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 	r.GET("/ws", h.WS)
 	r.GET("/sudo", h.AuthMiddleware(), h.loginLimiter, h.ShowSudo)
 	r.POST("/sudo", h.AuthMiddleware(), h.loginLimiter, h.VerifySudo)
+
+	r.GET("/unblock-request", h.ShowUnblockRequest)
+	r.POST("/unblock-request", h.SubmitUnblockRequest)
 
 	// API Versioning (Improvement 5)
 	v1 := r.Group("/api/v1")
@@ -432,6 +436,37 @@ func (h *APIHandler) Health(c *gin.Context) {
 	c.JSON(200, gin.H{"status": status, "postgres": dbStatus, "redis": redisStatus})
 }
 
+func (h *APIHandler) isIPInCIDRs(ipStr string, cidrs string) bool {
+	if cidrs == "" {
+		return true // No restriction
+	}
+	
+	ip := net.ParseIP(ipStr)
+	if ip == nil {
+		return false
+	}
+
+	for _, cidr := range strings.Split(cidrs, ",") {
+		cidr = strings.TrimSpace(cidr)
+		if cidr == "" {
+			continue
+		}
+		
+		_, network, err := net.ParseCIDR(cidr)
+		if err == nil {
+			if network.Contains(ip) {
+				return true
+			}
+		} else {
+			// Try as plain IP
+			if cidr == ipStr {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (h *APIHandler) AuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Check for Bearer token first
@@ -460,6 +495,19 @@ func (h *APIHandler) AuthMiddleware() gin.HandlerFunc {
 							return
 						}
 					}
+
+					// Check IP restrictions
+					if !h.isIPInCIDRs(c.ClientIP(), token.AllowedIPs) {
+						zlog.Warn().
+							Str("token", token.Name).
+							Str("client_ip", c.ClientIP()).
+							Str("allowed", token.AllowedIPs).
+							Msg("API Token used from unauthorized IP")
+						c.JSON(http.StatusForbidden, gin.H{"error": "Token not allowed from this IP"})
+						c.Abort()
+						return
+					}
+
 					_ = h.pgRepo.UpdateTokenLastUsed(token.ID)
 					c.Set("username", token.Username)
 					c.Set("role", token.Role)
@@ -957,6 +1005,7 @@ func (h *APIHandler) BlockIP(c *gin.Context) {
 		AddedBy:     fmt.Sprintf("%s (%s)", username.(string), c.ClientIP()),
 		TTL:         req.TTL,
 		ExpiresAt:   expiresAt,
+		ThreatScore: h.ipService.CalculateThreatScore(req.IP, reason),
 	}
 
 	if req.Persist && h.pgRepo != nil {
@@ -1215,6 +1264,7 @@ func (h *APIHandler) Webhook(c *gin.Context) {
 		AddedBy:     addedBy,
 		TTL:         data.TTL,
 		ExpiresAt:   expiresAt,
+		ThreatScore: h.ipService.CalculateThreatScore(data.IP, data.Reason),
 	}
 
 	if data.Act == "ban" || data.Act == "ban-ip" {
@@ -1851,6 +1901,7 @@ func (h *APIHandler) CreateAPIToken(c *gin.Context) {
 	userPerms, _ := c.Get("permissions")
 	name := c.PostForm("name")
 	requestedPerms := c.PostForm("permissions")
+	allowedIPs := c.PostForm("allowed_ips")
 	
 	if name == "" {
 		c.String(http.StatusBadRequest, "Token name required")
@@ -1900,6 +1951,7 @@ func (h *APIHandler) CreateAPIToken(c *gin.Context) {
 		Username:    username.(string),
 		Role:        role.(string),
 		Permissions: finalPerms,
+		AllowedIPs:  allowedIPs,
 	}
 	
 	err := h.pgRepo.CreateAPIToken(token)
@@ -2015,4 +2067,64 @@ func (h *APIHandler) DeleteOutboundWebhook(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
 	_ = h.pgRepo.DeleteOutboundWebhook(id)
 	c.Status(http.StatusOK)
+}
+
+func (h *APIHandler) ShowUnblockRequest(c *gin.Context) {
+	clientIP := c.ClientIP()
+	
+	// Check if IP is actually blocked
+	entry, _ := h.redisRepo.GetIPEntry(clientIP)
+	
+	// Difficulty based on ThreatScore
+	threatScore := 0
+	if entry != nil {
+		threatScore = entry.ThreatScore
+	}
+	
+	num1 := 5 + (threatScore / 10)
+	num2 := 3 + (threatScore / 20)
+	
+	captchaID := fmt.Sprintf("captcha:%s", clientIP)
+	_ = h.redisRepo.GetClient().Set(c.Request.Context(), captchaID, fmt.Sprintf("%d", num1+num2), 5*time.Minute).Err()
+
+	c.HTML(http.StatusOK, "unblock_request.html", gin.H{
+		"ip":           clientIP,
+		"num1":         num1,
+		"num2":         num2,
+		"threat_score": threatScore,
+		"blocked":      entry != nil,
+	})
+}
+
+func (h *APIHandler) SubmitUnblockRequest(c *gin.Context) {
+	clientIP := c.ClientIP()
+	answer := c.PostForm("answer")
+	reason := c.PostForm("reason")
+
+	captchaID := fmt.Sprintf("captcha:%s", clientIP)
+	expected, err := h.redisRepo.GetClient().Get(c.Request.Context(), captchaID).Result()
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Captcha expired or invalid. Please refresh the page."})
+		return
+	}
+
+	if answer != expected {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Incorrect captcha answer."})
+		return
+	}
+
+	// Logic for unblocking
+	_ = h.pgRepo.LogAction("SELF-SERVICE", "UNBLOCK_REQUEST", clientIP, reason)
+	
+	h.hub.BroadcastEvent("unblock_request", map[string]interface{}{
+		"ip":     clientIP,
+		"reason": reason,
+	})
+	
+	h.webhookService.Notify(c.Request.Context(), "unblock_request", map[string]interface{}{
+		"ip":     clientIP,
+		"reason": reason,
+	})
+	
+	c.JSON(http.StatusOK, gin.H{"status": "Request submitted. Administrators have been notified."})
 }

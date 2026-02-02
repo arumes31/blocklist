@@ -26,6 +26,13 @@
             </div>
         </div>
     </td>
+    <td>
+        {{ if .AllowedIPs }}
+            <code>{{ .AllowedIPs }}</code>
+        {{ else }}
+            <span style="color: var(--secondary-color); font-size: 0.75rem;">None</span>
+        {{ end }}
+    </td>
     <td><span class="utc-timestamp">{{ .CreatedAt }}</span></td>
     <td>{{ if .LastUsed }}<span class="utc-timestamp">{{ .LastUsed }}</span>{{ else }}-{{ end }}</td>
     <td>
