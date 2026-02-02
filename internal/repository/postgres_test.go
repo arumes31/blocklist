@@ -55,7 +55,7 @@ func TestPostgresRepository_Integration(t *testing.T) {
 		t.Fatalf("failed to run migrations: %v", err)
 	}
 
-	repo, err := NewPostgresRepository(connStr)
+	repo, err := NewPostgresRepository(connStr, connStr)
 	if err != nil {
 		t.Fatalf("failed to create repository: %v", err)
 	}

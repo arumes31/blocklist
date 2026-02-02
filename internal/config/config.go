@@ -14,6 +14,7 @@ type Config struct {
 	RedisDB                int
 	RedisLimDB             int
 	PostgresURL            string
+	PostgresReadURL        string
 	GUIAdmin               string
 	GUIPassword            string
 	GUIToken               string
@@ -43,6 +44,7 @@ func Load() *Config {
 		RedisDB:                getEnvInt("REDIS_DB", 0),
 		RedisLimDB:             getEnvInt("REDIS_LIM_DB", 1),
 		PostgresURL:            getEnv("POSTGRES_URL", "postgres://postgres:password@localhost:5432/blocklist?sslmode=disable"),
+		PostgresReadURL:        getEnv("POSTGRES_READ_URL", getEnv("POSTGRES_URL", "postgres://postgres:password@localhost:5432/blocklist?sslmode=disable")),
 		GUIAdmin:               getEnv("GUIAdmin", "admin"),
 		GUIPassword:            getEnv("GUIPassword", "password"),
 		GUIToken:               getEnv("GUIToken", ""),

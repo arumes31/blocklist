@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/hibiken/asynq"
-	"github.com/rs/zerolog/log"
 	"blocklist/internal/models"
 	"blocklist/internal/repository"
 	"net/http"

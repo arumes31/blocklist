@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net"
 	"net/netip"
 	"os"
@@ -78,6 +79,28 @@ func NewIPService(cfg *config.Config, rRepo *repository.RedisRepository, pgRepo 
 		blockedRanges: ranges,
 		geoipReader:   reader,
 		asnReader:     aReader,
+	}
+}
+
+func (s *IPService) ReloadReaders() {
+	cityPath := findGeoIPPath("GeoLite2-City.mmdb")
+	if cityPath != "" {
+		if reader, err := geoip2.Open(cityPath); err == nil {
+			old := s.geoipReader
+			s.geoipReader = reader
+			if old != nil { old.Close() }
+			log.Printf("IPService: Reloaded GeoLite2-City")
+		}
+	}
+
+	asnPath := findGeoIPPath("GeoLite2-ASN.mmdb")
+	if asnPath != "" {
+		if aReader, err := geoip2.Open(asnPath); err == nil {
+			old := s.asnReader
+			s.asnReader = aReader
+			if old != nil { old.Close() }
+			log.Printf("IPService: Reloaded GeoLite2-ASN")
+		}
 	}
 }
 

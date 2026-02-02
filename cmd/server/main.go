@@ -127,7 +127,7 @@ func main() {
 		zlog.Fatal().Err(err).Msg("Failed to connect to Redis")
 	}
 
-	pgRepo, err := repository.NewPostgresRepository(cfg.PostgresURL)
+	pgRepo, err := repository.NewPostgresRepository(cfg.PostgresURL, cfg.PostgresReadURL)
 	if err != nil {
 		zlog.Fatal().Err(err).Msg("Failed to connect to Postgres")
 	}
@@ -141,7 +141,8 @@ func main() {
 	defer webhookService.Close()
 
 	scheduler := service.NewSchedulerService(redisRepo, pgRepo, cfg)
-	geoUpdater := service.NewGeoIPService(cfg)
+	geoUpdater := service.NewGeoIPService(cfg, redisOpts)
+	defer geoUpdater.Close()
 
 	// Seed Admin User if missing
 	if pgRepo != nil && cfg.GUIAdmin != "" {
@@ -173,17 +174,38 @@ func main() {
 			Concurrency: 10,
 			Queues: map[string]int{
 				"default": 5,
+				"low":     2,
 			},
-			Logger: log.New(os.Stderr, "asynq: ", log.LstdFlags),
 		},
 	)
 	
 	asynqMux := asynq.NewServeMux()
 	asynqMux.Handle(tasks.TypeWebhookDelivery, tasks.NewWebhookTaskHandler(pgRepo))
+	asynqMux.Handle(tasks.TypeGeoIPUpdate, tasks.NewGeoIPTaskHandler(cfg, ipService))
 
 	go func() {
 		if err := asynqServer.Run(asynqMux); err != nil {
 			zlog.Fatal().Err(err).Msg("Failed to run asynq server")
+		}
+	}()
+
+	// Initialize Asynq Scheduler for periodic tasks
+	asynqScheduler := asynq.NewScheduler(redisOpts, &asynq.SchedulerOpts{})
+	
+	// Schedule GeoIP updates every 72 hours
+	cityTask, _ := tasks.NewGeoIPUpdateTask("GeoLite2-City")
+	asnTask, _ := tasks.NewGeoIPUpdateTask("GeoLite2-ASN")
+	
+	if _, err := asynqScheduler.Register("@every 72h", cityTask); err != nil {
+		zlog.Error().Err(err).Msg("Failed to schedule GeoLite2-City update")
+	}
+	if _, err := asynqScheduler.Register("@every 72h", asnTask); err != nil {
+		zlog.Error().Err(err).Msg("Failed to schedule GeoLite2-ASN update")
+	}
+
+	go func() {
+		if err := asynqScheduler.Run(); err != nil {
+			zlog.Fatal().Err(err).Msg("Failed to run asynq scheduler")
 		}
 	}()
 

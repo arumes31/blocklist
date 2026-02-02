@@ -1,26 +1,24 @@
 package service
 
 import (
-	"archive/tar"
-	"compress/gzip"
-	"fmt"
-	"io"
 	"log"
-	"net/http"
 	"os"
-	"path/filepath"
-	"strings"
-	"time"
 
 	"blocklist/internal/config"
+	"blocklist/internal/tasks"
+	"github.com/hibiken/asynq"
 )
 
 type GeoIPService struct {
-	cfg *config.Config
+	cfg         *config.Config
+	asynqClient *asynq.Client
 }
 
-func NewGeoIPService(cfg *config.Config) *GeoIPService {
-	return &GeoIPService{cfg: cfg}
+func NewGeoIPService(cfg *config.Config, redisOpts asynq.RedisClientOpt) *GeoIPService {
+	return &GeoIPService{
+		cfg:         cfg,
+		asynqClient: asynq.NewClient(redisOpts),
+	}
 }
 
 func (s *GeoIPService) Start() {
@@ -28,119 +26,37 @@ func (s *GeoIPService) Start() {
 	for _, edition := range []string{"GeoLite2-City", "GeoLite2-ASN"} {
 		dbPath := s.getDBPath(edition)
 		if _, err := os.Stat(dbPath); os.IsNotExist(err) {
-			log.Printf("GeoIP %s database missing at %s. Starting initial download...", edition, dbPath)
-			if err := s.Download(edition); err != nil {
-				log.Printf("Failed to download %s database: %v", edition, err)
-			}
+			log.Printf("GeoIP %s database missing. Enqueuing initial download task...", edition)
+			s.EnqueueUpdate(edition)
 		}
 	}
+	
+	// Note: Scheduled updates are now handled by asynq.Scheduler in main.go
+}
 
-	// 2. Schedule Update every 72 hours
-	ticker := time.NewTicker(72 * time.Hour)
-	go func() {
-		for range ticker.C {
-			log.Printf("Starting scheduled GeoIP database update...")
-			for _, edition := range []string{"GeoLite2-City", "GeoLite2-ASN"} {
-				if err := s.Download(edition); err != nil {
-					log.Printf("Failed to update %s database: %v", edition, err)
-				}
-			}
-		}
-	}()
+func (s *GeoIPService) EnqueueUpdate(edition string) {
+	task, err := tasks.NewGeoIPUpdateTask(edition)
+	if err != nil {
+		log.Printf("Error creating GeoIP task: %v", err)
+		return
+	}
+	if _, err := s.asynqClient.Enqueue(task); err != nil {
+		log.Printf("Error enqueuing GeoIP task: %v", err)
+	}
 }
 
 func (s *GeoIPService) getDBPath(edition string) string {
+	// Same path logic as tasks for consistency
 	filename := edition + ".mmdb"
-	primaryPath := filepath.Join("/home/blocklist/geoip", filename)
-	dir := filepath.Dir(primaryPath)
-	
-	// Try to ensure primary directory exists
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		log.Printf("Warning: Failed to create primary GeoIP directory %s: %v. Falling back to /tmp.", dir, err)
-		return filepath.Join("/tmp", filename)
+	path := "/home/blocklist/geoip/" + filename
+	if _, err := os.Stat("/home/blocklist"); err != nil {
+		path = "geoip_data/" + filename
 	}
-	
-	// Test if primary directory is writable
-	testFile := filepath.Join(dir, ".permtest")
-	f, err := os.Create(testFile)
-	if err != nil {
-		log.Printf("Warning: Primary GeoIP directory %s is not writable: %v. Falling back to /tmp. (Check volume permissions)", dir, err)
-		return filepath.Join("/tmp", filename)
-	}
-	f.Close()
-	_ = os.Remove(testFile)
-	
-	return primaryPath
+	return path
 }
 
-func (s *GeoIPService) Download(edition string) error {
-	accountID := s.cfg.GeoIPAccountID
-	licenseKey := s.cfg.GeoIPLicenseKey
-
-	if accountID == "" || licenseKey == "" || licenseKey == "XXXXXXXX---SECRET_LICENSEKEY----" {
-		return fmt.Errorf("GEOIPUPDATE_ACCOUNT_ID or GEOIPUPDATE_LICENSE_KEY not set")
+func (s *GeoIPService) Close() {
+	if s.asynqClient != nil {
+		s.asynqClient.Close()
 	}
-
-	url := fmt.Sprintf("https://download.maxmind.com/geoip/databases/%s/download?suffix=tar.gz", edition)
-	
-	log.Printf("Attempting GeoIP download from %s using AccountID: %s", url, accountID)
-	
-	client := &http.Client{}
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return err
-	}
-	req.SetBasicAuth(accountID, licenseKey)
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("bad status: %s", resp.Status)
-	}
-
-	// Extract tar.gz in memory or temp file
-	gzr, err := gzip.NewReader(resp.Body)
-	if err != nil {
-		return err
-	}
-	defer gzr.Close()
-
-	tr := tar.NewReader(gzr)
-
-	for {
-		header, err := tr.Next()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return err
-		}
-
-		if strings.HasSuffix(header.Name, ".mmdb") {
-			destPath := s.getDBPath(edition)
-			// Ensure directory exists
-			if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
-				return err
-			}
-
-			outFile, err := os.Create(destPath)
-			if err != nil {
-				return err
-			}
-			
-			if _, err := io.Copy(outFile, tr); err != nil {
-				outFile.Close()
-				return err
-			}
-			outFile.Close()
-			log.Printf("Successfully updated GeoIP database: %s", destPath)
-			return nil
-		}
-	}
-
-	return fmt.Errorf("GeoLite2-City.mmdb not found in archive")
 }

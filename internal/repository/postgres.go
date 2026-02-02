@@ -10,10 +10,11 @@ import (
 )
 
 type PostgresRepository struct {
-	db *sqlx.DB
+	db     *sqlx.DB
+	readDb *sqlx.DB
 }
 
-func NewPostgresRepository(url string) (*PostgresRepository, error) {
+func NewPostgresRepository(url string, readUrl string) (*PostgresRepository, error) {
 	db, err := sqlx.Connect("pgx", url)
 	if err != nil {
 		return nil, err
@@ -24,12 +25,23 @@ func NewPostgresRepository(url string) (*PostgresRepository, error) {
 	db.SetMaxIdleConns(25)
 	db.SetConnMaxLifetime(5 * time.Minute)
 
-	return &PostgresRepository{db: db}, nil
+	readDb := db
+	if readUrl != "" && readUrl != url {
+		rdb, err := sqlx.Connect("pgx", readUrl)
+		if err == nil {
+			rdb.SetMaxOpenConns(25)
+			rdb.SetMaxIdleConns(25)
+			rdb.SetConnMaxLifetime(5 * time.Minute)
+			readDb = rdb
+		}
+	}
+
+	return &PostgresRepository{db: db, readDb: readDb}, nil
 }
 
 func (p *PostgresRepository) GetAdmin(username string) (*models.AdminAccount, error) {
 	var admin models.AdminAccount
-	err := p.db.Get(&admin, "SELECT username, password_hash, token, role, permissions, session_version FROM admins WHERE username = $1", username)
+	err := p.readDb.Get(&admin, "SELECT username, password_hash, token, role, permissions, session_version FROM admins WHERE username = $1", username)
 	if err != nil {
 		return nil, err
 	}
@@ -126,7 +138,7 @@ func (p *PostgresRepository) DeleteAdmin(username string) error {
 
 func (p *PostgresRepository) GetAllAdmins() ([]models.AdminAccount, error) {
 	var admins []models.AdminAccount
-	err := p.db.Select(&admins, "SELECT username, password_hash, token, role, permissions, session_version FROM admins")
+	err := p.readDb.Select(&admins, "SELECT username, password_hash, token, role, permissions, session_version FROM admins")
 	return admins, err
 }
 
@@ -137,7 +149,7 @@ func (p *PostgresRepository) CreateAPIToken(token models.APIToken) error {
 
 func (p *PostgresRepository) GetAPITokenByHash(hash string) (*models.APIToken, error) {
 	var token models.APIToken
-	err := p.db.Get(&token, "SELECT id, token_hash, name, username, role, permissions, allowed_ips, created_at, expires_at, last_used FROM api_tokens WHERE token_hash = $1", hash)
+	err := p.readDb.Get(&token, "SELECT id, token_hash, name, username, role, permissions, allowed_ips, created_at, expires_at, last_used FROM api_tokens WHERE token_hash = $1", hash)
 	if err != nil {
 		return nil, err
 	}
@@ -146,13 +158,13 @@ func (p *PostgresRepository) GetAPITokenByHash(hash string) (*models.APIToken, e
 
 func (p *PostgresRepository) GetAPITokens(username string) ([]models.APIToken, error) {
 	var tokens []models.APIToken
-	err := p.db.Select(&tokens, "SELECT id, name, username, role, permissions, allowed_ips, created_at, expires_at, last_used FROM api_tokens WHERE username = $1 ORDER BY created_at DESC", username)
+	err := p.readDb.Select(&tokens, "SELECT id, name, username, role, permissions, allowed_ips, created_at, expires_at, last_used FROM api_tokens WHERE username = $1 ORDER BY created_at DESC", username)
 	return tokens, err
 }
 
 func (p *PostgresRepository) GetAllAPITokens() ([]models.APIToken, error) {
 	var tokens []models.APIToken
-	err := p.db.Select(&tokens, "SELECT id, name, username, role, permissions, allowed_ips, created_at, expires_at, last_used FROM api_tokens ORDER BY created_at DESC")
+	err := p.readDb.Select(&tokens, "SELECT id, name, username, role, permissions, allowed_ips, created_at, expires_at, last_used FROM api_tokens ORDER BY created_at DESC")
 	return tokens, err
 }
 
@@ -183,7 +195,7 @@ func (p *PostgresRepository) CreateSavedView(view models.SavedView) error {
 
 func (p *PostgresRepository) GetSavedViews(username string) ([]models.SavedView, error) {
 	var views []models.SavedView
-	err := p.db.Select(&views, "SELECT id, username, name, filters, created_at FROM saved_views WHERE username = $1 ORDER BY created_at DESC", username)
+	err := p.readDb.Select(&views, "SELECT id, username, name, filters, created_at FROM saved_views WHERE username = $1 ORDER BY created_at DESC", username)
 	return views, err
 }
 
@@ -194,7 +206,7 @@ func (p *PostgresRepository) DeleteSavedView(id int, username string) error {
 
 func (p *PostgresRepository) GetActiveWebhooks() ([]models.OutboundWebhook, error) {
 	var webhooks []models.OutboundWebhook
-	err := p.db.Select(&webhooks, "SELECT id, url, events, secret, geo_filter, active, created_at FROM outbound_webhooks WHERE active = TRUE")
+	err := p.readDb.Select(&webhooks, "SELECT id, url, events, secret, geo_filter, active, created_at FROM outbound_webhooks WHERE active = TRUE")
 	return webhooks, err
 }
 
@@ -233,7 +245,7 @@ func (p *PostgresRepository) GetPersistentBlocks() (map[string]models.IPEntry, e
 		AddedBy   string `db:"added_by"`
 		GeoJSON   []byte `db:"geo_json"`
 	}
-	err := p.db.Select(&results, "SELECT ip, timestamp, reason, added_by, geo_json FROM persistent_blocks")
+	err := p.readDb.Select(&results, "SELECT ip, timestamp, reason, added_by, geo_json FROM persistent_blocks")
 	if err != nil {
 		return nil, err
 	}
@@ -256,7 +268,7 @@ func (p *PostgresRepository) GetPersistentBlocks() (map[string]models.IPEntry, e
 
 func (p *PostgresRepository) GetPersistentCount() (int, error) {
 	var count int
-	err := p.db.Get(&count, "SELECT COUNT(*) FROM persistent_blocks")
+	err := p.readDb.Get(&count, "SELECT COUNT(*) FROM persistent_blocks")
 	return count, err
 }
 
@@ -267,12 +279,12 @@ func (p *PostgresRepository) LogAction(actor, action, target, reason string) err
 
 func (p *PostgresRepository) GetAuditLogs(limit int) ([]models.AuditLog, error) {
 	var logs []models.AuditLog
-	err := p.db.Select(&logs, "SELECT id, timestamp, actor, action, target, reason FROM audit_logs ORDER BY timestamp DESC LIMIT $1", limit)
+	err := p.readDb.Select(&logs, "SELECT id, timestamp, actor, action, target, reason FROM audit_logs ORDER BY timestamp DESC LIMIT $1", limit)
 	return logs, err
 }
 
 func (p *PostgresRepository) GetIPHistory(ip string) ([]models.AuditLog, error) {
 	var logs []models.AuditLog
-	err := p.db.Select(&logs, "SELECT id, timestamp, actor, action, target, reason FROM audit_logs WHERE target = $1 ORDER BY timestamp DESC", ip)
+	err := p.readDb.Select(&logs, "SELECT id, timestamp, actor, action, target, reason FROM audit_logs WHERE target = $1 ORDER BY timestamp DESC", ip)
 	return logs, err
 }

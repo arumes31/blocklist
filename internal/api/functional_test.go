@@ -15,6 +15,7 @@ import (
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
+	"github.com/hibiken/asynq"
 )
 
 func setupTestRouter(rRepo *repository.RedisRepository) *gin.Engine {
@@ -33,7 +34,7 @@ func setupTestRouter(rRepo *repository.RedisRepository) *gin.Engine {
 	// Minimal service/handler setup
 	ipSvc := service.NewIPService(cfg, rRepo, nil)
 	authSvc := service.NewAuthService(nil, rRepo)
-	webhookSvc := service.NewWebhookService(nil, rRepo, cfg)
+	webhookSvc := service.NewWebhookService(nil, cfg, asynq.RedisClientOpt{})
 	hub := NewHub(rRepo.GetClient())
 	
 	h := NewAPIHandler(cfg, rRepo, nil, authSvc, ipSvc, hub, webhookSvc)
