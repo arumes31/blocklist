@@ -584,20 +584,8 @@ func (h *APIHandler) PermissionMiddleware(requiredPerms ...string) gin.HandlerFu
 		// System admin bypass
 		username, _ := c.Get("username")
 		if username == h.cfg.GUIAdmin {
-			// Check if any of the required perms is whitelist_ips, 
-			// if so, even admin must have it? 
-			// Actually looking at previous code, GUIAdmin had bypass for most things except webhook_whitelist.
-			// Let's stick to the pattern.
+			// To match previous logic, admin bypasses everything except whitelist_ips restriction
 			bypass := true
-			for _, rp := range requiredPerms {
-				if rp == "whitelist_ips" {
-					// We might want to keep the restriction if it's strictly for webhooks,
-					// but usually admin bypasses everything.
-					// The previous code had: requiredPerm != "webhook_whitelist"
-					// So if requiredPerm was webhook_whitelist, bypass was false.
-				}
-			}
-			// To match previous logic exactly:
 			for _, rp := range requiredPerms {
 				if rp == "whitelist_ips" {
 					bypass = false
