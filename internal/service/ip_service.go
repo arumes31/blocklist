@@ -410,7 +410,7 @@ func (s *IPService) ExportIPs(ctx context.Context, query string, country string,
 }
 
 // BulkBlock blocks multiple IPs at once.
-func (s *IPService) BulkBlock(ctx context.Context, ips []string, reason string, addedBy string, persist bool, ttl int) error {
+func (s *IPService) BulkBlock(ctx context.Context, ips []string, reason string, addedBy string, actorIP string, persist bool, ttl int) error {
 	if s.redisRepo == nil {
 		return nil
 	}
@@ -431,7 +431,7 @@ func (s *IPService) BulkBlock(ctx context.Context, ips []string, reason string, 
 			Timestamp:   timestamp,
 			Geolocation: geo,
 			Reason:      reason,
-			AddedBy:     addedBy,
+			AddedBy:     fmt.Sprintf("%s (%s)", addedBy, actorIP),
 			TTL:         ttl,
 			ExpiresAt:   expiresAt,
 		}

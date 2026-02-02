@@ -946,7 +946,7 @@ func (h *APIHandler) BlockIP(c *gin.Context) {
 		Timestamp:   timestamp,
 		Geolocation: geo,
 		Reason:      reason,
-		AddedBy:     username,
+		AddedBy:     fmt.Sprintf("%s (%s)", username, c.ClientIP()),
 		TTL:         req.TTL,
 		ExpiresAt:   expiresAt,
 	}
@@ -1024,7 +1024,7 @@ func (h *APIHandler) BulkBlock(c *gin.Context) {
 		return
 	}
 
-	err := h.ipService.BulkBlock(c.Request.Context(), req.IPs, req.Reason, username.(string), req.Persist, req.TTL)
+	err := h.ipService.BulkBlock(c.Request.Context(), req.IPs, req.Reason, username.(string), c.ClientIP(), req.Persist, req.TTL)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "bulk block failed"})
 		return
@@ -1266,12 +1266,12 @@ func (h *APIHandler) Webhook(c *gin.Context) {
 		expiresAt = now.Add(time.Duration(tVal) * time.Second).Format("2006-01-02 15:04:05 UTC")
 	}
 
-	addedBy := "Webhook"
+	sourceIP := c.ClientIP()
+	addedBy := fmt.Sprintf("Webhook (%s)", sourceIP)
 	if data.Username != "" {
-		addedBy = fmt.Sprintf("Webhook (%s)", data.Username)
+		addedBy = fmt.Sprintf("Webhook (%s:%s)", data.Username, sourceIP)
 	}
 
-	sourceIP := c.ClientIP()
 	sourceGeo := h.ipService.GetGeoIP(sourceIP)
 
 	entry := models.IPEntry{
@@ -1350,7 +1350,7 @@ func (h *APIHandler) Webhook2(c *gin.Context) {
 	entry := models.WhitelistEntry{
 		Timestamp:   time.Now().UTC().Format("2006-01-02 15:04:05 UTC"),
 		Geolocation: geo,
-		AddedBy:     fmt.Sprintf("WebhookAuto (%s)", username),
+		AddedBy:     fmt.Sprintf("WebhookWhitelist (%s:%s)", username, clientIP),
 		Reason:      "Automated Whitelist",
 	}
 	_ = h.redisRepo.WhitelistIP(clientIP, entry)

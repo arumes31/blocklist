@@ -60,7 +60,7 @@ func TestIPService_Enhanced(t *testing.T) {
 
 	t.Run("BulkBlock_Logic", func(t *testing.T) {
 		ips := []string{"8.8.8.8", "8.8.4.4", "10.0.0.1"} // 10.0.0.1 is in blocked range
-		err := svc.BulkBlock(context.Background(), ips, "bulk-test", "admin", false, 3600)
+		err := svc.BulkBlock(context.Background(), ips, "bulk-test", "admin", "127.0.0.1", false, 3600)
 		if err != nil {
 			t.Fatalf("BulkBlock failed: %v", err)
 		}
