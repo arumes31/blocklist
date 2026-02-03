@@ -22,6 +22,7 @@ let mouse = { x: -1000, y: -1000, active: false };
 let avoidRects = [];
 let activeRipples = [];
 let prevRipples = [];
+let rippleCooldown = 0;
 
 function setup() {
 	tick = 0;
@@ -210,10 +211,11 @@ function drawParticle(i) {
         if (d_m < 40 && whiteState === 0 && interactionType === 0) {
             // Touch trigger
             whiteState = 0.01;
-            const rand = Math.random();
-            if (rand < 0.015) { // ~1.5% Ripple (300% less than 0.05)
+            const randVal = Math.random();
+            if (randVal < 0.015 && rippleCooldown === 0) { // Check cooldown
                 interactionType = 3; 
-            } else if (rand < 0.5) {
+                rippleCooldown = 120; // ~2 seconds at 60fps
+            } else if (randVal < 0.5) {
                 interactionType = 2; // Orbit
             } else {
                 interactionType = 1; // Quantum
@@ -365,6 +367,8 @@ function draw(currentTime) {
 
 	tick++;
 	
+    if (rippleCooldown > 0) rippleCooldown--;
+
     // Manage Ripples
     prevRipples = activeRipples;
     activeRipples = [];
