@@ -298,8 +298,8 @@ function drawParticle(i) {
     }
     // Type 3: Ripple (Implosion -> Explosion)
     else if (interactionType === 3 && whiteState > 0) {
-        // Create Ripple with age 0
-        activeRipples.push({x: x, y: y, radius: 150, age: 0}); 
+        // Create Ripple with age 0 and random angle
+        activeRipples.push({x: x, y: y, radius: 150, age: 0, angle: Math.random() * Math.PI}); 
         l = ttl + 1; // Die immediately (source particle becomes the singularity)
     }
 
@@ -393,12 +393,14 @@ function draw(currentTime) {
     for (let r of prevRipples) {
         r.age++;
         if (r.age < 20) {
-            // Implosion: Shrink radius
+            // Implosion: Shrink radius, Spin Fast
             r.radius = lerp(r.radius, 0, 0.1);
+            r.angle += 0.2;
             activeRipples.push(r);
         } else if (r.radius < 1000) {
-            // Explosion: Expand radius
+            // Explosion: Expand radius, Spin Slow
             r.radius += 20;
+            r.angle += 0.01;
             activeRipples.push(r);
         }
     }
@@ -408,36 +410,39 @@ function draw(currentTime) {
 	ctx.fillStyle = 'black';
 	ctx.fillRect(0, 0, canvasWidth, canvasHeight);
 	
-    // Draw Ripple Visuals (Hexagons)
+    // Draw Ripple Visuals (Animated Hexagons)
     ctx.save();
-    ctx.lineWidth = 3;
     for (let r of activeRipples) {
         let opacity = 0;
         let color = '';
+        let isImplosion = r.age < 20;
         
-        if (r.age < 20) {
-            // Implosion: Cyan/White charging
+        if (isImplosion) {
             opacity = r.age / 20;
             color = `rgba(100, 255, 255, ${opacity})`;
+            ctx.setLineDash([5, 5]); // Dashed line for charging
         } else {
-            // Explosion: Fading White/Yellow
             opacity = 1 - (r.radius / 1000);
             color = `rgba(255, 255, 200, ${opacity})`;
+            ctx.setLineDash([]); // Solid for shockwave
         }
 
         if (opacity > 0) {
+            // Draw Main Hexagon
             ctx.beginPath();
+            ctx.lineWidth = 3;
             ctx.strokeStyle = color;
-            // Draw Hexagon
-            for (let i = 0; i < 6; i++) {
-                const angle = (Math.PI / 3) * i;
-                const px = r.x + r.radius * Math.cos(angle);
-                const py = r.y + r.radius * Math.sin(angle);
-                if (i === 0) ctx.moveTo(px, py);
-                else ctx.lineTo(px, py);
-            }
-            ctx.closePath();
+            drawHexagon(ctx, r.x, r.y, r.radius, r.angle, !isImplosion); // Jitter only on explosion
             ctx.stroke();
+
+            // Draw Echo (Explosion only)
+            if (!isImplosion) {
+                ctx.beginPath();
+                ctx.lineWidth = 1;
+                ctx.strokeStyle = `rgba(255, 255, 200, ${opacity * 0.5})`;
+                drawHexagon(ctx, r.x, r.y, r.radius * 0.85, r.angle - 0.1, false);
+                ctx.stroke();
+            }
         }
     }
     ctx.restore();
@@ -445,20 +450,19 @@ function draw(currentTime) {
 	for (let i = 0; i < particlePropsLength; i += particlePropCount) {
 		drawParticle(i);
 	}
-	
-	// Apply glowing effect
-	ctx.save();
-	ctx.filter = 'blur(8px)';
-	ctx.globalCompositeOperation = 'screen';
-	ctx.drawImage(buffer.canvas, 0, 0, canvasWidth, canvasHeight);
-	ctx.restore();
-	
-	// Sharp overlay
-	ctx.save();
-	ctx.globalCompositeOperation = 'lighter';
-	ctx.drawImage(buffer.canvas, 0, 0, canvasWidth, canvasHeight);
-	ctx.restore();
+}
+
+function drawHexagon(ctx, x, y, r, angle, jitter) {
+    for (let i = 0; i < 6; i++) {
+        const theta = angle + (Math.PI / 3) * i;
+        // Add random jitter to radius if requested (Glitch effect)
+        const jr = jitter ? r + (Math.random() * 10 - 5) : r;
+        const px = x + jr * Math.cos(theta);
+        const py = y + jr * Math.sin(theta);
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
 }
 
 window.addEventListener("load", setup);
-window.addEventListener("resize", debounce(resize, 150));
