@@ -216,6 +216,13 @@ function drawParticle(i) {
                 // "Glitch" the position slightly
                 particleProps[i] += randIn(-5, 5);
                 particleProps[i+1] += randIn(-5, 5);
+
+                // Extend life and trigger transition for hit particles
+                particleProps[i+8] = l + 150; 
+                if (whiteState === 0) {
+                    whiteState = 0.1;
+                    particleProps[i+9] = 0.1;
+                }
             }
         }
     }
@@ -260,8 +267,8 @@ function drawParticle(i) {
             particleProps[i + 1] = y + randIn(-50, 50); // Jump Y
         }
         
-        // Fast fade
-        ttl = l + 30;
+        // Extended life to allow journey out of core
+        ttl = l + 150;
     }
     // Type 2: Orbiting Satellite
     else if (interactionType === 2 && whiteState > 0) {
