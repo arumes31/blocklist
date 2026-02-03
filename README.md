@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="cd/logo.png" alt="Blocklist" width="800" />
+  <img src="cmd/server/static/cd/logo.png" alt="Blocklist" width="800" />
 </p>
 
 <p align="center">
