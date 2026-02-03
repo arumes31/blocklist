@@ -1,6 +1,6 @@
 "use strict";
 
-const particleCount = 2000;
+const particleCount = 1500; // Slightly reduced for performance
 const particlePropCount = 9;
 const particlePropsLength = particleCount * particlePropCount;
 const spawnRadius = rand(150) + 150;
@@ -11,31 +11,58 @@ let center;
 let tick;
 let simplex;
 let particleProps;
+let isPaused = false;
+let lastFrameTime = 0;
+const fps = 60;
+const frameInterval = 1000 / fps;
+const dpr = window.devicePixelRatio || 1;
 
 function setup() {
 	tick = 0;
 	center = [];
 	resize();
-	createParticles();
-	draw();
+	
+	const savedTick = sessionStorage.getItem('aether_tick');
+	const savedProps = sessionStorage.getItem('aether_props');
+	
+	if (savedTick && savedProps) {
+		try {
+			tick = parseInt(savedTick);
+			const propsArray = JSON.parse(savedProps);
+			particleProps = new Float32Array(propsArray);
+			simplex = new SimplexNoise();
+		} catch (e) {
+			createParticles();
+		}
+	} else {
+		createParticles();
+	}
+	
+	lastFrameTime = performance.now();
+	window.requestAnimationFrame(draw);
 }
+
+window.addEventListener("pagehide", () => {
+	try {
+		sessionStorage.setItem('aether_tick', tick.toString());
+		sessionStorage.setItem('aether_props', JSON.stringify(Array.from(particleProps)));
+	} catch (e) {
+		// Storage full or quota exceeded
+	}
+});
 
 function createParticles() {
 	simplex = new SimplexNoise();
-	particleProps = new Float32Array(particleCount * particlePropCount);
+	particleProps = new Float32Array(particlePropsLength);
 	
-	let i;
-	
-	for (i = 0; i < particlePropsLength; i += particlePropCount) {
+	for (let i = 0; i < particlePropsLength; i += particlePropCount) {
 		initParticle(i);
 	}
 }
 
 function initParticle(i) {
-	let iy, ih, rd, rt, cx, sy, x, y, s, rv, vx, vy, t, h, w, l, ttl;
+	let rd, rt, cx, sy, x, y, s, rv, vx, vy, w, h, l, ttl;
 	
-	iy = i + 1;
-	ih = 0.5 * i | 0;
 	rd = rand(spawnRadius) * 1.5;
 	rt = rand(TAU);
 	cx = cos(rt);
@@ -47,7 +74,7 @@ function initParticle(i) {
 	vx = rv * cx * 0.1;
 	vy = rv * sy * 0.1;
 	w = randIn(0.1, 2);
-	h = randIn(160,260);
+	h = randIn(160, 260); // Not currently used but keeping for props structure
 	l = 0;
 	ttl = randIn(50, 200);
 	
@@ -56,84 +83,93 @@ function initParticle(i) {
 
 function drawParticle(i) {
     let n, dx, dy, dl, c;
-    let [x, y, vx, vy, s, h, w, l, ttl] = particleProps.get(i, particlePropCount);
+    const [x, y, vx, vy, s, h, w, l, ttl] = particleProps.get(i, particlePropCount);
     
     n = simplex.noise3D(x * 0.0025, y * 0.0025, tick * 0.0005) * TAU * noiseSteps;
-    vx = lerp(vx, cos(n), 0.05);
-    vy = lerp(vy, sin(n), 0.05);
-    dx = x + vx * s;
-    dy = y + vy * s;
+    const nvx = lerp(vx, cos(n), 0.05);
+    const nvy = lerp(vy, sin(n), 0.05);
+    dx = x + nvx * s;
+    dy = y + nvy * s;
     dl = fadeInOut(l, ttl);
-    let interpolatedHue = lerp(690, 740, dl);
-    c = `hsla(${interpolatedHue}, 100%, 50%, ${dl})`;
+    const hue = lerp(690, 740, dl);
+    c = `hsla(${hue}, 100%, 50%, ${dl})`;
 
-    l++;
-
-    buffer.save();
     buffer.lineWidth = dl * w + 1;
     buffer.strokeStyle = c;
     buffer.beginPath();
     buffer.moveTo(x, y);
     buffer.lineTo(dx, dy);
     buffer.stroke();
-    buffer.closePath();
-    buffer.restore();
     
-    particleProps.set([dx, dy, vx, vy, s, h, w, l, ttl], i);
+    const nextL = l + 1;
+    particleProps.set([dx, dy, nvx, nvy, s, h, w, nextL, ttl], i);
 
-    (checkBounds(x, y) || l > ttl) && initParticle(i);
+    (checkBounds(dx, dy) || nextL > ttl) && initParticle(i);
 }
 
 function checkBounds(x, y) {
 	return(
-		x > buffer.canvas.width ||
+		x > buffer.canvas.width / dpr ||
 		x < 0 ||
-		y > buffer.canvas.height ||
+		y > buffer.canvas.height / dpr ||
 		y < 0
 	);
 }
 
 function resize() {
-	buffer.canvas.width = innerWidth;
-  buffer.canvas.height = innerHeight;
+	const w = window.innerWidth;
+	const h = window.innerHeight;
 
-  buffer.drawImage(ctx.canvas, 0, 0);
+	buffer.canvas.width = w * dpr;
+	buffer.canvas.height = h * dpr;
+	buffer.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-	ctx.canvas.width = innerWidth;
-  ctx.canvas.height = innerHeight;
-  
-  ctx.drawImage(buffer.canvas, 0, 0);
+	ctx.canvas.width = w * dpr;
+	ctx.canvas.height = h * dpr;
+	ctx.canvas.style.width = w + 'px';
+	ctx.canvas.style.height = h + 'px';
+	ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-  center[0] = 0.5 * innerWidth;
-  center[1] = 0.5 * innerHeight;
+	center[0] = 0.5 * w;
+	center[1] = 0.5 * h;
 }
 
-function draw() {
+function draw(currentTime) {
+	if (isPaused) return;
+
+	window.requestAnimationFrame(draw);
+
+	const deltaTime = currentTime - lastFrameTime;
+	if (deltaTime < frameInterval) return;
+
+	lastFrameTime = currentTime - (deltaTime % frameInterval);
+
 	tick++;
-	buffer.clearRect(0,0,buffer.canvas.width,buffer.canvas.height);
 	
-	ctx.fillStyle = 'rgba(0,0,0,1)';
-	ctx.fillRect(0,0,buffer.canvas.width,buffer.canvas.height);
+	// Clear buffer (offscreen)
+	buffer.clearRect(0, 0, buffer.canvas.width / dpr, buffer.canvas.height / dpr);
 	
-	let i = 0;
+	// Clear main ctx
+	ctx.fillStyle = 'black';
+	ctx.fillRect(0, 0, ctx.canvas.width / dpr, ctx.canvas.height / dpr);
 	
-	for (; i < particlePropsLength; i += particlePropCount) {
+	for (let i = 0; i < particlePropsLength; i += particlePropCount) {
 		drawParticle(i);
 	}
 	
+	// Apply glowing effect
 	ctx.save();
 	ctx.filter = 'blur(8px)';
-	ctx.globalCompositeOperation = 'lighten';
-	ctx.drawImage(buffer.canvas, 0, 0);
+	ctx.globalCompositeOperation = 'screen';
+	ctx.drawImage(buffer.canvas, 0, 0, ctx.canvas.width / dpr, ctx.canvas.height / dpr);
 	ctx.restore();
 	
+	// Sharp overlay
 	ctx.save();
 	ctx.globalCompositeOperation = 'lighter';
-	ctx.drawImage(buffer.canvas, 0, 0);
+	ctx.drawImage(buffer.canvas, 0, 0, ctx.canvas.width / dpr, ctx.canvas.height / dpr);
 	ctx.restore();
-	
-	window.requestAnimationFrame(draw);
 }
 
 window.addEventListener("load", setup);
-window.addEventListener("resize", resize);
+window.addEventListener("resize", debounce(resize, 150));
