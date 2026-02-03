@@ -332,7 +332,8 @@ func main() {
 		// ws: and wss: are allowed for WebSocket connections.
 		// We allow 'unsafe-inline' for style-src because many templates use inline style attributes,
 		// but we keep script-src strict with nonces.
-		csp := fmt.Sprintf("default-src 'self'; img-src 'self' data:; style-src 'self' 'nonce-%s' 'unsafe-inline'; script-src 'self' 'nonce-%s'; connect-src 'self' ws: wss:", nonce, nonce)
+		// Use style-src-attr to specifically allow style attributes when a nonce is present.
+		csp := fmt.Sprintf("default-src 'self'; img-src 'self' data:; style-src 'self' 'nonce-%s' 'unsafe-inline'; style-src-attr 'self' 'unsafe-inline'; script-src 'self' 'nonce-%s'; connect-src 'self' ws: wss:", nonce, nonce)
 		c.Header("Content-Security-Policy", csp)
 		
 		c.Next()

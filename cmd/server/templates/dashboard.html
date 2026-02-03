@@ -336,6 +336,7 @@
         .loading-panel-msg { text-align: center; padding: 2rem; }
         .modal-footer { display: flex; gap: 10px; margin-top: 2rem; }
         .btn-cancel { flex: 1; background: #eee; color: #333; }
+        .m-0 { margin: 0; }
 
         /* Reason Presets */
         .reason-presets {
@@ -369,7 +370,7 @@
             <img src="/cd/logo.png" alt="logo">
         </a> 
         <div style="display: flex; align-items: center; gap: 1.5rem;">
-            <h2 style="margin: 0;">Dashboard</h2>
+            <h2 class="m-0">Dashboard</h2>
             <div style="display: flex; gap: 0.8rem;">
                 <button onclick="openModal('blockModal')" class="btn btn-danger">Block IP</button>
                 <a href="/thread-map" class="btn btn-dark" style="min-width: 120px;">Thread Map</a>
@@ -802,7 +803,7 @@
 <!-- IP Detail Side Panel -->
 <div id="sidePanel" class="side-panel">
     <div class="side-panel-header">
-        <h3 style="margin:0;">IP Details</h3>
+        <h3 class="m-0">IP Details</h3>
         <button class="side-panel-close" id="closePanelBtn">×</button>
     </div>
     <div id="sidePanelContent">
