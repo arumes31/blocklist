@@ -328,9 +328,8 @@ func main() {
 		// We allow 'self', data: images, and inline styles/scripts ONLY if they match the nonce.
 		// Note: 'unsafe-inline' is still often needed for some libraries if they don't support nonces properly,
 		// but we aim to use nonces. If a library inserts style tags without nonce, it might break.
-		// For now, we add 'nonce-...' and fallbacks.
 		// ws: and wss: are allowed for WebSocket connections.
-		csp := fmt.Sprintf("default-src 'self'; img-src 'self' data:; style-src 'self' 'nonce-%s' 'unsafe-inline'; script-src 'self' 'nonce-%s'; connect-src 'self' ws: wss:", nonce, nonce)
+		csp := fmt.Sprintf("default-src 'self'; img-src 'self' data:; style-src 'self' 'nonce-%s'; style-src-attr 'self' 'unsafe-hashes' 'sha256-SDfEo0iZM9lgb6xmIO5IAaqtdtd//3PAoyxy2sTqzpQ=' 'sha256-OJZfmxjKcyB8jYAH0fsVx8gg9uQT/wo70OhSWBGrI2Y=' 'sha256-/uWuo7zIvWJ2oq1WtuyaP2m3cHdyupdVoV1jWSTvHiU='; script-src 'self' 'nonce-%s'; script-src-attr 'self' 'unsafe-hashes' 'sha256-m0wpSreMpIlZCh88bLbFeVKfjnC5mG14iXHN7nfHmSc='; connect-src 'self' ws: wss:", nonce, nonce)
 		c.Header("Content-Security-Policy", csp)
 		
 		c.Next()

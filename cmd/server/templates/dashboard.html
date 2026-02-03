@@ -11,7 +11,7 @@
     <script src="/js/json-enc.js"></script>
     <script src="/js/leaflet.js"></script>
     <script src="/js/chart.js"></script>
-    <style>
+    <style nonce="{{ .nonce }}">
         :root {
             --primary-red: #ff0000;
             --dark-red: #8b0000;
@@ -333,6 +333,10 @@
         .history-item .ts { font-size: 0.75rem; color: var(--secondary-color); }
         .history-item .actor { font-size: 0.85rem; font-weight: bold; margin: 4px 0; }
         
+        .loading-panel-msg { text-align: center; padding: 2rem; }
+        .modal-footer { display: flex; gap: 10px; margin-top: 2rem; }
+        .btn-cancel { flex: 1; background: #eee; color: #333; }
+
         /* Reason Presets */
         .reason-presets {
             display: flex;
@@ -788,9 +792,9 @@
                 <input type="checkbox" id="persistCheckbox" style="margin-right: 10px;"> Persistent Block
             </label>
         </div>
-        <div style="display: flex; gap: 10px; margin-top: 2rem;">
+        <div class="modal-footer">
             <button onclick="confirmBlock()" class="btn btn-danger" style="flex: 1;">Block IP</button>
-            <button onclick="closeModal('blockModal')" class="btn btn-secondary" style="flex: 1; background: #eee; color: #333;">Cancel</button>
+            <button onclick="closeModal('blockModal')" class="btn btn-secondary btn-cancel">Cancel</button>
         </div>
     </div>
 </div>
@@ -799,10 +803,10 @@
 <div id="sidePanel" class="side-panel">
     <div class="side-panel-header">
         <h3 style="margin:0;">IP Details</h3>
-        <button class="side-panel-close" onclick="closeSidePanel()">×</button>
+        <button class="side-panel-close" id="closePanelBtn">×</button>
     </div>
     <div id="sidePanelContent">
-        <div style="text-align: center; padding: 2rem;">
+        <div class="loading-panel-msg">
             <span class="spinner"></span> Loading details...
         </div>
     </div>
@@ -812,6 +816,10 @@
     // Virtualized dataset and pagination
     const PAGE_SIZE = 500;
     let items = [];
+    
+    // UI Event Listeners
+    document.getElementById('closePanelBtn')?.addEventListener('click', closeSidePanel);
+
     let total = parseInt(document.getElementById('total-ips-count').innerText || '0');
     let cursor = null; // server-provided cursor for next page
     let currentFilters = {
