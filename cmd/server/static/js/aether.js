@@ -187,18 +187,36 @@ function drawParticle(i) {
         }
     }
 
-    // Ripple Repulsion (Shockwave)
+    // Ripple Interaction (Implosion -> Hexagonal Explosion)
     for (let j = 0; j < prevRipples.length; j++) {
         const r = prevRipples[j];
         const dx_r = x - r.x;
         const dy_r = y - r.y;
         const dist_r = sqrt(dx_r * dx_r + dy_r * dy_r);
         
-        // Ring effect: only affect if near the expanding radius
-        if (Math.abs(dist_r - r.radius) < 20) {
-            const force = 5.0; // Strong impulse
-            vx += (dx_r / dist_r) * force;
-            vy += (dy_r / dist_r) * force;
+        if (r.age < 20) {
+            // Implosion Phase: Suck into the singularity
+            if (dist_r < 200) {
+                const force = 0.5;
+                vx -= (dx_r / dist_r) * force;
+                vy -= (dy_r / dist_r) * force;
+            }
+        } else {
+            // Explosion Phase: Data Fragmentation
+            // Check if particle is being hit by the expanding wave
+            if (Math.abs(dist_r - r.radius) < 50) {
+                // Snap angle to nearest 60 degrees (Hexagonal)
+                const angle = Math.atan2(dy_r, dx_r);
+                const hexAngle = Math.round(angle / (Math.PI / 3)) * (Math.PI / 3);
+                
+                const force = 8.0; // Massive blast
+                vx += Math.cos(hexAngle) * force;
+                vy += Math.sin(hexAngle) * force;
+                
+                // "Glitch" the position slightly
+                particleProps[i] += randIn(-5, 5);
+                particleProps[i+1] += randIn(-5, 5);
+            }
         }
     }
 
@@ -278,11 +296,11 @@ function drawParticle(i) {
             interactionType = 1; // Degrade to normal fade
         }
     }
-    // Type 3: Ripple (Shockwave)
+    // Type 3: Ripple (Implosion -> Explosion)
     else if (interactionType === 3 && whiteState > 0) {
-        // Explode
-        activeRipples.push({x: x, y: y, radius: 10}); // Start radius
-        l = ttl + 1; // Die immediately (invisible source)
+        // Create Ripple with age 0
+        activeRipples.push({x: x, y: y, radius: 150, age: 0}); 
+        l = ttl + 1; // Die immediately (source particle becomes the singularity)
     }
 
     const dx = x + vx * s;
@@ -373,8 +391,14 @@ function draw(currentTime) {
     prevRipples = activeRipples;
     activeRipples = [];
     for (let r of prevRipples) {
-        if (r.radius < 600) { // Increased Max radius
-            r.radius += 5; // Expansion speed
+        r.age++;
+        if (r.age < 20) {
+            // Implosion: Shrink radius
+            r.radius = lerp(r.radius, 0, 0.1);
+            activeRipples.push(r);
+        } else if (r.radius < 1000) {
+            // Explosion: Expand radius
+            r.radius += 20;
             activeRipples.push(r);
         }
     }
@@ -384,15 +408,35 @@ function draw(currentTime) {
 	ctx.fillStyle = 'black';
 	ctx.fillRect(0, 0, canvasWidth, canvasHeight);
 	
-    // Draw Ripple Visuals
+    // Draw Ripple Visuals (Hexagons)
     ctx.save();
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 3;
     for (let r of activeRipples) {
-        const opacity = 1 - (r.radius / 600);
+        let opacity = 0;
+        let color = '';
+        
+        if (r.age < 20) {
+            // Implosion: Cyan/White charging
+            opacity = r.age / 20;
+            color = `rgba(100, 255, 255, ${opacity})`;
+        } else {
+            // Explosion: Fading White/Yellow
+            opacity = 1 - (r.radius / 1000);
+            color = `rgba(255, 255, 200, ${opacity})`;
+        }
+
         if (opacity > 0) {
             ctx.beginPath();
-            ctx.strokeStyle = `rgba(100, 200, 255, ${opacity * 0.5})`;
-            ctx.arc(r.x, r.y, r.radius, 0, TAU);
+            ctx.strokeStyle = color;
+            // Draw Hexagon
+            for (let i = 0; i < 6; i++) {
+                const angle = (Math.PI / 3) * i;
+                const px = r.x + r.radius * Math.cos(angle);
+                const py = r.y + r.radius * Math.sin(angle);
+                if (i === 0) ctx.moveTo(px, py);
+                else ctx.lineTo(px, py);
+            }
+            ctx.closePath();
             ctx.stroke();
         }
     }
