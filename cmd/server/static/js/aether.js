@@ -139,24 +139,23 @@ function drawParticle(i) {
     const s = particleProps[i + 4];
     const w = particleProps[i + 6];
     let l = particleProps[i + 7];
-    const ttl = particleProps[i + 8];
+    let ttl = particleProps[i + 8];
+    let whiteState = particleProps[i + 9];
     
     const n = simplex.noise3D(x * 0.0025, y * 0.0025, tick * 0.0005) * TAU * noiseSteps;
+    
+    // Base animation (noise)
     vx = lerp(vx, cos(n), 0.05);
     vy = lerp(vy, sin(n), 0.05);
 
     // Avoid login forms
     for (let j = 0; j < avoidRects.length; j++) {
         const rect = avoidRects[j];
-        // Simple bounding box check
         if (x > rect.x - 20 && x < rect.x + rect.width + 20 &&
             y > rect.y - 20 && y < rect.y + rect.height + 20) {
-            
             const dx_r = x - rect.cx;
             const dy_r = y - rect.cy;
             const d_r = sqrt(dx_r * dx_r + dy_r * dy_r) || 1;
-            
-            // Push away
             const force = (rect.radius - d_r) / rect.radius;
             if (force > 0) {
                 vx += (dx_r / d_r) * force * 0.5;
@@ -165,14 +164,15 @@ function drawParticle(i) {
         }
     }
 
-    // Mouse influence
-    if (mouse.active) {
+    // Mouse influence (only for non-white)
+    if (mouse.active && whiteState === 0) {
         const dx_m = mouse.x - x;
         const dy_m = mouse.y - y;
         const d_m = sqrt(dx_m * dx_m + dy_m * dy_m);
         
-        if (d_m < 500) {
-            // "flow through": only attract if not in the inner core
+        if (d_m < 40) {
+            whiteState = 0.01; // Start turning white
+        } else if (d_m < 500) {
             if (d_m > 50) {
                 const m_factor = (1 - d_m / 500) * 0.15;
                 vx = lerp(vx, dx_m / d_m, m_factor);
@@ -181,11 +181,33 @@ function drawParticle(i) {
         }
     }
 
+    // White behavior: Sideways bias + Outward + Extended life
+    if (whiteState > 0) {
+        whiteState = Math.min(whiteState + 0.02, 1);
+        
+        const dx_c = x - center[0];
+        const dy_c = y - center[1];
+        const d_c = sqrt(dx_c * dx_c + dy_c * dy_c) || 1;
+        
+        // "Sideways" = perpendicular to outward vector + horizontal drift
+        const tx = -dy_c / d_c;
+        const ty = dx_c / d_c;
+        
+        vx = lerp(vx, tx * 2 + (vx > 0 ? 1 : -1), 0.05); 
+        vy = lerp(vy, ty * 0.5, 0.05); 
+        
+        ttl = l + 150; // Extend life
+    }
+
     const dx = x + vx * s;
     const dy = y + vy * s;
-    const dl = fadeInOut(l, ttl);
+    let dl = fadeInOut(l, ttl);
+    if (whiteState > 0) dl = lerp(dl, 1, whiteState);
+
     const hue = lerp(690, 740, dl);
-    const color = `hsla(${hue}, 100%, 50%, ${dl})`;
+    const sat = lerp(100, 0, whiteState);
+    const light = lerp(50, 100, whiteState);
+    const color = `hsla(${hue}, ${sat}%, ${light}%, ${dl})`;
 
     buffer.lineWidth = dl * w + 1;
     buffer.strokeStyle = color;
@@ -200,6 +222,7 @@ function drawParticle(i) {
     particleProps[i + 2] = vx;
     particleProps[i + 3] = vy;
     particleProps[i + 7] = l;
+    particleProps[i + 9] = whiteState;
 
     (checkBounds(dx, dy) || l > ttl) && initParticle(i);
 }
