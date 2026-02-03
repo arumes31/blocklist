@@ -211,8 +211,8 @@ function drawParticle(i) {
             // Touch trigger
             whiteState = 0.01;
             const rand = Math.random();
-            if (rand < 0.05) {
-                interactionType = 3; // Ripple (Rare)
+            if (rand < 0.015) { // ~1.5% Ripple (300% less than 0.05)
+                interactionType = 3; 
             } else if (rand < 0.5) {
                 interactionType = 2; // Orbit
             } else {
@@ -294,8 +294,8 @@ function drawParticle(i) {
     let light = 50;
 
     if (whiteState > 0) {
-        if (interactionType === 1) { // Quantum: Electric Blue/Purple
-            hue = 280; 
+        if (interactionType === 1) { // Quantum: Yellow
+            hue = 60; 
             light = 70;
         } else if (interactionType === 2) { // Orbit: Bright White/Cyan
             hue = 180;
@@ -369,7 +369,7 @@ function draw(currentTime) {
     prevRipples = activeRipples;
     activeRipples = [];
     for (let r of prevRipples) {
-        if (r.radius < 300) { // Max radius
+        if (r.radius < 600) { // Increased Max radius
             r.radius += 5; // Expansion speed
             activeRipples.push(r);
         }
@@ -379,6 +379,20 @@ function draw(currentTime) {
 	
 	ctx.fillStyle = 'black';
 	ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+	
+    // Draw Ripple Visuals
+    ctx.save();
+    ctx.lineWidth = 2;
+    for (let r of activeRipples) {
+        const opacity = 1 - (r.radius / 600);
+        if (opacity > 0) {
+            ctx.beginPath();
+            ctx.strokeStyle = `rgba(100, 200, 255, ${opacity * 0.5})`;
+            ctx.arc(r.x, r.y, r.radius, 0, TAU);
+            ctx.stroke();
+        }
+    }
+    ctx.restore();
 	
 	for (let i = 0; i < particlePropsLength; i += particlePropCount) {
 		drawParticle(i);
