@@ -123,17 +123,24 @@ function drawParticle(i) {
     vx = lerp(vx, cos(n), 0.05);
     vy = lerp(vy, sin(n), 0.05);
 
+    let sat = 100;
+    let light = 50;
+
     // Mouse influence
     if (mouse.active) {
         const dx_m = mouse.x - x;
         const dy_m = mouse.y - y;
         const d_m = sqrt(dx_m * dx_m + dy_m * dy_m);
-        if (d_m < 350) {
-            const m_factor = (1 - d_m / 350) * 0.15;
+        if (d_m < 500) {
+            const m_factor = (1 - d_m / 500) * 0.15;
             if (d_m > 0.1) {
                 vx = lerp(vx, dx_m / d_m, m_factor);
                 vy = lerp(vy, dy_m / d_m, m_factor);
             }
+            // Transition to white based on proximity
+            const intensity = (1 - d_m / 500);
+            sat = lerp(100, 0, intensity);
+            light = lerp(50, 100, intensity);
         }
     }
 
@@ -141,7 +148,7 @@ function drawParticle(i) {
     const dy = y + vy * s;
     const dl = fadeInOut(l, ttl);
     const hue = lerp(690, 740, dl);
-    const color = `hsla(${hue}, 100%, 50%, ${dl})`;
+    const color = `hsla(${hue}, ${sat}%, ${light}%, ${dl})`;
 
     buffer.lineWidth = dl * w + 1;
     buffer.strokeStyle = color;
