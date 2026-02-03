@@ -48,22 +48,13 @@ func (s *AuthService) CreateAdmin(username, password, role, permissions string) 
 		return nil, err
 	}
 
-	// Generate TOTP Secret
-	key, err := totp.Generate(totp.GenerateOpts{
-		Issuer:      "Blocklist App",
-		AccountName: username,
-	})
-	if err != nil {
-		return nil, err
-	}
-
 	if role == "" { role = "operator" }
 	if permissions == "" { permissions = "gui_read" }
 
 	admin := models.AdminAccount{
 		Username:     username,
 		PasswordHash: hash,
-		Token:        key.Secret(),
+		Token:        "", // Leave empty to trigger 2FA setup on first login
 		Role:         role,
 		Permissions:  permissions,
 	}

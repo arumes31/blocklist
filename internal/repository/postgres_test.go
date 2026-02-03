@@ -143,7 +143,7 @@ func TestPostgresRepository_Integration(t *testing.T) {
 			t.Errorf("expected name test-token, got %s", got.Name)
 		}
 
-		err = repo.UpdateTokenLastUsed(got.ID)
+		err = repo.UpdateTokenLastUsed(got.ID, "127.0.0.1")
 		if err != nil {
 			t.Errorf("UpdateTokenLastUsed failed: %v", err)
 		}
