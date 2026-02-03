@@ -118,41 +118,65 @@ function drawParticle(i) {
     const s = particleProps[i + 4];
     const w = particleProps[i + 6];
     let l = particleProps[i + 7];
-    const ttl = particleProps[i + 8];
-    let immune = particleProps[i + 9];
+    let ttl = particleProps[i + 8];
+    let whiteState = particleProps[i + 9];
     
     const n = simplex.noise3D(x * 0.0025, y * 0.0025, tick * 0.0005) * TAU * noiseSteps;
-    vx = lerp(vx, cos(n), 0.05);
-    vy = lerp(vy, sin(n), 0.05);
-
-    let sat = 100;
-    let light = 50;
+    
+    // Normal movement (if not fully consumed by white state logic)
+    if (whiteState < 1) {
+        vx = lerp(vx, cos(n), 0.05);
+        vy = lerp(vy, sin(n), 0.05);
+    }
 
     // Mouse influence
-    if (mouse.active && !immune) {
+    if (mouse.active) {
         const dx_m = mouse.x - x;
         const dy_m = mouse.y - y;
         const d_m = sqrt(dx_m * dx_m + dy_m * dy_m);
         
         if (d_m < 40) {
-            immune = 1;
-            particleProps[i + 9] = 1;
-        } else if (d_m < 500) {
-            const m_factor = (1 - d_m / 500) * 0.15;
-            vx = lerp(vx, dx_m / d_m, m_factor);
-            vy = lerp(vy, dy_m / d_m, m_factor);
+            // Touch: start turning white
+            whiteState = Math.min(whiteState + 0.05, 1);
+        } else if (d_m < 500 && whiteState === 0) {
+            // Attraction (only if not yet turning white)
+            if (d_m > 100) {
+                const m_factor = (1 - d_m / 500) * 0.15;
+                vx = lerp(vx, dx_m / d_m, m_factor);
+                vy = lerp(vy, dy_m / d_m, m_factor);
+            }
         }
     }
 
-    if (immune) {
-        sat = 0;
-        light = 100;
+    // White / Immune behavior
+    if (whiteState > 0) {
+        whiteState = Math.min(whiteState + 0.02, 1); // Continually turn whiter
+        
+        // Fly outwards from center
+        const dx_c = x - center[0];
+        const dy_c = y - center[1];
+        const d_c = sqrt(dx_c * dx_c + dy_c * dy_c) || 1;
+        
+        // Strong outward bias
+        vx = lerp(vx, (dx_c / d_c) * 3, 0.1);
+        vy = lerp(vy, (dy_c / d_c) * 3, 0.1);
+        
+        // Extend life
+        ttl = l + 100; 
     }
 
     const dx = x + vx * s;
     const dy = y + vy * s;
-    const dl = fadeInOut(l, ttl);
+    
+    let dl = fadeInOut(l, ttl);
+    // Blend opacity to 1.0 as it turns white
+    if (whiteState > 0) {
+        dl = lerp(dl, 1, whiteState);
+    }
+
     const hue = lerp(690, 740, dl);
+    const sat = lerp(100, 0, whiteState);
+    const light = lerp(50, 100, whiteState);
     const color = `hsla(${hue}, ${sat}%, ${light}%, ${dl})`;
 
     buffer.lineWidth = dl * w + 1;
@@ -168,6 +192,7 @@ function drawParticle(i) {
     particleProps[i + 2] = vx;
     particleProps[i + 3] = vy;
     particleProps[i + 7] = l;
+    particleProps[i + 9] = whiteState;
 
     (checkBounds(dx, dy) || l > ttl) && initParticle(i);
 }
