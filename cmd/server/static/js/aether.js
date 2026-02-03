@@ -181,32 +181,30 @@ function drawParticle(i) {
         }
     }
 
-    // White behavior: Outward bias + Noise + Extended life
+    // White behavior: Heat Dissipation (Upward + Outward)
     if (whiteState > 0) {
-        whiteState = Math.min(whiteState + 0.02, 1);
+        whiteState = Math.min(whiteState + 0.01, 1);
         
+        // Rise upwards (negative Y) like smoke/heat
+        vy = lerp(vy, -3, 0.05);
+        
+        // Gentle outward drift on X axis
         const dx_c = x - center[0];
-        const dy_c = y - center[1];
-        const d_c = sqrt(dx_c * dx_c + dy_c * dy_c) || 1;
-        
-        // Outward direction
-        const ox = dx_c / d_c;
-        const oy = dy_c / d_c;
-        
-        // Blend noise movement (current vx/vy) with outward direction
-        // Retains "natural" wavy look but guides them off-screen
-        vx = lerp(vx, ox * 2.5, 0.05);
-        vy = lerp(vy, oy * 2.5, 0.05);
+        vx = lerp(vx, dx_c * 0.01, 0.05);
         
         ttl = l + 200; // Extend life
     }
 
     const dx = x + vx * s;
     const dy = y + vy * s;
+    
     let dl = fadeInOut(l, ttl);
     if (whiteState > 0) dl = lerp(dl, 1, whiteState);
 
-    const hue = lerp(690, 740, dl);
+    let hue = lerp(690, 740, dl);
+    // Shift towards gold (770) as it turns white
+    if (whiteState > 0) hue = lerp(hue, 770, whiteState);
+
     const sat = lerp(100, 0, whiteState);
     const light = lerp(50, 100, whiteState);
     const color = `hsla(${hue}, ${sat}%, ${light}%, ${dl})`;
