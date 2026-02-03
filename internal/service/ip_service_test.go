@@ -75,4 +75,35 @@ func TestIPService_Enhanced(t *testing.T) {
 			t.Error("8.8.8.8 should have been blocked")
 		}
 	})
+
+	t.Run("CalculateThreatScore", func(t *testing.T) {
+		// Case 1: SSH Brute Force, 0 prior bans
+		score1 := svc.CalculateThreatScore("1.1.1.1", "SSH brute force attempt")
+		if score1 != 20 {
+			t.Errorf("expected score 20 for ssh brute force (0 prior), got %d", score1)
+		}
+
+		// Case 2: SQL Injection, 2 prior bans
+		mr.HSet("ips_ban_counts", "2.2.2.2", "2")
+		score2 := svc.CalculateThreatScore("2.2.2.2", "Detected SQL Injection")
+		// Base: 2 * 10 = 20. Bonus: 40. Total: 60.
+		if score2 != 60 {
+			t.Errorf("expected score 60 for sql injection (2 prior), got %d", score2)
+		}
+
+		// Case 3: Spam, 5 prior bans
+		mr.HSet("ips_ban_counts", "3.3.3.3", "5")
+		score3 := svc.CalculateThreatScore("3.3.3.3", "Spam bot")
+		// Base: 5 * 10 = 50. Bonus: 15. Total: 65.
+		if score3 != 65 {
+			t.Errorf("expected score 65 for spam (5 prior), got %d", score3)
+		}
+
+		// Case 4: Cap at 100
+		mr.HSet("ips_ban_counts", "4.4.4.4", "20") // 200 base
+		score4 := svc.CalculateThreatScore("4.4.4.4", "generic")
+		if score4 != 100 {
+			t.Errorf("expected score 100 (capped), got %d", score4)
+		}
+	})
 }

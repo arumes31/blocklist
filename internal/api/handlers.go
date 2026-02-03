@@ -667,6 +667,11 @@ func (h *APIHandler) SessionCheckMiddleware() gin.HandlerFunc {
 
 func (h *APIHandler) PermissionMiddleware(requiredPerms ...string) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if len(requiredPerms) == 0 {
+			c.Next()
+			return
+		}
+
 		perms, exists := c.Get("permissions")
 		if !exists {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Permissions not found"})
