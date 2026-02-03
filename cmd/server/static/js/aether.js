@@ -132,10 +132,13 @@ function drawParticle(i) {
         const dy_m = mouse.y - y;
         const d_m = sqrt(dx_m * dx_m + dy_m * dy_m);
         if (d_m < 500) {
-            const m_factor = (1 - d_m / 500) * 0.15;
-            if (d_m > 0.1) {
-                vx = lerp(vx, dx_m / d_m, m_factor);
-                vy = lerp(vy, dy_m / d_m, m_factor);
+            // "flow through": only attract if not in the inner "white" core
+            if (d_m > 100) {
+                const m_factor = (1 - d_m / 500) * 0.15;
+                if (d_m > 0.1) {
+                    vx = lerp(vx, dx_m / d_m, m_factor);
+                    vy = lerp(vy, dy_m / d_m, m_factor);
+                }
             }
             // Transition to white based on proximity
             const intensity = (1 - d_m / 500);
