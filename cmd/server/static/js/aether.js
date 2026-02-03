@@ -51,6 +51,22 @@ window.addEventListener("mousemove", e => {
     mouse.active = true;
 });
 
+window.addEventListener("touchstart", e => {
+    mouse.x = e.touches[0].clientX;
+    mouse.y = e.touches[0].clientY;
+    mouse.active = true;
+});
+
+window.addEventListener("touchmove", e => {
+    mouse.x = e.touches[0].clientX;
+    mouse.y = e.touches[0].clientY;
+    mouse.active = true;
+});
+
+window.addEventListener("touchend", () => {
+    mouse.active = false;
+});
+
 window.addEventListener("mouseleave", () => {
     mouse.active = false;
 });
@@ -112,10 +128,12 @@ function drawParticle(i) {
         const dx_m = mouse.x - x;
         const dy_m = mouse.y - y;
         const d_m = sqrt(dx_m * dx_m + dy_m * dy_m);
-        if (d_m < 250) {
-            const m_factor = (1 - d_m / 250) * 0.1;
-            vx = lerp(vx, dx_m / d_m, m_factor);
-            vy = lerp(vy, dy_m / d_m, m_factor);
+        if (d_m < 350) {
+            const m_factor = (1 - d_m / 350) * 0.15;
+            if (d_m > 0.1) {
+                vx = lerp(vx, dx_m / d_m, m_factor);
+                vy = lerp(vy, dy_m / d_m, m_factor);
+            }
         }
     }
 

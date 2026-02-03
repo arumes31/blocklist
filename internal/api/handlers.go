@@ -41,6 +41,7 @@ type APIHandler struct {
 	ipService      *service.IPService
 	hub            *Hub
 	webhookService *service.WebhookService
+	captcha        *base64Captcha.Captcha
 	mainLimiter    gin.HandlerFunc
 	loginLimiter   gin.HandlerFunc
 	webhookLimiter gin.HandlerFunc
@@ -48,6 +49,10 @@ type APIHandler struct {
 
 // NewAPIHandler creates a new instance of APIHandler with the necessary dependencies.
 func NewAPIHandler(cfg *config.Config, r *repository.RedisRepository, pg *repository.PostgresRepository, auth *service.AuthService, ip *service.IPService, hub *Hub, wh *service.WebhookService) *APIHandler {
+	// Initialize Captcha with Redis store
+	store := &RedisCaptchaStore{repo: r}
+	captcha := base64Captcha.NewCaptcha(base64Captcha.DefaultDriverDigit, store)
+
 	return &APIHandler{
 		cfg:            cfg,
 		redisRepo:      r,
@@ -56,6 +61,7 @@ func NewAPIHandler(cfg *config.Config, r *repository.RedisRepository, pg *reposi
 		ipService:      ip,
 		hub:            hub,
 		webhookService: wh,
+		captcha:        captcha,
 	}
 }
 
@@ -186,9 +192,6 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 	r.GET("/ws", h.WS)
 	r.GET("/sudo", h.AuthMiddleware(), h.loginLimiter, h.ShowSudo)
 	r.POST("/sudo", h.AuthMiddleware(), h.loginLimiter, h.VerifySudo)
-
-	r.GET("/unblock-request", h.ShowUnblockRequest)
-	r.POST("/unblock-request", h.SubmitUnblockRequest)
 
 	// API Versioning (Improvement 5)
 	v1 := r.Group("/api/v1")
@@ -517,16 +520,7 @@ func (h *APIHandler) AuthMiddleware() gin.HandlerFunc {
 					if token.ExpiresAt != nil {
 						expiresAt, _ := time.Parse(time.RFC3339, *token.ExpiresAt)
 						if time.Now().After(expiresAt) {
-							c.JSON(http.StatusUnauthorized, gin.H{"error": "Token expired"})
-							c.Abort()
-							return
-						}
-					}
-
-					// Check IP restrictions
-					if !h.isIPInCIDRs(c.ClientIP(), token.AllowedIPs) {
-						zlog.Warn().
-							Str("token", token.Name).
+							c.JSON(http.Stat, token.Name).
 							Str("client_ip", c.ClientIP()).
 							Str("allowed", token.AllowedIPs).
 							Msg("API Token used from unauthorized IP")
@@ -1828,329 +1822,4 @@ func (h *APIHandler) OpenAPI(c *gin.Context) {
                                     "required": []string{"act"},
                                 },
                             },
-                        },
-                    },
-                    "responses": gin.H{
-                        "200": gin.H{"description": "Action successfully performed"},
-                        "400": gin.H{"description": "Invalid IP format or missing parameters"},
-                        "401": gin.H{"description": "Unauthorized"},
-                        "403": gin.H{"description": "Forbidden - Insufficient permissions"},
-                    },
-                },
-            },
-        },
-    }
-    c.JSON(http.StatusOK, spec)
-}
-
-func (h *APIHandler) Stats(c *gin.Context) {
-	hour, day, totalEver, activeBlocks, top, topASN, topReason, wh, lb, bm, err := h.ipService.Stats(c.Request.Context())
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "stats error"})
-		return
-	}
-    
-	// shape to match frontend expectations
-	tops := make([]gin.H, 0, len(top))
-	for i, t := range top {
-		if i >= 3 { break }
-		tops = append(tops, gin.H{"country": t.Country, "count": t.Count})
-	}
-
-	asns := make([]gin.H, 0, len(topASN))
-	for i, a := range topASN {
-		if i >= 3 { break }
-		asns = append(asns, gin.H{"asn": a.ASN, "asn_org": a.ASNOrg, "count": a.Count})
-	}
-
-	reasons := make([]gin.H, 0, len(topReason))
-	for i, r := range topReason {
-		if i >= 3 { break }
-		reasons = append(reasons, gin.H{"reason": r.Reason, "count": r.Count})
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"hour":           hour,
-		"day":            day,
-		"total":          totalEver,
-		"active_blocks":  activeBlocks,
-		"top_countries":  tops,
-		"top_asns":       asns,
-		"top_reasons":    reasons,
-		"webhooks_hour":  wh,
-		"last_block_ts":  lb,
-		"blocks_minute":  bm,
-	})
-}
-
-func (h *APIHandler) Settings(c *gin.Context) {
-	username, _ := c.Get("username")
-	webhooks, _ := h.pgRepo.GetActiveWebhooks()
-	tokens, _ := h.pgRepo.GetAPITokens(username.(string))
-	
-	userPerms, _ := c.Get("permissions")
-	hasGlobalTokensPerm := false
-	for _, p := range strings.Split(userPerms.(string), ",") {
-		if strings.TrimSpace(p) == "manage_global_tokens" {
-			hasGlobalTokensPerm = true
-			break
-		}
-	}
-
-	var allTokens []models.APIToken
-	if hasGlobalTokensPerm {
-		allTokens, _ = h.pgRepo.GetAllAPITokens()
-	}
-	
-	// Get base URL from request
-	scheme := "http"
-	if c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https" {
-		scheme = "https"
-	}
-	baseURL := fmt.Sprintf("%s://%s", scheme, c.Request.Host)
-
-	h.renderHTML(c, http.StatusOK, "settings.html", gin.H{
-		"webhooks":            webhooks,
-		"tokens":              tokens,
-		"all_tokens":          allTokens,
-		"admin_username":      h.cfg.GUIAdmin,
-		"base_url":            baseURL,
-		"username":            username,
-		"permissions":         userPerms,
-		"manage_global_tokens": hasGlobalTokensPerm,
-	})
-}
-
-func (h *APIHandler) CreateAPIToken(c *gin.Context) {
-	username, _ := c.Get("username")
-	role, _ := c.Get("role")
-	userPerms, _ := c.Get("permissions")
-	name := c.PostForm("name")
-	requestedPerms := c.PostForm("permissions")
-	allowedIPs := c.PostForm("allowed_ips")
-	
-	if name == "" {
-		c.String(http.StatusBadRequest, "Token name required")
-		return
-	}
-
-	// Validate permissions
-	finalPerms := ""
-	if requestedPerms != "" {
-		rPerms := strings.Split(requestedPerms, ",")
-		
-		if username == h.cfg.GUIAdmin {
-			// Superuser can grant any permissions to a token
-			finalPerms = requestedPerms
-		} else {
-			// Other users can only grant a subset of their own permissions
-			uPerms := strings.Split(userPerms.(string), ",")
-			validPerms := []string{}
-			for _, rp := range rPerms {
-				rp = strings.TrimSpace(rp)
-				if rp == "" { continue }
-				found := false
-				for _, up := range uPerms {
-					if rp == strings.TrimSpace(up) {
-						validPerms = append(validPerms, rp)
-						found = true
-						break
-					}
-				}
-				if !found {
-					c.String(http.StatusForbidden, fmt.Sprintf("insufficient permissions to grant: %s", rp))
-					return
-				}
-			}
-			finalPerms = strings.Join(validPerms, ",")
-		}
-	}
-
-	// Generate random token
-	hash := sha256.New()
-	hash.Write([]byte(fmt.Sprintf("%s-%s-%d", username.(string), name, time.Now().UnixNano())))
-	rawTokenStr := hex.EncodeToString(hash.Sum(nil))
-	
-	token := models.APIToken{
-		TokenHash:   rawTokenStr,
-		Name:        name,
-		Username:    username.(string),
-		Role:        role.(string),
-		Permissions: finalPerms,
-		AllowedIPs:  allowedIPs,
-	}
-	
-	err := h.pgRepo.CreateAPIToken(token)
-	if err != nil {
-		c.String(http.StatusInternalServerError, "failed to create token")
-		return
-	}
-
-	c.Header("HX-Trigger", fmt.Sprintf(`{"newToken": "%s"}`, rawTokenStr))
-	
-	tokens, _ := h.pgRepo.GetAPITokens(username.(string))
-	h.renderHTML(c, http.StatusOK, "settings_tokens_list.html", gin.H{"tokens": tokens})
-}
-
-func (h *APIHandler) DeleteAPIToken(c *gin.Context) {
-	username, _ := c.Get("username")
-	id, _ := strconv.Atoi(c.Param("id"))
-	
-	_ = h.pgRepo.DeleteAPIToken(id, username.(string))
-	c.Status(http.StatusOK)
-}
-
-func (h *APIHandler) UpdateAPITokenPermissions(c *gin.Context) {
-	username, _ := c.Get("username")
-	userPerms, _ := c.Get("permissions")
-	id, _ := strconv.Atoi(c.Param("id"))
-	
-	var req struct {
-		Permissions string `json:"permissions"`
-	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
-		return
-	}
-
-	// Validate permissions
-	finalPerms := ""
-	if req.Permissions != "" {
-		if username == h.cfg.GUIAdmin {
-			finalPerms = req.Permissions
-		} else {
-			rPerms := strings.Split(req.Permissions, ",")
-			uPerms := strings.Split(userPerms.(string), ",")
-			validPerms := []string{}
-			for _, rp := range rPerms {
-				rp = strings.TrimSpace(rp)
-				if rp == "" { continue }
-				found := false
-				for _, up := range uPerms {
-					if rp == strings.TrimSpace(up) {
-						validPerms = append(validPerms, rp)
-						found = true
-						break
-					}
-				}
-				if !found {
-					c.JSON(http.StatusForbidden, gin.H{"error": fmt.Sprintf("insufficient permissions to grant: %s", rp)})
-					return
-				}
-			}
-			finalPerms = strings.Join(validPerms, ",")
-		}
-	}
-
-	err := h.pgRepo.UpdateAPITokenPermissions(id, username.(string), finalPerms)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update permissions"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"status": "success"})
-}
-
-func (h *APIHandler) AdminRevokeAPIToken(c *gin.Context) {
-	id, _ := strconv.Atoi(c.Param("id"))
-	
-	userPerms, _ := c.Get("permissions")
-	hasGlobalTokensPerm := false
-	for _, p := range strings.Split(userPerms.(string), ",") {
-		if strings.TrimSpace(p) == "manage_global_tokens" {
-			hasGlobalTokensPerm = true
-			break
-		}
-	}
-
-	if hasGlobalTokensPerm {
-		_ = h.pgRepo.DeleteAPITokenByID(id)
-		c.Status(http.StatusOK)
-	} else {
-		c.Status(http.StatusForbidden)
-	}
-}
-
-func (h *APIHandler) AddOutboundWebhook(c *gin.Context) {
-	var wh models.OutboundWebhook
-	wh.URL = c.PostForm("url")
-	wh.Secret = c.PostForm("secret")
-	wh.Events = c.PostForm("events")
-	wh.GeoFilter = c.PostForm("geo_filter")
-	wh.Active = true
-
-	err := h.pgRepo.CreateOutboundWebhook(wh)
-	if err != nil {
-		c.String(http.StatusInternalServerError, "failed to add webhook")
-		return
-	}
-
-	// Return table row for HTMX
-	h.renderHTML(c, http.StatusOK, "settings.html", gin.H{"webhooks": []models.OutboundWebhook{wh}})
-}
-
-func (h *APIHandler) DeleteOutboundWebhook(c *gin.Context) {
-	id, _ := strconv.Atoi(c.Param("id"))
-	_ = h.pgRepo.DeleteOutboundWebhook(id)
-	c.Status(http.StatusOK)
-}
-
-func (h *APIHandler) ShowUnblockRequest(c *gin.Context) {
-	clientIP := c.ClientIP()
-	
-	// Check if IP is actually blocked
-	entry, _ := h.redisRepo.GetIPEntry(clientIP)
-	
-	// Difficulty based on ThreatScore
-	threatScore := 0
-	if entry != nil {
-		threatScore = entry.ThreatScore
-	}
-	
-	num1 := 5 + (threatScore / 10)
-	num2 := 3 + (threatScore / 20)
-	
-	captchaID := fmt.Sprintf("captcha:%s", clientIP)
-	_ = h.redisRepo.GetClient().Set(c.Request.Context(), captchaID, fmt.Sprintf("%d", num1+num2), 5*time.Minute).Err()
-
-	h.renderHTML(c, http.StatusOK, "unblock_request.html", gin.H{
-		"ip":           clientIP,
-		"num1":         num1,
-		"num2":         num2,
-		"threat_score": threatScore,
-		"blocked":      entry != nil,
-	})
-}
-
-func (h *APIHandler) SubmitUnblockRequest(c *gin.Context) {
-	clientIP := c.ClientIP()
-	answer := c.PostForm("answer")
-	reason := c.PostForm("reason")
-
-	captchaID := fmt.Sprintf("captcha:%s", clientIP)
-	expected, err := h.redisRepo.GetClient().Get(c.Request.Context(), captchaID).Result()
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Captcha expired or invalid. Please refresh the page."})
-		return
-	}
-
-	if answer != expected {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Incorrect captcha answer."})
-		return
-	}
-
-	// Logic for unblocking
-	_ = h.pgRepo.LogAction("SELF-SERVICE", "UNBLOCK_REQUEST", clientIP, reason)
-	
-	h.hub.BroadcastEvent("unblock_request", map[string]interface{}{
-		"ip":     clientIP,
-		"reason": reason,
-	})
-	
-	h.webhookService.Notify(c.Request.Context(), "unblock_request", map[string]interface{}{
-		"ip":     clientIP,
-		"reason": reason,
-	})
-	
-	c.JSON(http.StatusOK, gin.H{"status": "Request submitted. Administrators have been notified."})
-}
+                 

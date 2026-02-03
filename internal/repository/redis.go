@@ -324,6 +324,7 @@ func (r *RedisRepository) GetZSetCount() (int, error) {
 	return int(v), err
 }
 
+
 func (r *RedisRepository) IncrIPBanCount(ip string) (int64, error) {
 	return r.client.HIncrBy(r.ctx, "ips_ban_counts", ip, 1).Result()
 }

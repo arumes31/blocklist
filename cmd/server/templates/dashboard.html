@@ -851,9 +851,9 @@
         const expiresHTML = expires === 'Never' ? 'Never' : `<span class="utc-timestamp">${expires}</span>`;
         return `<tr id="row-${ip.toLowerCase().replace(/\./g,'-').replace(/:/g,'-')}">
             <td><input type="checkbox" class="ip-checkbox" value="${ip}" onclick="updateBulkUI()"></td>
-            <td style="font-family: monospace; font-weight: 600;">
-                <a href="javascript:void(0)" onclick="showIPDetails('${ip}')" style="color: var(--vibrant-red); text-decoration: none; border-bottom: 1px dashed rgba(255,0,0,0.3);">${ip}</a>
-            </td>
+                            <td class="col-ip">
+                                <a href="#" onclick="event.preventDefault(); showIPDetails('${ip}')" style="color: var(--vibrant-red); text-decoration: none; border-bottom: 1px dashed rgba(255,0,0,0.3);">${ip}</a>
+                            </td>
             <td><span class="utc-timestamp">${ts}</span></td>
             <td>${expiresHTML}</td>
             <td><span style="font-size: 0.9rem; color: var(--secondary-color);">${reason}</span></td>
