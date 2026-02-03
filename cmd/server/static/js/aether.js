@@ -93,16 +93,24 @@ function createParticles() {
 }
 
 function initParticle(i) {
-	const rd = rand(spawnRadius) * 1.5;
-	const rt = rand(TAU);
-	const cx = cos(rt);
-	const sy = sin(rt);
-	const x = center[0] + cx * rd;
-	const y = center[1] + sy * rd;
+    let x, y;
+    let attempts = 0;
+    const maxAttempts = 10;
+
+    do {
+        const rd = rand(spawnRadius) * 1.5;
+        const rt = rand(TAU);
+        const cx = cos(rt);
+        const sy = sin(rt);
+        x = center[0] + cx * rd;
+        y = center[1] + sy * rd;
+        attempts++;
+    } while (isInAvoidRect(x, y) && attempts < maxAttempts);
+
 	const rv = randIn(0.1, 1);
 	const s = randIn(1, 8);
-	const vx = rv * cx * 0.1;
-	const vy = rv * sy * 0.1;
+	const vx = rv * 0.1 * (x - center[0]) / spawnRadius; // Initial slight movement
+	const vy = rv * 0.1 * (y - center[1]) / spawnRadius;
 	const w = randIn(0.1, 2);
 	const h = randIn(160, 260); 
 	const l = 0;
@@ -111,21 +119,15 @@ function initParticle(i) {
 	particleProps.set([x, y, vx, vy, s, h, w, l, ttl, 0], i);
 }
 
-function updateAvoidRects() {
-    avoidRects = [];
-    const elements = document.querySelectorAll('.container, #loginContainer');
-    elements.forEach(el => {
-        const rect = el.getBoundingClientRect();
-        avoidRects.push({
-            x: rect.left,
-            y: rect.top,
-            width: rect.width,
-            height: rect.height,
-            cx: rect.left + rect.width / 2,
-            cy: rect.top + rect.height / 2,
-            radius: Math.max(rect.width, rect.height) / 2 * 1.2 // slightly larger influence
-        });
-    });
+function isInAvoidRect(x, y) {
+    for (let j = 0; j < avoidRects.length; j++) {
+        const rect = avoidRects[j];
+        if (x > rect.x - 20 && x < rect.x + rect.width + 20 &&
+            y > rect.y - 20 && y < rect.y + rect.height + 20) {
+            return true;
+        }
+    }
+    return false;
 }
 
 function drawParticle(i) {
@@ -137,19 +139,16 @@ function drawParticle(i) {
     const s = particleProps[i + 4];
     const w = particleProps[i + 6];
     let l = particleProps[i + 7];
-    let ttl = particleProps[i + 8];
-    let whiteState = particleProps[i + 9];
+    const ttl = particleProps[i + 8];
     
     const n = simplex.noise3D(x * 0.0025, y * 0.0025, tick * 0.0005) * TAU * noiseSteps;
-    
-    // Always apply natural movement
     vx = lerp(vx, cos(n), 0.05);
     vy = lerp(vy, sin(n), 0.05);
 
     // Avoid login forms
     for (let j = 0; j < avoidRects.length; j++) {
         const rect = avoidRects[j];
-        // Simple bounding box check first
+        // Simple bounding box check
         if (x > rect.x - 20 && x < rect.x + rect.width + 20 &&
             y > rect.y - 20 && y < rect.y + rect.height + 20) {
             
@@ -172,12 +171,9 @@ function drawParticle(i) {
         const dy_m = mouse.y - y;
         const d_m = sqrt(dx_m * dx_m + dy_m * dy_m);
         
-        if (d_m < 40) {
-            // Touch: start turning white
-            whiteState = Math.min(whiteState + 0.05, 1);
-        } else if (d_m < 500 && whiteState === 0) {
-            // Attraction (only if not yet turning white)
-            if (d_m > 100) {
+        if (d_m < 500) {
+            // "flow through": only attract if not in the inner core
+            if (d_m > 50) {
                 const m_factor = (1 - d_m / 500) * 0.15;
                 vx = lerp(vx, dx_m / d_m, m_factor);
                 vy = lerp(vy, dy_m / d_m, m_factor);
@@ -185,36 +181,11 @@ function drawParticle(i) {
         }
     }
 
-    // White / Immune behavior
-    if (whiteState > 0) {
-        whiteState = Math.min(whiteState + 0.02, 1); // Continually turn whiter
-        
-        // Fly outwards from center
-        const dx_c = x - center[0];
-        const dy_c = y - center[1];
-        const d_c = sqrt(dx_c * dx_c + dy_c * dy_c) || 1;
-        
-        // Outward bias mixed with natural movement
-        vx = lerp(vx, (dx_c / d_c) * 3, 0.05);
-        vy = lerp(vy, (dy_c / d_c) * 3, 0.05);
-        
-        // Extend life
-        ttl = l + 100; 
-    }
-
     const dx = x + vx * s;
     const dy = y + vy * s;
-    
-    let dl = fadeInOut(l, ttl);
-    // Blend opacity to 1.0 as it turns white
-    if (whiteState > 0) {
-        dl = lerp(dl, 1, whiteState);
-    }
-
+    const dl = fadeInOut(l, ttl);
     const hue = lerp(690, 740, dl);
-    const sat = lerp(100, 0, whiteState);
-    const light = lerp(50, 100, whiteState);
-    const color = `hsla(${hue}, ${sat}%, ${light}%, ${dl})`;
+    const color = `hsla(${hue}, 100%, 50%, ${dl})`;
 
     buffer.lineWidth = dl * w + 1;
     buffer.strokeStyle = color;
@@ -229,7 +200,6 @@ function drawParticle(i) {
     particleProps[i + 2] = vx;
     particleProps[i + 3] = vy;
     particleProps[i + 7] = l;
-    particleProps[i + 9] = whiteState;
 
     (checkBounds(dx, dy) || l > ttl) && initParticle(i);
 }
