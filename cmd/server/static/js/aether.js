@@ -20,8 +20,8 @@ const dpr = window.devicePixelRatio || 1;
 let canvasWidth, canvasHeight;
 let mouse = { x: -1000, y: -1000, active: false };
 let avoidRects = [];
-let activeBubbles = [];
-let prevBubbles = [];
+let activeRipples = [];
+let prevRipples = [];
 
 function setup() {
 	tick = 0;
@@ -160,7 +160,7 @@ function drawParticle(i) {
     let l = particleProps[i + 7];
     let ttl = particleProps[i + 8];
     let whiteState = particleProps[i + 9];
-    let interactionType = particleProps[i + 10]; // 0:None, 1:Rubber, 2:Bubble
+    let interactionType = particleProps[i + 10]; // 0:None, 1:Quantum, 2:Orbit, 3:Ripple
     
     const n = simplex.noise3D(x * 0.0025, y * 0.0025, tick * 0.0005) * TAU * noiseSteps;
     
@@ -186,16 +186,18 @@ function drawParticle(i) {
         }
     }
 
-    // Interaction with Bubbles (Repulsion)
-    for (let j = 0; j < prevBubbles.length; j++) {
-        const b = prevBubbles[j];
-        const dx_b = x - b.x;
-        const dy_b = y - b.y;
-        const dist_b = sqrt(dx_b * dx_b + dy_b * dy_b);
-        if (dist_b < b.radius) {
-            const force = (b.radius - dist_b) / b.radius;
-            vx += (dx_b / dist_b) * force * 0.8;
-            vy += (dy_b / dist_b) * force * 0.8;
+    // Ripple Repulsion (Shockwave)
+    for (let j = 0; j < prevRipples.length; j++) {
+        const r = prevRipples[j];
+        const dx_r = x - r.x;
+        const dy_r = y - r.y;
+        const dist_r = sqrt(dx_r * dx_r + dy_r * dy_r);
+        
+        // Ring effect: only affect if near the expanding radius
+        if (Math.abs(dist_r - r.radius) < 20) {
+            const force = 5.0; // Strong impulse
+            vx += (dx_r / dist_r) * force;
+            vy += (dy_r / dist_r) * force;
         }
     }
 
@@ -208,11 +210,13 @@ function drawParticle(i) {
         if (d_m < 40 && whiteState === 0 && interactionType === 0) {
             // Touch trigger
             whiteState = 0.01;
-            // 2% chance to become a Bubble (Type 2), else Rubber Band (Type 1)
-            if (Math.random() < 0.02) {
-                interactionType = 2;
+            const rand = Math.random();
+            if (rand < 0.05) {
+                interactionType = 3; // Ripple (Rare)
+            } else if (rand < 0.5) {
+                interactionType = 2; // Orbit
             } else {
-                interactionType = 1;
+                interactionType = 1; // Quantum
             }
         } else if (d_m < 500 && whiteState === 0) {
             // Flow through attraction
@@ -226,42 +230,57 @@ function drawParticle(i) {
 
     // --- Interaction Behaviors ---
 
-    // Type 1: Rubber Band (White)
+    // Type 1: Quantum Leap (Teleportation)
     if (interactionType === 1 && whiteState > 0) {
         whiteState = Math.min(whiteState + 0.05, 1);
         
-        // Tether to mouse if active, otherwise drift away
-        if (mouse.active) {
-            // Spring force towards mouse
-            const dx_t = mouse.x - x;
-            const dy_t = mouse.y - y;
-            vx += dx_t * 0.03;
-            vy += dy_t * 0.03;
-            vx *= 0.9; // Damping
-            vy *= 0.9;
-            ttl = l + 50; // Keep alive while tethered
-        } else {
-            // Break loose: fly outwards
-            const dx_c = x - center[0];
-            const dy_c = y - center[1];
-            const d_c = sqrt(dx_c * dx_c + dy_c * dy_c) || 1;
-            vx = lerp(vx, (dx_c / d_c) * 4, 0.05);
-            vy = lerp(vy, (dy_c / d_c) * 4, 0.05);
-            ttl = l + 100;
+        // Jitter / Glitch
+        if (Math.random() < 0.1) {
+            particleProps[i] = x + randIn(-50, 50); // Jump X
+            particleProps[i + 1] = y + randIn(-50, 50); // Jump Y
         }
-    } 
-    // Type 2: Bubble (Rare)
+        
+        // Fast fade
+        ttl = l + 30;
+    }
+    // Type 2: Orbiting Satellite
     else if (interactionType === 2 && whiteState > 0) {
         whiteState = Math.min(whiteState + 0.05, 1);
         
-        // Float slowly upwards
-        vy = lerp(vy, -0.5, 0.05);
-        
-        // Register as active bubble for next frame repulsion
-        // Radius effectively grows with 's' or fixed
-        activeBubbles.push({x: x, y: y, radius: 100});
-        
-        ttl = l + 200;
+        if (mouse.active) {
+            // Orbit logic: maintain distance, increase angle
+            const dx_m = x - mouse.x;
+            const dy_m = y - mouse.y;
+            let angle = Math.atan2(dy_m, dx_m);
+            const dist = sqrt(dx_m*dx_m + dy_m*dy_m);
+            
+            // Tangential velocity
+            angle += 0.1; // Orbital speed
+            
+            // Soft spring to ideal radius (60px)
+            const idealRadius = 60;
+            const newRadius = lerp(dist, idealRadius, 0.1);
+            
+            // Set position directly (overriding velocity)
+            particleProps[i] = mouse.x + Math.cos(angle) * newRadius;
+            particleProps[i + 1] = mouse.y + Math.sin(angle) * newRadius;
+            
+            ttl = l + 10; // Keep alive indefinitely while orbiting
+        } else {
+            // Break orbit: fling away
+            const dx_c = x - center[0];
+            const dy_c = y - center[1];
+            const d_c = sqrt(dx_c * dx_c + dy_c * dy_c) || 1;
+            vx = lerp(vx, (dx_c / d_c) * 5, 0.1);
+            vy = lerp(vy, (dy_c / d_c) * 5, 0.1);
+            interactionType = 1; // Degrade to normal fade
+        }
+    }
+    // Type 3: Ripple (Shockwave)
+    else if (interactionType === 3 && whiteState > 0) {
+        // Explode
+        activeRipples.push({x: x, y: y, radius: 10}); // Start radius
+        l = ttl + 1; // Die immediately (invisible source)
     }
 
     const dx = x + vx * s;
@@ -275,25 +294,19 @@ function drawParticle(i) {
     let light = 50;
 
     if (whiteState > 0) {
-        if (interactionType === 2) {
-            // Bubble: Cyan/Blue tint
-            hue = 180;
-            sat = 80;
+        if (interactionType === 1) { // Quantum: Electric Blue/Purple
+            hue = 280; 
             light = 70;
-        } else {
-            // Rubber band: Gold -> White
-            hue = lerp(hue, 50, whiteState); 
-            sat = lerp(100, 0, whiteState);
-            light = lerp(50, 100, whiteState);
+        } else if (interactionType === 2) { // Orbit: Bright White/Cyan
+            hue = 180;
+            sat = 0;
+            light = 100;
         }
     }
 
     const color = `hsla(${hue}, ${sat}%, ${light}%, ${dl})`;
 
     buffer.lineWidth = dl * w + 1;
-    // Bubbles are thicker
-    if (interactionType === 2) buffer.lineWidth *= 3;
-    
     buffer.strokeStyle = color;
     buffer.beginPath();
     buffer.moveTo(x, y);
@@ -352,9 +365,15 @@ function draw(currentTime) {
 
 	tick++;
 	
-    // Swap bubble buffers
-    prevBubbles = activeBubbles;
-    activeBubbles = [];
+    // Manage Ripples
+    prevRipples = activeRipples;
+    activeRipples = [];
+    for (let r of prevRipples) {
+        if (r.radius < 300) { // Max radius
+            r.radius += 5; // Expansion speed
+            activeRipples.push(r);
+        }
+    }
 
 	buffer.clearRect(0, 0, canvasWidth, canvasHeight);
 	
