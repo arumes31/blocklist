@@ -142,11 +142,9 @@ function drawParticle(i) {
     
     const n = simplex.noise3D(x * 0.0025, y * 0.0025, tick * 0.0005) * TAU * noiseSteps;
     
-    // Normal movement (if not fully consumed by white state logic)
-    if (whiteState < 1) {
-        vx = lerp(vx, cos(n), 0.05);
-        vy = lerp(vy, sin(n), 0.05);
-    }
+    // Always apply natural movement
+    vx = lerp(vx, cos(n), 0.05);
+    vy = lerp(vy, sin(n), 0.05);
 
     // Avoid login forms
     for (let j = 0; j < avoidRects.length; j++) {
@@ -196,9 +194,9 @@ function drawParticle(i) {
         const dy_c = y - center[1];
         const d_c = sqrt(dx_c * dx_c + dy_c * dy_c) || 1;
         
-        // Strong outward bias
-        vx = lerp(vx, (dx_c / d_c) * 3, 0.1);
-        vy = lerp(vy, (dy_c / d_c) * 3, 0.1);
+        // Outward bias mixed with natural movement
+        vx = lerp(vx, (dx_c / d_c) * 3, 0.05);
+        vy = lerp(vy, (dy_c / d_c) * 3, 0.05);
         
         // Extend life
         ttl = l + 100; 
