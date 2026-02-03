@@ -459,6 +459,19 @@ function draw(currentTime) {
 	for (let i = 0; i < particlePropsLength; i += particlePropCount) {
 		drawParticle(i);
 	}
+	
+	// Apply glowing effect
+	ctx.save();
+	ctx.filter = 'blur(8px)';
+	ctx.globalCompositeOperation = 'screen';
+	ctx.drawImage(buffer.canvas, 0, 0, canvasWidth, canvasHeight);
+	ctx.restore();
+	
+	// Sharp overlay
+	ctx.save();
+	ctx.globalCompositeOperation = 'lighter';
+	ctx.drawImage(buffer.canvas, 0, 0, canvasWidth, canvasHeight);
+	ctx.restore();
 }
 
 function drawHexagon(ctx, x, y, r, angle, jitter) {
@@ -475,3 +488,4 @@ function drawHexagon(ctx, x, y, r, angle, jitter) {
 }
 
 window.addEventListener("load", setup);
+window.addEventListener("resize", debounce(resize, 150));
