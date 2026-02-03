@@ -119,6 +119,23 @@ function initParticle(i) {
 	particleProps.set([x, y, vx, vy, s, h, w, l, ttl, 0], i);
 }
 
+function updateAvoidRects() {
+    avoidRects = [];
+    const elements = document.querySelectorAll('.container, #loginContainer');
+    elements.forEach(el => {
+        const rect = el.getBoundingClientRect();
+        avoidRects.push({
+            x: rect.left,
+            y: rect.top,
+            width: rect.width,
+            height: rect.height,
+            cx: rect.left + rect.width / 2,
+            cy: rect.top + rect.height / 2,
+            radius: Math.max(rect.width, rect.height) / 2 * 1.2 
+        });
+    });
+}
+
 function isInAvoidRect(x, y) {
     for (let j = 0; j < avoidRects.length; j++) {
         const rect = avoidRects[j];
