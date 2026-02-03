@@ -65,6 +65,17 @@ func (h *APIHandler) SetLimiters(main, login, webhook gin.HandlerFunc) {
 	h.webhookLimiter = webhook
 }
 
+// renderHTML is a helper to render templates with common data like the CSP nonce.
+func (h *APIHandler) renderHTML(c *gin.Context, status int, name string, data gin.H) {
+	if data == nil {
+		data = gin.H{}
+	}
+	if nonce, exists := c.Get("nonce"); exists {
+		data["nonce"] = nonce
+	}
+	c.HTML(status, name, data)
+}
+
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
@@ -210,7 +221,7 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 		session := sessions.Default(c)
 		username := session.Get("username")
 		permissions, _ := c.Get("permissions")
-		c.HTML(http.StatusOK, "docs.html", gin.H{
+		h.renderHTML(c, http.StatusOK, "docs.html", gin.H{
 			"username":       username,
 			"permissions":    permissions,
 			"admin_username": h.cfg.GUIAdmin,
@@ -315,7 +326,7 @@ func (h *APIHandler) Dashboard(c *gin.Context) {
 	views, _ := h.pgRepo.GetSavedViews(username.(string))
 	permissions, _ := c.Get("permissions")
 
-	c.HTML(http.StatusOK, "dashboard.html", gin.H{
+	h.renderHTML(c, http.StatusOK, "dashboard.html", gin.H{
 		"ips":            ips,
 		"total_ips":      activeBlocks, // Use value from Stats() for consistency
 		"admin_username": h.cfg.GUIAdmin,
@@ -347,7 +358,7 @@ func (h *APIHandler) ThreadMap(c *gin.Context) {
 	tops := make([]map[string]interface{}, 0, len(top))
 	for _, t := range top { tops = append(tops, map[string]interface{}{"Country": t.Country, "Count": t.Count}) }
 
-	c.HTML(http.StatusOK, "thread_map.html", gin.H{
+	h.renderHTML(c, http.StatusOK, "thread_map.html", gin.H{
 		"total_ips":      totalCount,
 		"admin_username": h.cfg.GUIAdmin,
 		"username":       username,
@@ -412,7 +423,7 @@ func (h *APIHandler) DeleteSavedView(c *gin.Context) {
 // For HTMX Polling (Improvement 4)
 func (h *APIHandler) DashboardTable(c *gin.Context) {
 	ips := h.getCombinedIPs()
-	c.HTML(http.StatusOK, "dashboard_table.html", gin.H{
+	h.renderHTML(c, http.StatusOK, "dashboard_table.html", gin.H{
 		"ips": ips,
 	})
 }
@@ -739,7 +750,7 @@ func (h *APIHandler) ShowLogin(c *gin.Context) {
 		c.Redirect(http.StatusFound, "/dashboard")
 		return
 	}
-	c.HTML(http.StatusOK, "login.html", nil)
+	h.renderHTML(c, http.StatusOK, "login.html", nil)
 }
 
 func (h *APIHandler) generateQRWithLogo(url string) ([]byte, error) {
@@ -792,19 +803,19 @@ func (h *APIHandler) VerifyFirstFactor(c *gin.Context) {
 	password := c.PostForm("password")
 
 	if h.cfg.DisableGUIAdminLogin && username == h.cfg.GUIAdmin {
-		c.HTML(http.StatusOK, "login_error.html", gin.H{"error": "GUIAdmin login is disabled"})
+		h.renderHTML(c, http.StatusOK, "login_error.html", gin.H{"error": "GUIAdmin login is disabled"})
 		return
 	}
 
 	admin, err := h.pgRepo.GetAdmin(username)
 	if err != nil {
-		c.HTML(http.StatusOK, "login_error.html", gin.H{"error": "Invalid Operator ID"})
+		h.renderHTML(c, http.StatusOK, "login_error.html", gin.H{"error": "Invalid Operator ID"})
 		return
 	}
 
 	err = bcrypt.CompareHashAndPassword([]byte(admin.PasswordHash), []byte(password))
 	if err != nil {
-		c.HTML(http.StatusOK, "login_error.html", gin.H{"error": "Access Denied"})
+		h.renderHTML(c, http.StatusOK, "login_error.html", gin.H{"error": "Access Denied"})
 		return
 	}
 
@@ -817,7 +828,7 @@ func (h *APIHandler) VerifyFirstFactor(c *gin.Context) {
 		})
 		if err != nil {
 			zlog.Error().Err(err).Msg("Failed to generate TOTP secret")
-			c.HTML(http.StatusOK, "login_error.html", gin.H{"error": "Internal error generating 2FA"})
+			h.renderHTML(c, http.StatusOK, "login_error.html", gin.H{"error": "Internal error generating 2FA"})
 			return
 		}
 		
@@ -828,14 +839,14 @@ func (h *APIHandler) VerifyFirstFactor(c *gin.Context) {
 			simplePng, err2 := qrcode.Encode(key.URL(), qrcode.Medium, 256)
 			if err2 != nil {
 				zlog.Error().Err(err2).Msg("Failed to encode simple QR")
-				c.HTML(http.StatusOK, "login_error.html", gin.H{"error": "Internal error generating QR code"})
+				h.renderHTML(c, http.StatusOK, "login_error.html", gin.H{"error": "Internal error generating QR code"})
 				return
 			}
 			pngData = simplePng
 		}
 		imgBase64 := base64.StdEncoding.EncodeToString(pngData)
 
-		c.HTML(http.StatusOK, "login_totp_setup_step.html", gin.H{
+		h.renderHTML(c, http.StatusOK, "login_totp_setup_step.html", gin.H{
 			"username": username,
 			"password": password,
 			"qr_image": "data:image/png;base64," + imgBase64,
@@ -845,7 +856,7 @@ func (h *APIHandler) VerifyFirstFactor(c *gin.Context) {
 	}
 
 	// Success: Return TOTP field via HTMX
-	c.HTML(http.StatusOK, "login_totp_step.html", gin.H{
+	h.renderHTML(c, http.StatusOK, "login_totp_step.html", gin.H{
 		"username": username,
 		"password": password,
 	})
@@ -858,7 +869,7 @@ func (h *APIHandler) Login(c *gin.Context) {
 	setupSecret := c.PostForm("setup_secret")
 
 	if h.cfg.DisableGUIAdminLogin && username == h.cfg.GUIAdmin {
-		c.HTML(http.StatusOK, "login_error.html", gin.H{"error": "GUIAdmin login is disabled"})
+		h.renderHTML(c, http.StatusOK, "login_error.html", gin.H{"error": "GUIAdmin login is disabled"})
 		return
 	}
 
@@ -868,7 +879,7 @@ func (h *APIHandler) Login(c *gin.Context) {
 			// Save the secret to the user
 			_ = h.pgRepo.UpdateAdminToken(username, setupSecret)
 		} else {
-			c.HTML(http.StatusOK, "login.html", gin.H{
+			h.renderHTML(c, http.StatusOK, "login.html", gin.H{
 				"error":    "Invalid TOTP code during setup. Please try again.",
 				"username": username,
 				"password": password,
@@ -896,7 +907,7 @@ func (h *APIHandler) Login(c *gin.Context) {
 		c.Redirect(http.StatusFound, "/dashboard")
 		return
 	}
-	c.HTML(http.StatusOK, "login.html", gin.H{
+	h.renderHTML(c, http.StatusOK, "login.html", gin.H{
 		"error":    "Invalid credentials or TOTP code",
 		"username": username,
 		"password": password,
@@ -934,7 +945,7 @@ func (h *APIHandler) SudoMiddleware() gin.HandlerFunc {
 }
 
 func (h *APIHandler) ShowSudo(c *gin.Context) {
-	c.HTML(http.StatusOK, "login.html", gin.H{"step": "totp", "is_sudo": true, "next": c.Query("next"), "username": c.GetString("username")})
+	h.renderHTML(c, http.StatusOK, "login.html", gin.H{"step": "totp", "is_sudo": true, "next": c.Query("next"), "username": c.GetString("username")})
 }
 
 func (h *APIHandler) VerifySudo(c *gin.Context) {
@@ -958,7 +969,7 @@ func (h *APIHandler) VerifySudo(c *gin.Context) {
 		return
 	}
 
-	c.HTML(http.StatusOK, "login.html", gin.H{
+	h.renderHTML(c, http.StatusOK, "login.html", gin.H{
 		"error":   "Invalid TOTP code",
 		"step":    "totp",
 		"is_sudo": true,
@@ -1141,7 +1152,7 @@ func (h *APIHandler) Whitelist(c *gin.Context) {
 	username, _ := c.Get("username")
 	permissions, _ := c.Get("permissions")
 
-	c.HTML(http.StatusOK, "whitelist.html", gin.H{
+	h.renderHTML(c, http.StatusOK, "whitelist.html", gin.H{
 		"whitelisted_ips": ips,
 		"blocked_subnets": subnets,
 		"admin_username":  h.cfg.GUIAdmin,
@@ -1407,7 +1418,7 @@ func (h *APIHandler) AdminManagement(c *gin.Context) {
 	logs, _ := h.pgRepo.GetAuditLogs(100)
 	userPerms, _ := c.Get("permissions")
 
-	c.HTML(http.StatusOK, "admin_management.html", gin.H{
+	h.renderHTML(c, http.StatusOK, "admin_management.html", gin.H{
 		"admins":         adminMap,
 		"audit_logs":     logs,
 		"permissions":    userPerms.(string),
@@ -1898,7 +1909,7 @@ func (h *APIHandler) Settings(c *gin.Context) {
 	}
 	baseURL := fmt.Sprintf("%s://%s", scheme, c.Request.Host)
 
-	c.HTML(http.StatusOK, "settings.html", gin.H{
+	h.renderHTML(c, http.StatusOK, "settings.html", gin.H{
 		"webhooks":            webhooks,
 		"tokens":              tokens,
 		"all_tokens":          allTokens,
@@ -1978,7 +1989,7 @@ func (h *APIHandler) CreateAPIToken(c *gin.Context) {
 	c.Header("HX-Trigger", fmt.Sprintf(`{"newToken": "%s"}`, rawTokenStr))
 	
 	tokens, _ := h.pgRepo.GetAPITokens(username.(string))
-	c.HTML(http.StatusOK, "settings_tokens_list.html", gin.H{"tokens": tokens})
+	h.renderHTML(c, http.StatusOK, "settings_tokens_list.html", gin.H{"tokens": tokens})
 }
 
 func (h *APIHandler) DeleteAPIToken(c *gin.Context) {
@@ -2075,7 +2086,7 @@ func (h *APIHandler) AddOutboundWebhook(c *gin.Context) {
 	}
 
 	// Return table row for HTMX
-	c.HTML(http.StatusOK, "settings.html", gin.H{"webhooks": []models.OutboundWebhook{wh}})
+	h.renderHTML(c, http.StatusOK, "settings.html", gin.H{"webhooks": []models.OutboundWebhook{wh}})
 }
 
 func (h *APIHandler) DeleteOutboundWebhook(c *gin.Context) {
@@ -2102,7 +2113,7 @@ func (h *APIHandler) ShowUnblockRequest(c *gin.Context) {
 	captchaID := fmt.Sprintf("captcha:%s", clientIP)
 	_ = h.redisRepo.GetClient().Set(c.Request.Context(), captchaID, fmt.Sprintf("%d", num1+num2), 5*time.Minute).Err()
 
-	c.HTML(http.StatusOK, "unblock_request.html", gin.H{
+	h.renderHTML(c, http.StatusOK, "unblock_request.html", gin.H{
 		"ip":           clientIP,
 		"num1":         num1,
 		"num2":         num2,
