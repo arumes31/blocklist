@@ -236,11 +236,13 @@ function drawParticle(i) {
         if (d_m < 40 && whiteState === 0 && interactionType === 0) {
             // Touch trigger
             whiteState = 0.01;
-            const randVal = Math.random();
-            if (randVal < 0.00015 && rippleCooldown === 0) { // Extremely Rare (~0.015%)
+            
+            // Interaction logic
+            // Check ripple cooldown first to avoid rolling dice unnecessarily
+            if (rippleCooldown === 0 && Math.random() < 0.00015) { 
                 interactionType = 3; 
-                rippleCooldown = 120; // ~2 seconds at 60fps
-            } else if (randVal < 0.5) {
+                rippleCooldown = 120; // Global cooldown
+            } else if (Math.random() < 0.5) {
                 interactionType = 2; // Orbit
             } else {
                 interactionType = 1; // Quantum
