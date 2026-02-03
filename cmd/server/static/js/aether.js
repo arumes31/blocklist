@@ -261,7 +261,7 @@ function drawParticle(i) {
 
     // Type 1: Quantum Leap (Teleportation)
     if (interactionType === 1 && whiteState > 0) {
-        whiteState = Math.min(whiteState + 0.05, 1);
+        whiteState = Math.min(whiteState + 0.02, 1); // Slower transition
         
         // Jitter / Glitch
         if (Math.random() < 0.1) {
@@ -305,6 +305,10 @@ function drawParticle(i) {
             interactionType = 1; // Degrade to normal fade
         }
     }
+    // Generic WhiteState increment for non-special types (e.g. shockwave victims)
+    else if (interactionType === 0 && whiteState > 0) {
+        whiteState = Math.min(whiteState + 0.02, 1);
+    }
     // Type 3: Ripple (Implosion -> Explosion)
     else if (interactionType === 3 && whiteState > 0) {
         // Create Ripple with age 0 and random angle
@@ -323,13 +327,19 @@ function drawParticle(i) {
     let light = 50;
 
     if (whiteState > 0) {
-        if (interactionType === 1) { // Quantum: Yellow
-            hue = 60; 
-            light = 70;
-        } else if (interactionType === 2) { // Orbit: Bright White/Cyan
+        if (interactionType === 1) { 
+            // Quantum: Slow transition Red -> Yellow (780 is 60 deg wrapped)
+            hue = lerp(hue, 780, whiteState); 
+            light = lerp(50, 80, whiteState);
+        } else if (interactionType === 2) { 
+            // Orbit: Bright White/Cyan
             hue = 180;
             sat = 0;
             light = 100;
+        } else {
+            // Default (e.g. Shockwave hit): Red -> White
+            sat = lerp(100, 0, whiteState);
+            light = lerp(50, 100, whiteState);
         }
     }
 
