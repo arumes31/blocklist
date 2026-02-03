@@ -181,7 +181,7 @@ function drawParticle(i) {
         }
     }
 
-    // White behavior: Sideways bias + Outward + Extended life
+    // White behavior: Outward bias + Noise + Extended life
     if (whiteState > 0) {
         whiteState = Math.min(whiteState + 0.02, 1);
         
@@ -189,14 +189,16 @@ function drawParticle(i) {
         const dy_c = y - center[1];
         const d_c = sqrt(dx_c * dx_c + dy_c * dy_c) || 1;
         
-        // "Sideways" = perpendicular to outward vector + horizontal drift
-        const tx = -dy_c / d_c;
-        const ty = dx_c / d_c;
+        // Outward direction
+        const ox = dx_c / d_c;
+        const oy = dy_c / d_c;
         
-        vx = lerp(vx, tx * 2 + (vx > 0 ? 1 : -1), 0.05); 
-        vy = lerp(vy, ty * 0.5, 0.05); 
+        // Blend noise movement (current vx/vy) with outward direction
+        // Retains "natural" wavy look but guides them off-screen
+        vx = lerp(vx, ox * 2.5, 0.05);
+        vy = lerp(vy, oy * 2.5, 0.05);
         
-        ttl = l + 150; // Extend life
+        ttl = l + 200; // Extend life
     }
 
     const dx = x + vx * s;
