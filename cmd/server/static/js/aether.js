@@ -230,7 +230,7 @@ function drawParticle(i) {
             // Touch trigger
             whiteState = 0.01;
             const randVal = Math.random();
-            if (randVal < 0.015 && rippleCooldown === 0) { // Check cooldown
+            if (randVal < 0.00015 && rippleCooldown === 0) { // Extremely Rare (~0.015%)
                 interactionType = 3; 
                 rippleCooldown = 120; // ~2 seconds at 60fps
             } else if (randVal < 0.5) {
