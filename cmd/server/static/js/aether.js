@@ -1,6 +1,6 @@
 "use strict";
 
-const particleCount = 1500; // Slightly reduced for performance
+const particleCount = 1000; // Balanced for performance and quality
 const particlePropCount = 9;
 const particlePropsLength = particleCount * particlePropCount;
 const spawnRadius = rand(150) + 150;
@@ -16,6 +16,9 @@ let lastFrameTime = 0;
 const fps = 60;
 const frameInterval = 1000 / fps;
 const dpr = window.devicePixelRatio || 1;
+
+let canvasWidth, canvasHeight;
+let mouse = { x: -1000, y: -1000, active: false };
 
 function setup() {
 	tick = 0;
@@ -42,6 +45,16 @@ function setup() {
 	window.requestAnimationFrame(draw);
 }
 
+window.addEventListener("mousemove", e => {
+    mouse.x = e.clientX;
+    mouse.y = e.clientY;
+    mouse.active = true;
+});
+
+window.addEventListener("mouseleave", () => {
+    mouse.active = false;
+});
+
 window.addEventListener("pagehide", () => {
 	try {
 		sessionStorage.setItem('aether_tick', tick.toString());
@@ -61,77 +74,99 @@ function createParticles() {
 }
 
 function initParticle(i) {
-	let rd, rt, cx, sy, x, y, s, rv, vx, vy, w, h, l, ttl;
-	
-	rd = rand(spawnRadius) * 1.5;
-	rt = rand(TAU);
-	cx = cos(rt);
-	sy = sin(rt);
-	x = center[0] + cx * rd;
-	y = center[1] + sy * rd;
-	rv = randIn(0.1, 1);
-	s = randIn(1, 8);
-	vx = rv * cx * 0.1;
-	vy = rv * sy * 0.1;
-	w = randIn(0.1, 2);
-	h = randIn(160, 260); // Not currently used but keeping for props structure
-	l = 0;
-	ttl = randIn(50, 200);
+	const rd = rand(spawnRadius) * 1.5;
+	const rt = rand(TAU);
+	const cx = cos(rt);
+	const sy = sin(rt);
+	const x = center[0] + cx * rd;
+	const y = center[1] + sy * rd;
+	const rv = randIn(0.1, 1);
+	const s = randIn(1, 8);
+	const vx = rv * cx * 0.1;
+	const vy = rv * sy * 0.1;
+	const w = randIn(0.1, 2);
+	const h = randIn(160, 260); 
+	const l = 0;
+	const ttl = randIn(50, 250);
 	
 	particleProps.set([x, y, vx, vy, s, h, w, l, ttl], i);
 }
 
 function drawParticle(i) {
-    let n, dx, dy, dl, c;
-    const [x, y, vx, vy, s, h, w, l, ttl] = particleProps.get(i, particlePropCount);
+    // Access properties directly to avoid array creation/destructuring
+    const x = particleProps[i];
+    const y = particleProps[i + 1];
+    let vx = particleProps[i + 2];
+    let vy = particleProps[i + 3];
+    const s = particleProps[i + 4];
+    const w = particleProps[i + 6];
+    let l = particleProps[i + 7];
+    const ttl = particleProps[i + 8];
     
-    n = simplex.noise3D(x * 0.0025, y * 0.0025, tick * 0.0005) * TAU * noiseSteps;
-    const nvx = lerp(vx, cos(n), 0.05);
-    const nvy = lerp(vy, sin(n), 0.05);
-    dx = x + nvx * s;
-    dy = y + nvy * s;
-    dl = fadeInOut(l, ttl);
+    const n = simplex.noise3D(x * 0.0025, y * 0.0025, tick * 0.0005) * TAU * noiseSteps;
+    vx = lerp(vx, cos(n), 0.05);
+    vy = lerp(vy, sin(n), 0.05);
+
+    // Mouse influence
+    if (mouse.active) {
+        const dx_m = mouse.x - x;
+        const dy_m = mouse.y - y;
+        const d_m = sqrt(dx_m * dx_m + dy_m * dy_m);
+        if (d_m < 250) {
+            const m_factor = (1 - d_m / 250) * 0.1;
+            vx = lerp(vx, dx_m / d_m, m_factor);
+            vy = lerp(vy, dy_m / d_m, m_factor);
+        }
+    }
+
+    const dx = x + vx * s;
+    const dy = y + vy * s;
+    const dl = fadeInOut(l, ttl);
     const hue = lerp(690, 740, dl);
-    c = `hsla(${hue}, 100%, 50%, ${dl})`;
+    const color = `hsla(${hue}, 100%, 50%, ${dl})`;
 
     buffer.lineWidth = dl * w + 1;
-    buffer.strokeStyle = c;
+    buffer.strokeStyle = color;
     buffer.beginPath();
     buffer.moveTo(x, y);
     buffer.lineTo(dx, dy);
     buffer.stroke();
     
-    const nextL = l + 1;
-    particleProps.set([dx, dy, nvx, nvy, s, h, w, nextL, ttl], i);
+    l++;
+    particleProps[i] = dx;
+    particleProps[i + 1] = dy;
+    particleProps[i + 2] = vx;
+    particleProps[i + 3] = vy;
+    particleProps[i + 7] = l;
 
-    (checkBounds(dx, dy) || nextL > ttl) && initParticle(i);
+    (checkBounds(dx, dy) || l > ttl) && initParticle(i);
 }
 
 function checkBounds(x, y) {
 	return(
-		x > buffer.canvas.width / dpr ||
+		x > canvasWidth ||
 		x < 0 ||
-		y > buffer.canvas.height / dpr ||
+		y > canvasHeight ||
 		y < 0
 	);
 }
 
 function resize() {
-	const w = window.innerWidth;
-	const h = window.innerHeight;
+	canvasWidth = window.innerWidth;
+	canvasHeight = window.innerHeight;
 
-	buffer.canvas.width = w * dpr;
-	buffer.canvas.height = h * dpr;
+	buffer.canvas.width = canvasWidth * dpr;
+	buffer.canvas.height = canvasHeight * dpr;
 	buffer.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-	ctx.canvas.width = w * dpr;
-	ctx.canvas.height = h * dpr;
-	ctx.canvas.style.width = w + 'px';
-	ctx.canvas.style.height = h + 'px';
+	ctx.canvas.width = canvasWidth * dpr;
+	ctx.canvas.height = canvasHeight * dpr;
+	ctx.canvas.style.width = canvasWidth + 'px';
+	ctx.canvas.style.height = canvasHeight + 'px';
 	ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-	center[0] = 0.5 * w;
-	center[1] = 0.5 * h;
+	center[0] = 0.5 * canvasWidth;
+	center[1] = 0.5 * canvasHeight;
 }
 
 function draw(currentTime) {
@@ -146,12 +181,10 @@ function draw(currentTime) {
 
 	tick++;
 	
-	// Clear buffer (offscreen)
-	buffer.clearRect(0, 0, buffer.canvas.width / dpr, buffer.canvas.height / dpr);
+	buffer.clearRect(0, 0, canvasWidth, canvasHeight);
 	
-	// Clear main ctx
 	ctx.fillStyle = 'black';
-	ctx.fillRect(0, 0, ctx.canvas.width / dpr, ctx.canvas.height / dpr);
+	ctx.fillRect(0, 0, canvasWidth, canvasHeight);
 	
 	for (let i = 0; i < particlePropsLength; i += particlePropCount) {
 		drawParticle(i);
@@ -161,13 +194,13 @@ function draw(currentTime) {
 	ctx.save();
 	ctx.filter = 'blur(8px)';
 	ctx.globalCompositeOperation = 'screen';
-	ctx.drawImage(buffer.canvas, 0, 0, ctx.canvas.width / dpr, ctx.canvas.height / dpr);
+	ctx.drawImage(buffer.canvas, 0, 0, canvasWidth, canvasHeight);
 	ctx.restore();
 	
 	// Sharp overlay
 	ctx.save();
 	ctx.globalCompositeOperation = 'lighter';
-	ctx.drawImage(buffer.canvas, 0, 0, ctx.canvas.width / dpr, ctx.canvas.height / dpr);
+	ctx.drawImage(buffer.canvas, 0, 0, canvasWidth, canvasHeight);
 	ctx.restore();
 }
 
