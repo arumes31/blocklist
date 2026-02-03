@@ -19,11 +19,13 @@ const dpr = window.devicePixelRatio || 1;
 
 let canvasWidth, canvasHeight;
 let mouse = { x: -1000, y: -1000, active: false };
+let avoidRects = [];
 
 function setup() {
 	tick = 0;
 	center = [];
 	resize();
+    updateAvoidRects();
 	
 	const savedTick = sessionStorage.getItem('aether_tick');
 	const savedProps = sessionStorage.getItem('aether_props');
@@ -109,6 +111,23 @@ function initParticle(i) {
 	particleProps.set([x, y, vx, vy, s, h, w, l, ttl, 0], i);
 }
 
+function updateAvoidRects() {
+    avoidRects = [];
+    const elements = document.querySelectorAll('.container, #loginContainer');
+    elements.forEach(el => {
+        const rect = el.getBoundingClientRect();
+        avoidRects.push({
+            x: rect.left,
+            y: rect.top,
+            width: rect.width,
+            height: rect.height,
+            cx: rect.left + rect.width / 2,
+            cy: rect.top + rect.height / 2,
+            radius: Math.max(rect.width, rect.height) / 2 * 1.2 // slightly larger influence
+        });
+    });
+}
+
 function drawParticle(i) {
     // Access properties directly to avoid array creation/destructuring
     const x = particleProps[i];
@@ -127,6 +146,26 @@ function drawParticle(i) {
     if (whiteState < 1) {
         vx = lerp(vx, cos(n), 0.05);
         vy = lerp(vy, sin(n), 0.05);
+    }
+
+    // Avoid login forms
+    for (let j = 0; j < avoidRects.length; j++) {
+        const rect = avoidRects[j];
+        // Simple bounding box check first
+        if (x > rect.x - 20 && x < rect.x + rect.width + 20 &&
+            y > rect.y - 20 && y < rect.y + rect.height + 20) {
+            
+            const dx_r = x - rect.cx;
+            const dy_r = y - rect.cy;
+            const d_r = sqrt(dx_r * dx_r + dy_r * dy_r) || 1;
+            
+            // Push away
+            const force = (rect.radius - d_r) / rect.radius;
+            if (force > 0) {
+                vx += (dx_r / d_r) * force * 0.5;
+                vy += (dy_r / d_r) * force * 0.5;
+            }
+        }
     }
 
     // Mouse influence
@@ -222,6 +261,7 @@ function resize() {
 
 	center[0] = 0.5 * canvasWidth;
 	center[1] = 0.5 * canvasHeight;
+    updateAvoidRects();
 }
 
 function draw(currentTime) {
