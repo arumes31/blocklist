@@ -325,11 +325,11 @@ func main() {
 		}
 
 		// Content Security Policy (CSP)
-		// style-src: Allow 'unsafe-inline' without nonces to support extensive inline styles and library injections (HTMX).
-		// script-src: Use nonces for <script> tags. 'unsafe-inline' is a fallback for older browsers.
-		// script-src-attr: Allow inline event handlers (onclick) for compatibility with existing templates.
+		// style-src: Allow 'unsafe-inline' to support extensive inline styles and library injections (HTMX).
+		// script-src: Use nonces for <script> tags. 
+		// script-src-attr: Allow inline event handlers (onclick) for compatibility.
 		// ws: and wss: are allowed for WebSocket connections.
-		csp := fmt.Sprintf("default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'nonce-%s' 'unsafe-inline'; script-src-attr 'self' 'unsafe-inline'; connect-src 'self' ws: wss:", nonce)
+		csp := fmt.Sprintf("default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'nonce-%s'; script-src-attr 'self' 'unsafe-inline'; connect-src 'self' ws: wss:", nonce)
 		c.Header("Content-Security-Policy", csp)
 		
 		c.Next()
