@@ -1,7 +1,7 @@
 "use strict";
 
 const particleCount = 1000; // Balanced for performance and quality
-const particlePropCount = 9;
+const particlePropCount = 10;
 const particlePropsLength = particleCount * particlePropCount;
 const spawnRadius = rand(150) + 150;
 const noiseSteps = 6;
@@ -32,6 +32,7 @@ function setup() {
 		try {
 			tick = parseInt(savedTick);
 			const propsArray = JSON.parse(savedProps);
+            if (propsArray.length !== particlePropsLength) throw new Error();
 			particleProps = new Float32Array(propsArray);
 			simplex = new SimplexNoise();
 		} catch (e) {
@@ -105,7 +106,7 @@ function initParticle(i) {
 	const l = 0;
 	const ttl = randIn(50, 250);
 	
-	particleProps.set([x, y, vx, vy, s, h, w, l, ttl], i);
+	particleProps.set([x, y, vx, vy, s, h, w, l, ttl, 0], i);
 }
 
 function drawParticle(i) {
@@ -118,6 +119,7 @@ function drawParticle(i) {
     const w = particleProps[i + 6];
     let l = particleProps[i + 7];
     const ttl = particleProps[i + 8];
+    let immune = particleProps[i + 9];
     
     const n = simplex.noise3D(x * 0.0025, y * 0.0025, tick * 0.0005) * TAU * noiseSteps;
     vx = lerp(vx, cos(n), 0.05);
@@ -127,24 +129,24 @@ function drawParticle(i) {
     let light = 50;
 
     // Mouse influence
-    if (mouse.active) {
+    if (mouse.active && !immune) {
         const dx_m = mouse.x - x;
         const dy_m = mouse.y - y;
         const d_m = sqrt(dx_m * dx_m + dy_m * dy_m);
-        if (d_m < 500) {
-            // "flow through": only attract if not in the inner "white" core
-            if (d_m > 100) {
-                const m_factor = (1 - d_m / 500) * 0.15;
-                if (d_m > 0.1) {
-                    vx = lerp(vx, dx_m / d_m, m_factor);
-                    vy = lerp(vy, dy_m / d_m, m_factor);
-                }
-            }
-            // Transition to white based on proximity
-            const intensity = (1 - d_m / 500);
-            sat = lerp(100, 0, intensity);
-            light = lerp(50, 100, intensity);
+        
+        if (d_m < 40) {
+            immune = 1;
+            particleProps[i + 9] = 1;
+        } else if (d_m < 500) {
+            const m_factor = (1 - d_m / 500) * 0.15;
+            vx = lerp(vx, dx_m / d_m, m_factor);
+            vy = lerp(vy, dy_m / d_m, m_factor);
         }
+    }
+
+    if (immune) {
+        sat = 0;
+        light = 100;
     }
 
     const dx = x + vx * s;
