@@ -325,15 +325,11 @@ func main() {
 		}
 
 		// Content Security Policy (CSP)
-		// We allow 'self', data: images, and inline styles/scripts ONLY if they match the nonce.
-		// Note: 'unsafe-inline' is still often needed for some libraries if they don't support nonces properly,
-		// but we aim to use nonces. If a library inserts style tags without nonce, it might break.
-		// For now, we add 'nonce-...' and fallbacks.
+		// style-src: Allow 'unsafe-inline' without nonces to support extensive inline styles and library injections (HTMX).
+		// script-src: Use nonces for <script> tags. 'unsafe-inline' is a fallback for older browsers.
+		// script-src-attr: Allow inline event handlers (onclick) for compatibility with existing templates.
 		// ws: and wss: are allowed for WebSocket connections.
-		// We allow 'unsafe-inline' for style-src because many templates use inline style attributes,
-		// but we keep script-src strict with nonces.
-		// Use style-src-attr to specifically allow style attributes when a nonce is present.
-		csp := fmt.Sprintf("default-src 'self'; img-src 'self' data:; style-src 'self' 'nonce-%s' 'unsafe-inline'; style-src-attr 'self' 'unsafe-inline'; script-src 'self' 'nonce-%s'; connect-src 'self' ws: wss:", nonce, nonce)
+		csp := fmt.Sprintf("default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'nonce-%s' 'unsafe-inline'; script-src-attr 'self' 'unsafe-inline'; connect-src 'self' ws: wss:", nonce)
 		c.Header("Content-Security-Policy", csp)
 		
 		c.Next()

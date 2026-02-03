@@ -163,8 +163,8 @@
     <canvas id="canvas"></canvas>
     
     <div class="buttons-container">
-        <button class="small-button" id="rawApiBtn">RAW API</button>
-        <button class="small-button" id="healthBtn">HEALTH</button>
+        <button class="small-button" onclick="window.location.href='/api/v1/raw'">RAW API</button>
+        <button class="small-button" onclick="window.location.href='/health'">HEALTH</button>
     </div>
 
     <div class="container" id="loginContainer">
@@ -194,7 +194,7 @@
                     <input type="hidden" name="password" value="{{ .password }}">
                 {{ end }}
                 <input type="submit" value="{{ if .is_sudo }}Verify Identity{{ else }}Authorize Access{{ end }}">
-                <button type="button" class="small-button" id="backBtn" style="margin-top: 15px; width: 100%;">{{ if .is_sudo }}Cancel{{ else }}Go Back{{ end }}</button>
+                <button type="button" class="small-button" style="margin-top: 15px; width: 100%;" onclick="window.location.href='{{ if .is_sudo }}/dashboard{{ else }}/login{{ end }}'">{{ if .is_sudo }}Cancel{{ else }}Go Back{{ end }}</button>
             {{ else }}
                 <div class="form-group">
                     <label for="username">Username</label>
@@ -218,13 +218,6 @@
     <script src="/js/codepen-util.js"></script>
     <script src="/js/aether.js"></script>
     <script nonce="{{ .nonce }}">
-        // Navigation Listeners
-        document.getElementById('rawApiBtn')?.addEventListener('click', () => window.location.href='/api/v1/raw');
-        document.getElementById('healthBtn')?.addEventListener('click', () => window.location.href='/health');
-        document.getElementById('backBtn')?.addEventListener('click', () => {
-            window.location.href = '{{ if .is_sudo }}/dashboard{{ else }}/login{{ end }}';
-        });
-
         // Idle Detection
         let idleTimer;
         const idleTime = 30000; // 30 seconds
