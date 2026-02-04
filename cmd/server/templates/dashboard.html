@@ -381,9 +381,14 @@
         }
 
         /* Compact density */
-        .compact table td,
-        .compact table th {
-            padding: 0.5rem;
+        .compact td,
+        .compact th {
+            padding: 0.25rem 0.5rem !important;
+            font-size: 0.85rem;
+        }
+        .compact .btn {
+            padding: 0.2rem 0.5rem !important;
+            font-size: 0.75rem !important;
         }
 
         /* Compact Country Dropdown */
@@ -1142,6 +1147,25 @@
                 </select>
                 <button onclick="saveCurrentView()" class="btn btn-dark" style="height: 42px;"
                     title="Save Current Filters as View">Save View</button>
+
+                <div class="country-dropdown" style="min-width: 180px;">
+                    <button type="button" class="filter-input" style="width: 100%; text-align: left; display: flex; justify-content: space-between; align-items: center;" onclick="toggleViewOptions()">
+                        <span>View Options</span>
+                        <span>⚙️</span>
+                    </button>
+                    <div class="country-popup" id="viewOptionsPopup" style="width: 200px;">
+                        <div style="padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); margin-bottom: 5px; font-weight: bold; font-size: 0.8rem; color: var(--secondary-color);">DENSITY</div>
+                        <label class="country-option"><input type="radio" name="density" value="comfortable" checked onchange="setDensity('comfortable')"> Comfortable</label>
+                        <label class="country-option"><input type="radio" name="density" value="compact" onchange="setDensity('compact')"> Compact</label>
+                        
+                        <div style="padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); margin: 10px 0 5px 0; font-weight: bold; font-size: 0.8rem; color: var(--secondary-color);">COLUMNS</div>
+                        <label class="country-option"><input type="checkbox" checked onchange="toggleColumn('col-ts')"> Date Added</label>
+                        <label class="country-option"><input type="checkbox" checked onchange="toggleColumn('col-exp')"> Expires At</label>
+                        <label class="country-option"><input type="checkbox" checked onchange="toggleColumn('col-score')"> Score</label>
+                        <label class="country-option"><input type="checkbox" checked onchange="toggleColumn('col-by')"> Added By</label>
+                        <label class="country-option"><input type="checkbox" checked onchange="toggleColumn('col-geo')"> Geo</label>
+                    </div>
+                </div>
             </div>
             <div id="filter-chips" style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 15px;"></div>
         </div>
@@ -1230,13 +1254,12 @@
                     <tr>
                         <th style="width: 40px;"><input type="checkbox" id="selectAll" onclick="toggleSelectAll(this)">
                         </th>
-                        <th>IP Address</th>
-                        <th>Date Added</th>
-                        <th>Expires At</th>
+                        <th class="col-ts">Date Added</th>
+                        <th class="col-exp">Expires At</th>
                         <th>Reason</th>
-                        <th>Score</th>
-                        <th>By</th>
-                        <th>Geo</th>
+                        <th class="col-score">Score</th>
+                        <th class="col-by">By</th>
+                        <th class="col-geo">Geo</th>
                         <th>Action</th>
                     </tr>
                 </thead>
@@ -1343,18 +1366,51 @@
                             <td class="col-ip">
                                 <a href="#" onclick="event.preventDefault(); showIPDetails('${ip}')" style="color: var(--vibrant-red); text-decoration: none; border-bottom: 1px dashed rgba(255,0,0,0.3);">${ip}</a>
                             </td>
-            <td><span class="utc-timestamp">${ts}</span></td>
-            <td>${expiresHTML}</td>
+            <td class="col-ts"><span class="utc-timestamp">${ts}</span></td>
+            <td class="col-exp">${expiresHTML}</td>
             <td><span style="font-size: 0.9rem; color: var(--secondary-color);">${reason}</span></td>
-            <td><span style="font-weight: bold; color: ${scoreColor}">${score}</span></td>
-            <td>${addedBy}</td>
-            <td>${geo}</td>
+            <td class="col-score"><span style="font-weight: bold; color: ${scoreColor}">${score}</span></td>
+            <td class="col-by">${addedBy}</td>
+            <td class="col-geo">${geo}</td>
             <td>
                 <button class="btn btn-success" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;"
                         hx-post="/unblock" hx-ext="json-enc" hx-vals='{"ip": "${ip}"}'
                         hx-target="closest tr" hx-swap="outerHTML swap:0.5s" title="Unblock this IP">Unblock</button>
             </td>
         </tr>`;
+        }
+
+        // View Toggles
+        function toggleViewOptions() {
+            document.getElementById('viewOptionsPopup').classList.toggle('active');
+        }
+
+        function setDensity(mode) {
+            const table = document.getElementById('ipTable');
+            if (mode === 'compact') table.classList.add('compact');
+            else table.classList.remove('compact');
+        }
+
+        const hiddenColumns = new Set();
+        function toggleColumn(cls) {
+            if (hiddenColumns.has(cls)) hiddenColumns.delete(cls);
+            else hiddenColumns.add(cls);
+            applyColumnVisibility();
+        }
+
+        function applyColumnVisibility() {
+            const styleId = 'column-visibility-style';
+            let styleEl = document.getElementById(styleId);
+            if (!styleEl) {
+                styleEl = document.createElement('style');
+                styleEl.id = styleId;
+                document.head.appendChild(styleEl);
+            }
+            let css = "";
+            hiddenColumns.forEach(cls => {
+                css += `.${cls} { display: none !important; }\n`;
+            });
+            styleEl.innerHTML = css;
         }
 
         function setReason(r) {

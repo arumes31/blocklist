@@ -77,11 +77,14 @@ func (h *APIHandler) ThreadMap(c *gin.Context) {
 		tops = append(tops, map[string]interface{}{"Country": t.Country, "Count": t.Count})
 	}
 
+	trend, _ := h.pgRepo.GetBlockTrend()
+
 	h.renderHTML(c, http.StatusOK, "thread_map.html", gin.H{
 		"total_ips":      totalCount,
 		"admin_username": h.cfg.GUIAdmin,
 		"username":       username,
 		"permissions":    permissions,
+		"block_trend":    trend,
 		"stats": gin.H{
 			"hour":          hour,
 			"day":           day,

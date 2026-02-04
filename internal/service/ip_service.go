@@ -674,10 +674,25 @@ func (s *IPService) ListIPsPaginatedAdvanced(ctx context.Context, limit int, cur
 
 			// Apply filters
 			if q != "" {
-				if !strings.Contains(strings.ToLower(ip), q) &&
-					!strings.Contains(strings.ToLower(entry.Reason), q) &&
-					!strings.Contains(strings.ToLower(entry.AddedBy), q) &&
-					!(entry.Geolocation != nil && strings.Contains(strings.ToLower(entry.Geolocation.Country), q)) {
+				matches := false
+				// 1. Text match on fields
+				if strings.Contains(strings.ToLower(ip), q) ||
+					strings.Contains(strings.ToLower(entry.Reason), q) ||
+					strings.Contains(strings.ToLower(entry.AddedBy), q) ||
+					(entry.Geolocation != nil && strings.Contains(strings.ToLower(entry.Geolocation.Country), q)) {
+					matches = true
+				}
+
+				// 2. Smart Match: CIDR
+				if !matches {
+					if _, network, err := net.ParseCIDR(query); err == nil {
+						if parsedIP := net.ParseIP(ip); parsedIP != nil && network.Contains(parsedIP) {
+							matches = true
+						}
+					}
+				}
+
+				if !matches {
 					continue
 				}
 			}
@@ -747,10 +762,23 @@ func (s *IPService) exportFallback(ctx context.Context, query string, country st
 		}
 
 		if q != "" {
-			if !strings.Contains(strings.ToLower(ip), q) &&
-				!strings.Contains(strings.ToLower(entry.Reason), q) &&
-				!strings.Contains(strings.ToLower(entry.AddedBy), q) &&
-				!(entry.Geolocation != nil && strings.Contains(strings.ToLower(entry.Geolocation.Country), q)) {
+			matches := false
+			if strings.Contains(strings.ToLower(ip), q) ||
+				strings.Contains(strings.ToLower(entry.Reason), q) ||
+				strings.Contains(strings.ToLower(entry.AddedBy), q) ||
+				(entry.Geolocation != nil && strings.Contains(strings.ToLower(entry.Geolocation.Country), q)) {
+				matches = true
+			}
+
+			if !matches {
+				if _, network, err := net.ParseCIDR(query); err == nil {
+					if parsedIP := net.ParseIP(ip); parsedIP != nil && network.Contains(parsedIP) {
+						matches = true
+					}
+				}
+			}
+
+			if !matches {
 				continue
 			}
 		}
