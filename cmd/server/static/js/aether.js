@@ -22,6 +22,8 @@ let mouse = { x: -1000, y: -1000, active: false };
 let avoidRects = [];
 let activeRipples = [];
 let prevRipples = [];
+let activeSonarRings = [];
+let prevSonarRings = [];
 let rippleCooldown = 0;
 
 function setup() {
@@ -165,9 +167,21 @@ function drawParticle(i) {
     
     const n = simplex.noise3D(x * 0.0025, y * 0.0025, tick * 0.0005) * TAU * noiseSteps;
     
-    if (whiteState < 1 && interactionType !== 2) {
-        vx = lerp(vx, cos(n), 0.05);
-        vy = lerp(vy, sin(n), 0.05);
+    // Base animation (noise)
+    vx = lerp(vx, cos(n), 0.05);
+    vy = lerp(vy, sin(n), 0.05);
+
+    let sonarFlash = 0;
+    // Check Sonar Hits (Flashing red dots)
+    if (whiteState === 0) {
+        for (let j = 0; j < prevSonarRings.length; j++) {
+            const sr = prevSonarRings[j];
+            const d_sr = sqrt((x-sr.x)**2 + (y-sr.y)**2);
+            if (Math.abs(d_sr - sr.radius) < 15) {
+                sonarFlash = 1;
+                break;
+            }
+        }
     }
 
     // Avoid login forms
@@ -217,22 +231,29 @@ function drawParticle(i) {
         const dy_m = mouse.y - y;
         const d_m = sqrt(dx_m * dx_m + dy_m * dy_m);
         
-        if (d_m < 40 && whiteState === 0 && interactionType === 0) {
-            whiteState = 0.01;
-            if (rippleCooldown === 0 && Math.random() < 0.000195) { 
-                interactionType = 3; rippleCooldown = 120;
-            } else if (Math.random() < 0.3) { // Reduced from 0.5
-                interactionType = 2; // Orbit
-                // Rare additions (much lower chance)
-                const r = Math.random();
-                if (r < 0.02) rareEffect = 3; // Supercharge (2%)
-                else if (r < 0.05) rareEffect = 2; // Prism (3%)
-                else if (r < 0.1) rareEffect = 1; // Tension (5%)
-            } else {
-                interactionType = 1; // Quantum
-            }
-        } else if (d_m < 500 && whiteState === 0) {
-            if (d_m > 50) {
+                if (d_m < 40 && whiteState === 0 && interactionType === 0) {
+                    whiteState = 0.01;
+                    const rRoll = Math.random();
+                    
+                    // Interaction logic
+                    if (rippleCooldown === 0 && rRoll < 0.000195) { 
+                        interactionType = 3; 
+                        rippleCooldown = 120; // Global cooldown
+                    } else if (rRoll < 0.000195 + 0.000234) { // Ultra Rare: Packet Sonar
+                        interactionType = 2;
+                        rareEffect = 4;
+                    } else if (rRoll < 0.000195 + 0.000468) { // Ultra Rare: Nested Orbits
+                        interactionType = 2;
+                        rareEffect = 1;
+                    } else if (Math.random() < 0.3) {
+                        interactionType = 2; // Orbit
+                        const r = Math.random();
+                        if (r < 0.02) rareEffect = 3; // Supercharge
+                        else if (r < 0.05) rareEffect = 2; // Prism
+                    } else {
+                        interactionType = 1; // Quantum
+                    }
+                } else if (d_m < 500 && whiteState === 0) {            if (d_m > 50) {
                 const m_factor = (1 - d_m / 500) * 0.15;
                 vx = lerp(vx, dx_m / d_m, m_factor);
                 vy = lerp(vy, dy_m / d_m, m_factor);
@@ -260,27 +281,26 @@ function drawParticle(i) {
             const idealRadius = 60;
             const newRadius = lerp(dist, idealRadius, 0.1);
             
-            // Calculate orbit position
             const ox = mouse.x + Math.cos(angle) * newRadius;
             const oy = mouse.y + Math.sin(angle) * newRadius;
-            
-            // Set velocity to reach orbit position instead of setting position directly
-            // to avoid overwrite conflict later
             vx = (ox - x) / s;
             vy = (oy - y) / s;
-            
             ttl = l + 10;
 
-            // Rare 1: Tension Line (Flickering and rarer)
-            if (rareEffect === 1 && tick % 3 === 0) {
-                buffer.save();
-                buffer.beginPath();
-                buffer.strokeStyle = `rgba(255, 255, 255, ${0.15 * Math.sin(tick * 0.2) + 0.15})`;
-                buffer.lineWidth = 0.3;
-                buffer.moveTo(x, y);
-                buffer.lineTo(mouse.x, mouse.y);
-                buffer.stroke();
-                buffer.restore();
+            // Ultra Rare 1: Nested Orbits (Tiny Moons)
+            if (rareEffect === 1) {
+                buffer.fillStyle = '#fff';
+                for (let m = 0; m < 2; m++) {
+                    const mAngle = tick * 0.2 + (m * Math.PI);
+                    const mx = x + Math.cos(mAngle) * 15;
+                    const my = y + Math.sin(mAngle) * 15;
+                    buffer.fillRect(mx, my, 1.5, 1.5);
+                }
+            }
+            
+            // Ultra Rare 4: Packet Sonar (Emit Ping)
+            if (rareEffect === 4 && tick % 60 === 0) {
+                activeSonarRings.push({x: x, y: y, radius: 0, max: 400});
             }
         } else {
             const dx_c = x - center[0];
@@ -309,6 +329,7 @@ function drawParticle(i) {
     let hue = lerp(690, 740, dl);
     let sat = 100;
     let light = 50;
+    if (sonarFlash > 0) light = 90;
 
     if (whiteState > 0) {
         if (interactionType === 1) { 
@@ -390,6 +411,16 @@ function draw(currentTime) {
 	
     if (rippleCooldown > 0) rippleCooldown--;
 
+    // Manage Sonar Rings
+    prevSonarRings = activeSonarRings;
+    activeSonarRings = [];
+    for (let s of prevSonarRings) {
+        if (s.radius < s.max) {
+            s.radius += 8;
+            activeSonarRings.push(s);
+        }
+    }
+
     // Manage Ripples
     prevRipples = activeRipples;
     activeRipples = [];
@@ -452,6 +483,20 @@ function draw(currentTime) {
                 ctx.lineWidth = 1;
                 drawAdvancedHexagon(ctx, r.x, r.y, r.radius * 0.9, r.angle - 0.05, r.age + 5);
             }
+        }
+    }
+    ctx.restore();
+
+    // Draw Sonar Rings
+    ctx.save();
+    for (let s of activeSonarRings) {
+        const op = (1 - s.radius / s.max) * 0.3;
+        if (op > 0) {
+            ctx.beginPath();
+            ctx.strokeStyle = `rgba(255, 255, 255, ${op})`;
+            ctx.lineWidth = 1;
+            ctx.arc(s.x, s.y, s.radius, 0, TAU);
+            ctx.stroke();
         }
     }
     ctx.restore();
