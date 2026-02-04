@@ -10,6 +10,7 @@ import (
 	"blocklist/internal/models"
 	"blocklist/internal/repository"
 	"blocklist/internal/tasks"
+
 	"github.com/hibiken/asynq"
 )
 
@@ -36,7 +37,9 @@ func (s *WebhookService) Notify(ctx context.Context, event string, data interfac
 	if s.cfg != nil && !s.cfg.EnableOutboundWebhooks {
 		return
 	}
-	if s.pgRepo == nil { return }
+	if s.pgRepo == nil {
+		return
+	}
 
 	webhooks, err := s.pgRepo.GetActiveWebhooks()
 	if err != nil {
@@ -44,7 +47,11 @@ func (s *WebhookService) Notify(ctx context.Context, event string, data interfac
 		return
 	}
 
-	payload, _ := json.Marshal(data)
+	payload, err := json.Marshal(data)
+	if err != nil {
+		log.Printf("Error marshaling webhook payload: %v", err)
+		return
+	}
 
 	for _, wh := range webhooks {
 		if strings.Contains(wh.Events, event) {
@@ -67,13 +74,13 @@ func (s *WebhookService) Notify(ctx context.Context, event string, data interfac
 					}
 				}
 			}
-			
+
 			task, err := tasks.NewWebhookDeliveryTask(wh.ID, event, payload)
 			if err != nil {
 				log.Printf("Error creating task: %v", err)
 				continue
 			}
-			
+
 			if _, err := s.asynqClient.Enqueue(task); err != nil {
 				log.Printf("Error enqueuing task: %v", err)
 			}

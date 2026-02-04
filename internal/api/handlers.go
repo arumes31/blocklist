@@ -821,15 +821,15 @@ func (h *APIHandler) VerifyFirstFactor(c *gin.Context) {
 
 	admin, err := h.pgRepo.GetAdmin(username)
 	if err != nil {
-		_ = h.pgRepo.LogAction("system", "LOGIN_FAILURE", username, "Invalid Operator ID")
-		h.renderHTML(c, http.StatusOK, "login_error.html", gin.H{"error": "Invalid Operator ID"})
+		_ = h.pgRepo.LogAction("system", "LOGIN_FAILURE", username, "Invalid Operator ID (Enumeration Protection)")
+		h.renderHTML(c, http.StatusOK, "login_error.html", gin.H{"error": "Invalid credentials"})
 		return
 	}
 
 	err = bcrypt.CompareHashAndPassword([]byte(admin.PasswordHash), []byte(password))
 	if err != nil {
-		_ = h.pgRepo.LogAction(username, "LOGIN_FAILURE", c.ClientIP(), "Invalid Password")
-		h.renderHTML(c, http.StatusOK, "login_error.html", gin.H{"error": "Access Denied"})
+		_ = h.pgRepo.LogAction(username, "LOGIN_FAILURE", c.ClientIP(), "Invalid Password (Enumeration Protection)")
+		h.renderHTML(c, http.StatusOK, "login_error.html", gin.H{"error": "Invalid credentials"})
 		return
 	}
 
@@ -1432,7 +1432,8 @@ func (h *APIHandler) CreateAdmin(c *gin.Context) {
 
 	admin, err := h.authService.CreateAdmin(req.Username, req.Password, req.Role, req.Permissions)
 	if err != nil {
-		c.JSON(400, gin.H{"error": err.Error()})
+		zlog.Error().Err(err).Str("username", req.Username).Msg("CreateAdmin failed")
+		c.JSON(400, gin.H{"error": "Failed to create admin"})
 		return
 	}
 
