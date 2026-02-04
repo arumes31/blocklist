@@ -312,7 +312,7 @@ function drawParticle(i) {
     // Type 3: Ripple (Implosion -> Explosion)
     else if (interactionType === 3 && whiteState > 0) {
         // Create Ripple with age 0 and random angle
-        activeRipples.push({x: x, y: y, radius: 150, age: 0, angle: Math.random() * Math.PI}); 
+        activeRipples.push({x: x, y: y, radius: 150, age: 0, angle: Math.random() * Math.PI, vel: 0}); 
         l = ttl + 1; // Die immediately (source particle becomes the singularity)
     }
 
@@ -413,14 +413,18 @@ function draw(currentTime) {
         r.age++;
         if (r.age < 20) {
             // Implosion: Shrink radius, Spin Fast
-            r.radius = lerp(r.radius, 0, 0.1);
-            r.angle += 0.2;
+            r.radius = lerp(r.radius, 0, 0.15);
+            r.angle += 0.25;
+            r.vel = 40; // High initial velocity for explosion
             activeRipples.push(r);
-        } else if (r.radius < 1000) {
-            // Explosion: Expand radius, Spin Slow
-            r.radius += 20;
-            r.angle += 0.01;
-            activeRipples.push(r);
+        } else {
+            // Explosion: Elastic physics (burst then slow)
+            r.radius += r.vel;
+            r.vel *= 0.94; // Friction
+            r.angle += r.vel * 0.001; 
+            if (r.radius < 1200 && r.vel > 0.5) {
+                activeRipples.push(r);
+            }
         }
     }
 
@@ -429,7 +433,7 @@ function draw(currentTime) {
 	ctx.fillStyle = 'black';
 	ctx.fillRect(0, 0, canvasWidth, canvasHeight);
 	
-    // Draw Ripple Visuals (Animated Hexagons)
+    // Draw Ripple Visuals (Advanced Liquid Hexagons)
     ctx.save();
     for (let r of activeRipples) {
         let opacity = 0;
@@ -439,28 +443,22 @@ function draw(currentTime) {
         if (isImplosion) {
             opacity = r.age / 20;
             color = `rgba(100, 255, 255, ${opacity})`;
-            ctx.setLineDash([5, 5]); // Dashed line for charging
         } else {
-            opacity = 1 - (r.radius / 1000);
+            opacity = 1 - (r.radius / 1200);
             color = `rgba(255, 255, 200, ${opacity})`;
-            ctx.setLineDash([]); // Solid for shockwave
         }
 
         if (opacity > 0) {
-            // Draw Main Hexagon
-            ctx.beginPath();
-            ctx.lineWidth = 3;
             ctx.strokeStyle = color;
-            drawHexagon(ctx, r.x, r.y, r.radius, r.angle, !isImplosion); // Jitter only on explosion
-            ctx.stroke();
+            ctx.lineWidth = isImplosion ? 2 : 3 * (1 - opacity); // Pulsating width
+            
+            drawAdvancedHexagon(ctx, r.x, r.y, r.radius, r.angle, r.age);
 
             // Draw Echo (Explosion only)
             if (!isImplosion) {
-                ctx.beginPath();
+                ctx.strokeStyle = `rgba(255, 255, 200, ${opacity * 0.3})`;
                 ctx.lineWidth = 1;
-                ctx.strokeStyle = `rgba(255, 255, 200, ${opacity * 0.5})`;
-                drawHexagon(ctx, r.x, r.y, r.radius * 0.85, r.angle - 0.1, false);
-                ctx.stroke();
+                drawAdvancedHexagon(ctx, r.x, r.y, r.radius * 0.9, r.angle - 0.05, r.age + 5);
             }
         }
     }
@@ -484,17 +482,46 @@ function draw(currentTime) {
 	ctx.restore();
 }
 
-function drawHexagon(ctx, x, y, r, angle, jitter) {
-    for (let i = 0; i < 6; i++) {
-        const theta = angle + (Math.PI / 3) * i;
-        // Add random jitter to radius if requested (Glitch effect)
-        const jr = jitter ? r + (Math.random() * 10 - 5) : r;
-        const px = x + jr * Math.cos(theta);
-        const py = y + jr * Math.sin(theta);
-        if (i === 0) ctx.moveTo(px, py);
-        else ctx.lineTo(px, py);
+function drawAdvancedHexagon(ctx, x, y, r, angle, age) {
+    const isExplosion = age >= 20;
+    const segments = 6;
+    const subDivisions = 12;
+    
+    for (let i = 0; i < segments; i++) {
+        const thetaStart = angle + (Math.PI / 3) * i;
+        const thetaEnd = angle + (Math.PI / 3) * (i + 1);
+        
+        // Never connected lines: add a gap between sides (15% gap)
+        const margin = 0.15; 
+        
+        ctx.beginPath();
+        let first = true;
+        for (let j = 0; j <= subDivisions; j++) {
+            // Digital Shatter: Random gaps during explosion
+            if (isExplosion && Math.random() < 0.15) {
+                first = true; // start new sub-path within segment
+                continue;
+            }
+
+            const t = margin + (j / subDivisions) * (1 - 2 * margin);
+            const subTheta = thetaStart + (thetaEnd - thetaStart) * t;
+            
+            // Liquid Edge: distortion via simplex noise
+            const noise = simplex.noise2D(subTheta * 2, age * 0.1) * (isExplosion ? 25 : 5);
+            const dist = r + noise;
+            
+            const px = x + dist * Math.cos(subTheta);
+            const py = y + dist * Math.sin(subTheta);
+            
+            if (first) {
+                ctx.moveTo(px, py);
+                first = false;
+            } else {
+                ctx.lineTo(px, py);
+            }
+        }
+        ctx.stroke();
     }
-    ctx.closePath();
 }
 
 window.addEventListener("load", setup);
