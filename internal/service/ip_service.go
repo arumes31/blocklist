@@ -918,6 +918,9 @@ func (s *IPService) RemoveWhitelist(ctx context.Context, ip string, username str
 func (s *IPService) GetIPDetails(ctx context.Context, ip string) (map[string]interface{}, error) {
 	entry, err := s.redisRepo.GetIPEntry(ip)
 	history, _ := s.pgRepo.GetIPHistory(ip)
+	if history == nil {
+		history = []models.AuditLog{}
+	}
 
 	res := map[string]interface{}{
 		"ip":      ip,

@@ -163,8 +163,7 @@
                 transform: translate(-50%, -50%) scale(1);
                 opacity: 1;
                 box-shadow: 0 0 0 0 rgba(255, 0, 0, 0);
-            }
-        }
+            }}
 
         .live-spawn-marker {
             width: 12px;
@@ -242,8 +241,7 @@
             to {
                 opacity: 1;
                 transform: translateY(0);
-            }
-        }
+            }}
     </style>
 </head>
 
@@ -351,7 +349,7 @@
         let liveMarkers = null;
         let worldLayer = null;
 
-        const trendData = [{{ range .block_trend }} { x: "{{ .Hour }}", y: {{ .Count }} }, {{ end }} ];
+        const trendData = [{{ range .block_trend }} { x: "{{ .Hour }}", y: {{ .Count }}}, {{ end }} ];
 
         async function initMap() {
             map = L.map('threat-map', {
@@ -375,8 +373,7 @@
                         opacity: 1,
                         color: '#ff000033', // Subtle red borders
                         fillOpacity: 1
-                    }
-                }).addTo(map);
+                    }}).addTo(map);
             } catch (e) {
                 console.error("Failed to load map data", e);
             }
@@ -396,15 +393,13 @@
                         className: 'marker-cluster marker-cluster-' + size,
                         iconSize: new L.Point(40, 40)
                     });
-                }
-            });
+                }});
             heatmapLayer = L.heatLayer([], {
                 radius: 20,
                 blur: 15,
                 max: 1.0,
                 minOpacity: 0.4,
-                gradient: { 0.4: 'blue', 0.6: 'cyan', 0.7: 'lime', 0.8: 'yellow', 1.0: 'red' }
-            });
+                gradient: { 0.4: 'blue', 0.6: 'cyan', 0.7: 'lime', 0.8: 'yellow', 1.0: 'red' }});
             lineLayer = L.layerGroup().addTo(map);
             liveMarkers = L.layerGroup().addTo(map);
 
@@ -435,8 +430,7 @@
                 map.addLayer(lineLayer);
             } else {
                 map.removeLayer(lineLayer);
-            }
-        }
+            }}
 
         function initChart(data) {
             const ctx = document.getElementById('countryChart').getContext('2d');
@@ -468,10 +462,8 @@
                     plugins: {
                         legend: {
                             position: 'bottom',
-                            labels: { color: '#fff', boxWidth: 10, font: { size: 9 }}
-                        }
-                    }
-                }
+                            labels: { color: '#fff', boxWidth: 10, font: { size: 9 }}}
+                    }}
             });
         }
 
@@ -505,19 +497,15 @@
                         x: {
                             type: 'category',
                             ticks: { color: '#888', font: { size: 9 }, maxRotation: 45, minRotation: 45 },
-                            grid: { color: 'rgba(255,255,255,0.05)' }
-                        },
+                            grid: { color: 'rgba(255,255,255,0.05)' }},
                         y: {
                             beginAtZero: true,
                             ticks: { color: '#888', font: { size: 9 }},
-                            grid: { color: 'rgba(255,255,255,0.05)' }
-                        }
+                            grid: { color: 'rgba(255,255,255,0.05)' }}
                     },
                     plugins: {
-                        legend: { display: false }
-                    }
-                }
-            });
+                        legend: { display: false }}
+                }});
         }
 
         async function fetchLatestData() {
@@ -534,8 +522,7 @@
                     const blocks = payload.items || [];
                     // In this case, "Blocked IPs" means ALL blocks.
                     allItems = allItems.concat(blocks.map(it => ({ ...it, type: 'block' })));
-                }
-            }
+                }}
 
             // Fetch Whitelists if enabled
             if (showWhitelists) {
@@ -546,8 +533,7 @@
                         return it.data && it.data.added_by && it.data.added_by.includes('WebhookAuto');
                     });
                     allItems = allItems.concat(filteredWhitelists.map(it => ({ ...it, type: 'whitelist' })));
-                }
-            }
+                }}
 
             updateMap(allItems);
 
@@ -556,8 +542,7 @@
                 const s = await statsRes.json();
                 initChart(s.top_countries || []);
                 updateStats(s);
-            }
-        }
+            }}
 
         function updateMap(items) {
             markerLayer.clearLayers();
@@ -592,14 +577,12 @@
                     markerLayer.addLayer(marker);
                     clusterLayer.addLayer(marker);
                     heatData.push([geo.latitude, geo.longitude, 1.0]); // Full intensity
-                }
-            });
+                }});
 
             heatmapLayer.setLatLngs(heatData);
             if (map.hasLayer(heatmapLayer)) {
                 heatmapLayer.redraw();
-            }
-        }
+            }}
 
         function updateStats(s) {
             if (typeof s.total === 'number') document.getElementById('stat-total').textContent = s.total;
@@ -683,11 +666,9 @@
                     addTickerEvent(type, it.ip, it.data ? it.data.reason : "", color);
 
                     setTimeout(fetchLatestData, 3000);
-                }
-            } else if (msg.action === 'unblock') {
+                }} else if (msg.action === 'unblock') {
                 addTickerEvent('unblock', msg.data.ip, "Manual/System Unblock", "#00ff00");
-            }
-        };
+            }};
 
         function addTickerEvent(type, ip, reason, color) {
             const ticker = document.getElementById('eventTicker');
@@ -716,3 +697,4 @@
 </body>
 
 </html>
+
