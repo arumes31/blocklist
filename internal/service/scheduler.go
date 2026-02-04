@@ -68,8 +68,8 @@ func (s *SchedulerService) CleanOldIPs(hashKey string) {
 		expireTime := time.Time{}
 		if entry.ExpiresAt != "" {
 			expireTime, _ = time.Parse("2006-01-02 15:04:05 UTC", entry.ExpiresAt)
-		} else if entry.Timestamp != "" {
-			// Fallback to 24h from timestamp
+		} else if hashKey != "ips" && entry.Timestamp != "" {
+			// Fallback to 24h from timestamp ONLY for non-main lists (e.g. whitelists)
 			t, _ := time.Parse("2006-01-02 15:04:05 UTC", entry.Timestamp)
 			if !t.IsZero() {
 				expireTime = t.Add(24 * time.Hour)
