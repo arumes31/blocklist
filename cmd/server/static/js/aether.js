@@ -25,6 +25,7 @@ let prevRipples = [];
 let activeSonarRings = [];
 let prevSonarRings = [];
 let rippleCooldown = 0;
+let meshNodes = [];
 
 function setup() {
 	tick = 0;
@@ -231,28 +232,27 @@ function drawParticle(i) {
         const dy_m = mouse.y - y;
         const d_m = sqrt(dx_m * dx_m + dy_m * dy_m);
         
-                if (d_m < 40 && whiteState === 0 && interactionType === 0) {
-                    whiteState = 0.01;
-                    const rRoll = Math.random();
-                    
-                    // Interaction logic
-                    if (rippleCooldown === 0 && rRoll < 0.000195) { 
-                        interactionType = 3; 
-                        rippleCooldown = 120; // Global cooldown
-                    } else if (rRoll < 0.000195 + 0.000234) { // Ultra Rare: Packet Sonar
-                        interactionType = 2;
-                        rareEffect = 4;
-                    } else if (Math.random() < 0.3) {
-                        interactionType = 2; // Orbit
-                        const r = Math.random();
-                        if (r < 0.02) rareEffect = 3; // Supercharge
-                        else if (r < 0.05) rareEffect = 2; // Prism
-                                } else if (Math.random() < 0.07) { // 10x less Quantum (~7% total)
-                                    interactionType = 1; 
-                                } else {
-                                    interactionType = 0; // Just turn white/yellow without special interaction
-                                }
-                            } else if (d_m < 500 && whiteState === 0) {            if (d_m > 50) {
+        if (d_m < 40 && whiteState === 0) {
+            whiteState = 0.01;
+            const rRoll = Math.random();
+            
+            // Interaction logic (Chances increased by 20%)
+            if (rippleCooldown === 0 && rRoll < 0.000234) { 
+                interactionType = 3; 
+                rippleCooldown = 120; // Global cooldown
+            } else if (rRoll < 0.000234 + 0.000280) { // Ultra Rare: Packet Sonar
+                interactionType = 2;
+                rareEffect = 4;
+            } else if (Math.random() < 0.36) { // Mesh Node (Was Orbit)
+                interactionType = 2; 
+                const r = Math.random();
+                if (r < 0.024) rareEffect = 3; // Supercharge
+                else if (r < 0.06) rareEffect = 2; // Prism
+            } else {
+                interactionType = 1; // Quantum
+            }
+        } else if (d_m < 500 && whiteState === 0) {
+            if (d_m > 50) {
                 const m_factor = (1 - d_m / 500) * 0.15;
                 vx = lerp(vx, dx_m / d_m, m_factor);
                 vy = lerp(vy, dy_m / d_m, m_factor);
@@ -275,30 +275,22 @@ function drawParticle(i) {
     else if (interactionType === 2 && whiteState > 0) {
         whiteState = Math.min(whiteState + 0.05, 1);
         if (mouse.active) {
-            const dx_m = x - mouse.x;
-            const dy_m = y - mouse.y;
-            let angle = Math.atan2(dy_m, dx_m);
+            const dx_m = mouse.x - x;
+            const dy_m = mouse.y - y;
             const dist = sqrt(dx_m*dx_m + dy_m*dy_m);
-            angle += 0.1;
-            const idealRadius = 60;
-            const newRadius = lerp(dist, idealRadius, 0.1);
             
-            const ox = mouse.x + Math.cos(angle) * newRadius;
-            const oy = mouse.y + Math.sin(angle) * newRadius;
-            vx = (ox - x) / s;
-            vy = (oy - y) / s;
-            ttl = l + 10;
+            // Mesh Node Movement: Pull to mouse with organic jitter
+            const pull = 0.15;
+            vx = lerp(vx, dx_m / (dist || 1), pull) + randIn(-0.5, 0.5);
+            vy = lerp(vy, dy_m / (dist || 1), pull) + randIn(-0.5, 0.5);
+            
+            ttl = l + 20;
 
             // Ultra Rare 4: Packet Sonar (Emit Ping)
             if (rareEffect === 4 && tick % 60 === 0) {
                 activeSonarRings.push({x: x, y: y, radius: 0, max: 400});
             }
         } else {
-            const dx_c = x - center[0];
-            const dy_c = y - center[1];
-            const d_c = sqrt(dx_c * dx_c + dy_c * dy_c) || 1;
-            vx = lerp(vx, (dx_c / d_c) * 5, 0.1);
-            vy = lerp(vy, (dy_c / d_c) * 5, 0.1);
             interactionType = 1;
         }
     }
@@ -357,6 +349,10 @@ function drawParticle(i) {
     particleProps[i + 10] = interactionType;
     particleProps[i + 11] = rareEffect;
 
+    if (interactionType === 2) {
+        meshNodes.push({x: dx, y: dy, effect: rareEffect});
+    }
+
     (checkBounds(dx, dy) || l > ttl) && initParticle(i);
 }
 
@@ -399,6 +395,7 @@ function draw(currentTime) {
 	lastFrameTime = currentTime - (deltaTime % frameInterval);
 
 	tick++;
+	meshNodes = [];
 	
     if (rippleCooldown > 0) rippleCooldown--;
 
@@ -495,6 +492,30 @@ function draw(currentTime) {
 	for (let i = 0; i < particlePropsLength; i += particlePropCount) {
 		drawParticle(i);
 	}
+
+    // Draw Neural Mesh Connections
+    if (meshNodes.length > 1) {
+        buffer.save();
+        for (let i = 0; i < meshNodes.length; i++) {
+            const n1 = meshNodes[i];
+            for (let j = i + 1; j < meshNodes.length; j++) {
+                const n2 = meshNodes[j];
+                const d = sqrt((n1.x - n2.x) ** 2 + (n1.y - n2.y) ** 2);
+                if (d < 45) {
+                    const op = (1 - d / 45) * 0.5;
+                    let hue = 180; // Default cyan/data mesh
+                    if (n1.effect === 3 || n2.effect === 3) hue = 60; // Supercharge gold
+                    buffer.strokeStyle = `hsla(${hue}, 100%, 70%, ${op})`;
+                    buffer.lineWidth = 0.5;
+                    buffer.beginPath();
+                    buffer.moveTo(n1.x, n1.y);
+                    buffer.lineTo(n2.x, n2.y);
+                    buffer.stroke();
+                }
+            }
+        }
+        buffer.restore();
+    }
 	
 	// Apply glowing effect
 	ctx.save();
