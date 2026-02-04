@@ -1146,26 +1146,6 @@
             <div id="filter-chips" style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 15px;"></div>
         </div>
 
-        <div class="charts-row"
-            style="display: grid; grid-template-columns: 2fr 1fr; gap: 1rem; margin-bottom: 1.5rem;">
-            <div class="table-card" style="padding: 1.5rem;">
-                <div
-                    style="font-size: 0.9rem; color: var(--secondary-color); margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center;">
-                    <span>Block Activity (Last 24 Hours)</span>
-                    <span id="trend-summary" style="font-size: 0.75rem;">Loading trend data...</span>
-                </div>
-                <div style="height: 200px; position: relative;">
-                    <canvas id="trendChart"></canvas>
-                </div>
-            </div>
-            <div class="table-card" style="padding: 1.5rem;">
-                <div style="font-size: 0.9rem; color: var(--secondary-color); margin-bottom: 1rem;">Attack Origins (Top
-                    5)</div>
-                <div style="height: 200px; position: relative;">
-                    <canvas id="countryChart"></canvas>
-                </div>
-            </div>
-        </div>
 
         <div class="stats"
             style="display:grid; grid-template-columns: repeat(auto-fit,minmax(220px,1fr)); gap: 1rem; margin-bottom: 1.5rem;">
@@ -1319,7 +1299,7 @@
         let inflight = null; // AbortController for in-flight fetch
         let paused = false;
         let updateQueue = [];
-        let lastBlockTime = {{ if .stats.last_block_ts }}{{ .stats.last_block_ts }} {{ else }} 0{{ end }};
+        let lastBlockTime = {{ if .stats.last_block_ts }}{ { .stats.last_block_ts } } { { else } } 0{ { end } };
         const tbody = document.getElementById('ipTableBody');
 
         function rowHTML(ip, data) {
@@ -1537,7 +1517,7 @@
                     dot.title = 'System Health: ' + hdata.status;
                 }
 
-                const r = await fetch('/api/v1/stats', { headers: { 'Accept': 'application/json' }});
+                const r = await fetch('/api/v1/stats', { headers: { 'Accept': 'application/json' } });
                 if (!r.ok) return;
                 const s = await r.json();
                 if (typeof s.hour === 'number') document.getElementById('stat-hour').textContent = s.hour;
@@ -2010,8 +1990,8 @@
         // Chart.js initialization for Block Trend
         const trendData = [
             {{ range .block_trend }}
-        { hour: "{{ .Hour }}", count: {{ .Count }}},
-        {{ end }}
+        { hour: "{{ .Hour }}", count: { { .Count } } },
+        { { end } }
         ];
 
         if (trendData.length > 0) {
@@ -2044,11 +2024,11 @@
                         y: {
                             beginAtZero: true,
                             grid: { color: 'rgba(255, 255, 255, 0.05)' },
-                            ticks: { color: '#b3b3b3', font: { size: 10 }}
+                            ticks: { color: '#b3b3b3', font: { size: 10 } }
                         },
                         x: {
                             grid: { display: false },
-                            ticks: { color: '#b3b3b3', font: { size: 10 }}
+                            ticks: { color: '#b3b3b3', font: { size: 10 } }
                         }
                     },
                     plugins: {
@@ -2068,8 +2048,8 @@
         // Country Distribution Chart
         const countryData = [
             {{ range .stats.top_countries }}
-        { name: "{{ .Country }}", count: {{ .Count }}},
-        {{ end }}
+        { name: "{{ .Country }}", count: { { .Count } } },
+        { { end } }
         ];
 
         if (countryData.length > 0) {
@@ -2109,7 +2089,7 @@
                         }
                     },
                     cutout: '70%',
-                    elements: { arc: { borderJoinStyle: 'round' }}
+                    elements: { arc: { borderJoinStyle: 'round' } }
                 }
             });
         }
