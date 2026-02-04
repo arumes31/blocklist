@@ -239,8 +239,7 @@
             to {
                 transform: translateX(0);
                 opacity: 1;
-            }
-        }
+            }}
 
         .toast.success {
             border-left: 4px solid var(--success-color);
@@ -266,8 +265,7 @@
 
             100% {
                 background-color: transparent;
-            }
-        }
+            }}
 
         /* New entry pulse animation */
         .pulse-start {
@@ -302,8 +300,7 @@
             100% {
                 box-shadow: 0 0 0 0 rgba(255, 77, 77, 0);
                 opacity: 0.6;
-            }
-        }
+            }}
 
         .slide-in {
             animation: slideInRow 300ms ease-out;
@@ -318,8 +315,7 @@
             to {
                 transform: translateY(0);
                 opacity: 1;
-            }
-        }
+            }}
 
         /* Dashboard enhancements */
         .status-chip {
@@ -371,8 +367,7 @@
         @keyframes spin {
             to {
                 transform: rotate(360deg);
-            }
-        }
+            }}
 
         .loading {
             text-align: center;
@@ -381,9 +376,15 @@
         }
 
         /* Compact density */
-        .compact table td,
-        .compact table th {
-            padding: 0.5rem;
+        .compact td,
+        .compact th {
+            padding: 0.25rem 0.5rem !important;
+            font-size: 0.85rem;
+        }
+
+        .compact .btn {
+            padding: 0.2rem 0.5rem !important;
+            font-size: 0.75rem !important;
         }
 
         /* Compact Country Dropdown */
@@ -1142,6 +1143,38 @@
                 </select>
                 <button onclick="saveCurrentView()" class="btn btn-dark" style="height: 42px;"
                     title="Save Current Filters as View">Save View</button>
+
+                <div class="country-dropdown" style="min-width: 180px;">
+                    <button type="button" class="filter-input"
+                        style="width: 100%; text-align: left; display: flex; justify-content: space-between; align-items: center;"
+                        onclick="toggleViewOptions()">
+                        <span>View Options</span>
+                        <span>⚙️</span>
+                    </button>
+                    <div class="country-popup" id="viewOptionsPopup" style="width: 200px;">
+                        <div
+                            style="padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); margin-bottom: 5px; font-weight: bold; font-size: 0.8rem; color: var(--secondary-color);">
+                            DENSITY</div>
+                        <label class="country-option"><input type="radio" name="density" value="comfortable" checked
+                                onchange="setDensity('comfortable')"> Comfortable</label>
+                        <label class="country-option"><input type="radio" name="density" value="compact"
+                                onchange="setDensity('compact')"> Compact</label>
+
+                        <div
+                            style="padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); margin: 10px 0 5px 0; font-weight: bold; font-size: 0.8rem; color: var(--secondary-color);">
+                            COLUMNS</div>
+                        <label class="country-option"><input type="checkbox" checked onchange="toggleColumn('col-ts')">
+                            Date Added</label>
+                        <label class="country-option"><input type="checkbox" checked onchange="toggleColumn('col-exp')">
+                            Expires At</label>
+                        <label class="country-option"><input type="checkbox" checked
+                                onchange="toggleColumn('col-score')"> Score</label>
+                        <label class="country-option"><input type="checkbox" checked onchange="toggleColumn('col-by')">
+                            Added By</label>
+                        <label class="country-option"><input type="checkbox" checked onchange="toggleColumn('col-geo')">
+                            Geo</label>
+                    </div>
+                </div>
             </div>
             <div id="filter-chips" style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 15px;"></div>
         </div>
@@ -1149,14 +1182,19 @@
 
 
 
-        <!-- Compact Stats Section -->
         <div class="table-card" style="padding: 1rem; margin-bottom: 1rem;">
             <div style="display: flex; align-items: center; gap: 1.5rem; flex-wrap: wrap;">
                 <div style="font-size: 0.85rem; color: var(--secondary-color);">IPs Banned:</div>
                 <div style="display: flex; align-items: baseline; gap: 0.5rem;">
-                    <span id="stat-total" style="font-size: 1.8rem; font-weight: 700; color: #fff;">{{ .total_ips
+                    <span id="stat-total" style="font-size: 1.8rem; font-weight: 700; color: #fff;">{{ .stats.total
                         }}</span>
                     <span style="font-size: 0.85rem; color: var(--secondary-color);">total</span>
+                </div>
+                <div style="height: 24px; width: 1px; background: rgba(255,255,255,0.1);"></div>
+                <div style="display: flex; align-items: baseline; gap: 0.5rem;">
+                    <span id="stat-active" style="font-size: 1.3rem; font-weight: 600; color: #fff;">{{ .total_ips
+                        }}</span>
+                    <span style="font-size: 0.85rem; color: var(--secondary-color);">active</span>
                 </div>
                 <div style="height: 24px; width: 1px; background: rgba(255,255,255,0.1);"></div>
                 <div style="display: flex; align-items: baseline; gap: 0.5rem;">
@@ -1174,10 +1212,15 @@
                 </div>
                 <div style="height: 24px; width: 1px; background: rgba(255,255,255,0.1);"></div>
                 <div style="display: flex; align-items: baseline; gap: 0.5rem;">
-                    <span style="font-size: 0.85rem; color: var(--secondary-color);">Webhooks:</span>
+                    <span id="stat-whitelisted" style="font-size: 1.3rem; font-weight: 600; color: #2ecc71;">{{
+                        .stats.whitelisted }}</span>
+                    <span style="font-size: 0.85rem; color: var(--secondary-color);">Whitelisted</span>
+                </div>
+                <div style="height: 24px; width: 1px; background: rgba(255,255,255,0.1);"></div>
+                <div style="display: flex; align-items: baseline; gap: 0.5rem;">
                     <span id="stat-webhooks" style="font-size: 1.3rem; font-weight: 600; color: #fff;">{{
                         .stats.webhooks_hour }}</span>
-                    <span style="font-size: 0.85rem; color: var(--secondary-color);">/h</span>
+                    <span style="font-size: 0.85rem; color: var(--secondary-color);">Webhooks 1/h</span>
                 </div>
             </div>
         </div>
@@ -1230,13 +1273,12 @@
                     <tr>
                         <th style="width: 40px;"><input type="checkbox" id="selectAll" onclick="toggleSelectAll(this)">
                         </th>
-                        <th>IP Address</th>
-                        <th>Date Added</th>
-                        <th>Expires At</th>
+                        <th class="col-ts">Date Added</th>
+                        <th class="col-exp">Expires At</th>
                         <th>Reason</th>
-                        <th>Score</th>
-                        <th>By</th>
-                        <th>Geo</th>
+                        <th class="col-score">Score</th>
+                        <th class="col-by">By</th>
+                        <th class="col-geo">Geo</th>
                         <th>Action</th>
                     </tr>
                 </thead>
@@ -1343,18 +1385,51 @@
                             <td class="col-ip">
                                 <a href="#" onclick="event.preventDefault(); showIPDetails('${ip}')" style="color: var(--vibrant-red); text-decoration: none; border-bottom: 1px dashed rgba(255,0,0,0.3);">${ip}</a>
                             </td>
-            <td><span class="utc-timestamp">${ts}</span></td>
-            <td>${expiresHTML}</td>
+            <td class="col-ts"><span class="utc-timestamp">${ts}</span></td>
+            <td class="col-exp">${expiresHTML}</td>
             <td><span style="font-size: 0.9rem; color: var(--secondary-color);">${reason}</span></td>
-            <td><span style="font-weight: bold; color: ${scoreColor}">${score}</span></td>
-            <td>${addedBy}</td>
-            <td>${geo}</td>
+            <td class="col-score"><span style="font-weight: bold; color: ${scoreColor}">${score}</span></td>
+            <td class="col-by">${addedBy}</td>
+            <td class="col-geo">${geo}</td>
             <td>
                 <button class="btn btn-success" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;"
                         hx-post="/unblock" hx-ext="json-enc" hx-vals='{"ip": "${ip}"}'
                         hx-target="closest tr" hx-swap="outerHTML swap:0.5s" title="Unblock this IP">Unblock</button>
             </td>
         </tr>`;
+        }
+
+        // View Toggles
+        function toggleViewOptions() {
+            document.getElementById('viewOptionsPopup').classList.toggle('active');
+        }
+
+        function setDensity(mode) {
+            const table = document.getElementById('ipTable');
+            if (mode === 'compact') table.classList.add('compact');
+            else table.classList.remove('compact');
+        }
+
+        const hiddenColumns = new Set();
+        function toggleColumn(cls) {
+            if (hiddenColumns.has(cls)) hiddenColumns.delete(cls);
+            else hiddenColumns.add(cls);
+            applyColumnVisibility();
+        }
+
+        function applyColumnVisibility() {
+            const styleId = 'column-visibility-style';
+            let styleEl = document.getElementById(styleId);
+            if (!styleEl) {
+                styleEl = document.createElement('style');
+                styleEl.id = styleId;
+                document.head.appendChild(styleEl);
+            }
+            let css = "";
+            hiddenColumns.forEach(cls => {
+                css += `.${cls} { display: none !important; }\n`;
+            });
+            styleEl.innerHTML = css;
         }
 
         function setReason(r) {
@@ -1371,24 +1446,30 @@
                 const res = await fetch(`/api/v1/ips/${ip}/details`);
                 const data = await res.json();
 
-                let historyHTML = data.history.map(h => `
+                const history = Array.isArray(data.history) ? data.history : [];
+                let historyHTML = history.map(h => `
                 <div class="history-item">
                     <div class="ts">${new Date(h.timestamp).toLocaleString()}</div>
-                    <div class="actor">Action: <span style="color:var(--vibrant-red)">${h.action}</span> by ${h.actor}</div>
+                    <div class="actor">Action: <span style="color:var(--vibrant-red)">${h.action || 'Unknown'}</span> by ${h.actor || 'System'}</div>
                     <div style="font-size:0.8rem; color:#ccc;">${h.reason || 'No reason provided'}</div>
                 </div>
             `).join('');
 
-                if (data.history.length === 0) historyHTML = '<p style="color:var(--secondary-color)">No history found for this IP.</p>';
+                if (history.length === 0) historyHTML = '<p style="color:var(--secondary-color)">No history found for this IP.</p>';
 
                 const current = data.current;
-                const geo = current && current.geolocation ? `
-                <div style="margin-top:1rem; padding:1rem; background:rgba(255,255,255,0.05); border-radius:8px;">
-                    <div style="font-weight:bold; margin-bottom:5px;">Geolocation</div>
-                    <div class="flag-icon flag-icon-${current.geolocation.country.toLowerCase()}"></div> ${current.geolocation.city || ''} (${current.geolocation.country})
-                    <div style="font-size:0.8rem; color:var(--secondary-color); margin-top:5px;">ASN: ${current.geolocation.asn} - ${current.geolocation.asn_org}</div>
-                </div>
-            ` : '';
+                let geo = '';
+                if (current && current.geolocation) {
+                    const g = current.geolocation;
+                    const countryClass = g.country ? g.country.toLowerCase() : 'unknown';
+                    geo = `
+                    <div style="margin-top:1rem; padding:1rem; background:rgba(255,255,255,0.05); border-radius:8px;">
+                        <div style="font-weight:bold; margin-bottom:5px;">Geolocation</div>
+                        <div class="flag-icon flag-icon-${countryClass}"></div> ${g.city || 'Unknown City'} (${g.country || 'Unknown'})
+                        <div style="font-size:0.8rem; color:var(--secondary-color); margin-top:5px;">ASN: ${g.asn || 'N/A'} - ${g.asn_org || 'N/A'}</div>
+                    </div>
+                `;
+                }
 
                 content.innerHTML = `
                 <div style="font-size: 1.2rem; font-family: monospace; color: var(--vibrant-red); margin-bottom: 1.5rem;">${ip}</div>
@@ -1412,8 +1493,7 @@
             `;
             } catch (e) {
                 content.innerHTML = '<div style="color:var(--primary-red)">Failed to load details.</div>';
-            }
-        }
+            }}
 
         function closeSidePanel() {
             document.getElementById('sidePanel').classList.remove('active');
@@ -1429,8 +1509,7 @@
             const popup = document.getElementById('countryPopup');
             if (dropdown && !dropdown.contains(event.target)) {
                 popup.classList.remove('active');
-            }
-        });
+            }});
 
         function filterCountryList() {
             const search = document.getElementById('countrySearch').value.toLowerCase();
@@ -1441,8 +1520,7 @@
                     opt.style.display = 'flex';
                 } else {
                     opt.style.display = 'none';
-                }
-            });
+                }});
         }
 
         async function fetchPage(nextCursor) {
@@ -1546,19 +1624,23 @@
                 if (typeof s.hour === 'number') document.getElementById('stat-hour').textContent = s.hour;
                 if (typeof s.day === 'number') {
                     document.getElementById('stat-day').textContent = s.day;
-                    document.getElementById('stat-day-delta').textContent = '+' + s.day;
                 }
                 if (typeof s.total === 'number') {
                     document.getElementById('stat-total').textContent = s.total;
                 }
                 if (typeof s.active_blocks === 'number') {
+                    document.getElementById('stat-active').textContent = s.active_blocks;
                     document.getElementById('total-ips-count').textContent = s.active_blocks;
+                }
+                if (typeof s.whitelisted === 'number') {
+                    document.getElementById('stat-whitelisted').textContent = s.whitelisted;
                 }
                 if (typeof s.webhooks_hour === 'number') {
                     document.getElementById('stat-webhooks').textContent = s.webhooks_hour;
                 }
                 if (typeof s.blocks_minute === 'number') {
-                    document.getElementById('bpm-display').textContent = s.blocks_minute.toFixed(1) + ' BPM';
+                    const bpmDisplay = document.getElementById('bpm-display');
+                    if (bpmDisplay) bpmDisplay.textContent = s.blocks_minute.toFixed(1) + ' BPM';
                 }
                 if (s.last_block_ts > 0) {
                     lastBlockTime = s.last_block_ts;
@@ -1598,9 +1680,7 @@
                         <span style="color:var(--secondary-color);">${r.reason}:</span> ${r.count}
                     </div>
                 `).join('');
-                }
-            } catch (_) { }
-        }
+                }} catch (_) { }}
         setInterval(refreshStats, 15000);
 
         // WebSocket differential updates
@@ -1618,8 +1698,7 @@
             chip.classList.remove('live', 'paused', 'offline');
             if (paused) { chip.classList.add('paused'); chip.textContent = 'PAUSED'; return; }
             if (mode === 'offline') { chip.classList.add('offline'); chip.textContent = 'OFFLINE'; }
-            else { chip.classList.add('live'); chip.textContent = 'LIVE'; }
-        }
+            else { chip.classList.add('live'); chip.textContent = 'LIVE'; }}
 
         function applyMessage(msg) {
             if (msg.action === 'block') {
@@ -1666,8 +1745,7 @@
                 if (idx >= 0) items.splice(idx, 1);
                 updateTotalCount(-1);
                 showToast(`IP Unblocked: ${ip}`, 'success');
-            }
-        }
+            }}
 
         function updateTotalCount(delta) {
             const el = document.getElementById('total-ips-count');
@@ -1790,8 +1868,7 @@
                     setTimeout(() => window.location.reload(), 1000);
                 } else {
                     showToast(data.error || "Failed to save view", "danger");
-                }
-            });
+                }});
         }
 
         function renderChips() {
@@ -1824,8 +1901,7 @@
 
                         chip.innerHTML = `<span>${key}: ${label}</span> <span style="cursor:pointer; font-weight:bold;" onclick="removeFilter('${key}')">×</span>`;
                         container.appendChild(chip);
-                    }
-                }
+                    }}
             });
         }
 
@@ -1845,8 +1921,7 @@
                     checkboxes.forEach(cb => cb.checked = false);
                 } else {
                     el.value = "";
-                }
-            }
+                }}
             applyServerSearch();
         }
 
@@ -1867,8 +1942,7 @@
                         params.append(key, new Date(val).toISOString());
                     } else {
                         params.append(key, val);
-                    }
-                }
+                    }}
             });
             window.location.href = `/api/v1/ips/export?${params.toString()}`;
         }
@@ -1882,8 +1956,7 @@
             if (e.key === 'Escape') {
                 document.querySelectorAll('.modal').forEach(m => m.style.display = 'none');
                 closeSidePanel();
-            }
-        });
+            }});
 
         function showToast(message, type = 'success') {
             const container = document.getElementById('toast-container');
@@ -1921,8 +1994,7 @@
                 count.textContent = selected;
             } else {
                 bar.style.display = 'none';
-            }
-        }
+            }}
 
         window.clearSelection = function () {
             const checkboxes = document.querySelectorAll('.ip-checkbox');
@@ -1950,8 +2022,7 @@
                     updateBulkUI();
                 } else {
                     showToast(data.error || 'Bulk unblock failed', 'danger');
-                }
-            });
+                }});
         }
 
         // Wire controls
@@ -1968,8 +2039,7 @@
                 setStatus('paused');
                 btn.textContent = 'Resume';
                 btn.classList.add('btn-danger');
-            }
-        });
+            }});
 
         document.getElementById('clearFilter').addEventListener('click', () => {
             const input = document.getElementById('filterInput');
@@ -2004,8 +2074,7 @@
                     document.getElementById('blockTTL').value = '';
                 } else {
                     showToast(data.status || 'Failed to block', 'danger');
-                }
-            });
+                }});
         }
     </script>
 

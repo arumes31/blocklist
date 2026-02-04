@@ -94,7 +94,7 @@ func (m *MockIPService) Stats(ctx context.Context) (hour int, day int, totalEver
 }, topReason []struct {
 	Reason string
 	Count  int
-}, webhooksHour int, lastBlockTs int64, blocksMinute int, err error) {
+}, webhooksHour int, lastBlockTs int64, blocksMinute int, whitelistCount int, err error) {
 	args := m.Called(ctx)
 	// Manual casting for complex structs in return
 	return args.Int(0), args.Int(1), args.Int(2), args.Int(3),
@@ -111,7 +111,7 @@ func (m *MockIPService) Stats(ctx context.Context) (hour int, day int, totalEver
 			Reason string
 			Count  int
 		}),
-		args.Int(7), args.Get(8).(int64), args.Int(9), args.Error(10)
+		args.Int(7), args.Get(8).(int64), args.Int(9), args.Int(10), args.Error(11)
 }
 
 func (m *MockIPService) GetGeoIP(ipStr string) *models.GeoData {

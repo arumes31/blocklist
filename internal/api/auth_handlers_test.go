@@ -99,6 +99,7 @@ func TestAPIHandler_CreateAPIToken(t *testing.T) {
 
 	pg.On("CreateAPIToken", mock.Anything).Return(nil)
 	pg.On("GetAPITokens", "admin").Return([]models.APIToken{}, nil)
+	pg.On("LogAction", "admin", "CREATE_TOKEN", "New Token", mock.Anything).Return(nil)
 
 	w := httptest.NewRecorder()
 	_, r := setupHTMLTest(w)
@@ -132,6 +133,8 @@ func TestAPIHandler_RevokeAPIToken(t *testing.T) {
 	c.Request, _ = http.NewRequest("DELETE", "/api/tokens/123", nil)
 	// Add permission for admin revoke logic
 	c.Set("permissions", "manage_global_tokens")
+	c.Set("username", "admin")
+	pgRepo.On("LogAction", "admin", "ADMIN_REVOKE_TOKEN", "123", mock.Anything).Return(nil)
 	h.AdminRevokeAPIToken(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)

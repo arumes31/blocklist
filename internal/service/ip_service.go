@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net"
 	"net/netip"
 	"os"
@@ -22,6 +21,7 @@ import (
 	"github.com/bits-and-blooms/bloom/v3"
 	"github.com/oschwald/geoip2-golang"
 	"github.com/redis/go-redis/v9"
+	zlog "github.com/rs/zerolog/log"
 )
 
 type IPService struct {
@@ -98,12 +98,14 @@ func (s *IPService) syncBloomFilter() {
 	// For now, just fill from Redis
 	if s.redisRepo != nil {
 		ips, err := s.redisRepo.GetBlockedIPs()
-		if err == nil {
-			for ip := range ips {
-				s.bloomFilter.AddString(ip)
-			}
-			log.Printf("IPService: Synchronized Bloom Filter with %d IPs", len(ips))
+		if err != nil {
+			zlog.Error().Err(err).Msg("IPService: Failed to fetch blocked IPs for Bloom Filter sync")
+			return
 		}
+		for ip := range ips {
+			s.bloomFilter.AddString(ip)
+		}
+		zlog.Info().Int("count", len(ips)).Msg("IPService: Synchronized Bloom Filter")
 	}
 }
 
@@ -133,7 +135,7 @@ func (s *IPService) ReloadReaders() {
 			if old != nil {
 				old.Close()
 			}
-			log.Printf("IPService: Reloaded GeoLite2-City")
+			zlog.Info().Msg("IPService: Reloaded GeoLite2-City")
 		}
 	}
 
@@ -145,7 +147,7 @@ func (s *IPService) ReloadReaders() {
 			if old != nil {
 				old.Close()
 			}
-			log.Printf("IPService: Reloaded GeoLite2-ASN")
+			zlog.Info().Msg("IPService: Reloaded GeoLite2-ASN")
 		}
 	}
 }
@@ -357,14 +359,14 @@ func (s *IPService) Stats(ctx context.Context) (hour int, day int, totalEver int
 }, topReason []struct {
 	Reason string
 	Count  int
-}, webhooksHour int, lastBlockTs int64, blocksMinute int, err error) {
+}, webhooksHour int, lastBlockTs int64, blocksMinute int, whitelistCount int, err error) {
 	if s.redisRepo == nil {
-		return 0, 0, 0, 0, nil, nil, nil, 0, 0, 0, nil
+		return 0, 0, 0, 0, nil, nil, nil, 0, 0, 0, 0, nil
 	}
 
 	ips, err := s.redisRepo.GetBlockedIPs()
 	if err != nil {
-		return 0, 0, 0, 0, nil, nil, nil, 0, 0, 0, err
+		return 0, 0, 0, 0, nil, nil, nil, 0, 0, 0, 0, err
 	}
 
 	activeBlocks = len(ips)
@@ -443,7 +445,10 @@ func (s *IPService) Stats(ctx context.Context) (hour int, day int, totalEver int
 	lb, _ := s.redisRepo.GetLastBlockTime()
 	bm, _ := s.redisRepo.CountBlocksLastMinute()
 
-	return h, d, totalEver, activeBlocks, top, topASN, topReason, wh, lb, bm, nil
+	wips, _ := s.redisRepo.GetWhitelistedIPs()
+	whitelistCount = len(wips)
+
+	return h, d, totalEver, activeBlocks, top, topASN, topReason, wh, lb, bm, whitelistCount, nil
 }
 
 // ExportIPs returns all IPs matching the filters for export purposes.
@@ -543,6 +548,7 @@ func (s *IPService) ExportIPs(ctx context.Context, query string, country string,
 			}
 		}
 
+		// Ensure we always store a pointer to IPEntry
 		items = append(items, map[string]interface{}{"ip": ip, "data": entry})
 	}
 
@@ -669,10 +675,25 @@ func (s *IPService) ListIPsPaginatedAdvanced(ctx context.Context, limit int, cur
 
 			// Apply filters
 			if q != "" {
-				if !strings.Contains(strings.ToLower(ip), q) &&
-					!strings.Contains(strings.ToLower(entry.Reason), q) &&
-					!strings.Contains(strings.ToLower(entry.AddedBy), q) &&
-					!(entry.Geolocation != nil && strings.Contains(strings.ToLower(entry.Geolocation.Country), q)) {
+				matches := false
+				// 1. Text match on fields
+				if strings.Contains(strings.ToLower(ip), q) ||
+					strings.Contains(strings.ToLower(entry.Reason), q) ||
+					strings.Contains(strings.ToLower(entry.AddedBy), q) ||
+					(entry.Geolocation != nil && strings.Contains(strings.ToLower(entry.Geolocation.Country), q)) {
+					matches = true
+				}
+
+				// 2. Smart Match: CIDR
+				if !matches {
+					if _, network, err := net.ParseCIDR(query); err == nil {
+						if parsedIP := net.ParseIP(ip); parsedIP != nil && network.Contains(parsedIP) {
+							matches = true
+						}
+					}
+				}
+
+				if !matches {
 					continue
 				}
 			}
@@ -742,10 +763,23 @@ func (s *IPService) exportFallback(ctx context.Context, query string, country st
 		}
 
 		if q != "" {
-			if !strings.Contains(strings.ToLower(ip), q) &&
-				!strings.Contains(strings.ToLower(entry.Reason), q) &&
-				!strings.Contains(strings.ToLower(entry.AddedBy), q) &&
-				!(entry.Geolocation != nil && strings.Contains(strings.ToLower(entry.Geolocation.Country), q)) {
+			matches := false
+			if strings.Contains(strings.ToLower(ip), q) ||
+				strings.Contains(strings.ToLower(entry.Reason), q) ||
+				strings.Contains(strings.ToLower(entry.AddedBy), q) ||
+				(entry.Geolocation != nil && strings.Contains(strings.ToLower(entry.Geolocation.Country), q)) {
+				matches = true
+			}
+
+			if !matches {
+				if _, network, err := net.ParseCIDR(query); err == nil {
+					if parsedIP := net.ParseIP(ip); parsedIP != nil && network.Contains(parsedIP) {
+						matches = true
+					}
+				}
+			}
+
+			if !matches {
 				continue
 			}
 		}
@@ -884,6 +918,9 @@ func (s *IPService) RemoveWhitelist(ctx context.Context, ip string, username str
 func (s *IPService) GetIPDetails(ctx context.Context, ip string) (map[string]interface{}, error) {
 	entry, err := s.redisRepo.GetIPEntry(ip)
 	history, _ := s.pgRepo.GetIPHistory(ip)
+	if history == nil {
+		history = []models.AuditLog{}
+	}
 
 	res := map[string]interface{}{
 		"ip":      ip,

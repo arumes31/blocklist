@@ -8,7 +8,6 @@ import (
 
 	"blocklist/internal/models"
 
-	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 	zlog "github.com/rs/zerolog/log"
 	"github.com/skip2/go-qrcode"
@@ -21,7 +20,7 @@ func (h *APIHandler) Dashboard(c *gin.Context) {
 	ips := h.getCombinedIPs()
 
 	// Preload stats for initial render
-	hour, day, totalEver, activeBlocks, top, topASN, topReason, wh, lb, bm, _ := h.ipService.Stats(c.Request.Context())
+	hour, day, totalEver, activeBlocks, top, topASN, topReason, wh, lb, bm, whc, _ := h.ipService.Stats(c.Request.Context())
 
 	tops := make([]map[string]interface{}, 0, len(top))
 	for _, t := range top {
@@ -61,6 +60,7 @@ func (h *APIHandler) Dashboard(c *gin.Context) {
 			"webhooks_hour": wh,
 			"last_block_ts": lb,
 			"blocks_minute": bm,
+			"whitelisted":   whc,
 		},
 	})
 }
@@ -71,18 +71,21 @@ func (h *APIHandler) ThreadMap(c *gin.Context) {
 	username, _ := c.Get("username")
 	permissions, _ := c.Get("permissions")
 
-	hour, day, _, _, top, _, _, _, _, _, _ := h.ipService.Stats(c.Request.Context())
+	hour, day, _, _, top, _, _, _, _, _, _, _ := h.ipService.Stats(c.Request.Context())
 
 	tops := make([]map[string]interface{}, 0, len(top))
 	for _, t := range top {
 		tops = append(tops, map[string]interface{}{"Country": t.Country, "Count": t.Count})
 	}
 
+	trend, _ := h.pgRepo.GetBlockTrend()
+
 	h.renderHTML(c, http.StatusOK, "thread_map.html", gin.H{
 		"total_ips":      totalCount,
 		"admin_username": h.cfg.GUIAdmin,
 		"username":       username,
 		"permissions":    permissions,
+		"block_trend":    trend,
 		"stats": gin.H{
 			"hour":          hour,
 			"day":           day,
@@ -209,12 +212,14 @@ func (h *APIHandler) CreateAdmin(c *gin.Context) {
 		return
 	}
 
+	actor := c.GetString("username")
+	_ = h.pgRepo.LogAction(actor, "CREATE_ADMIN", admin.Username, fmt.Sprintf("Role: %s, Perms: %s", admin.Role, admin.Permissions))
+
 	c.JSON(200, gin.H{"status": "success", "username": admin.Username})
 }
 
 func (h *APIHandler) ChangeAdminPermissions(c *gin.Context) {
-	session := sessions.Default(c)
-	actor, _ := session.Get("username").(string)
+	actor := c.GetString("username")
 
 	var req struct {
 		Username    string `json:"username"`
@@ -290,8 +295,7 @@ func (h *APIHandler) DeleteAdmin(c *gin.Context) {
 	}
 
 	// Log deletion
-	session := sessions.Default(c)
-	actor, _ := session.Get("username").(string)
+	actor := c.GetString("username")
 	_ = h.pgRepo.LogAction(actor, "DELETE_ADMIN", req.Username, "User account and all associated tokens removed")
 
 	c.JSON(200, gin.H{"status": "success"})
@@ -319,6 +323,9 @@ func (h *APIHandler) ChangeAdminPassword(c *gin.Context) {
 		return
 	}
 
+	actor := c.GetString("username")
+	_ = h.pgRepo.LogAction(actor, "CHANGE_PASSWORD", req.Username, "Admin password updated")
+
 	c.JSON(200, gin.H{"status": "success"})
 }
 
@@ -333,6 +340,9 @@ func (h *APIHandler) ChangeAdminTOTP(c *gin.Context) {
 
 	// Clear TOTP secret to force re-setup on next login
 	_ = h.pgRepo.UpdateAdminToken(req.Username, "")
+
+	actor := c.GetString("username")
+	_ = h.pgRepo.LogAction(actor, "RESET_TOTP", req.Username, "TOTP secret cleared, re-setup required on next login")
 
 	c.JSON(200, gin.H{"status": "success"})
 }
@@ -356,7 +366,7 @@ func (h *APIHandler) GetQR(c *gin.Context) {
 }
 
 func (h *APIHandler) Stats(c *gin.Context) {
-	hour, day, totalEver, activeBlocks, top, topASN, topReason, wh, lb, bm, err := h.ipService.Stats(c.Request.Context())
+	hour, day, totalEver, activeBlocks, top, topASN, topReason, wh, lb, bm, whc, err := h.ipService.Stats(c.Request.Context())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "stats error"})
 		return
@@ -398,6 +408,7 @@ func (h *APIHandler) Stats(c *gin.Context) {
 		"webhooks_hour": wh,
 		"last_block_ts": lb,
 		"blocks_minute": bm,
+		"whitelisted":   whc,
 	})
 }
 
@@ -444,7 +455,11 @@ func (h *APIHandler) AuditLogExplorer(c *gin.Context) {
 	actor := c.Query("actor")
 	action := c.Query("action")
 	query := c.Query("query")
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageStr := c.DefaultQuery("page", "1")
+	page, err := strconv.Atoi(pageStr)
+	if err != nil || page < 1 {
+		page = 1
+	}
 	limit := 50
 	offset := (page - 1) * limit
 

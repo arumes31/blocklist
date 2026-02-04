@@ -40,7 +40,7 @@ func TestSecurity_XSS_Reflected(t *testing.T) {
 			Reason string
 			Count  int
 		}{},
-		5, int64(0), 1, nil)
+		5, int64(0), 1, 0, nil)
 
 	w := httptest.NewRecorder()
 	c, _ := setupHTMLTest(w)

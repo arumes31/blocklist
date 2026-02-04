@@ -4,10 +4,12 @@ import (
 	"context"
 	"strconv"
 	"testing"
+	"time"
 
 	"blocklist/internal/config"
 	"blocklist/internal/models"
 	"blocklist/internal/repository"
+
 	"github.com/alicebob/miniredis/v2"
 )
 
@@ -34,7 +36,7 @@ func TestIPService_Enhanced(t *testing.T) {
 
 		// Add to whitelist in miniredis
 		_ = rRepo.WhitelistIP(ip, models.WhitelistEntry{Reason: "test"})
-		
+
 		// Now should be invalid
 		if svc.IsValidIP(ip) {
 			t.Errorf("expected %s to be invalid after whitelisting", ip)
@@ -47,7 +49,7 @@ func TestIPService_Enhanced(t *testing.T) {
 		entry := models.IPEntry{Reason: "test", Timestamp: "2026-01-31 12:00:00 UTC"}
 		_ = rRepo.BlockIP("1.2.3.4", entry)
 
-		h, d, total, active, _, _, _, wh, lb, bm, err := svc.Stats(ctx)
+		h, d, total, active, _, _, _, wh, lb, bm, _, err := svc.Stats(ctx)
 		if err != nil {
 			t.Fatalf("Stats failed: %v", err)
 		}
@@ -55,7 +57,12 @@ func TestIPService_Enhanced(t *testing.T) {
 			t.Errorf("expected active 1, got %d", active)
 		}
 		// h and d might be 0 because we didn't update buckets or ZSET in this manual call
-		_ = h; _ = d; _ = wh; _ = lb; _ = bm; _ = total
+		_ = h
+		_ = d
+		_ = wh
+		_ = lb
+		_ = bm
+		_ = total
 	})
 
 	t.Run("BulkBlock_Logic", func(t *testing.T) {
@@ -69,7 +76,7 @@ func TestIPService_Enhanced(t *testing.T) {
 		if mr.HGet("ips", "10.0.0.1") != "" {
 			t.Error("10.0.0.1 should not have been blocked (in blocked range)")
 		}
-		
+
 		// 8.8.8.8 SHOULD be blocked
 		if mr.HGet("ips", "8.8.8.8") == "" {
 			t.Error("8.8.8.8 should have been blocked")
@@ -104,6 +111,35 @@ func TestIPService_Enhanced(t *testing.T) {
 		score4 := svc.CalculateThreatScore("4.4.4.4", "generic")
 		if score4 != 100 {
 			t.Errorf("expected score 100 (capped), got %d", score4)
+		}
+	})
+
+	t.Run("ListIPsPaginatedAdvanced_CIDRMatching", func(t *testing.T) {
+		ctx := context.Background()
+		// Mock data using service to ensure indexing
+		_ = svc.BlockIP(ctx, "1.1.2.1", "test", "admin", "127.0.0.1", false, 60*time.Minute)
+		time.Sleep(1100 * time.Millisecond) // Ensure distinct Unix seconds
+		_ = svc.BlockIP(ctx, "1.1.2.20", "test", "admin", "127.0.0.1", false, 60*time.Minute)
+		time.Sleep(1100 * time.Millisecond)
+		_ = svc.BlockIP(ctx, "2.2.2.2", "test", "admin", "127.0.0.1", false, 60*time.Minute)
+
+		// Search for CIDR 1.1.2.0/24
+		items, _, _, err := svc.ListIPsPaginatedAdvanced(ctx, 10, "", "1.1.2.0/24", "", "", "", "")
+		if err != nil {
+			t.Fatalf("ListIPsPaginatedAdvanced failed: %v", err)
+		}
+
+		if len(items) != 2 {
+			t.Errorf("expected 2 items for 1.1.2.0/24, got %d", len(items))
+		}
+
+		// Search for non-matching CIDR
+		items2, _, _, err := svc.ListIPsPaginatedAdvanced(ctx, 10, "", "192.168.1.0/24", "", "", "", "")
+		if err != nil {
+			t.Fatalf("ListIPsPaginatedAdvanced failed: %v", err)
+		}
+		if len(items2) != 0 {
+			t.Errorf("expected 0 items for 192.168.1.0/24, got %d", len(items2))
 		}
 	})
 }

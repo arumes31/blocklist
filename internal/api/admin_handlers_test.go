@@ -40,7 +40,7 @@ func TestAPIHandler_Dashboard(t *testing.T) {
 			Reason string
 			Count  int
 		}{},
-		5, int64(0), 1, nil)
+		5, int64(0), 1, 0, nil)
 
 	w := httptest.NewRecorder()
 	c, _ := setupHTMLTest(w)
@@ -56,14 +56,17 @@ func TestAPIHandler_Dashboard(t *testing.T) {
 }
 
 func TestAPIHandler_CreateAdmin(t *testing.T) {
-	h, _, _, auth, _ := setupTest()
+	h, _, pgRepo, auth, _ := setupTest()
 
-	auth.On("CreateAdmin", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&models.AdminAccount{Username: "newadmin"}, nil)
+	auth.On("CreateAdmin", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&models.AdminAccount{Username: "newadmin", Role: "operator", Permissions: "gui_read"}, nil)
+	pgRepo.On("LogAction", "admin", "CREATE_ADMIN", "newadmin", mock.Anything).Return(nil)
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	reqBody := `{"username": "newadmin", "password": "password", "role": "operator", "permissions": "gui_read"}`
 	c.Request, _ = http.NewRequest("POST", "/api/admin", bytes.NewBufferString(reqBody))
+
+	c.Set("username", "admin")
 
 	h.CreateAdmin(c)
 
@@ -112,7 +115,7 @@ func TestAPIHandler_Stats(t *testing.T) {
 			Reason string
 			Count  int
 		}{},
-		5, int64(0), 1, nil)
+		5, int64(0), 1, 0, nil)
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
