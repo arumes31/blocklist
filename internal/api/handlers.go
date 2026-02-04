@@ -19,18 +19,19 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gin-contrib/sessions"
-	"github.com/gin-gonic/gin"
-	"github.com/gorilla/websocket"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/pquerna/otp/totp"
-	"github.com/skip2/go-qrcode"
-	zlog "github.com/rs/zerolog/log"
-	"golang.org/x/crypto/bcrypt"
 	"image"
 	"image/draw"
 	"image/png"
 	"os"
+
+	"github.com/gin-contrib/sessions"
+	"github.com/gin-gonic/gin"
+	"github.com/gorilla/websocket"
+	"github.com/pquerna/otp/totp"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	zlog "github.com/rs/zerolog/log"
+	"github.com/skip2/go-qrcode"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type APIHandler struct {
@@ -77,8 +78,8 @@ func (h *APIHandler) renderHTML(c *gin.Context, status int, name string, data gi
 }
 
 var upgrader = websocket.Upgrader{
-	ReadBufferSize:  1024,
-	WriteBufferSize: 1024,
+	ReadBufferSize:    1024,
+	WriteBufferSize:   1024,
 	EnableCompression: true,
 	CheckOrigin: func(r *http.Request) bool {
 		// More permissive for production behind proxies
@@ -100,9 +101,9 @@ func (h *APIHandler) WS(c *gin.Context) {
 			Msg("WebSocket upgrade failed")
 		return
 	}
-	
+
 	h.hub.register <- conn
-	
+
 	// Keep-alive setup
 	pingTicker := time.NewTicker(30 * time.Second)
 	defer func() {
@@ -172,7 +173,7 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 	r.Use(h.PrometheusMiddleware())
 	// Public UI routes
 	r.GET("/", func(c *gin.Context) { c.Redirect(http.StatusFound, "/dashboard") })
-	
+
 	login := r.Group("/login")
 	login.Use(h.loginLimiter)
 	{
@@ -180,7 +181,7 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 		login.POST("", h.Login)
 		login.POST("/verify", h.VerifyFirstFactor)
 	}
-	
+
 	r.GET("/logout", h.Logout)
 	r.GET("/ws", h.WS)
 	r.GET("/sudo", h.AuthMiddleware(), h.loginLimiter, h.ShowSudo)
@@ -201,17 +202,17 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 		v1auth.GET("/ips_list", h.mainLimiter, h.PermissionMiddleware("view_ips"), h.JSONIPs)
 		v1auth.GET("/whitelists", h.mainLimiter, h.PermissionMiddleware("view_ips"), h.JSONWhitelists)
 		v1auth.GET("/ips/:ip/details", h.mainLimiter, h.PermissionMiddleware("view_ips"), h.GetIPDetails)
-		
+
 		// Exports require export_data
 		v1auth.GET("/ips/export", h.mainLimiter, h.PermissionMiddleware("export_data"), h.SudoMiddleware(), h.ExportIPs)
-		
+
 		// Stats require view_stats
 		v1auth.GET("/stats", h.mainLimiter, h.PermissionMiddleware("view_stats"), h.Stats)
 	}
 
 	// Webhooks handle their own granular permission checks and multiple auth types
 	v1.POST("/webhook", h.AuthMiddleware(), h.SessionCheckMiddleware(), h.webhookLimiter, h.Webhook)
-	
+
 	r.GET("/openapi.json", h.OpenAPI)
 	r.GET("/docs", h.AuthMiddleware(), h.SessionCheckMiddleware(), func(c *gin.Context) {
 		session := sessions.Default(c)
@@ -234,7 +235,7 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 		auth.GET("/dashboard", h.PermissionMiddleware("view_ips"), h.Dashboard)
 		auth.GET("/thread-map", h.PermissionMiddleware("view_ips"), h.ThreadMap)
 		auth.GET("/dashboard/table", h.PermissionMiddleware("view_ips"), h.DashboardTable) // For HTMX polling
-		
+
 		auth.GET("/api/v1/views", h.PermissionMiddleware("view_ips"), h.GetSavedViews)
 		auth.POST("/api/v1/views", h.PermissionMiddleware("view_ips"), h.CreateSavedView)
 		auth.DELETE("/api/v1/views/:id", h.PermissionMiddleware("view_ips"), h.DeleteSavedView)
@@ -254,7 +255,7 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 		auth.POST("/unblock", h.PermissionMiddleware("unblock_ips"), h.UnblockIP)
 		auth.POST("/bulk_block", h.PermissionMiddleware("block_ips"), h.BulkBlock)
 		auth.POST("/bulk_unblock", h.PermissionMiddleware("unblock_ips"), h.BulkUnblock)
-		
+
 		// Whitelist management
 		auth.GET("/whitelist", h.PermissionMiddleware("manage_whitelist", "whitelist_ips"), h.Whitelist)
 		auth.POST("/add_whitelist", h.PermissionMiddleware("manage_whitelist", "whitelist_ips"), h.AddWhitelist)
@@ -282,7 +283,7 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 // getCombinedIPs fetches blocked IPs from Redis and enriches them with persistent blocks from Postgres (cached).
 func (h *APIHandler) getCombinedIPs() map[string]models.IPEntry {
 	ips, _ := h.redisRepo.GetBlockedIPs()
-	
+
 	if h.pgRepo != nil {
 		var pIps map[string]models.IPEntry
 		// Try cache first
@@ -293,7 +294,7 @@ func (h *APIHandler) getCombinedIPs() map[string]models.IPEntry {
 			// Set cache for 1 minute
 			_ = h.redisRepo.SetCache("persistent_ips_cache", pIps, 1*time.Minute)
 		}
-		
+
 		for ip, data := range pIps {
 			ips[ip] = data
 		}
@@ -309,15 +310,21 @@ func (h *APIHandler) Dashboard(c *gin.Context) {
 
 	// Preload stats for initial render
 	hour, day, totalEver, activeBlocks, top, topASN, topReason, wh, lb, bm, _ := h.ipService.Stats(c.Request.Context())
-	
+
 	tops := make([]map[string]interface{}, 0, len(top))
-	for _, t := range top { tops = append(tops, map[string]interface{}{"Country": t.Country, "Count": t.Count}) }
+	for _, t := range top {
+		tops = append(tops, map[string]interface{}{"Country": t.Country, "Count": t.Count})
+	}
 
 	asns := make([]map[string]interface{}, 0, len(topASN))
-	for _, a := range topASN { asns = append(asns, map[string]interface{}{"ASN": a.ASN, "ASNOrg": a.ASNOrg, "Count": a.Count}) }
+	for _, a := range topASN {
+		asns = append(asns, map[string]interface{}{"ASN": a.ASN, "ASNOrg": a.ASNOrg, "Count": a.Count})
+	}
 
 	reasons := make([]map[string]interface{}, 0, len(topReason))
-	for _, r := range topReason { reasons = append(reasons, map[string]interface{}{"Reason": r.Reason, "Count": r.Count}) }
+	for _, r := range topReason {
+		reasons = append(reasons, map[string]interface{}{"Reason": r.Reason, "Count": r.Count})
+	}
 
 	views, _ := h.pgRepo.GetSavedViews(username.(string))
 	permissions, _ := c.Get("permissions")
@@ -330,15 +337,15 @@ func (h *APIHandler) Dashboard(c *gin.Context) {
 		"permissions":    permissions,
 		"views":          views,
 		"stats": gin.H{
-			"hour":           hour,
-			"day":            day,
-			"total":          totalEver, // Persistent total bans
-			"top_countries":  tops,
-			"top_asns":       asns,
-			"top_reasons":    reasons,
-			"webhooks_hour":  wh,
-			"last_block_ts":  lb,
-			"blocks_minute":  bm,
+			"hour":          hour,
+			"day":           day,
+			"total":         totalEver, // Persistent total bans
+			"top_countries": tops,
+			"top_asns":      asns,
+			"top_reasons":   reasons,
+			"webhooks_hour": wh,
+			"last_block_ts": lb,
+			"blocks_minute": bm,
 		},
 	})
 }
@@ -350,9 +357,11 @@ func (h *APIHandler) ThreadMap(c *gin.Context) {
 	permissions, _ := c.Get("permissions")
 
 	hour, day, _, _, top, _, _, _, _, _, _ := h.ipService.Stats(c.Request.Context())
-	
+
 	tops := make([]map[string]interface{}, 0, len(top))
-	for _, t := range top { tops = append(tops, map[string]interface{}{"Country": t.Country, "Count": t.Count}) }
+	for _, t := range top {
+		tops = append(tops, map[string]interface{}{"Country": t.Country, "Count": t.Count})
+	}
 
 	h.renderHTML(c, http.StatusOK, "thread_map.html", gin.H{
 		"total_ips":      totalCount,
@@ -444,7 +453,7 @@ func (h *APIHandler) Health(c *gin.Context) {
 			status = "DEGRADED"
 		}
 		// Check read replica if it's different from primary
-		// We'll add a Ping method to repository later if needed, 
+		// We'll add a Ping method to repository later if needed,
 		// for now we just use a simple read-only query.
 		if _, err := h.pgRepo.GetPersistentCount(); err != nil {
 			readDbStatus = "ERROR"
@@ -452,10 +461,10 @@ func (h *APIHandler) Health(c *gin.Context) {
 		}
 	}
 	c.JSON(200, gin.H{
-		"status": status, 
-		"postgres": dbStatus, 
+		"status":        status,
+		"postgres":      dbStatus,
 		"postgres_read": readDbStatus,
-		"redis": redisStatus,
+		"redis":         redisStatus,
 	})
 }
 
@@ -463,7 +472,7 @@ func (h *APIHandler) isIPInCIDRs(ipStr string, cidrs string) bool {
 	if cidrs == "" {
 		return true // No restriction
 	}
-	
+
 	ip := net.ParseIP(ipStr)
 	if ip == nil {
 		return false
@@ -474,7 +483,7 @@ func (h *APIHandler) isIPInCIDRs(ipStr string, cidrs string) bool {
 		if cidr == "" {
 			continue
 		}
-		
+
 		_, network, err := net.ParseCIDR(cidr)
 		if err == nil {
 			if network.Contains(ip) {
@@ -496,7 +505,7 @@ func (h *APIHandler) AuthMiddleware() gin.HandlerFunc {
 		authHeader := c.GetHeader("Authorization")
 		if strings.HasPrefix(authHeader, "Bearer ") {
 			tokenStr := strings.TrimPrefix(authHeader, "Bearer ")
-			
+
 			// In test mode with no DB, allow a special test token
 			if gin.Mode() == gin.TestMode && h.pgRepo == nil && tokenStr == "test-token" {
 				c.Set("username", "admin")
@@ -542,7 +551,7 @@ func (h *APIHandler) AuthMiddleware() gin.HandlerFunc {
 		}
 
 		session := sessions.Default(c)
-		
+
 		// If session is invalid (e.g. key mismatch after restart), clear it
 		if loggedIn := session.Get("logged_in"); loggedIn == nil {
 			zlog.Debug().Str("path", c.Request.URL.Path).Msg("Session missing or invalid")
@@ -568,9 +577,9 @@ func (h *APIHandler) AuthMiddleware() gin.HandlerFunc {
 			c.Abort()
 			return
 		}
-		
+
 		username := session.Get("username").(string)
-		
+
 		// Verify user still exists in database
 		admin, err := h.pgRepo.GetAdmin(username)
 		if err != nil || admin == nil {
@@ -583,7 +592,7 @@ func (h *APIHandler) AuthMiddleware() gin.HandlerFunc {
 		}
 
 		c.Set("username", username)
-		
+
 		// Get role and permissions from DB or session
 		role := session.Get("role")
 		perms := session.Get("permissions")
@@ -596,7 +605,7 @@ func (h *APIHandler) AuthMiddleware() gin.HandlerFunc {
 		}
 		c.Set("role", role.(string))
 		c.Set("permissions", perms.(string))
-		
+
 		c.Next()
 	}
 }
@@ -611,7 +620,7 @@ func (h *APIHandler) RBACMiddleware(requiredRole string) gin.HandlerFunc {
 		}
 
 		roleStr := role.(string)
-		
+
 		// admin > operator > viewer
 		weights := map[string]int{"viewer": 1, "operator": 2, "admin": 3}
 		if weights[roleStr] < weights[requiredRole] {
@@ -679,7 +688,7 @@ func (h *APIHandler) PermissionMiddleware(requiredPerms ...string) gin.HandlerFu
 		}
 
 		permStr := perms.(string)
-		
+
 		// System admin bypass
 		username, _ := c.Get("username")
 		if username == h.cfg.GUIAdmin {
@@ -708,7 +717,9 @@ func (h *APIHandler) PermissionMiddleware(requiredPerms ...string) gin.HandlerFu
 					break
 				}
 			}
-			if hasPerm { break }
+			if hasPerm {
+				break
+			}
 		}
 
 		if !hasPerm {
@@ -724,7 +735,7 @@ func (h *APIHandler) MetricsAuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		allowedIPs := strings.Split(h.cfg.MetricsAllowedIPs, ",")
 		clientIP := c.ClientIP()
-		
+
 		isAllowed := false
 		for _, ip := range allowedIPs {
 			if strings.TrimSpace(ip) == clientIP {
@@ -760,10 +771,10 @@ func (h *APIHandler) generateQRWithLogo(url string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Create image from QR code
 	img := qr.Image(256)
-	
+
 	// Try to load logo
 	logoFile, err := os.Open("cmd/server/static/cd/favicon-color.png")
 	if err != nil {
@@ -771,31 +782,31 @@ func (h *APIHandler) generateQRWithLogo(url string) ([]byte, error) {
 		return qr.PNG(256)
 	}
 	defer logoFile.Close()
-	
+
 	logoImg, _, err := image.Decode(logoFile)
 	if err != nil {
 		return qr.PNG(256)
 	}
-	
+
 	// Prepare overlay
 	canvas := image.NewRGBA(img.Bounds())
 	draw.Draw(canvas, img.Bounds(), img, image.Point{}, draw.Src)
-	
+
 	// Calculate position (center)
 	logoBounds := logoImg.Bounds()
 	center := 256 / 2
 	x0 := center - (logoBounds.Dx() / 2)
 	y0 := center - (logoBounds.Dy() / 2)
-	
+
 	// Draw logo
 	draw.Draw(canvas, logoBounds.Add(image.Pt(x0, y0)), logoImg, image.Point{}, draw.Over)
-	
+
 	// Encode back to PNG
 	var buf bytes.Buffer
 	if err := png.Encode(&buf, canvas); err != nil {
 		return qr.PNG(256)
 	}
-	
+
 	return buf.Bytes(), nil
 }
 
@@ -832,7 +843,7 @@ func (h *APIHandler) VerifyFirstFactor(c *gin.Context) {
 			h.renderHTML(c, http.StatusOK, "login_error.html", gin.H{"error": "Internal error generating 2FA"})
 			return
 		}
-		
+
 		pngData, err := h.generateQRWithLogo(key.URL())
 		if err != nil {
 			zlog.Error().Err(err).Msg("Failed to generate QR with logo")
@@ -847,9 +858,15 @@ func (h *APIHandler) VerifyFirstFactor(c *gin.Context) {
 		}
 		imgBase64 := base64.StdEncoding.EncodeToString(pngData)
 
+		session := sessions.Default(c)
+		session.Set("pending_auth_user", username)
+		session.Set("pending_auth_verified", true)
+		if err := session.Save(); err != nil {
+			zlog.Error().Err(err).Msg("Failed to save session for TOTP setup")
+		}
+
 		h.renderHTML(c, http.StatusOK, "login_totp_setup_step.html", gin.H{
 			"username": username,
-			"password": password,
 			"qr_image": "data:image/png;base64," + imgBase64,
 			"secret":   key.Secret(),
 		})
@@ -857,9 +874,15 @@ func (h *APIHandler) VerifyFirstFactor(c *gin.Context) {
 	}
 
 	// Success: Return TOTP field via HTMX
+	session := sessions.Default(c)
+	session.Set("pending_auth_user", username)
+	session.Set("pending_auth_verified", true)
+	if err := session.Save(); err != nil {
+		zlog.Error().Err(err).Msg("Failed to save session for TOTP step")
+	}
+
 	h.renderHTML(c, http.StatusOK, "login_totp_step.html", gin.H{
 		"username": username,
-		"password": password,
 	})
 }
 
@@ -874,6 +897,23 @@ func (h *APIHandler) Login(c *gin.Context) {
 		return
 	}
 
+	session := sessions.Default(c)
+
+	// Check for pending auth session if password is not provided (multi-step)
+	isMultiStep := false
+	if password == "" {
+		pendingUser := session.Get("pending_auth_user")
+		pendingVerified := session.Get("pending_auth_verified")
+		if pendingUser == nil || pendingUser.(string) != username || pendingVerified == nil || !pendingVerified.(bool) {
+			zlog.Warn().Str("username", username).Msg("Invalid multi-step login attempt")
+			h.renderHTML(c, http.StatusOK, "login.html", gin.H{
+				"error": "Session expired or invalid login attempt. Please restart login.",
+			})
+			return
+		}
+		isMultiStep = true
+	}
+
 	// If it's a setup attempt
 	if setupSecret != "" {
 		if totp.Validate(totpCode, setupSecret) {
@@ -883,14 +923,21 @@ func (h *APIHandler) Login(c *gin.Context) {
 			h.renderHTML(c, http.StatusOK, "login.html", gin.H{
 				"error":    "Invalid TOTP code during setup. Please try again.",
 				"username": username,
-				"password": password,
 			})
 			return
 		}
 	}
 
-	if h.authService.CheckAuth(username, password, totpCode) {
-		session := sessions.Default(c)
+	authenticated := false
+	if isMultiStep {
+		authenticated = h.authService.VerifyTOTP(username, totpCode)
+	} else {
+		authenticated = h.authService.CheckAuth(username, password, totpCode)
+	}
+
+	if authenticated {
+		session.Delete("pending_auth_user")
+		session.Delete("pending_auth_verified")
 		session.Set("logged_in", true)
 		session.Set("username", username)
 		session.Set("client_ip", c.ClientIP())
@@ -908,10 +955,15 @@ func (h *APIHandler) Login(c *gin.Context) {
 		c.Redirect(http.StatusFound, "/dashboard")
 		return
 	}
+
+	// On failed login, clear pending state to be safe
+	session.Delete("pending_auth_user")
+	session.Delete("pending_auth_verified")
+	_ = session.Save()
+
 	h.renderHTML(c, http.StatusOK, "login.html", gin.H{
 		"error":    "Invalid credentials or TOTP code",
 		"username": username,
-		"password": password,
 		"step":     "totp",
 	})
 }
@@ -920,7 +972,7 @@ func (h *APIHandler) SudoMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		session := sessions.Default(c)
 		sudoTime := session.Get("sudo_time")
-		
+
 		isFresh := false
 		if sudoTime != nil {
 			ts := sudoTime.(int64)
@@ -962,7 +1014,7 @@ func (h *APIHandler) VerifySudo(c *gin.Context) {
 	if admin != nil && totp.Validate(totpCode, admin.Token) {
 		session.Set("sudo_time", time.Now().Unix())
 		_ = session.Save()
-		
+
 		if !h.isValidRedirect(next) {
 			next = "/dashboard"
 		}
@@ -1008,7 +1060,7 @@ func (h *APIHandler) BlockIP(c *gin.Context) {
 	geo := h.ipService.GetGeoIP(req.IP)
 	now := time.Now().UTC()
 	timestamp := now.Format("2006-01-02 15:04:05 UTC")
-	
+
 	expiresAt := ""
 	if !req.Persist {
 		ttl := 86400 // 24h default
@@ -1074,7 +1126,7 @@ func (h *APIHandler) UnblockIP(c *gin.Context) {
 
 	// Atomic unblock from Redis
 	_ = h.redisRepo.ExecUnblockAtomic(req.IP)
-	
+
 	if h.pgRepo != nil {
 		_ = h.pgRepo.DeletePersistentBlock(req.IP)
 		_ = h.pgRepo.LogAction(username.(string), "UNBLOCK", req.IP, "")
@@ -1141,7 +1193,7 @@ func (h *APIHandler) BulkUnblock(c *gin.Context) {
 
 func (h *APIHandler) Whitelist(c *gin.Context) {
 	ips, _ := h.redisRepo.GetWhitelistedIPs()
-	
+
 	subnets := []string{}
 	for _, sStr := range strings.Split(h.cfg.BlockedRanges, ",") {
 		sStr = strings.TrimSpace(sStr)
@@ -1180,7 +1232,7 @@ func (h *APIHandler) AddWhitelist(c *gin.Context) {
 		Reason:      req.Reason,
 	}
 	_ = h.redisRepo.WhitelistIP(req.IP, entry)
-	
+
 	h.hub.BroadcastEvent("whitelist", map[string]interface{}{
 		"ip":   req.IP,
 		"data": entry,
@@ -1198,7 +1250,7 @@ func (h *APIHandler) RemoveWhitelist(c *gin.Context) {
 		return
 	}
 	_ = h.redisRepo.RemoveFromWhitelist(req.IP)
-	
+
 	h.hub.BroadcastEvent("unwhitelist", map[string]interface{}{
 		"ip": req.IP,
 	})
@@ -1245,7 +1297,7 @@ func (h *APIHandler) Webhook(c *gin.Context) {
 	if username.(string) != h.cfg.GUIAdmin {
 		perms, _ := c.Get("permissions")
 		permStr := perms.(string)
-		
+
 		hasAccess := false
 		for _, p := range strings.Split(permStr, ",") {
 			if strings.TrimSpace(p) == requiredPerm {
@@ -1301,7 +1353,7 @@ func (h *APIHandler) Webhook(c *gin.Context) {
 		if data.Persist && h.pgRepo != nil {
 			_ = h.pgRepo.CreatePersistentBlock(data.IP, entry)
 		}
-		
+
 		// Atomic operation updates hash, ZSET index, and persistent counters
 		_ = h.redisRepo.ExecBlockAtomic(data.IP, entry, now)
 
@@ -1314,19 +1366,19 @@ func (h *APIHandler) Webhook(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "IP banned", "ip": data.IP})
 	} else if data.Act == "unban" || data.Act == "delete-ban" {
 		_ = h.pgRepo.LogAction(addedBy, "UNBLOCK", data.IP, "webhook unban")
-		h.hub.BroadcastEvent("unblock", map[string]interface{}{ "ip": data.IP})
+		h.hub.BroadcastEvent("unblock", map[string]interface{}{"ip": data.IP})
 		c.JSON(200, gin.H{"status": "IP unbanned", "ip": data.IP})
 	} else if data.Act == "whitelist" {
 		targetIP := data.IP
 		if targetIP == "" {
 			targetIP = c.ClientIP()
 		}
-		
+
 		// Proceeding with whitelist even if IsValidIP returns false (e.g. already whitelisted or protected range)
 		// as explicit whitelisting should override those checks.
 
 		geo := h.ipService.GetGeoIP(targetIP)
-		
+
 		entry := models.WhitelistEntry{
 			Timestamp:   timestamp,
 			Geolocation: geo,
@@ -1338,7 +1390,7 @@ func (h *APIHandler) Webhook(c *gin.Context) {
 		}
 
 		_ = h.redisRepo.WhitelistIP(targetIP, entry)
-		
+
 		h.hub.BroadcastEvent("whitelist", map[string]interface{}{
 			"ip":         targetIP,
 			"data":       entry,
@@ -1346,10 +1398,10 @@ func (h *APIHandler) Webhook(c *gin.Context) {
 		})
 
 		c.JSON(http.StatusOK, gin.H{"status": "IP whitelisted", "ip": targetIP})
-		}
 	}
-	
-	func (h *APIHandler) CreateAdmin(c *gin.Context) {
+}
+
+func (h *APIHandler) CreateAdmin(c *gin.Context) {
 	var req struct {
 		Username    string `json:"username"`
 		Password    string `json:"password"`
@@ -1361,8 +1413,12 @@ func (h *APIHandler) Webhook(c *gin.Context) {
 		return
 	}
 
-	if req.Role == "" { req.Role = "operator" }
-	if req.Permissions == "" { req.Permissions = "gui_read" }
+	if req.Role == "" {
+		req.Role = "operator"
+	}
+	if req.Permissions == "" {
+		req.Permissions = "gui_read"
+	}
 
 	admin, err := h.authService.CreateAdmin(req.Username, req.Password, req.Role, req.Permissions)
 	if err != nil {
@@ -1394,7 +1450,9 @@ func (h *APIHandler) ChangeAdminPermissions(c *gin.Context) {
 	// Get old perms for logging
 	oldAdmin, _ := h.pgRepo.GetAdmin(req.Username)
 	oldPerms := ""
-	if oldAdmin != nil { oldPerms = oldAdmin.Permissions }
+	if oldAdmin != nil {
+		oldPerms = oldAdmin.Permissions
+	}
 
 	err := h.pgRepo.UpdateAdminPermissions(req.Username, req.Permissions)
 	if err != nil {
@@ -1415,7 +1473,7 @@ func (h *APIHandler) AdminManagement(c *gin.Context) {
 	for _, a := range admins {
 		adminMap[a.Username] = a
 	}
-	
+
 	logs, _ := h.pgRepo.GetAuditLogs(100)
 	userPerms, _ := c.Get("permissions")
 
@@ -1520,10 +1578,10 @@ func (h *APIHandler) JSONWhitelists(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch whitelists"})
 		return
 	}
-	
+
 	type item struct {
-		IP   string                 `json:"ip"`
-		Data models.WhitelistEntry  `json:"data"`
+		IP   string                `json:"ip"`
+		Data models.WhitelistEntry `json:"data"`
 	}
 	list := make([]item, 0, len(ips))
 	for ip, data := range ips {
@@ -1552,10 +1610,10 @@ func (h *APIHandler) JSONIPs(c *gin.Context) {
 
 func (h *APIHandler) GetIPDetails(c *gin.Context) {
 	ip := c.Param("ip")
-	
+
 	entry, _ := h.redisRepo.GetIPEntry(ip)
 	history, _ := h.pgRepo.GetIPHistory(ip)
-	
+
 	c.JSON(http.StatusOK, gin.H{
 		"ip":      ip,
 		"current": entry,
@@ -1569,7 +1627,9 @@ func (h *APIHandler) GetIPDetails(c *gin.Context) {
 func (h *APIHandler) IPsPaginated(c *gin.Context) {
 	limit := 500
 	if v := c.Query("limit"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 5000 { limit = n }
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 5000 {
+			limit = n
+		}
 	}
 	q := strings.TrimSpace(c.Query("query"))
 	cursor := c.Query("cursor")
@@ -1578,7 +1638,10 @@ func (h *APIHandler) IPsPaginated(c *gin.Context) {
 	from := strings.TrimSpace(c.Query("from"))
 	to := strings.TrimSpace(c.Query("to"))
 	items, next, total, err := h.ipService.ListIPsPaginatedAdvanced(c.Request.Context(), limit, cursor, q, country, addedBy, from, to)
-	if err != nil { c.JSON(http.StatusInternalServerError, gin.H{"error": "pagination error"}); return }
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "pagination error"})
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"items": items, "next": next, "total": total})
 }
 
@@ -1612,7 +1675,7 @@ func (h *APIHandler) ExportIPs(c *gin.Context) {
 	// Default to CSV
 	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filename))
 	c.Header("Content-Type", "text/csv")
-	
+
 	writer := csv.NewWriter(c.Writer)
 	defer writer.Flush()
 
@@ -1622,7 +1685,7 @@ func (h *APIHandler) ExportIPs(c *gin.Context) {
 	for _, item := range items {
 		ip := item["ip"].(string)
 		data := item["data"].(*models.IPEntry)
-		
+
 		countryCode := ""
 		city := ""
 		lat := ""
@@ -1649,199 +1712,199 @@ func (h *APIHandler) ExportIPs(c *gin.Context) {
 
 // Stats returns hour/day/total and top countries.
 func (h *APIHandler) Ready(c *gin.Context) {
-    dep := map[string]interface{}{"redis": true, "geoip": "unknown"}
-    if h.redisRepo != nil {
-        if _, err := h.redisRepo.HGetAllRaw("ips"); err != nil {
-            dep["redis"] = false
-        }
-    } else {
-        dep["redis"] = false
-    }
-    c.JSON(http.StatusOK, gin.H{"status": "READY", "dependencies": dep})
+	dep := map[string]interface{}{"redis": true, "geoip": "unknown"}
+	if h.redisRepo != nil {
+		if _, err := h.redisRepo.HGetAllRaw("ips"); err != nil {
+			dep["redis"] = false
+		}
+	} else {
+		dep["redis"] = false
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "READY", "dependencies": dep})
 }
 
 // Minimal OpenAPI spec
 func (h *APIHandler) OpenAPI(c *gin.Context) {
-    spec := gin.H{
-        "openapi": "3.0.1",
-        "info": gin.H{
-            "title": "Blocklist API",
-            "description": "API for managing and monitoring blocked IP addresses with GeoIP enrichment and real-time updates.",
-            "version": "1.0.0",
-        },
-        "servers": []gin.H{
-            {"url": "/"},
-        },
-        "components": gin.H{
-            "securitySchemes": gin.H{
-                "BearerAuth": gin.H{
-                    "type": "http",
-                    "scheme": "bearer",
-                },
-            },
-            "schemas": gin.H{
-                "IPEntry": gin.H{
-                    "type": "object",
-                    "properties": gin.H{
-                        "timestamp": gin.H{"type": "string", "format": "date-time"},
-                        "reason":    gin.H{"type": "string"},
-                        "added_by":  gin.H{"type": "string"},
-                        "geolocation": gin.H{
-                            "type": "object",
-                            "properties": gin.H{
-                                "country":   gin.H{"type": "string"},
-                                "city":      gin.H{"type": "string"},
-                                "latitude":  gin.H{"type": "number"},
-                                "longitude": gin.H{"type": "number"},
-                            },
-                        },
-                    },
-                },
-                "IPListItem": gin.H{
-                    "type": "object",
-                    "properties": gin.H{
-                        "ip":   gin.H{"type": "string"},
-                        "data": gin.H{"$ref": "#/components/schemas/IPEntry"},
-                    },
-                },
-                "Stats": gin.H{
-                    "type": "object",
-                    "properties": gin.H{
-                        "hour":  gin.H{"type": "integer"},
-                        "day":   gin.H{"type": "integer"},
-                        "total": gin.H{"type": "integer", "description": "Persistent total bans ever recorded"},
-                        "active_blocks": gin.H{"type": "integer", "description": "Currently active blocks in system"},
-                        "top_countries": gin.H{
-                            "type": "array",
-                            "items": gin.H{
-                                "type": "object",
-                                "properties": gin.H{
-                                    "country": gin.H{"type": "string"},
-                                    "count":   gin.H{"type": "integer"},
-                                },
-                            },
-                        },
-                    },
-                },
-            },
-        },
-        "security": []gin.H{
-            {"BearerAuth": []string{}},
-        },
-        "paths": gin.H{
-            "/api/v1/ips": gin.H{
-                "get": gin.H{
-                    "summary": "List blocked IPs with advanced filtering",
-                    "tags": []string{"Data Retrieval"},
-                    "security": []gin.H{{"BearerAuth": []string{}}},
-                    "parameters": []gin.H{
-                        {"name": "limit", "in": "query", "description": "Number of records to return", "schema": gin.H{"type": "integer", "default": 500}},
-                        {"name": "cursor", "in": "query", "description": "Pagination cursor (timestamp score)", "schema": gin.H{"type": "string"}},
-                        {"name": "query", "in": "query", "description": "Text search across IP, reason, etc.", "schema": gin.H{"type": "string"}},
-                        {"name": "country", "in": "query", "description": "Filter by ISO country code", "schema": gin.H{"type": "string"}},
-                        {"name": "added_by", "in": "query", "description": "Filter by who added the block", "schema": gin.H{"type": "string"}},
-                        {"name": "from", "in": "query", "description": "Filter by start date (ISO8601)", "schema": gin.H{"type": "string", "format": "date-time"}},
-                        {"name": "to", "in": "query", "description": "Filter by end date (ISO8601)", "schema": gin.H{"type": "string", "format": "date-time"}},
-                    },
-                    "responses": gin.H{
-                        "200": gin.H{
-                            "description": "A list of blocked IPs",
-                            "content": gin.H{
-                                "application/json": gin.H{
-                                    "schema": gin.H{
-                                        "type": "object",
-                                        "properties": gin.H{
-                                            "items": gin.H{"type": "array", "items": gin.H{"$ref": "#/components/schemas/IPListItem"}},
-                                            "next":  gin.H{"type": "string"},
-                                            "total": gin.H{"type": "integer"},
-                                        },
-                                    },
-                                },
-                            },
-                        },
-                    },
-                },
-            },
-            "/api/v1/ips_list": gin.H{
-                "get": gin.H{
-                    "summary": "Get simple JSON array of all blocked IPs",
-                    "tags": []string{"Data Retrieval"},
-                    "security": []gin.H{{"BearerAuth": []string{}}},
-                    "responses": gin.H{
-                        "200": gin.H{
-                            "description": "Simple list of IPs",
-                            "content": gin.H{
-                                "application/json": gin.H{
-                                    "schema": gin.H{"type": "array", "items": gin.H{"type": "string"}},
-                                },
-                            },
-                        },
-                    },
-                },
-            },
-            "/api/v1/raw": gin.H{
-                "get": gin.H{
-                    "summary": "Get plain-text list of blocked IPs",
-                    "tags": []string{"Data Retrieval"},
-                    "security": []gin.H{{"BearerAuth": []string{}}},
-                    "responses": gin.H{
-                        "200": gin.H{
-                            "description": "Newline-separated list of IPs",
-                            "content": gin.H{"text/plain": gin.H{"schema": gin.H{"type": "string"}}},
-                        },
-                    },
-                },
-            },
-            "/api/v1/stats": gin.H{
-                "get": gin.H{
-                    "summary": "Get aggregate blocking statistics",
-                    "tags": []string{"Monitoring"},
-                    "security": []gin.H{{"BearerAuth": []string{}}},
-                    "responses": gin.H{
-                        "200": gin.H{
-                            "description": "Statistics object",
-                            "content": gin.H{
-                                "application/json": gin.H{"schema": gin.H{"$ref": "#/components/schemas/Stats"}},
-                            },
-                        },
-                    },
-                },
-            },
-            "/api/v1/webhook": gin.H{
-                "post": gin.H{
-                    "summary": "Perform Enforcement Action (Ban/Unban/Whitelist)",
-                    "description": "Unified endpoint for all automated actions. Requires a Bearer Token.",
-                    "tags": []string{"Enforcement"},
-                    "security": []gin.H{{"BearerAuth": []string{}}},
-                    "requestBody": gin.H{
-                        "required": true,
-                        "content": gin.H{
-                            "application/json": gin.H{
-                                "schema": gin.H{
-                                    "type": "object",
-                                    "properties": gin.H{
-                                        "ip":       gin.H{"type": "string", "example": "1.2.3.4", "description": "IPv4 or IPv6 address. Optional for 'whitelist' (defaults to caller IP)."},
-                                        "act":      gin.H{"type": "string", "enum": []string{"ban", "unban", "whitelist"}, "description": "Action to perform"},
-                                        "reason":   gin.H{"type": "string", "example": "Brute force attack", "description": "Reason for the action"},
-                                        "ttl":      gin.H{"type": "integer", "example": 86400, "description": "Time-to-live in seconds (ephemeral blocks only)"},
-                                        "persist":  gin.H{"type": "boolean", "default": false, "description": "If true, IP is stored in the database indefinitely"},
-                                    },
-                                    "required": []string{"act"},
-                                },
-                            },
-                        },
-                    },
-                    "responses": gin.H{
-                        "200": gin.H{"description": "Action successfully performed"},
-                        "400": gin.H{"description": "Invalid IP format or missing parameters"},
-                        "401": gin.H{"description": "Unauthorized"},
-                        "403": gin.H{"description": "Forbidden - Insufficient permissions"},
-                    },
-                },
-            },
-        },
-    }
-    c.JSON(http.StatusOK, spec)
+	spec := gin.H{
+		"openapi": "3.0.1",
+		"info": gin.H{
+			"title":       "Blocklist API",
+			"description": "API for managing and monitoring blocked IP addresses with GeoIP enrichment and real-time updates.",
+			"version":     "1.0.0",
+		},
+		"servers": []gin.H{
+			{"url": "/"},
+		},
+		"components": gin.H{
+			"securitySchemes": gin.H{
+				"BearerAuth": gin.H{
+					"type":   "http",
+					"scheme": "bearer",
+				},
+			},
+			"schemas": gin.H{
+				"IPEntry": gin.H{
+					"type": "object",
+					"properties": gin.H{
+						"timestamp": gin.H{"type": "string", "format": "date-time"},
+						"reason":    gin.H{"type": "string"},
+						"added_by":  gin.H{"type": "string"},
+						"geolocation": gin.H{
+							"type": "object",
+							"properties": gin.H{
+								"country":   gin.H{"type": "string"},
+								"city":      gin.H{"type": "string"},
+								"latitude":  gin.H{"type": "number"},
+								"longitude": gin.H{"type": "number"},
+							},
+						},
+					},
+				},
+				"IPListItem": gin.H{
+					"type": "object",
+					"properties": gin.H{
+						"ip":   gin.H{"type": "string"},
+						"data": gin.H{"$ref": "#/components/schemas/IPEntry"},
+					},
+				},
+				"Stats": gin.H{
+					"type": "object",
+					"properties": gin.H{
+						"hour":          gin.H{"type": "integer"},
+						"day":           gin.H{"type": "integer"},
+						"total":         gin.H{"type": "integer", "description": "Persistent total bans ever recorded"},
+						"active_blocks": gin.H{"type": "integer", "description": "Currently active blocks in system"},
+						"top_countries": gin.H{
+							"type": "array",
+							"items": gin.H{
+								"type": "object",
+								"properties": gin.H{
+									"country": gin.H{"type": "string"},
+									"count":   gin.H{"type": "integer"},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		"security": []gin.H{
+			{"BearerAuth": []string{}},
+		},
+		"paths": gin.H{
+			"/api/v1/ips": gin.H{
+				"get": gin.H{
+					"summary":  "List blocked IPs with advanced filtering",
+					"tags":     []string{"Data Retrieval"},
+					"security": []gin.H{{"BearerAuth": []string{}}},
+					"parameters": []gin.H{
+						{"name": "limit", "in": "query", "description": "Number of records to return", "schema": gin.H{"type": "integer", "default": 500}},
+						{"name": "cursor", "in": "query", "description": "Pagination cursor (timestamp score)", "schema": gin.H{"type": "string"}},
+						{"name": "query", "in": "query", "description": "Text search across IP, reason, etc.", "schema": gin.H{"type": "string"}},
+						{"name": "country", "in": "query", "description": "Filter by ISO country code", "schema": gin.H{"type": "string"}},
+						{"name": "added_by", "in": "query", "description": "Filter by who added the block", "schema": gin.H{"type": "string"}},
+						{"name": "from", "in": "query", "description": "Filter by start date (ISO8601)", "schema": gin.H{"type": "string", "format": "date-time"}},
+						{"name": "to", "in": "query", "description": "Filter by end date (ISO8601)", "schema": gin.H{"type": "string", "format": "date-time"}},
+					},
+					"responses": gin.H{
+						"200": gin.H{
+							"description": "A list of blocked IPs",
+							"content": gin.H{
+								"application/json": gin.H{
+									"schema": gin.H{
+										"type": "object",
+										"properties": gin.H{
+											"items": gin.H{"type": "array", "items": gin.H{"$ref": "#/components/schemas/IPListItem"}},
+											"next":  gin.H{"type": "string"},
+											"total": gin.H{"type": "integer"},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			"/api/v1/ips_list": gin.H{
+				"get": gin.H{
+					"summary":  "Get simple JSON array of all blocked IPs",
+					"tags":     []string{"Data Retrieval"},
+					"security": []gin.H{{"BearerAuth": []string{}}},
+					"responses": gin.H{
+						"200": gin.H{
+							"description": "Simple list of IPs",
+							"content": gin.H{
+								"application/json": gin.H{
+									"schema": gin.H{"type": "array", "items": gin.H{"type": "string"}},
+								},
+							},
+						},
+					},
+				},
+			},
+			"/api/v1/raw": gin.H{
+				"get": gin.H{
+					"summary":  "Get plain-text list of blocked IPs",
+					"tags":     []string{"Data Retrieval"},
+					"security": []gin.H{{"BearerAuth": []string{}}},
+					"responses": gin.H{
+						"200": gin.H{
+							"description": "Newline-separated list of IPs",
+							"content":     gin.H{"text/plain": gin.H{"schema": gin.H{"type": "string"}}},
+						},
+					},
+				},
+			},
+			"/api/v1/stats": gin.H{
+				"get": gin.H{
+					"summary":  "Get aggregate blocking statistics",
+					"tags":     []string{"Monitoring"},
+					"security": []gin.H{{"BearerAuth": []string{}}},
+					"responses": gin.H{
+						"200": gin.H{
+							"description": "Statistics object",
+							"content": gin.H{
+								"application/json": gin.H{"schema": gin.H{"$ref": "#/components/schemas/Stats"}},
+							},
+						},
+					},
+				},
+			},
+			"/api/v1/webhook": gin.H{
+				"post": gin.H{
+					"summary":     "Perform Enforcement Action (Ban/Unban/Whitelist)",
+					"description": "Unified endpoint for all automated actions. Requires a Bearer Token.",
+					"tags":        []string{"Enforcement"},
+					"security":    []gin.H{{"BearerAuth": []string{}}},
+					"requestBody": gin.H{
+						"required": true,
+						"content": gin.H{
+							"application/json": gin.H{
+								"schema": gin.H{
+									"type": "object",
+									"properties": gin.H{
+										"ip":      gin.H{"type": "string", "example": "1.2.3.4", "description": "IPv4 or IPv6 address. Optional for 'whitelist' (defaults to caller IP)."},
+										"act":     gin.H{"type": "string", "enum": []string{"ban", "unban", "whitelist"}, "description": "Action to perform"},
+										"reason":  gin.H{"type": "string", "example": "Brute force attack", "description": "Reason for the action"},
+										"ttl":     gin.H{"type": "integer", "example": 86400, "description": "Time-to-live in seconds (ephemeral blocks only)"},
+										"persist": gin.H{"type": "boolean", "default": false, "description": "If true, IP is stored in the database indefinitely"},
+									},
+									"required": []string{"act"},
+								},
+							},
+						},
+					},
+					"responses": gin.H{
+						"200": gin.H{"description": "Action successfully performed"},
+						"400": gin.H{"description": "Invalid IP format or missing parameters"},
+						"401": gin.H{"description": "Unauthorized"},
+						"403": gin.H{"description": "Forbidden - Insufficient permissions"},
+					},
+				},
+			},
+		},
+	}
+	c.JSON(http.StatusOK, spec)
 }
 
 func (h *APIHandler) Stats(c *gin.Context) {
@@ -1850,37 +1913,43 @@ func (h *APIHandler) Stats(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "stats error"})
 		return
 	}
-    
+
 	// shape to match frontend expectations
 	tops := make([]gin.H, 0, len(top))
 	for i, t := range top {
-		if i >= 3 { break }
+		if i >= 3 {
+			break
+		}
 		tops = append(tops, gin.H{"country": t.Country, "count": t.Count})
 	}
 
 	asns := make([]gin.H, 0, len(topASN))
 	for i, a := range topASN {
-		if i >= 3 { break }
+		if i >= 3 {
+			break
+		}
 		asns = append(asns, gin.H{"asn": a.ASN, "asn_org": a.ASNOrg, "count": a.Count})
 	}
 
 	reasons := make([]gin.H, 0, len(topReason))
 	for i, r := range topReason {
-		if i >= 3 { break }
+		if i >= 3 {
+			break
+		}
 		reasons = append(reasons, gin.H{"reason": r.Reason, "count": r.Count})
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"hour":           hour,
-		"day":            day,
-		"total":          totalEver,
-		"active_blocks":  activeBlocks,
-		"top_countries":  tops,
-		"top_asns":       asns,
-		"top_reasons":    reasons,
-		"webhooks_hour":  wh,
-		"last_block_ts":  lb,
-		"blocks_minute":  bm,
+		"hour":          hour,
+		"day":           day,
+		"total":         totalEver,
+		"active_blocks": activeBlocks,
+		"top_countries": tops,
+		"top_asns":      asns,
+		"top_reasons":   reasons,
+		"webhooks_hour": wh,
+		"last_block_ts": lb,
+		"blocks_minute": bm,
 	})
 }
 
@@ -1888,7 +1957,7 @@ func (h *APIHandler) Settings(c *gin.Context) {
 	username, _ := c.Get("username")
 	webhooks, _ := h.pgRepo.GetActiveWebhooks()
 	tokens, _ := h.pgRepo.GetAPITokens(username.(string))
-	
+
 	userPerms, _ := c.Get("permissions")
 	hasGlobalTokensPerm := false
 	for _, p := range strings.Split(userPerms.(string), ",") {
@@ -1902,7 +1971,7 @@ func (h *APIHandler) Settings(c *gin.Context) {
 	if hasGlobalTokensPerm {
 		allTokens, _ = h.pgRepo.GetAllAPITokens()
 	}
-	
+
 	// Get base URL from request
 	scheme := "http"
 	if c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https" {
@@ -1911,13 +1980,13 @@ func (h *APIHandler) Settings(c *gin.Context) {
 	baseURL := fmt.Sprintf("%s://%s", scheme, c.Request.Host)
 
 	h.renderHTML(c, http.StatusOK, "settings.html", gin.H{
-		"webhooks":            webhooks,
-		"tokens":              tokens,
-		"all_tokens":          allTokens,
-		"admin_username":      h.cfg.GUIAdmin,
-		"base_url":            baseURL,
-		"username":            username,
-		"permissions":         userPerms,
+		"webhooks":             webhooks,
+		"tokens":               tokens,
+		"all_tokens":           allTokens,
+		"admin_username":       h.cfg.GUIAdmin,
+		"base_url":             baseURL,
+		"username":             username,
+		"permissions":          userPerms,
 		"manage_global_tokens": hasGlobalTokensPerm,
 	})
 }
@@ -1929,7 +1998,7 @@ func (h *APIHandler) CreateAPIToken(c *gin.Context) {
 	name := c.PostForm("name")
 	requestedPerms := c.PostForm("permissions")
 	allowedIPs := c.PostForm("allowed_ips")
-	
+
 	if name == "" {
 		c.String(http.StatusBadRequest, "Token name required")
 		return
@@ -1939,7 +2008,7 @@ func (h *APIHandler) CreateAPIToken(c *gin.Context) {
 	finalPerms := ""
 	if requestedPerms != "" {
 		rPerms := strings.Split(requestedPerms, ",")
-		
+
 		if username == h.cfg.GUIAdmin {
 			// Superuser can grant any permissions to a token
 			finalPerms = requestedPerms
@@ -1949,7 +2018,9 @@ func (h *APIHandler) CreateAPIToken(c *gin.Context) {
 			validPerms := []string{}
 			for _, rp := range rPerms {
 				rp = strings.TrimSpace(rp)
-				if rp == "" { continue }
+				if rp == "" {
+					continue
+				}
 				found := false
 				for _, up := range uPerms {
 					if rp == strings.TrimSpace(up) {
@@ -1971,7 +2042,7 @@ func (h *APIHandler) CreateAPIToken(c *gin.Context) {
 	hash := sha256.New()
 	hash.Write([]byte(fmt.Sprintf("%s-%s-%d", username.(string), name, time.Now().UnixNano())))
 	rawTokenStr := hex.EncodeToString(hash.Sum(nil))
-	
+
 	token := models.APIToken{
 		TokenHash:   rawTokenStr,
 		Name:        name,
@@ -1980,7 +2051,7 @@ func (h *APIHandler) CreateAPIToken(c *gin.Context) {
 		Permissions: finalPerms,
 		AllowedIPs:  allowedIPs,
 	}
-	
+
 	err := h.pgRepo.CreateAPIToken(token)
 	if err != nil {
 		c.String(http.StatusInternalServerError, "failed to create token")
@@ -1988,7 +2059,7 @@ func (h *APIHandler) CreateAPIToken(c *gin.Context) {
 	}
 
 	c.Header("HX-Trigger", fmt.Sprintf(`{"newToken": "%s"}`, rawTokenStr))
-	
+
 	tokens, _ := h.pgRepo.GetAPITokens(username.(string))
 	h.renderHTML(c, http.StatusOK, "settings_tokens_list.html", gin.H{"tokens": tokens})
 }
@@ -1996,7 +2067,7 @@ func (h *APIHandler) CreateAPIToken(c *gin.Context) {
 func (h *APIHandler) DeleteAPIToken(c *gin.Context) {
 	username, _ := c.Get("username")
 	id, _ := strconv.Atoi(c.Param("id"))
-	
+
 	_ = h.pgRepo.DeleteAPIToken(id, username.(string))
 	c.Status(http.StatusOK)
 }
@@ -2005,7 +2076,7 @@ func (h *APIHandler) UpdateAPITokenPermissions(c *gin.Context) {
 	username, _ := c.Get("username")
 	userPerms, _ := c.Get("permissions")
 	id, _ := strconv.Atoi(c.Param("id"))
-	
+
 	var req struct {
 		Permissions string `json:"permissions"`
 	}
@@ -2025,7 +2096,9 @@ func (h *APIHandler) UpdateAPITokenPermissions(c *gin.Context) {
 			validPerms := []string{}
 			for _, rp := range rPerms {
 				rp = strings.TrimSpace(rp)
-				if rp == "" { continue }
+				if rp == "" {
+					continue
+				}
 				found := false
 				for _, up := range uPerms {
 					if rp == strings.TrimSpace(up) {
@@ -2054,7 +2127,7 @@ func (h *APIHandler) UpdateAPITokenPermissions(c *gin.Context) {
 
 func (h *APIHandler) AdminRevokeAPIToken(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
-	
+
 	userPerms, _ := c.Get("permissions")
 	hasGlobalTokensPerm := false
 	for _, p := range strings.Split(userPerms.(string), ",") {

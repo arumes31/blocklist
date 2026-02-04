@@ -32,7 +32,18 @@ func (s *AuthService) CheckAuth(username, password, token string) bool {
 		return false
 	}
 
-	// Verify TOTP
+// Verify TOTP
+	return totp.Validate(token, admin.Token)
+}
+
+func (s *AuthService) VerifyTOTP(username, token string) bool {
+	if s.pgRepo == nil {
+		return false
+	}
+	admin, err := s.pgRepo.GetAdmin(username)
+	if err != nil {
+		return false
+	}
 	return totp.Validate(token, admin.Token)
 }
 
