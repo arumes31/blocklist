@@ -17,7 +17,7 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -o blocklist-server ./cmd/server/main.go
 
 # Stage 2: Final Image
-FROM alpine:3.21.2
+FROM alpine:3.23.3
 LABEL maintainer="arumes31 <https://github.com/arumes31>"
 LABEL org.opencontainers.image.source="https://github.com/arumes31"
 LABEL org.opencontainers.image.description="Hardened Blocklist API with GeoIP and RBAC"
