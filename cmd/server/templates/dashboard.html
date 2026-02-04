@@ -1322,7 +1322,7 @@
         let inflight = null; // AbortController for in-flight fetch
         let paused = false;
         let updateQueue = [];
-        let lastBlockTime = {{ if .stats.last_block_ts }}{ { .stats.last_block_ts } } { { else } } 0{ { end } };
+        let lastBlockTime = {{ if .stats.last_block_ts }}{{ .stats.last_block_ts }} {{ else }} 0{{ end }};
         const tbody = document.getElementById('ipTableBody');
 
         function rowHTML(ip, data) {
@@ -1540,7 +1540,7 @@
                     dot.title = 'System Health: ' + hdata.status;
                 }
 
-                const r = await fetch('/api/v1/stats', { headers: { 'Accept': 'application/json' } });
+                const r = await fetch('/api/v1/stats', { headers: { 'Accept': 'application/json' }});
                 if (!r.ok) return;
                 const s = await r.json();
                 if (typeof s.hour === 'number') document.getElementById('stat-hour').textContent = s.hour;
