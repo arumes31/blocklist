@@ -607,6 +607,32 @@ function draw(currentTime) {
         p.vx = lerp(p.vx, (dx_t / d_t) * 2.5, 0.1);
         p.vy = lerp(p.vy, (dy_t / d_t) * 2.5, 0.1);
 
+        // Mouse Interaction: "Scared" mode
+        let isScared = false;
+        if (mouse.active) {
+            const dx_m = p.x - mouse.x;
+            const dy_m = p.y - mouse.y;
+            const d_m = sqrt(dx_m*dx_m + dy_m*dy_m) || 1;
+            if (d_m < 150) {
+                isScared = true;
+                const force = (150 - d_m) / 150;
+                p.vx += (dx_m / d_m) * force * 5;
+                p.vy += (dy_m / d_m) * force * 5;
+            }
+        }
+
+        // UI Avoidance: Stay away from login forms
+        for (let rect of avoidRects) {
+            const dx_r = p.x - rect.cx;
+            const dy_r = p.y - rect.cy;
+            const d_r = sqrt(dx_r * dx_r + dy_r * dy_r) || 1;
+            if (d_r < rect.radius + 50) {
+                const force = (rect.radius + 50 - d_r) / rect.radius;
+                p.vx += (dx_r / d_r) * force * 4;
+                p.vy += (dy_r / d_r) * force * 4;
+            }
+        }
+
         // Center Repulsion: Keep Pacman out of the core
         const dx_c = p.x - center[0];
         const dy_c = p.y - center[1];
@@ -623,19 +649,37 @@ function draw(currentTime) {
         if (p.x < 0 || p.x > canvasWidth) p.vx *= -1;
         if (p.y < 0 || p.y > canvasHeight) p.vy *= -1;
 
-        // Mouth animation
-        p.mouth = Math.abs(Math.sin(tick * 0.15)) * 0.2 * Math.PI;
-
-        // Draw Pacman shape
+        // Digital Scanner Visuals
         const angle = Math.atan2(p.vy, p.vx);
-        ctx.fillStyle = "#FFFF00"; // Classic Pacman Yellow
+        const color = isScared ? "#00FFFF" : "#FFFF00"; // Cyan when scared, Yellow normally
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate(tick * 0.05); // Continuous spin
+
+        ctx.strokeStyle = color;
         ctx.shadowBlur = 15;
-        ctx.shadowColor = "#FFFF00";
+        ctx.shadowColor = color;
+        ctx.lineWidth = 2;
+
+        // Draw 3 Rotating Triangles (The Scanner)
+        for (let i = 0; i < 3; i++) {
+            ctx.rotate(TAU / 3);
+            ctx.beginPath();
+            ctx.moveTo(15, 0);
+            ctx.lineTo(-7, 7);
+            ctx.lineTo(-7, -7);
+            ctx.closePath();
+            ctx.stroke();
+            if (!isScared && tick % 10 < 5) ctx.fill(); // Pulsing center
+        }
+
+        // Outer Scanning Ring
         ctx.beginPath();
-        ctx.moveTo(p.x, p.y);
-        ctx.arc(p.x, p.y, 12, angle + p.mouth, angle + TAU - p.mouth);
-        ctx.lineTo(p.x, p.y);
-        ctx.fill();
+        ctx.setLineDash([5, 10]);
+        ctx.arc(0, 0, 20 + Math.sin(tick * 0.1) * 5, 0, TAU);
+        ctx.stroke();
+        
+        ctx.restore();
     }
     ctx.restore();
 }
