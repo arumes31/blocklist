@@ -275,8 +275,8 @@ func (p *PostgresRepository) GetPersistentBlocks() (map[string]models.IPEntry, e
 	return ips, nil
 }
 
-func (p *PostgresRepository) GetPersistentCount() (int, error) {
-	var count int
+func (p *PostgresRepository) GetPersistentCount() (int64, error) {
+	var count int64
 	err := p.readDb.Get(&count, "SELECT COUNT(*) FROM persistent_blocks")
 	return count, err
 }
