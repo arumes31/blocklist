@@ -262,11 +262,10 @@ function drawParticle(i) {
                 interactionType = 1; // Quantum
             }
         } else if (d_m < 500 && whiteState === 0) {
-            if (d_m > 50) {
-                const m_factor = (1 - d_m / 500) * 0.15;
-                vx = lerp(vx, dx_m / d_m, m_factor);
-                vy = lerp(vy, dy_m / d_m, m_factor);
-            }
+            // Mouse Gravity (Pass-through effect)
+            const m_factor = (1 - d_m / 500) * 0.2;
+            vx = lerp(vx, dx_m / (d_m + 10), m_factor);
+            vy = lerp(vy, dy_m / (d_m + 10), m_factor);
         }
     }
 
@@ -275,18 +274,19 @@ function drawParticle(i) {
         whiteState = Math.min(whiteState + 0.02, 1);
         
         if (mouse.active) {
-            // Navigate towards outside (away from mouse)
+            // Slow Fly Away (Softer drift)
             const dx_m = mouse.x - x;
             const dy_m = mouse.y - y;
             const dist = sqrt(dx_m*dx_m + dy_m*dy_m) || 1;
-            vx = lerp(vx, (-dx_m / dist) * 4, 0.08);
-            vy = lerp(vy, (-dy_m / dist) * 4, 0.08);
+            vx = lerp(vx, (-dx_m / dist) * 1.5, 0.04);
+            vy = lerp(vy, (-dy_m / dist) * 1.5, 0.04);
+            ttl = l + 40; // Shortened fly-away span
         }
         
         if (Math.random() < 0.05) { 
-            // Quantum Leap: Random Teleportation (Reduced frequency)
-            particleProps[i] += randIn(-30, 30); 
-            particleProps[i + 1] += randIn(-30, 30); 
+            // Quantum Leap: Random Teleportation
+            particleProps[i] += randIn(-20, 20); 
+            particleProps[i + 1] += randIn(-20, 20); 
         }
         
         ttl = l + 150;
@@ -581,7 +581,15 @@ function draw(currentTime) {
     // Update and Draw Pacman Entities
     ctx.save();
     for (let p of pacmen) {
-        // Simple AI: Move and bounce off bounds
+        // AI: Hunt the mouse if active, otherwise wander
+        if (mouse.active) {
+            const dx_m = mouse.x - p.x;
+            const dy_m = mouse.y - p.y;
+            const d_m = sqrt(dx_m*dx_m + dy_m*dy_m) || 1;
+            p.vx = lerp(p.vx, (dx_m / d_m) * 3, 0.05);
+            p.vy = lerp(p.vy, (dy_m / d_m) * 3, 0.05);
+        }
+
         p.x += p.vx;
         p.y += p.vy;
         if (p.x < 0 || p.x > canvasWidth) p.vx *= -1;
