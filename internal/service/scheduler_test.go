@@ -35,7 +35,7 @@ func TestSchedulerService_CleanOldIPs_Persistent(t *testing.T) {
 	}
 	val1, _ := json.Marshal(entry1)
 	mr.HSet("ips", ip1, string(val1))
-	mr.ZAdd("ips_by_ts", 1577872800, ip1) // 2020-01-01
+	_, _ = mr.ZAdd("ips_by_ts", 1577872800, ip1) // 2020-01-01
 
 	// Case 2: Ephemeral block (expired)
 	ip2 := "2.2.2.2"
@@ -46,7 +46,7 @@ func TestSchedulerService_CleanOldIPs_Persistent(t *testing.T) {
 	}
 	val2, _ := json.Marshal(entry2)
 	mr.HSet("ips", ip2, string(val2))
-	mr.ZAdd("ips_by_ts", 1577872800, ip2)
+	_, _ = mr.ZAdd("ips_by_ts", 1577872800, ip2)
 
 	// Run cleanup
 	svc.CleanOldIPs("ips")

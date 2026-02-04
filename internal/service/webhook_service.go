@@ -101,12 +101,6 @@ func (s *WebhookService) Notify(ctx context.Context, event string, data interfac
 			continue
 		}
 
-		task, err = tasks.NewWebhookDeliveryTask(wh.ID, event, payload)
-		if err != nil {
-			zlog.Error().Err(err).Int("webhook_id", wh.ID).Str("event", event).Msg("Error creating webhook task")
-			continue
-		}
-
 		if _, err = s.asynqClient.Enqueue(task); err != nil {
 			zlog.Error().Err(err).Int("webhook_id", wh.ID).Str("event", event).Msg("Error enqueuing webhook task")
 		}
