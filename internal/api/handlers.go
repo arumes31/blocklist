@@ -863,6 +863,7 @@ func (h *APIHandler) VerifyFirstFactor(c *gin.Context) {
 		session := sessions.Default(c)
 		session.Set("pending_auth_user", username)
 		session.Set("pending_auth_verified", true)
+		session.Set("pending_totp_secret", key.Secret())
 		if err := session.Save(); err != nil {
 			zlog.Error().Err(err).Msg("Failed to save session for TOTP setup")
 		}
@@ -919,10 +920,38 @@ func (h *APIHandler) Login(c *gin.Context) {
 
 	// If it's a setup attempt
 	if setupSecret != "" {
+		pendingVerified := session.Get("pending_auth_verified")
+		pendingSecret := session.Get("pending_totp_secret")
+		admin, _ := h.pgRepo.GetAdmin(username)
+
+		if pendingVerified == nil || !pendingVerified.(bool) || pendingSecret == nil || pendingSecret.(string) != setupSecret {
+			zlog.Warn().Str("username", username).Msg("Unauthenticated or invalid TOTP setup attempt")
+			_ = h.pgRepo.LogAction(username, "LOGIN_FAILURE", c.ClientIP(), "Unauthenticated TOTP setup attempt")
+			h.renderHTML(c, http.StatusOK, "login.html", gin.H{
+				"error":    "Session expired or invalid setup attempt.",
+				"username": username,
+			})
+			return
+		}
+
+		// Prevent overwriting existing token via this flow
+		if admin != nil && admin.Token != "" {
+			zlog.Warn().Str("username", username).Msg("Attempt to overwrite existing TOTP token")
+			_ = h.pgRepo.LogAction(username, "SECURITY_WARNING", c.ClientIP(), "Attempt to overwrite existing TOTP token")
+			h.renderHTML(c, http.StatusOK, "login.html", gin.H{
+				"error":    "2FA is already configured for this account.",
+				"username": username,
+			})
+			return
+		}
+
 		if totp.Validate(totpCode, setupSecret) {
 			// Save the secret to the user
 			_ = h.pgRepo.UpdateAdminToken(username, setupSecret)
 			_ = h.pgRepo.LogAction(username, "TOTP_SETUP", c.ClientIP(), "Successful 2FA setup")
+			// Clear setup secret from session immediately
+			session.Delete("pending_totp_secret")
+			_ = session.Save()
 		} else {
 			_ = h.pgRepo.LogAction(username, "LOGIN_FAILURE", c.ClientIP(), "Invalid TOTP during setup")
 			h.renderHTML(c, http.StatusOK, "login.html", gin.H{
@@ -943,6 +972,7 @@ func (h *APIHandler) Login(c *gin.Context) {
 	if authenticated {
 		session.Delete("pending_auth_user")
 		session.Delete("pending_auth_verified")
+		session.Delete("pending_totp_secret")
 		session.Set("logged_in", true)
 		session.Set("username", username)
 		session.Set("client_ip", c.ClientIP())
@@ -967,6 +997,7 @@ func (h *APIHandler) Login(c *gin.Context) {
 	// On failed login, clear pending state to be safe
 	session.Delete("pending_auth_user")
 	session.Delete("pending_auth_verified")
+	session.Delete("pending_totp_secret")
 	_ = session.Save()
 
 	_ = h.pgRepo.LogAction(username, "LOGIN_FAILURE", c.ClientIP(), "Invalid TOTP or Credentials")
