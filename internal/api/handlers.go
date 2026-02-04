@@ -96,7 +96,6 @@ func (h *APIHandler) WS(c *gin.Context) {
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		zlog.Error().Err(err).
-			Str("headers", fmt.Sprintf("%v", c.Request.Header)).
 			Str("host", c.Request.Host).
 			Msg("WebSocket upgrade failed")
 		return
