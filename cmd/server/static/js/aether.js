@@ -281,13 +281,15 @@ function drawParticle(i) {
             const dist = sqrt(dx_m*dx_m + dy_m*dy_m) || 1;
             
             if (meshCount > 4) {
-                // Fly Away: Aggressively push away from mouse
-                const push = 0.2;
-                vx = lerp(vx, (-dx_m / dist) * 12, push);
-                vy = lerp(vy, (-dy_m / dist) * 12, push);
-                ttl = l + 10; // Shorter life when flying away
+                // Fly Away: Slowly drift away from mouse
+                const push = 0.05;
+                vx = lerp(vx, (-dx_m / dist) * 3, push);
+                vy = lerp(vy, (-dy_m / dist) * 3, push);
+                ttl = l + 40; // Longer life for slow drift
+                if (rareEffect === 0) rareEffect = 5; // Internal flag for Orange color
             } else {
                 // Mesh Node Movement: Pull to mouse with organic jitter
+                if (rareEffect === 5) rareEffect = 0; // Reset orange if mesh count drops
                 const pull = 0.15;
                 vx = lerp(vx, dx_m / dist, pull) + randIn(-0.5, 0.5);
                 vy = lerp(vy, dy_m / dist, pull) + randIn(-0.5, 0.5);
@@ -331,6 +333,8 @@ function drawParticle(i) {
                 hue = 180; sat = 80; light = 70;
             } else if (rareEffect === 3) { // Supercharge: Intense white
                 hue = 60; sat = 0; light = 100;
+            } else if (rareEffect === 5) { // Fly Away: Orange
+                hue = 30; sat = 100; light = 60;
             } else {
                 hue = 180; sat = 0; light = 100;
             }
@@ -518,7 +522,8 @@ function draw(currentTime) {
                 if (d < 45) {
                     const op = (1 - d / 45) * 0.5;
                     let hue = 180; // Default cyan/data mesh
-                    if (n1.effect === 3 || n2.effect === 3) hue = 60; // Supercharge gold
+                    if (n1.effect === 5 || n2.effect === 5) hue = 30; // Orange fly-away mesh
+                    else if (n1.effect === 3 || n2.effect === 3) hue = 60; // Supercharge gold
                     buffer.strokeStyle = `hsla(${hue}, 100%, 70%, ${op})`;
                     buffer.lineWidth = 0.5;
                     buffer.beginPath();
