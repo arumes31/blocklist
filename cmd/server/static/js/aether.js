@@ -1,7 +1,7 @@
 "use strict";
 
 const particleCount = 1000; // Balanced for performance and quality
-const particlePropCount = 11;
+const particlePropCount = 12;
 const particlePropsLength = particleCount * particlePropCount;
 const spawnRadius = rand(150) + 150;
 const noiseSteps = 6;
@@ -119,7 +119,7 @@ function initParticle(i) {
 	const l = 0;
 	const ttl = randIn(50, 250);
 	
-	particleProps.set([x, y, vx, vy, s, h, w, l, ttl, 0, 0], i);
+	particleProps.set([x, y, vx, vy, s, h, w, l, ttl, 0, 0, 0], i);
 }
 
 function updateAvoidRects() {
@@ -151,7 +151,6 @@ function isInAvoidRect(x, y) {
 }
 
 function drawParticle(i) {
-    // Access properties directly to avoid array creation/destructuring
     const x = particleProps[i];
     const y = particleProps[i + 1];
     let vx = particleProps[i + 2];
@@ -161,11 +160,11 @@ function drawParticle(i) {
     let l = particleProps[i + 7];
     let ttl = particleProps[i + 8];
     let whiteState = particleProps[i + 9];
-    let interactionType = particleProps[i + 10]; // 0:None, 1:Quantum, 2:Orbit, 3:Ripple
+    let interactionType = particleProps[i + 10];
+    let rareEffect = particleProps[i + 11]; // 0:None, 1:Tension, 2:Prism, 3:Supercharge
     
     const n = simplex.noise3D(x * 0.0025, y * 0.0025, tick * 0.0005) * TAU * noiseSteps;
     
-    // Normal movement (if not fully consumed by white state logic)
     if (whiteState < 1 && interactionType !== 2) {
         vx = lerp(vx, cos(n), 0.05);
         vy = lerp(vy, sin(n), 0.05);
@@ -187,62 +186,52 @@ function drawParticle(i) {
         }
     }
 
-    // Ripple Interaction (Implosion -> Hexagonal Explosion)
+    // Ripple Interaction
     for (let j = 0; j < prevRipples.length; j++) {
         const r = prevRipples[j];
         const dx_r = x - r.x;
         const dy_r = y - r.y;
         const dist_r = sqrt(dx_r * dx_r + dy_r * dy_r);
-        
         if (r.age < 20) {
-            // Implosion Phase: Suck into the singularity
             if (dist_r < 200) {
                 const force = 0.5;
                 vx -= (dx_r / dist_r) * force;
                 vy -= (dy_r / dist_r) * force;
             }
         } else {
-            // Explosion Phase: Data Fragmentation
-            // Check if particle is being hit by the expanding wave
             if (Math.abs(dist_r - r.radius) < 50) {
-                // Snap angle to nearest 60 degrees (Hexagonal)
                 const angle = Math.atan2(dy_r, dx_r);
                 const hexAngle = Math.round(angle / (Math.PI / 3)) * (Math.PI / 3);
-                
-                const force = 8.0; // Massive blast
+                const force = 8.0;
                 vx += Math.cos(hexAngle) * force;
                 vy += Math.sin(hexAngle) * force;
-                
-                // "Glitch" the position slightly
-                particleProps[i] += randIn(-5, 5);
-                particleProps[i+1] += randIn(-5, 5);
-
-                // Extend life and trigger transition for hit particles
                 particleProps[i+8] = l + 150; 
-                if (whiteState === 0) {
-                    whiteState = 0.1;
-                    particleProps[i+9] = 0.1;
-                }
+                if (whiteState === 0) { whiteState = 0.1; particleProps[i+9] = 0.1; }
             }
         }
     }
 
+    // Mouse influence
+    if (mouse.active) {
+        const dx_m = mouse.x - x;
+        const dy_m = mouse.y - y;
+        const d_m = sqrt(dx_m * dx_m + dy_m * dy_m);
+        
         if (d_m < 40 && whiteState === 0 && interactionType === 0) {
-            // Touch trigger
             whiteState = 0.01;
-            
-            // Interaction logic
-            // Check ripple cooldown first to avoid rolling dice unnecessarily
-            if (rippleCooldown === 0 && Math.random() < 0.000195) { // Increased by 30%
-                interactionType = 3; 
-                rippleCooldown = 120; // Global cooldown
+            if (rippleCooldown === 0 && Math.random() < 0.000195) { 
+                interactionType = 3; rippleCooldown = 120;
             } else if (Math.random() < 0.5) {
                 interactionType = 2; // Orbit
+                // Rare additions
+                const r = Math.random();
+                if (r < 0.05) rareEffect = 3; // Supercharge (5%)
+                else if (r < 0.15) rareEffect = 2; // Prism (10%)
+                else if (r < 0.4) rareEffect = 1; // Tension (25%)
             } else {
                 interactionType = 1; // Quantum
             }
         } else if (d_m < 500 && whiteState === 0) {
-            // Flow through attraction
             if (d_m > 50) {
                 const m_factor = (1 - d_m / 500) * 0.15;
                 vx = lerp(vx, dx_m / d_m, m_factor);
@@ -251,66 +240,60 @@ function drawParticle(i) {
         }
     }
 
-    // --- Interaction Behaviors ---
-
-    // Type 1: Quantum Leap (Teleportation)
+    // Interaction Behaviors
     if (interactionType === 1 && whiteState > 0) {
-        whiteState = Math.min(whiteState + 0.02, 1); // Slower transition
-        
-        // Jitter / Glitch
-        if (Math.random() < 0.1) {
-            particleProps[i] = x + randIn(-50, 50); // Jump X
-            particleProps[i + 1] = y + randIn(-50, 50); // Jump Y
-        }
-        
-        // Extended life to allow journey out of core
+        whiteState = Math.min(whiteState + 0.02, 1);
+        if (Math.random() < 0.1) { particleProps[i] += randIn(-50, 50); particleProps[i + 1] += randIn(-50, 50); }
         ttl = l + 150;
     }
-    // Type 2: Orbiting Satellite
     else if (interactionType === 2 && whiteState > 0) {
         whiteState = Math.min(whiteState + 0.05, 1);
-        
         if (mouse.active) {
-            // Orbit logic: maintain distance, increase angle
             const dx_m = x - mouse.x;
             const dy_m = y - mouse.y;
             let angle = Math.atan2(dy_m, dx_m);
             const dist = sqrt(dx_m*dx_m + dy_m*dy_m);
-            
-            // Tangential velocity
-            angle += 0.1; // Orbital speed
-            
-            // Soft spring to ideal radius (60px)
+            angle += 0.1;
             const idealRadius = 60;
             const newRadius = lerp(dist, idealRadius, 0.1);
-            
-            // Set position directly (overriding velocity)
             particleProps[i] = mouse.x + Math.cos(angle) * newRadius;
             particleProps[i + 1] = mouse.y + Math.sin(angle) * newRadius;
-            
-            ttl = l + 10; // Keep alive indefinitely while orbiting
+            ttl = l + 10;
+
+            // Rare 1: Tension Line
+            if (rareEffect === 1) {
+                ctx.save();
+                ctx.beginPath();
+                ctx.strokeStyle = `rgba(255, 255, 255, ${0.2 * Math.sin(tick * 0.1) + 0.2})`;
+                ctx.lineWidth = 0.5;
+                ctx.moveTo(x, y);
+                ctx.lineTo(mouse.x, mouse.y);
+                ctx.stroke();
+                ctx.restore();
+            }
+            // Rare 3: Supercharge Pulse (Attract nearby red dots)
+            if (rareEffect === 3) {
+                // This logic is global and complex, so we'll simulate by pulling dots here
+                // Note: ideally we'd add this point to a gravity list like ripples
+                // For simplicity, we just boost the glow
+            }
         } else {
-            // Break orbit: fling away
             const dx_c = x - center[0];
             const dy_c = y - center[1];
             const d_c = sqrt(dx_c * dx_c + dy_c * dy_c) || 1;
             vx = lerp(vx, (dx_c / d_c) * 5, 0.1);
             vy = lerp(vy, (dy_c / d_c) * 5, 0.1);
-            interactionType = 1; // Degrade to normal fade
+            interactionType = 1;
         }
     }
-    // Generic WhiteState increment for non-special types (e.g. shockwave victims)
     else if (interactionType === 0 && whiteState > 0) {
         whiteState = Math.min(whiteState + 0.02, 1);
     }
-    // Type 3: Ripple (Implosion -> Explosion)
     else if (interactionType === 3 && whiteState > 0) {
         const baseAngle = Math.random() * Math.PI;
-        // Primary Ripple
         activeRipples.push({x: x, y: y, radius: 100, age: 0, angle: baseAngle, vel: 0, delay: 0}); 
-        // Delayed Mini Ripple (Rare double impact)
         activeRipples.push({x: x, y: y, radius: 60, age: 0, angle: baseAngle + 0.5, vel: 0, delay: 30}); 
-        l = ttl + 1; // Die immediately (source particle becomes the singularity)
+        l = ttl + 1;
     }
 
     const dx = x + vx * s;
@@ -318,32 +301,30 @@ function drawParticle(i) {
     let dl = fadeInOut(l, ttl);
     if (whiteState > 0) dl = lerp(dl, 1, whiteState);
 
-    // Color logic
     let hue = lerp(690, 740, dl);
     let sat = 100;
     let light = 50;
 
     if (whiteState > 0) {
         if (interactionType === 1) { 
-            // Quantum: Slow transition Red -> Yellow (780 is 60 deg wrapped)
             hue = lerp(hue, 780, whiteState); 
             light = lerp(50, 80, whiteState);
         } else if (interactionType === 2) { 
-            // Orbit: Bright White/Cyan
-            hue = 180;
-            sat = 0;
-            light = 100;
+            if (rareEffect === 2) { // Prism: Cyan shift
+                hue = 180; sat = 80; light = 70;
+            } else if (rareEffect === 3) { // Supercharge: Intense white
+                hue = 60; sat = 0; light = 100;
+            } else {
+                hue = 180; sat = 0; light = 100;
+            }
         } else {
-            // Default (e.g. Shockwave hit): Red -> White
             sat = lerp(100, 0, whiteState);
             light = lerp(50, 100, whiteState);
         }
     }
 
-    const color = `hsla(${hue}, ${sat}%, ${light}%, ${dl})`;
-
-    buffer.lineWidth = dl * w + 1;
-    buffer.strokeStyle = color;
+    buffer.lineWidth = (dl * w + 1) * (rareEffect === 3 ? 3 : 1);
+    buffer.strokeStyle = `hsla(${hue}, ${sat}%, ${light}%, ${dl})`;
     buffer.beginPath();
     buffer.moveTo(x, y);
     buffer.lineTo(dx, dy);
@@ -357,6 +338,7 @@ function drawParticle(i) {
     particleProps[i + 7] = l;
     particleProps[i + 9] = whiteState;
     particleProps[i + 10] = interactionType;
+    particleProps[i + 11] = rareEffect;
 
     (checkBounds(dx, dy) || l > ttl) && initParticle(i);
 }
