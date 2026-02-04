@@ -1147,57 +1147,80 @@
         </div>
 
 
-        <div class="stats"
-            style="display:grid; grid-template-columns: repeat(auto-fit,minmax(220px,1fr)); gap: 1rem; margin-bottom: 1.5rem;">
-            <div class="table-card" style="padding:1rem;">
-                <div style="font-size:0.85rem; color:var(--secondary-color);">IPs banned (last hour)</div>
-                <div id="stat-hour" style="font-size:1.6rem; font-weight:700; color:#fff;">{{ .stats.hour }}</div>
+
+
+        <!-- Compact Stats Section -->
+        <div class="table-card" style="padding: 1rem; margin-bottom: 1rem;">
+            <div style="display: flex; align-items: center; gap: 1.5rem; flex-wrap: wrap;">
+                <div style="font-size: 0.85rem; color: var(--secondary-color);">IPs Banned:</div>
+                <div style="display: flex; align-items: baseline; gap: 0.5rem;">
+                    <span id="stat-total" style="font-size: 1.8rem; font-weight: 700; color: #fff;">{{ .total_ips
+                        }}</span>
+                    <span style="font-size: 0.85rem; color: var(--secondary-color);">total</span>
+                </div>
+                <div style="height: 24px; width: 1px; background: rgba(255,255,255,0.1);"></div>
+                <div style="display: flex; align-items: baseline; gap: 0.5rem;">
+                    <span style="font-size: 0.85rem; color: var(--secondary-color);">+</span>
+                    <span id="stat-day" style="font-size: 1.3rem; font-weight: 600; color: var(--vibrant-red);">{{
+                        .stats.day }}</span>
+                    <span style="font-size: 0.85rem; color: var(--secondary-color);">(24h)</span>
+                </div>
+                <div style="height: 24px; width: 1px; background: rgba(255,255,255,0.1);"></div>
+                <div style="display: flex; align-items: baseline; gap: 0.5rem;">
+                    <span style="font-size: 0.85rem; color: var(--secondary-color);">+</span>
+                    <span id="stat-hour" style="font-size: 1.3rem; font-weight: 600; color: var(--vibrant-red);">{{
+                        .stats.hour }}</span>
+                    <span style="font-size: 0.85rem; color: var(--secondary-color);">(1h)</span>
+                </div>
+                <div style="height: 24px; width: 1px; background: rgba(255,255,255,0.1);"></div>
+                <div style="display: flex; align-items: baseline; gap: 0.5rem;">
+                    <span style="font-size: 0.85rem; color: var(--secondary-color);">Webhooks:</span>
+                    <span id="stat-webhooks" style="font-size: 1.3rem; font-weight: 600; color: #fff;">{{
+                        .stats.webhooks_hour }}</span>
+                    <span style="font-size: 0.85rem; color: var(--secondary-color);">/h</span>
+                </div>
             </div>
-            <div class="table-card" style="padding:1rem;">
-                <div style="font-size:0.85rem; color:var(--secondary-color);">IPs banned (last 24h)</div>
-                <div id="stat-day" style="font-size:1.6rem; font-weight:700; color:#fff;">{{ .stats.day }}</div>
-            </div>
-            <div class="table-card" style="padding:1rem;">
-                <div style="font-size:0.85rem; color:var(--secondary-color);">IPs banned (total)</div>
-                <div id="stat-total" style="font-size:1.6rem; font-weight:700; color:#fff;">{{ .total_ips }}</div>
-            </div>
-            <div class="table-card" style="padding:1rem;">
-                <div style="font-size:0.85rem; color:var(--secondary-color);">Top countries</div>
-                <div id="stat-countries" style="display:flex; gap:0.75rem; align-items:center; margin-top:0.4rem;">
+        </div>
+
+        <!-- Top Stats Row -->
+        <div
+            style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+            <div class="table-card" style="padding: 1rem;">
+                <div style="font-size: 0.85rem; color: var(--secondary-color); margin-bottom: 0.5rem;">Top Countries
+                </div>
+                <div id="stat-countries" style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
                     {{ range $i, $c := .stats.top_countries }}
-                    <span title="{{ $c.Country }}" style="display:inline-flex; align-items:center; gap:6px;">
-                        <span class="flag-icon flag-icon-{{ lower $c.Country }}"></span><span
-                            style="color:#fff; font-weight:600;">{{ $c.Count }}</span>
+                    <span title="{{ $c.Country }}"
+                        style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; background: rgba(255,255,255,0.05); border-radius: 12px; border: 1px solid rgba(255,255,255,0.1);">
+                        <span class="flag-icon flag-icon-{{ lower $c.Country }}"></span>
+                        <span style="color: #fff; font-weight: 600; font-size: 0.9rem;">{{ $c.Count }}</span>
                     </span>
                     {{ end }}
                 </div>
             </div>
-            <div class="table-card" style="padding:1rem;">
-                <div style="font-size:0.85rem; color:var(--secondary-color);">Top ASNs</div>
-                <div id="stat-asns" style="display:flex; flex-direction:column; gap:4px; margin-top:0.4rem;">
+            <div class="table-card" style="padding: 1rem;">
+                <div style="font-size: 0.85rem; color: var(--secondary-color); margin-bottom: 0.5rem;">Top ASNs</div>
+                <div id="stat-asns" style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
                     {{ range $i, $a := .stats.top_asns }}
-                    <div style="font-size:0.85rem; color:#fff; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"
-                        title="{{ $a.ASNOrg }}">
-                        <span style="color:var(--secondary-color);">{{ $a.ASN }}:</span> {{ $a.Count }}
-                    </div>
+                    <span title="{{ $a.ASNOrg }}"
+                        style="display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; background: rgba(255,255,255,0.05); border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); font-size: 0.85rem;">
+                        <span style="color: var(--secondary-color);">{{ $a.ASN }}:</span>
+                        <span style="color: #fff; font-weight: 600;">{{ $a.Count }}</span>
+                    </span>
                     {{ end }}
                 </div>
             </div>
-            <div class="table-card" style="padding:1rem;">
-                <div style="font-size:0.85rem; color:var(--secondary-color);">Top Reasons</div>
-                <div id="stat-reasons" style="display:flex; flex-direction:column; gap:4px; margin-top:0.4rem;">
+            <div class="table-card" style="padding: 1rem;">
+                <div style="font-size: 0.85rem; color: var(--secondary-color); margin-bottom: 0.5rem;">Top Reasons</div>
+                <div id="stat-reasons" style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
                     {{ range $i, $r := .stats.top_reasons }}
-                    <div style="font-size:0.85rem; color:#fff; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"
-                        title="{{ $r.Reason }}">
-                        <span style="color:var(--secondary-color);">{{ $r.Reason }}:</span> {{ $r.Count }}
-                    </div>
+                    <span title="{{ $r.Reason }}"
+                        style="display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; background: rgba(255,255,255,0.05); border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); font-size: 0.85rem; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                        <span style="color: var(--secondary-color);">{{ $r.Reason }}:</span>
+                        <span style="color: #fff; font-weight: 600;">{{ $r.Count }}</span>
+                    </span>
                     {{ end }}
                 </div>
-            </div>
-            <div class="table-card" style="padding:1rem;">
-                <div style="font-size:0.85rem; color:var(--secondary-color);">Webhooks (last hour)</div>
-                <div id="stat-webhooks" style="font-size:1.6rem; font-weight:700; color:#fff;">{{ .stats.webhooks_hour
-                    }}</div>
             </div>
         </div>
 
