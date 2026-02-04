@@ -247,10 +247,12 @@ function drawParticle(i) {
                         const r = Math.random();
                         if (r < 0.02) rareEffect = 3; // Supercharge
                         else if (r < 0.05) rareEffect = 2; // Prism
-                    } else {
-                        interactionType = 1; // Quantum
-                    }
-                } else if (d_m < 500 && whiteState === 0) {            if (d_m > 50) {
+                                } else if (Math.random() < 0.07) { // 10x less Quantum (~7% total)
+                                    interactionType = 1; 
+                                } else {
+                                    interactionType = 0; // Just turn white/yellow without special interaction
+                                }
+                            } else if (d_m < 500 && whiteState === 0) {            if (d_m > 50) {
                 const m_factor = (1 - d_m / 500) * 0.15;
                 vx = lerp(vx, dx_m / d_m, m_factor);
                 vy = lerp(vy, dy_m / d_m, m_factor);
@@ -261,10 +263,13 @@ function drawParticle(i) {
     // Interaction Behaviors
     if (interactionType === 1 && whiteState > 0) {
         whiteState = Math.min(whiteState + 0.02, 1);
+        
+        // Quantum Leap: Random Teleportation
         if (Math.random() < 0.1) { 
-            vx += randIn(-2, 2);
-            vy += randIn(-2, 2);
+            particleProps[i] += randIn(-50, 50); 
+            particleProps[i + 1] += randIn(-50, 50); 
         }
+        
         ttl = l + 150;
     }
     else if (interactionType === 2 && whiteState > 0) {
