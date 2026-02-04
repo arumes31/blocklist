@@ -549,9 +549,7 @@ func (s *IPService) ExportIPs(ctx context.Context, query string, country string,
 		}
 
 		// Ensure we always store a pointer to IPEntry
-		var dataPtr *models.IPEntry
-		dataPtr = entry // entry is already *models.IPEntry from GetIPEntry
-		items = append(items, map[string]interface{}{"ip": ip, "data": dataPtr})
+		items = append(items, map[string]interface{}{"ip": ip, "data": entry})
 	}
 
 	return items, nil

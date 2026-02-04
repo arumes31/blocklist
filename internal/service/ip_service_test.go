@@ -135,6 +135,9 @@ func TestIPService_Enhanced(t *testing.T) {
 
 		// Search for non-matching CIDR
 		items2, _, _, err := svc.ListIPsPaginatedAdvanced(ctx, 10, "", "192.168.1.0/24", "", "", "", "")
+		if err != nil {
+			t.Fatalf("ListIPsPaginatedAdvanced failed: %v", err)
+		}
 		if len(items2) != 0 {
 			t.Errorf("expected 0 items for 192.168.1.0/24, got %d", len(items2))
 		}
