@@ -27,12 +27,19 @@ let prevSonarRings = [];
 let rippleCooldown = 0;
 let meshNodes = [];
 let meshCount = 0;
+let pacmen = [];
 
 function setup() {
 	tick = 0;
 	center = [];
 	resize();
     updateAvoidRects();
+
+    // Initialize 2 Pacman entities
+    pacmen = [
+        { x: rand(window.innerWidth), y: rand(window.innerHeight), vx: randIn(-2, 2), vy: randIn(-2, 2), mouth: 0, target: null },
+        { x: rand(window.innerWidth), y: rand(window.innerHeight), vx: randIn(-2, 2), vy: randIn(-2, 2), mouth: 0, target: null }
+    ];
 	
 	const savedTick = sessionStorage.getItem('aether_tick');
 	const savedProps = sessionStorage.getItem('aether_props');
@@ -325,6 +332,17 @@ function drawParticle(i) {
         l = ttl + 1;
     }
 
+    // Pacman Consumption
+    for (let p of pacmen) {
+        const dx_p = p.x - x;
+        const dy_p = p.y - y;
+        const d_p = sqrt(dx_p * dx_p + dy_p * dy_p);
+        if (d_p < 15) {
+            initParticle(i);
+            return;
+        }
+    }
+
     const dx = x + vx * s;
     const dy = y + vy * s;
     let dl = fadeInOut(l, ttl);
@@ -554,11 +572,36 @@ function draw(currentTime) {
 	ctx.drawImage(buffer.canvas, 0, 0, canvasWidth, canvasHeight);
 	ctx.restore();
 	
-	// Sharp overlay
+    // Sharp overlay
 	ctx.save();
 	ctx.globalCompositeOperation = 'lighter';
 	ctx.drawImage(buffer.canvas, 0, 0, canvasWidth, canvasHeight);
 	ctx.restore();
+
+    // Update and Draw Pacman Entities
+    ctx.save();
+    for (let p of pacmen) {
+        // Simple AI: Move and bounce off bounds
+        p.x += p.vx;
+        p.y += p.vy;
+        if (p.x < 0 || p.x > canvasWidth) p.vx *= -1;
+        if (p.y < 0 || p.y > canvasHeight) p.vy *= -1;
+
+        // Mouth animation
+        p.mouth = Math.abs(Math.sin(tick * 0.15)) * 0.2 * Math.PI;
+
+        // Draw Pacman shape
+        const angle = Math.atan2(p.vy, p.vx);
+        ctx.fillStyle = "#FFFF00"; // Classic Pacman Yellow
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = "#FFFF00";
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y);
+        ctx.arc(p.x, p.y, 12, angle + p.mouth, angle + TAU - p.mouth);
+        ctx.lineTo(p.x, p.y);
+        ctx.fill();
+    }
+    ctx.restore();
 }
 
 function drawAdvancedHexagon(ctx, x, y, r, angle, age) {
