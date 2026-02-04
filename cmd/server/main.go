@@ -3,8 +3,11 @@ package main
 import (
 	"context"
 	"crypto/sha256"
+	"embed"
 	"fmt"
+	"html/template"
 	"io"
+	"io/fs"
 	"net/http"
 	"net/url"
 	"os"
@@ -13,9 +16,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
-	"embed"
-	"html/template"
-	"io/fs"
+
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
@@ -27,17 +28,18 @@ import (
 	"blocklist/internal/models"
 	"blocklist/internal/repository"
 	"blocklist/internal/service"
-	"github.com/gin-contrib/sessions"
-	"github.com/gin-contrib/sessions/redis"
-	"github.com/gin-gonic/gin"
-	"github.com/ulule/limiter/v3"
-	mgin "github.com/ulule/limiter/v3/drivers/middleware/gin"
-	sredis "github.com/ulule/limiter/v3/drivers/store/redis"
-	rdb "github.com/redis/go-redis/v9"
-	"github.com/hibiken/asynq"
 	"blocklist/internal/tasks"
 	"crypto/rand"
 	"encoding/base64"
+
+	"github.com/gin-contrib/sessions"
+	"github.com/gin-contrib/sessions/redis"
+	"github.com/gin-gonic/gin"
+	"github.com/hibiken/asynq"
+	rdb "github.com/redis/go-redis/v9"
+	"github.com/ulule/limiter/v3"
+	mgin "github.com/ulule/limiter/v3/drivers/middleware/gin"
+	sredis "github.com/ulule/limiter/v3/drivers/store/redis"
 )
 
 //go:embed templates/*.html
@@ -64,7 +66,7 @@ func (w *CensorWriter) Write(p []byte) (n int, err error) {
 func main() {
 	// 0. Setup Structured Logging
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
-	
+
 	censorRE := regexp.MustCompile(`(?i)(password|secret|token)(["':\s]+)([^"'\s,{}]+)`)
 	cw := &CensorWriter{
 		Writer: zerolog.ConsoleWriter{Out: os.Stderr},
@@ -73,13 +75,13 @@ func main() {
 	zlog.Logger = zerolog.New(cw).With().Timestamp().Logger()
 
 	cfg := config.Load()
-	
+
 	// Ensure SECRET_KEY is stable and correctly sized for AES-256 (32 bytes)
 	// We use SHA-256 to derive two distinct keys from the single input secret.
 	hash := sha256.New()
 	hash.Write([]byte(cfg.SecretKey))
 	authKey := hash.Sum(nil) // 32 bytes for signing
-	
+
 	hash.Reset()
 	hash.Write([]byte(cfg.SecretKey + "_encryption"))
 	blockKey := hash.Sum(nil) // 32 bytes for encryption
@@ -135,7 +137,7 @@ func main() {
 	// 2. Initialize Services
 	authService := service.NewAuthService(pgRepo, redisRepo)
 	ipService := service.NewIPService(cfg, redisRepo, pgRepo)
-	
+
 	redisOpts := asynq.RedisClientOpt{Addr: fmt.Sprintf("%s:%d", cfg.RedisHost, cfg.RedisPort), Password: cfg.RedisPassword, DB: cfg.RedisDB}
 	webhookService := service.NewWebhookService(pgRepo, cfg, redisOpts)
 	defer webhookService.Close()
@@ -166,7 +168,7 @@ func main() {
 	// 3. Start Schedulers & Task Workers
 	scheduler.Start()
 	geoUpdater.Start()
-	
+
 	// Initialize Asynq Server
 	asynqServer := asynq.NewServer(
 		redisOpts,
@@ -178,7 +180,7 @@ func main() {
 			},
 		},
 	)
-	
+
 	asynqMux := asynq.NewServeMux()
 	asynqMux.Handle(tasks.TypeWebhookDelivery, tasks.NewWebhookTaskHandler(pgRepo))
 	asynqMux.Handle(tasks.TypeGeoIPUpdate, tasks.NewGeoIPTaskHandler(cfg, ipService))
@@ -191,11 +193,11 @@ func main() {
 
 	// Initialize Asynq Scheduler for periodic tasks
 	asynqScheduler := asynq.NewScheduler(redisOpts, &asynq.SchedulerOpts{})
-	
+
 	// Schedule GeoIP updates every 72 hours
 	cityTask, _ := tasks.NewGeoIPUpdateTask("GeoLite2-City")
 	asnTask, _ := tasks.NewGeoIPUpdateTask("GeoLite2-ASN")
-	
+
 	if _, err := asynqScheduler.Register("@every 72h", cityTask); err != nil {
 		zlog.Error().Err(err).Msg("Failed to schedule GeoLite2-City update")
 	}
@@ -250,11 +252,16 @@ func main() {
 		zlog.Fatal().Err(err).Msg("Failed to create session store")
 	}
 	// Harden cookie settings
+	sameSite := http.SameSiteLaxMode
+	if cfg.SameSiteStrict {
+		sameSite = http.SameSiteStrictMode
+	}
+
 	store.Options(sessions.Options{
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   cfg.UseCloudflare, // Auto-enable secure cookies if proxying via Cloudflare/HTTPS
-		SameSite: http.SameSiteLaxMode,
+		Secure:   cfg.CookieSecure || cfg.UseCloudflare,
+		SameSite: sameSite,
 		MaxAge:   86400 * 7, // 1 week
 	})
 	r.Use(sessions.Sessions("blocklist_session", store))
@@ -292,7 +299,7 @@ func main() {
 		"safeHTML": func(s string) template.HTML { return template.HTML(s) },
 		"safeURL":  func(s string) template.URL { return template.URL(s) },
 	}
-	
+
 	var templ *template.Template
 	if _, err := os.Stat("cmd/server/templates"); err == nil {
 		templ = template.Must(template.New("").Funcs(funcMap).ParseGlob("cmd/server/templates/*.html"))
@@ -311,14 +318,14 @@ func main() {
 			zlog.Error().Err(err).Msg("Failed to generate nonce")
 		}
 		nonce := base64.StdEncoding.EncodeToString(nonceBytes)
-		
+
 		// Set in context for templates
 		c.Set("nonce", nonce)
 
 		c.Header("X-Content-Type-Options", "nosniff")
 		c.Header("X-Frame-Options", "DENY")
 		c.Header("Referrer-Policy", "same-origin")
-		
+
 		// Strict Transport Security (HSTS)
 		if cfg.UseCloudflare || c.Request.TLS != nil {
 			c.Header("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload")
@@ -326,12 +333,12 @@ func main() {
 
 		// Content Security Policy (CSP)
 		// style-src: Allow 'unsafe-inline' to support extensive inline styles and library injections (HTMX).
-		// script-src: Use nonces for <script> tags. 
+		// script-src: Use nonces for <script> tags.
 		// script-src-attr: Allow inline event handlers (onclick) for compatibility.
 		// ws: and wss: are allowed for WebSocket connections.
 		csp := fmt.Sprintf("default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'nonce-%s'; script-src-attr 'self' 'unsafe-inline'; connect-src 'self' ws: wss:", nonce)
 		c.Header("Content-Security-Policy", csp)
-		
+
 		c.Next()
 	})
 
@@ -446,7 +453,7 @@ func main() {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	
+
 	// 2. Shutdown HTTP Server
 	if err := srv.Shutdown(ctx); err != nil {
 		zlog.Fatal().Err(err).Msg("Server forced to shutdown")

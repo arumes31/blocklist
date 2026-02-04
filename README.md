@@ -125,12 +125,17 @@ The application is configured via environment variables:
 | `GEOIPUPDATE_LICENSE_KEY` | MaxMind License Key | (empty) |
 | `TRUSTED_PROXIES` | Comma-separated list of trusted proxy IPs | `127.0.0.1` |
 | `USE_CLOUDFLARE` | Enable Cloudflare specific header handling | `false` |
+| `COOKIE_SECURE` | Force session cookies to be `Secure` (requires HTTPS) | `false` |
+| `COOKIE_SAMESITE_STRICT` | Set session cookie SameSite policy to `Strict` | `false` |
 | `ENABLE_OUTBOUND_WEBHOOKS` | Master switch for outbound notifications | `false` |
 | `RATE_LIMIT` | Global API rate limit (requests) | `500` |
 | `RATE_PERIOD` | Rate limit window (seconds) | `30` |
 | `RATE_LIMIT_LOGIN` | Rate limit for login attempts | `10` |
 | `RATE_LIMIT_WEBHOOK` | Rate limit for incoming webhooks | `100` |
 | `METRICS_ALLOWED_IPS` | IPs allowed to access Prometheus metrics | `127.0.0.1` |
+
+> [!IMPORTANT]
+> **Secure Session Management**: If session authentication is enabled, ensure the application is served over HTTPS. Use `COOKIE_SECURE=true` if TLS is terminated at a reverse proxy. Setting `COOKIE_SAMESITE_STRICT=true` is recommended for maximum security unless it interferes with cross-origin dashboard embeds.
 
 ## Testing
 Comprehensive unit, functional, and integration tests using `miniredis` and `testcontainers-go`.
