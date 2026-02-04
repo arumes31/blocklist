@@ -227,19 +227,13 @@ function drawParticle(i) {
         }
     }
 
-    // Mouse influence
-    if (mouse.active) {
-        const dx_m = mouse.x - x;
-        const dy_m = mouse.y - y;
-        const d_m = sqrt(dx_m * dx_m + dy_m * dy_m);
-        
         if (d_m < 40 && whiteState === 0 && interactionType === 0) {
             // Touch trigger
             whiteState = 0.01;
             
             // Interaction logic
             // Check ripple cooldown first to avoid rolling dice unnecessarily
-            if (rippleCooldown === 0 && Math.random() < 0.00015) { 
+            if (rippleCooldown === 0 && Math.random() < 0.000195) { // Increased by 30%
                 interactionType = 3; 
                 rippleCooldown = 120; // Global cooldown
             } else if (Math.random() < 0.5) {
@@ -311,8 +305,11 @@ function drawParticle(i) {
     }
     // Type 3: Ripple (Implosion -> Explosion)
     else if (interactionType === 3 && whiteState > 0) {
-        // Create Ripple with age 0 and random angle
-        activeRipples.push({x: x, y: y, radius: 150, age: 0, angle: Math.random() * Math.PI, vel: 0}); 
+        const baseAngle = Math.random() * Math.PI;
+        // Primary Ripple
+        activeRipples.push({x: x, y: y, radius: 100, age: 0, angle: baseAngle, vel: 0, delay: 0}); 
+        // Delayed Mini Ripple (Rare double impact)
+        activeRipples.push({x: x, y: y, radius: 60, age: 0, angle: baseAngle + 0.5, vel: 0, delay: 30}); 
         l = ttl + 1; // Die immediately (source particle becomes the singularity)
     }
 
@@ -410,19 +407,25 @@ function draw(currentTime) {
     prevRipples = activeRipples;
     activeRipples = [];
     for (let r of prevRipples) {
+        if (r.delay > 0) {
+            r.delay--;
+            activeRipples.push(r);
+            continue;
+        }
+        
         r.age++;
         if (r.age < 20) {
             // Implosion: Shrink radius, Spin Fast
             r.radius = lerp(r.radius, 0, 0.15);
             r.angle += 0.25;
-            r.vel = 40; // High initial velocity for explosion
+            r.vel = 30; // Reduced initial velocity for smaller feel
             activeRipples.push(r);
         } else {
             // Explosion: Elastic physics (burst then slow)
             r.radius += r.vel;
             r.vel *= 0.94; // Friction
             r.angle += r.vel * 0.001; 
-            if (r.radius < 1200 && r.vel > 0.5) {
+            if (r.radius < 800 && r.vel > 0.5) { // Reduced max radius to 800
                 activeRipples.push(r);
             }
         }
@@ -436,6 +439,8 @@ function draw(currentTime) {
     // Draw Ripple Visuals (Advanced Liquid Hexagons)
     ctx.save();
     for (let r of activeRipples) {
+        if (r.delay > 0) continue; // Don't draw yet
+
         let opacity = 0;
         let color = '';
         let isImplosion = r.age < 20;
@@ -444,7 +449,7 @@ function draw(currentTime) {
             opacity = r.age / 20;
             color = `rgba(100, 255, 255, ${opacity})`;
         } else {
-            opacity = 1 - (r.radius / 1200);
+            opacity = 1 - (r.radius / 800); // Adjusted for new max radius
             color = `rgba(255, 255, 200, ${opacity})`;
         }
 
