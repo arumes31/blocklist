@@ -267,8 +267,15 @@ function drawParticle(i) {
     if (interactionType === 1 && whiteState > 0) {
         whiteState = Math.min(whiteState + 0.02, 1);
         
-        // Quantum Leap: Random Teleportation
-        if (Math.random() < 0.1) { 
+        if (mouse.active && meshCount > 4) {
+            // Quantum Fly Away: Drift away if mesh is crowded
+            const dx_m = mouse.x - x;
+            const dy_m = mouse.y - y;
+            const dist = sqrt(dx_m*dx_m + dy_m*dy_m) || 1;
+            vx = lerp(vx, (-dx_m / dist) * 2, 0.05);
+            vy = lerp(vy, (-dy_m / dist) * 2, 0.05);
+        } else if (Math.random() < 0.1) { 
+            // Quantum Leap: Random Teleportation
             particleProps[i] += randIn(-50, 50); 
             particleProps[i + 1] += randIn(-50, 50); 
         }
