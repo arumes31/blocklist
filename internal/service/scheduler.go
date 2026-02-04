@@ -4,8 +4,9 @@ import (
 	"blocklist/internal/config"
 	"blocklist/internal/repository"
 	"encoding/json"
-	"log"
 	"time"
+
+	zlog "github.com/rs/zerolog/log"
 )
 
 type SchedulerService struct {
@@ -25,15 +26,15 @@ func (s *SchedulerService) Start() {
 			if acquired, _ := s.redisRepo.AcquireLock("lock_cleanup", 10*time.Minute); acquired {
 				s.CleanOldIPs("ips")
 				s.CleanOldIPs("ips_webhook2_whitelist")
-				
+
 				if s.pgRepo != nil {
-					log.Printf("Managing database partitions...")
+					zlog.Info().Msg("Managing database partitions")
 					retention := 6
 					if s.cfg != nil && s.cfg.LogRetentionMonths > 0 {
 						retention = s.cfg.LogRetentionMonths
 					}
 					if err := s.pgRepo.EnsurePartitions(retention); err != nil {
-						log.Printf("Error ensuring partitions: %v", err)
+						zlog.Error().Err(err).Msg("Error ensuring partitions")
 					}
 				}
 
@@ -44,10 +45,12 @@ func (s *SchedulerService) Start() {
 }
 
 func (s *SchedulerService) CleanOldIPs(hashKey string) {
-	if s.redisRepo == nil { return }
+	if s.redisRepo == nil {
+		return
+	}
 	data, err := s.redisRepo.HGetAllRaw(hashKey)
 	if err != nil {
-		log.Printf("Error fetching %s for cleanup: %v", hashKey, err)
+		zlog.Error().Err(err).Str("hashKey", hashKey).Msg("Error fetching hash for cleanup")
 		return
 	}
 
@@ -77,14 +80,14 @@ func (s *SchedulerService) CleanOldIPs(hashKey string) {
 			if hashKey == "ips" {
 				// Atomically remove from hash and ZSET
 				if err := s.redisRepo.ExecUnblockAtomic(ip); err != nil {
-					log.Printf("Error during atomic unblock of %s: %v", ip, err)
+					zlog.Error().Err(err).Str("ip", ip).Msg("Error during atomic unblock")
 				}
 			} else {
 				if err := s.redisRepo.HDel(hashKey, ip); err != nil {
-					log.Printf("Error deleting %s from %s: %v", ip, hashKey, err)
+					zlog.Error().Err(err).Str("ip", ip).Str("hashKey", hashKey).Msg("Error deleting IP from hash")
 				}
 			}
-			log.Printf("Deleted %s from %s (expired at %s)", ip, hashKey, expireTime.Format(time.RFC3339))
+			zlog.Info().Str("ip", ip).Str("hashKey", hashKey).Time("expiredAt", expireTime).Msg("Deleted expired IP")
 		}
 	}
 }

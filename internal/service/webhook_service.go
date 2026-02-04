@@ -3,8 +3,9 @@ package service
 import (
 	"context"
 	"encoding/json"
-	"log"
 	"strings"
+
+	zlog "github.com/rs/zerolog/log"
 
 	"blocklist/internal/config"
 	"blocklist/internal/models"
@@ -43,13 +44,13 @@ func (s *WebhookService) Notify(ctx context.Context, event string, data interfac
 
 	webhooks, err := s.pgRepo.GetActiveWebhooks()
 	if err != nil {
-		log.Printf("Error fetching active webhooks: %v", err)
+		zlog.Error().Err(err).Msg("Error fetching active webhooks")
 		return
 	}
 
 	payload, err := json.Marshal(data)
 	if err != nil {
-		log.Printf("Error marshaling webhook payload: %v", err)
+		zlog.Error().Err(err).Str("event", event).Msg("Error marshaling webhook payload")
 		return
 	}
 
@@ -77,12 +78,12 @@ func (s *WebhookService) Notify(ctx context.Context, event string, data interfac
 
 			task, err := tasks.NewWebhookDeliveryTask(wh.ID, event, payload)
 			if err != nil {
-				log.Printf("Error creating task: %v", err)
+				zlog.Error().Err(err).Int("webhook_id", wh.ID).Str("event", event).Msg("Error creating webhook task")
 				continue
 			}
 
 			if _, err := s.asynqClient.Enqueue(task); err != nil {
-				log.Printf("Error enqueuing task: %v", err)
+				zlog.Error().Err(err).Int("webhook_id", wh.ID).Str("event", event).Msg("Error enqueuing webhook task")
 			}
 		}
 	}
