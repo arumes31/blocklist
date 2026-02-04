@@ -607,6 +607,17 @@ function draw(currentTime) {
         p.vx = lerp(p.vx, (dx_t / d_t) * 2.5, 0.1);
         p.vy = lerp(p.vy, (dy_t / d_t) * 2.5, 0.1);
 
+        // Center Repulsion: Keep Pacman out of the core
+        const dx_c = p.x - center[0];
+        const dy_c = p.y - center[1];
+        const d_c = sqrt(dx_c * dx_c + dy_c * dy_c) || 1;
+        const coreRadius = 200;
+        if (d_c < coreRadius) {
+            const force = (coreRadius - d_c) / coreRadius;
+            p.vx += (dx_c / d_c) * force * 2;
+            p.vy += (dy_c / d_c) * force * 2;
+        }
+
         p.x += p.vx;
         p.y += p.vy;
         if (p.x < 0 || p.x > canvasWidth) p.vx *= -1;
