@@ -5,7 +5,7 @@ on:
     branches:
       - main
       - test
-      - v2_test
+      - v2b_test
   workflow_dispatch:
 
 jobs:
