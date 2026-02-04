@@ -821,12 +821,14 @@ func (h *APIHandler) VerifyFirstFactor(c *gin.Context) {
 
 	admin, err := h.pgRepo.GetAdmin(username)
 	if err != nil {
+		_ = h.pgRepo.LogAction("system", "LOGIN_FAILURE", username, "Invalid Operator ID")
 		h.renderHTML(c, http.StatusOK, "login_error.html", gin.H{"error": "Invalid Operator ID"})
 		return
 	}
 
 	err = bcrypt.CompareHashAndPassword([]byte(admin.PasswordHash), []byte(password))
 	if err != nil {
+		_ = h.pgRepo.LogAction(username, "LOGIN_FAILURE", c.ClientIP(), "Invalid Password")
 		h.renderHTML(c, http.StatusOK, "login_error.html", gin.H{"error": "Access Denied"})
 		return
 	}
@@ -906,6 +908,7 @@ func (h *APIHandler) Login(c *gin.Context) {
 		pendingVerified := session.Get("pending_auth_verified")
 		if pendingUser == nil || pendingUser.(string) != username || pendingVerified == nil || !pendingVerified.(bool) {
 			zlog.Warn().Str("username", username).Msg("Invalid multi-step login attempt")
+			_ = h.pgRepo.LogAction(username, "LOGIN_FAILURE", c.ClientIP(), "Invalid multi-step session or mismatch")
 			h.renderHTML(c, http.StatusOK, "login.html", gin.H{
 				"error": "Session expired or invalid login attempt. Please restart login.",
 			})
@@ -919,7 +922,9 @@ func (h *APIHandler) Login(c *gin.Context) {
 		if totp.Validate(totpCode, setupSecret) {
 			// Save the secret to the user
 			_ = h.pgRepo.UpdateAdminToken(username, setupSecret)
+			_ = h.pgRepo.LogAction(username, "TOTP_SETUP", c.ClientIP(), "Successful 2FA setup")
 		} else {
+			_ = h.pgRepo.LogAction(username, "LOGIN_FAILURE", c.ClientIP(), "Invalid TOTP during setup")
 			h.renderHTML(c, http.StatusOK, "login.html", gin.H{
 				"error":    "Invalid TOTP code during setup. Please try again.",
 				"username": username,
@@ -952,6 +957,9 @@ func (h *APIHandler) Login(c *gin.Context) {
 		if err := session.Save(); err != nil {
 			zlog.Error().Err(err).Msg("Failed to save session during login")
 		}
+
+		_ = h.pgRepo.LogAction(username, "LOGIN_SUCCESS", c.ClientIP(), "")
+
 		c.Redirect(http.StatusFound, "/dashboard")
 		return
 	}
@@ -960,6 +968,8 @@ func (h *APIHandler) Login(c *gin.Context) {
 	session.Delete("pending_auth_user")
 	session.Delete("pending_auth_verified")
 	_ = session.Save()
+
+	_ = h.pgRepo.LogAction(username, "LOGIN_FAILURE", c.ClientIP(), "Invalid TOTP or Credentials")
 
 	h.renderHTML(c, http.StatusOK, "login.html", gin.H{
 		"error":    "Invalid credentials or TOTP code",
