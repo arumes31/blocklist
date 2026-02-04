@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/alicebob/miniredis/v2"
-	"github.com/hibiken/asynq"
 )
 
 func TestWebhookService_Filtering(t *testing.T) {
@@ -14,8 +13,6 @@ func TestWebhookService_Filtering(t *testing.T) {
 		t.Fatalf("Failed to run miniredis: %v", err)
 	}
 	defer mr.Close()
-
-	redisOpts := asynq.RedisClientOpt{Addr: mr.Addr()}
 
 	// We need a real pgRepo or a mock. Since we just want to test Notify logic,
 	// we'll see if we can use a mock or just a real one with miniresql if available.

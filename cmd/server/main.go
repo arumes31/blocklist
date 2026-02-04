@@ -246,6 +246,19 @@ func main() {
 		})
 	}
 
+	// Force HTTPS (Improvement)
+	if cfg.ForceHTTPS {
+		r.Use(func(c *gin.Context) {
+			if c.Request.Header.Get("X-Forwarded-Proto") != "https" && c.Request.TLS == nil {
+				target := "https://" + c.Request.Host + c.Request.RequestURI
+				c.Redirect(http.StatusMovedPermanently, target)
+				c.Abort()
+				return
+			}
+			c.Next()
+		})
+	}
+
 	// Sessions
 	store, err := redis.NewStore(10, "tcp", fmt.Sprintf("%s:%d", cfg.RedisHost, cfg.RedisPort), "", cfg.RedisPassword, authKey, blockKey)
 	if err != nil {
@@ -260,7 +273,7 @@ func main() {
 	store.Options(sessions.Options{
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   cfg.CookieSecure || cfg.UseCloudflare,
+		Secure:   cfg.CookieSecure,
 		SameSite: sameSite,
 		MaxAge:   86400 * 7, // 1 week
 	})

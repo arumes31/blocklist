@@ -35,6 +35,7 @@ type Config struct {
 	LogRetentionMonths     int
 	CookieSecure           bool
 	SameSiteStrict         bool
+	ForceHTTPS             bool
 }
 
 func Load() *Config {
@@ -67,6 +68,7 @@ func Load() *Config {
 		LogRetentionMonths:     getEnvInt("LOG_RETENTION_MONTHS", 6),
 		CookieSecure:           getEnvBool("COOKIE_SECURE", false),
 		SameSiteStrict:         getEnvBool("COOKIE_SAMESITE_STRICT", false),
+		ForceHTTPS:             getEnvBool("FORCE_HTTPS", false),
 	}
 }
 
