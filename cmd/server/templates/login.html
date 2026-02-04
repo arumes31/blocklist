@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>8LOcKl1st | Secure Login</title>
+    <link rel="icon" type="image/x-icon" href="/cd/favicon-color.png" />
+    <style nonce="{{ .nonce }}">
+        :root {
+            --primary-red: #ff0000;
+            --dark-red: #8b0000;
+            --vibrant-red: #ff4d4d;
+            --glass-bg: rgba(20, 20, 20, 0.85);
+            --border-red: rgba(255, 0, 0, 0.3);
+        }
+        body {
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: #000;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            color: #fff;
+            overflow: hidden;
+        }
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+        .container {
+            background-color: var(--glass-bg);
+            padding: 40px;
+            border-radius: 16px;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.5), 
+                        0 0 20px rgba(255, 0, 0, 0.1);
+            max-width: 400px;
+            width: 100%;
+            z-index: 10;
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--border-red);
+            transition: transform 0.3s ease, box-shadow 0.3s ease, opacity 0.8s ease, visibility 0.8s ease;
+        }
+        .container.idle {
+            opacity: 0;
+            visibility: hidden;
+            transform: translateY(20px) scale(0.95);
+        }
+        .container:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 20px 45px rgba(0, 0, 0, 0.6), 
+                        0 0 30px rgba(255, 0, 0, 0.2);
+        }
+        h2 { 
+            text-align: center; 
+            margin-bottom: 30px;
+            letter-spacing: 2px;
+            font-weight: 300;
+            text-transform: uppercase;
+        }
+        h2 img {
+            filter: drop-shadow(0 0 8px rgba(255, 0, 0, 0.5));
+        }
+        form { margin-top: 20px; }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            font-size: 0.85rem;
+            color: #ccc;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        input[type="text"],
+        input[type="password"] {
+            width: 100%;
+            padding: 12px 15px;
+            margin-bottom: 20px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+            box-sizing: border-box;
+            color: #fff;
+            font-size: 1rem;
+            transition: all 0.3s;
+        }
+        input[type="text"]:focus,
+        input[type="password"]:focus {
+            outline: none;
+            border-color: var(--primary-red);
+            background: rgba(255, 0, 0, 0.05);
+            box-shadow: 0 0 10px rgba(255, 0, 0, 0.2);
+        }
+        input[type="submit"], .authorize-btn {
+            width: 100%;
+            padding: 14px;
+            margin-top: 10px;
+            background: linear-gradient(45deg, var(--dark-red), var(--primary-red));
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            transition: all 0.3s;
+            box-shadow: 0 4px 15px rgba(255, 0, 0, 0.3);
+            display: block;
+            text-align: center;
+            text-decoration: none;
+            box-sizing: border-box;
+        }
+        input[type="submit"]:hover, .authorize-btn:hover { 
+            background: linear-gradient(45deg, var(--primary-red), var(--vibrant-red));
+            transform: scale(1.02);
+            box-shadow: 0 6px 20px rgba(255, 0, 0, 0.4);
+        }
+        .error-message {
+            background: rgba(255, 0, 0, 0.1);
+            border-left: 4px solid var(--primary-red);
+            padding: 10px;
+            color: var(--vibrant-red);
+            margin-top: 20px;
+            font-size: 0.9rem;
+            border-radius: 0 4px 4px 0;
+        }
+        .buttons-container {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            display: flex;
+            gap: 10px;
+            z-index: 20;
+        }
+        .small-button {
+            padding: 8px 16px;
+            background: transparent;
+            color: #fff;
+            text-decoration: none;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 4px;
+            font-size: 0.8rem;
+            transition: all 0.3s;
+            cursor: pointer;
+            backdrop-filter: blur(5px);
+        }
+        .small-button:hover { 
+            background: var(--primary-red); 
+            border-color: var(--primary-red);
+            box-shadow: 0 0 15px rgba(255, 0, 0, 0.4);
+        }
+        .logo-img { height: 60px; width: auto; }
+        .login-subtitle { margin-top: 15px; font-size: 1.2rem; color: var(--primary-red); font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="buttons-container">
+        <button class="small-button" onclick="window.location.href='/api/v1/raw'">RAW API</button>
+        <button class="small-button" onclick="window.location.href='/health'">HEALTH</button>
+    </div>
+
+    <div class="container" id="loginContainer">
+        <h2>
+            <a href="/dashboard"><img src="/cd/logo.png" alt="logo" class="logo-img"></a>
+            <div class="login-subtitle">
+                {{ if .is_sudo }}Sudo Mode Verification{{ else }}{{ end }}
+            </div>
+        </h2>
+
+        {{ if .error }}
+        <div class="error-message">
+            {{ .error }}
+        </div>
+        {{ end }}
+
+        <form id="loginForm" method="POST" action="{{ if .is_sudo }}/sudo?next={{ .next }}{{ else }}/login{{ end }}">
+            {{ if eq .step "totp" }}
+                <div class="form-group">
+                    <label for="totp">2FA Token</label>
+                    <input type="text" id="totp" name="totp" required inputmode="numeric" placeholder="6-digit code" autofocus>
+                </div>
+                {{ if .is_sudo }}
+                    <input type="hidden" name="next" value="{{ .next }}">
+                {{ else }}
+                    <input type="hidden" name="username" value="{{ .username }}">
+                    <input type="hidden" name="password" value="{{ .password }}">
+                {{ end }}
+                <input type="submit" value="{{ if .is_sudo }}Verify Identity{{ else }}Authorize Access{{ end }}">
+                <button type="button" class="small-button" style="margin-top: 15px; width: 100%;" onclick="window.location.href='{{ if .is_sudo }}/dashboard{{ else }}/login{{ end }}'">{{ if .is_sudo }}Cancel{{ else }}Go Back{{ end }}</button>
+            {{ else }}
+                <div class="form-group">
+                    <label for="username">Username</label>
+                    <input type="text" id="username" name="username" required placeholder="Enter username" value="{{ .username }}">
+                </div>
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" name="password" required placeholder="Enter password">
+                </div>
+                <button type="button" class="authorize-btn" 
+                        hx-post="/login/verify" 
+                        hx-target="#loginForm" 
+                        hx-swap="innerHTML" 
+                        hx-include="[name='username'], [name='password']">LOGIN</button>
+            {{ end }}
+        </form>
+    </div>
+
+    <script src="/js/htmx.min.js"></script>
+    <script src="/js/simplex-noise.min.js"></script>
+    <script src="/js/codepen-util.js"></script>
+    <script src="/js/aether.js"></script>
+    <script nonce="{{ .nonce }}">
+        // Idle Detection
+        let idleTimer;
+        const idleTime = 30000; // 30 seconds
+        const loginCard = document.getElementById('loginContainer');
+
+        function resetIdleTimer() {
+            loginCard.classList.remove('idle');
+            clearTimeout(idleTimer);
+            idleTimer = setTimeout(goIdle, idleTime);
+        }
+
+        function goIdle() {
+            // Only go idle if inputs are not focused
+            const activeElement = document.activeElement;
+            const isInput = activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA');
+            if (!isInput) {
+                loginCard.classList.add('idle');
+            } else {
+                // Check again in 10 seconds
+                idleTimer = setTimeout(goIdle, 10000);
+            }
+        }
+
+        // Event listeners for user activity
+        ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'].forEach(name => {
+            document.addEventListener(name, resetIdleTimer, true);
+        });
+
+        // Initialize idle timer
+        resetIdleTimer();
+
+        // Page Visibility / Background detection
+        document.addEventListener('visibilitychange', function() {
+            if (document.hidden) {
+                if (typeof isPaused !== 'undefined') isPaused = true;
+            } else {
+                if (typeof isPaused !== 'undefined') {
+                    isPaused = false;
+                    if (typeof draw === 'function') {
+                        lastFrameTime = performance.now();
+                        requestAnimationFrame(draw);
+                    }
+                }
+                resetIdleTimer();
+            }
+        });
+    </script>
+</body>
+</html>

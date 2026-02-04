@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Management</title>
+    <link rel="icon" type="image/x-icon" href="/cd/favicon-color.png" />
+    <style nonce="{{ .nonce }}">
+        :root {
+            --primary-red: #ff0000;
+            --dark-red: #8b0000;
+            --vibrant-red: #ff4d4d;
+            --glass-bg: rgba(20, 20, 20, 0.85);
+            --border-red: rgba(255, 0, 0, 0.3);
+            --secondary-color: #b3b3b3;
+            --success-color: #28a745;
+            --danger-color: #dc3545;
+        }
+        body {
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            background-color: #000;
+            color: #fff;
+        }
+        .header-container {
+            background: var(--glass-bg);
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 12px rgba(255,0,0,0.15);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            backdrop-filter: blur(8px);
+            border-bottom: 1px solid var(--border-red);
+        }
+        .header-container h2 {
+            margin: 0;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            color: #fff;
+        }
+        .header-container img { height: 40px; filter: drop-shadow(0 0 6px rgba(255,0,0,0.4)); }
+        
+        .main-content { padding: 2rem; }
+
+        .btn {
+            padding: 0.6rem 1.2rem;
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(255,255,255,0.05);
+            color: #fff;
+            box-shadow: 0 0 10px rgba(255,0,0,0.08);
+        }
+        .btn-danger { background: linear-gradient(45deg, var(--dark-red), var(--primary-red)); border-color: var(--border-red); }
+        .btn-success { background: rgba(40, 167, 69, 0.2); }
+        .btn-dark { background: rgba(255,255,255,0.08); }
+        .btn:hover { transform: translateY(-1px); box-shadow: 0 0 16px rgba(255,0,0,0.2); }
+
+        .filter-input {
+            padding: 0.8rem 1rem;
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 8px;
+            font-size: 1rem;
+            background: rgba(255,255,255,0.05);
+            color: #fff;
+            outline: none;
+        }
+        .filter-input:focus { border-color: var(--primary-red); box-shadow: 0 0 0 2px rgba(255,0,0,0.2); }
+
+        .table-card {
+            background: rgba(20,20,20,0.85);
+            border: 1px solid var(--border-red);
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+            backdrop-filter: blur(8px);
+        }
+        table { border-collapse: collapse; width: 100%; color: #fff; }
+        th, td { text-align: left; padding: 0.75rem; border-bottom: 1px solid rgba(255,255,255,0.06); }
+        th {
+            background-color: rgba(255,255,255,0.04);
+            font-weight: 600;
+            color: var(--secondary-color);
+            text-transform: uppercase;
+            font-size: 0.85rem;
+            letter-spacing: 0.05em;
+        }
+        tr:hover { background-color: rgba(255,255,255,0.02); }
+
+        /* Toast Notifications */
+        #toast-container {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 2000;
+        }
+        .toast {
+            background: #333;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            margin-top: 10px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            animation: slideIn 0.3s ease-out;
+            transition: opacity 0.5s ease;
+        }
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        .toast.success { border-left: 4px solid var(--success-color); }
+        .toast.danger { border-left: 4px solid var(--danger-color); }
+
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+            backdrop-filter: blur(4px);
+        }
+        .modal-content {
+            background: rgba(20,20,20,0.95);
+            margin: 10% auto;
+            padding: 2rem;
+            border-radius: 12px;
+            width: 420px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.6);
+            border: 1px solid var(--border-red);
+            color: #fff;
+        }
+        .modal h3 { margin-top: 0; }
+        .close {
+            color: #aaaaaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .close:hover { color: #fff; }
+    </style>
+</head>
+<body>
+    <div id="toast-container"></div>
+    <div class="header-container">
+        <div style="display: flex; align-items: center; gap: 2rem;">
+            <a href="/dashboard"><img src="/cd/logo.png" alt="Logo"></a>
+            <h2>Admin Management</h2>
+        </div>
+        <div style="display: flex; align-items: center; gap: 1rem;">
+            {{ if contains .permissions "manage_global_tokens" }}
+            <a href="/settings#global-tokens" class="btn btn-dark" style="min-width: 150px;">Global API Tokens</a>
+            {{ end }}
+            {{ if contains .permissions "view_audit_logs" }}
+            <a href="#audit-log-section" class="btn btn-dark" style="min-width: 150px;">Audit Log</a>
+            {{ end }}
+            <a href="/dashboard" class="btn btn-dark" style="min-width: 150px;">Back to Dashboard</a>
+            {{ if or (eq .username .admin_username) (contains .permissions "manage_admins") }}
+            <a href="/admin_management" class="btn btn-dark" style="min-width: 120px;">Admins</a>
+            {{ end }}
+            <a href="/logout" class="btn" style="background: rgba(255,255,255,0.08);">Logout</a>
+        </div>
+    </div>
+
+    <div class="main-content">
+        <div class="table-card" style="padding: 1.5rem; margin-bottom: 2rem;">
+            <div style="display: flex; gap: 10px; align-items: center; justify-content: center; margin-bottom: 1.5rem;">
+                <input type="text" id="newUsername" class="filter-input" style="flex: 1; max-width: 250px;" placeholder="New Username">
+                <input type="password" id="newPassword" class="filter-input" style="flex: 1; max-width: 250px;" placeholder="New Password">
+                <button class="btn btn-danger" onclick="createAdmin()">Create Admin</button>
+            </div>
+
+            <div style="text-align: center; margin-bottom: 1.5rem;">
+                <span style="font-size: 0.8rem; color: var(--secondary-color); margin-right: 10px;">Role Templates:</span>
+                <button class="btn btn-dark" style="padding: 0.3rem 0.7rem; font-size: 0.75rem;" onclick="setRole('auditor')">Auditor</button>
+                <button class="btn btn-dark" style="padding: 0.3rem 0.7rem; font-size: 0.75rem;" onclick="setRole('operator')">Operator</button>
+                <button class="btn btn-dark" style="padding: 0.3rem 0.7rem; font-size: 0.75rem;" onclick="setRole('security')">Security Admin</button>
+            </div>
+            
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; color: var(--secondary-color); font-size: 0.85rem; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 1.5rem;">
+                <div>
+                    <div style="font-weight: bold; color: var(--vibrant-red); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px;">GUI Access</div>
+                    <label title="Base read access for the GUI" style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-bottom: 5px;"><input type="checkbox" id="perm_gui_read" checked> GUI Read</label>
+                    <label title="Base write access for the GUI" style="display: flex; align-items: center; gap: 8px; cursor: pointer;"><input type="checkbox" id="perm_gui_write" checked> GUI Write</label>
+                    <div style="font-weight: bold; color: var(--vibrant-red); margin-top: 15px; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px;">Monitoring</div>
+                    <label title="Read-only access to the main IP dashboard" style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-bottom: 5px;"><input type="checkbox" id="perm_view_ips" checked> View IPs</label>
+                    <label title="Access to system statistics and charts" style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-bottom: 5px;"><input type="checkbox" id="perm_view_stats"> View Stats</label>
+                    <label title="View the audit trail of admin actions" style="display: flex; align-items: center; gap: 8px; cursor: pointer;"><input type="checkbox" id="perm_view_audit_logs"> View Audit Logs</label>
+                </div>
+                <div>
+                    <div style="font-weight: bold; color: var(--vibrant-red); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px;">Enforcement</div>
+                    <label title="Block IPs via the GUI or Webhook" style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-bottom: 5px;"><input type="checkbox" id="perm_block_ips"> Block IPs</label>
+                    <label title="Unblock IPs via the GUI or Webhook" style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-bottom: 5px;"><input type="checkbox" id="perm_unblock_ips"> Unblock IPs</label>
+                    <label title="Add and Remove IPs from the whitelist" style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-bottom: 5px;"><input type="checkbox" id="perm_manage_whitelist"> Manage Whitelist</label>
+                    <label title="Only add IPs to the whitelist (no removal)" style="display: flex; align-items: center; gap: 8px; cursor: pointer;"><input type="checkbox" id="perm_whitelist_ips"> Whitelist IPs</label>
+                </div>
+                <div>
+                    <div style="font-weight: bold; color: var(--vibrant-red); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px;">System</div>
+                    <label title="Configure outbound webhooks" style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-bottom: 5px;"><input type="checkbox" id="perm_manage_webhooks"> Manage Webhooks</label>
+                    <label title="Manage API tokens" style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-bottom: 5px;"><input type="checkbox" id="perm_manage_api_tokens"> API Tokens</label>
+                    <label title="Manage API tokens for all users" style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-bottom: 5px;"><input type="checkbox" id="perm_manage_global_tokens"> Global API Tokens</label>
+                    <label title="Create, edit, and delete admin users" style="display: flex; align-items: center; gap: 8px; cursor: pointer;"><input type="checkbox" id="perm_manage_admins"> User Management</label>
+                </div>
+                <div>
+                    <div style="font-weight: bold; color: var(--vibrant-red); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px;">Utility</div>
+                    <label title="Download CSV/JSON exports" style="display: flex; align-items: center; gap: 8px; cursor: pointer;"><input type="checkbox" id="perm_export_data"> Data Export</label>
+                </div>
+                <div>
+                    <div style="font-weight: bold; color: var(--vibrant-red); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px;">Utility</div>
+                    <label title="Download CSV/JSON exports" style="display: flex; align-items: center; gap: 8px; cursor: pointer;"><input type="checkbox" id="perm_export_data"> Data Export</label>
+                </div>
+            </div>
+        </div>
+
+        <div class="table-card">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Username</th>
+                        <th>Permissions</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{ range $username, $data := .admins }}
+                    <tr>
+                        <td style="font-weight: 600;">{{ $username }}</td>
+                        <td>
+                            <div style="display: flex; gap: 5px; flex-wrap: wrap;">
+                                {{ range $p := split $data.Permissions "," }}
+                                    <span class="status-chip live" style="font-size: 0.7rem; padding: 0.1rem 0.4rem;">{{ $p }}</span>
+                                {{ end }}
+                            </div>
+                        </td>
+                            <td>
+                                {{ if ne $username $.admin_username }}
+                                <button class="btn btn-dark" style="padding: 0.4rem 0.8rem; font-size: 0.8rem;" onclick="openPermissionsModal('{{ $username }}', '{{ $data.Permissions }}')">Permissions</button>
+                                <button class="btn btn-dark" style="padding: 0.4rem 0.8rem; font-size: 0.8rem;" onclick="openPasswordModal('{{ $username }}')">Password</button>
+                                <button class="btn btn-dark" style="padding: 0.4rem 0.8rem; font-size: 0.8rem; background: #ff980033;" onclick="clearTotp('{{ $username }}')">Clear TOTP</button>
+                                <button class="btn btn-danger" style="padding: 0.4rem 0.8rem; font-size: 0.8rem;" onclick="deleteAdmin('{{ $username }}')">Delete</button>
+                                {{ end }}
+                            </td>
+                    </tr>
+                    {{ end }}
+                </tbody>
+            </table>
+        </div>
+
+        {{ if contains .permissions "view_audit_logs" }}
+        <div id="audit-log-section" style="margin-top: 3rem; margin-bottom: 1.5rem;">
+            <h3 style="border-bottom: 1px solid var(--border-red); padding-bottom: 0.5rem;">System Audit Logs</h3>
+        </div>
+        <div class="table-card">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Timestamp</th>
+                        <th>Actor</th>
+                        <th>Action</th>
+                        <th>Target</th>
+                        <th>Reason</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{ range $log := .audit_logs }}
+                    <tr style="font-size: 0.85rem;">
+                        <td style="color: var(--secondary-color); white-space: nowrap;"><span class="utc-timestamp">{{ $log.Timestamp }}</span></td>
+                        <td><span style="font-weight: 600;">{{ $log.Actor }}</span></td>
+                        <td><span class="status-chip live" style="background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.1); font-size: 0.75rem;">{{ $log.Action }}</span></td>
+                        <td style="font-family: monospace;">{{ $log.Target }}</td>
+                        <td style="color: var(--secondary-color);">{{ $log.Reason }}</td>
+                    </tr>
+                    {{ end }}
+                </tbody>
+            </table>
+        </div>
+        {{ end }}
+    </div>
+
+    <!-- Permissions Modal -->
+    <div id="permissionsModal" class="modal">
+        <div class="modal-content" style="max-width: 600px;">
+            <span class="close" onclick="closePermissionsModal()">×</span>
+            <h3 style="margin-top: 0; margin-bottom: 1.5rem;">Manage Permissions</h3>
+            <input type="hidden" id="permUsername">
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 25px; margin-bottom: 2rem; color: #fff; font-size: 0.9rem;">
+                <div>
+                    <div style="font-weight: bold; color: var(--vibrant-red); margin-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 5px;">Access / Monitoring</div>
+                    <label title="Base read access for the GUI" style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin-bottom: 8px;"><input type="checkbox" id="edit_gui_read"> GUI Read</label>
+                    <label title="Base write access for the GUI" style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin-bottom: 8px;"><input type="checkbox" id="edit_gui_write"> GUI Write</label>
+                    <label title="Read-only access to the main IP dashboard" style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin-bottom: 8px;"><input type="checkbox" id="edit_view_ips"> View IPs</label>
+                    <label title="Access to system statistics and charts" style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin-bottom: 8px;"><input type="checkbox" id="edit_view_stats"> View Stats</label>
+                    <label title="View the audit trail of admin actions" style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin-bottom: 8px;"><input type="checkbox" id="edit_view_audit_logs"> View Audit Logs</label>
+                    <label title="Download CSV/JSON exports" style="display: flex; align-items: center; gap: 10px; cursor: pointer;"><input type="checkbox" id="edit_export_data"> Data Export</label>
+
+                    <div style="font-weight: bold; color: var(--vibrant-red); margin-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 5px; margin-top: 15px;">Enforcement</div>
+                    <label title="Block IPs via the GUI or Webhook" style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin-bottom: 8px;"><input type="checkbox" id="edit_block_ips"> Block IPs</label>
+                    <label title="Unblock IPs via the GUI or Webhook" style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin-bottom: 8px;"><input type="checkbox" id="edit_unblock_ips"> Unblock IPs</label>
+                    <label title="Add and Remove IPs from the whitelist" style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin-bottom: 8px;"><input type="checkbox" id="edit_manage_whitelist"> Manage Whitelist</label>
+                    <label title="Only add IPs to the whitelist (no removal)" style="display: flex; align-items: center; gap: 10px; cursor: pointer;"><input type="checkbox" id="edit_whitelist_ips"> Whitelist IPs</label>
+                </div>
+                <div>
+                    <div style="font-weight: bold; color: var(--vibrant-red); margin-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 5px;">System</div>
+                    <label title="Configure outbound webhooks" style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin-bottom: 8px;"><input type="checkbox" id="edit_manage_webhooks"> Manage Webhooks</label>
+                    <label title="Manage API tokens" style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin-bottom: 8px;"><input type="checkbox" id="edit_manage_api_tokens"> API Tokens</label>
+                    <label title="Manage API tokens for all users" style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin-bottom: 8px;"><input type="checkbox" id="edit_manage_global_tokens"> Global API Tokens</label>
+                    <label title="Create, edit, and delete admin users" style="display: flex; align-items: center; gap: 10px; cursor: pointer;"><input type="checkbox" id="edit_manage_admins"> User Management</label>
+                </div>
+            </div>
+            <button class="btn btn-danger" style="width: 100%;" onclick="savePermissions()">Save Permissions</button>
+        </div>
+    </div>
+
+    <!-- Password Change Modal -->
+    <div id="passwordModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closePasswordModal()">×</span>
+            <h3 style="margin-top: 0;">Change Password</h3>
+            <input type="hidden" id="passwordUsername">
+            <div style="margin-bottom: 1.5rem;">
+                <input type="password" id="newPasswordInput" class="filter-input" style="width: 100%; box-sizing: border-box;" placeholder="New Password">
+            </div>
+            <button class="btn btn-danger" style="width: 100%;" onclick="changePassword()">Save Password</button>
+        </div>
+    </div>
+
+    <script nonce="{{ .nonce }}">
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.innerHTML = `<span>${message}</span>`;
+            container.appendChild(toast);
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                setTimeout(() => toast.remove(), 500);
+            }, 4000);
+        }
+
+        const PERM_KEYS = [
+            'gui_read', 'gui_write', 'view_ips', 'view_stats', 'view_audit_logs', 'export_data',
+            'block_ips', 'unblock_ips', 'manage_whitelist', 'whitelist_ips',
+            'manage_webhooks', 'manage_api_tokens', 'manage_global_tokens', 'manage_admins'
+        ];
+
+        function getSelectedPerms(prefix) {
+            const perms = [];
+            PERM_KEYS.forEach(k => {
+                const el = document.getElementById(prefix + k);
+                if (el && el.checked) perms.push(k);
+            });
+            return perms.join(',');
+        }
+
+        function setRole(role) {
+            const mapping = {
+                'auditor': ['gui_read', 'view_ips', 'view_stats', 'view_audit_logs'],
+                'operator': ['gui_read', 'gui_write', 'view_ips', 'view_stats', 'block_ips', 'unblock_ips', 'manage_whitelist', 'whitelist_ips'],
+                'security': ['gui_read', 'gui_write', 'manage_webhooks', 'manage_api_tokens', 'manage_global_tokens', 'manage_admins']
+            };
+            
+            PERM_KEYS.forEach(k => {
+                const el = document.getElementById('perm_' + k);
+                if (el) el.checked = mapping[role].includes(k);
+            });
+        }
+
+        function createAdmin() {
+            const username = document.getElementById('newUsername').value;
+            const password = document.getElementById('newPassword').value;
+            const permissions = getSelectedPerms('perm_');
+
+            if (!username || !password) {
+                showToast('Username and password are required', 'danger');
+                return;
+            }
+
+            fetch('/admin_management/create', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password, role: 'operator', permissions })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    showToast('Admin created successfully!', 'success');
+                    setTimeout(() => location.reload(), 1000);
+                } else {
+                    showToast(data.error || 'Failed to create admin', 'danger');
+                }
+            });
+        }
+
+        function openPermissionsModal(username, currentPerms) {
+            document.getElementById('permUsername').value = username;
+            const perms = currentPerms.split(',');
+            PERM_KEYS.forEach(k => {
+                const el = document.getElementById('edit_' + k);
+                if (el) el.checked = perms.includes(k);
+            });
+            document.getElementById('permissionsModal').style.display = 'block';
+        }
+
+        function closePermissionsModal() {
+            document.getElementById('permissionsModal').style.display = 'none';
+        }
+
+        function savePermissions() {
+            const username = document.getElementById('permUsername').value;
+            const permissions = getSelectedPerms('edit_');
+
+            fetch('/admin_management/change_permissions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, permissions })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    showToast('Permissions updated successfully!', 'success');
+                    setTimeout(() => location.reload(), 1000);
+                } else {
+                    showToast(data.error || 'Failed to update permissions', 'danger');
+                }
+            });
+        }
+
+        function showQR(username) {
+            window.open('/admin_management/get_qr/' + username, '_blank');
+        }
+
+        function deleteAdmin(username) {
+            if (confirm('Are you sure you want to delete this admin?')) {
+                fetch('/admin_management/delete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        showToast('Admin deleted successfully!', 'success');
+                        setTimeout(() => location.reload(), 1000);
+                    } else {
+                        showToast(data.error || 'Failed to delete admin', 'danger');
+                    }
+                });
+            }
+        }
+
+        function openPasswordModal(username) {
+            document.getElementById('passwordUsername').value = username;
+            document.getElementById('newPasswordInput').value = '';
+            document.getElementById('passwordModal').style.display = 'block';
+        }
+
+        function closePasswordModal() {
+            document.getElementById('passwordModal').style.display = 'none';
+        }
+
+        function changePassword() {
+            const username = document.getElementById('passwordUsername').value;
+            const new_password = document.getElementById('newPasswordInput').value;
+            if (!new_password) {
+                showToast('Please enter a new password', 'danger');
+                return;
+            }
+            fetch('/admin_management/change_password', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, new_password })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    showToast('Password changed successfully!', 'success');
+                    closePasswordModal();
+                    setTimeout(() => location.reload(), 1000);
+                } else {
+                    showToast(data.error || 'Failed to change password', 'danger');
+                }
+            });
+        }
+
+        function clearTotp(username) {
+            if (!confirm('Are you sure you want to clear TOTP for ' + username + '? The user will be forced to setup 2FA again on their next login.')) {
+                return;
+            }
+            fetch('/admin_management/change_totp', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    showToast('TOTP cleared successfully!', 'success');
+                } else {
+                    showToast(data.error || 'Failed to clear TOTP', 'danger');
+                }
+            })
+            .catch(err => {
+                showToast('Failed to clear TOTP', 'danger');
+            });
+        }
+    </script>
+</body>
+</html>

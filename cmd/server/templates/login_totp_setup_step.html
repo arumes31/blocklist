@@ -1,0 +1,26 @@
+<div style="text-align: center;">
+    <p style="color: #b3b3b3; font-size: 0.85rem; line-height: 1.4; margin-bottom: 1.5rem;">
+        Two-factor authentication is mandatory. Scan this code with your authenticator app (Google Authenticator, Authy, etc.)
+    </p>
+    
+    <div style="background: #fff; padding: 10px; border-radius: 8px; display: inline-block; margin-bottom: 1.5rem;">
+        <img src="{{ .qr_image | safeURL }}" alt="Scan QR" style="display: block; max-width: 180px; height: auto;">
+    </div>
+
+    <div style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1); font-family: monospace; margin-bottom: 1.5rem; display: flex; align-items: center; justify-content: center; gap: 10px;">
+        <span id="secret-key" style="word-break: break-all; font-size: 0.85rem; color: #fff;">{{ .secret }}</span>
+    </div>
+    
+    <div class="form-group">
+        <label for="totp">Verify 6-digit code</label>
+        <input type="text" id="totp" name="totp" required placeholder="000000" maxlength="6" inputmode="numeric" autofocus 
+               style="text-align: center; letter-spacing: 4px; font-size: 1.2rem;">
+    </div>
+    
+    <input type="hidden" name="username" value="{{ .username }}">
+    <input type="hidden" name="password" value="{{ .password }}">
+    <input type="hidden" name="setup_secret" value="{{ .secret }}">
+    
+    <input type="submit" value="COMPLETE SETUP & LOGIN">
+    <button type="button" class="small-button" style="margin-top: 15px; width: 100%;" onclick="window.location.href='/login'">Go Back</button>
+</div>

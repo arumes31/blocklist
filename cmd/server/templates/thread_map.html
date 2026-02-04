@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Thread Map - Blocklist</title>
+    <link rel="stylesheet" href="/cd/flag-icon.min.css">
+    <link rel="stylesheet" href="/js/leaflet.css">
+    <link rel="stylesheet" href="/js/MarkerCluster.css">
+    <link rel="stylesheet" href="/js/MarkerCluster.Default.css">
+    <link rel="icon" type="image/x-icon" href="/cd/favicon-color.png" />
+    <script src="/js/htmx.min.js"></script>
+    <script src="/js/json-enc.js"></script>
+    <script src="/js/leaflet.js"></script>
+    <script src="/js/leaflet.markercluster.js"></script>
+    <script src="/js/leaflet-heat.js"></script>
+    <script src="/js/leaflet-ant-path.js"></script>
+    <script src="/js/chart.js"></script>
+    <style nonce="{{ .nonce }}">
+        :root {
+            --primary-red: #ff0000;
+            --dark-red: #8b0000;
+            --vibrant-red: #ff4d4d;
+            --glass-bg: rgba(20, 20, 20, 0.85);
+            --border-red: rgba(255, 0, 0, 0.3);
+            --secondary-color: #b3b3b3;
+        }
+        body {
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            background-color: #000;
+            color: #fff;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .header-container {
+            background: var(--glass-bg);
+            padding: 0.8rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            backdrop-filter: blur(8px);
+            border-bottom: 1px solid var(--border-red);
+            z-index: 100;
+        }
+        .banner img { height: 32px; }
+        .btn {
+            padding: 0.5rem 1rem;
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s;
+            text-decoration: none;
+            background: rgba(255,255,255,0.05);
+            color: #fff;
+        }
+        .btn:hover { background: rgba(255,255,255,0.1); }
+        
+        .main-layout {
+            flex: 1;
+            display: grid;
+            grid-template-columns: 3fr 1fr;
+            gap: 1rem;
+            padding: 1rem;
+            box-sizing: border-box;
+            overflow: hidden;
+        }
+        
+        .card {
+            background: rgba(20,20,20,0.85);
+            border: 1px solid var(--border-red);
+            border-radius: 12px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        #threat-map {
+            flex: 1;
+            width: 100%;
+            background: #0a0a0a;
+        }
+        
+        .side-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            overflow-y: auto;
+        }
+        
+        .chart-container {
+            padding: 1rem;
+            flex: 1;
+            min-height: 300px;
+        }
+        
+        .stats-summary {
+            padding: 1rem;
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 0.8rem;
+        }
+        
+        .stat-item {
+            background: rgba(255,255,255,0.03);
+            padding: 0.8rem;
+            border-radius: 8px;
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+        .stat-label { font-size: 0.75rem; color: var(--secondary-color); text-transform: uppercase; }
+        .stat-value { font-size: 1.2rem; font-weight: 700; margin-top: 2px; }
+
+        #live-status {
+            padding: 0.2rem 0.6rem;
+            border-radius: 999px;
+            font-size: 0.75rem;
+            background: rgba(40,167,69,0.2);
+            border: 1px solid rgba(40,167,69,0.4);
+            color: #fff;
+        }
+        
+        .leaflet-container {
+            background: #0a0a0a !important;
+        }
+
+        @keyframes spawn-pulse {
+            0% { transform: translate(-50%, -50%) scale(0.1); opacity: 0.8; box-shadow: 0 0 0 0 var(--pulse-color, rgba(255, 0, 0, 0.7)); }
+            70% { transform: translate(-50%, -50%) scale(2.5); opacity: 0.3; box-shadow: 0 0 0 20px rgba(255, 0, 0, 0); }
+            100% { transform: translate(-50%, -50%) scale(1); opacity: 1; box-shadow: 0 0 0 0 rgba(255, 0, 0, 0); }
+        }
+        .live-spawn-marker {
+            width: 12px;
+            height: 12px;
+            background: var(--pulse-color, var(--primary-red));
+            border: 2px solid #fff;
+            border-radius: 50%;
+            position: absolute;
+            animation: spawn-pulse 1.5s ease-out infinite;
+            pointer-events: none;
+        }
+
+        /* Marker Cluster Customization */
+        .marker-cluster-small { background-color: rgba(255, 0, 0, 0.6); }
+        .marker-cluster-small div { background-color: rgba(255, 0, 0, 0.6); color: #fff; }
+        .marker-cluster-medium { background-color: rgba(255, 0, 0, 0.7); }
+        .marker-cluster-medium div { background-color: rgba(255, 0, 0, 0.7); color: #fff; }
+        .marker-cluster-large { background-color: rgba(255, 0, 0, 0.8); }
+        .marker-cluster-large div { background-color: rgba(255, 0, 0, 0.8); color: #fff; }
+    </style>
+</head>
+<body>
+
+<div class="header-container">
+    <div style="display: flex; align-items: center; gap: 2rem;">
+        <a href="/dashboard" class="banner">
+            <img src="/cd/logo.png" alt="logo">
+        </a>
+        <h2 style="margin: 0; font-size: 1.2rem;">Thread Map</h2>
+    </div>
+    <div style="display: flex; align-items: center; gap: 1rem;">
+        <div style="display: flex; gap: 1rem; font-size: 0.8rem; background: rgba(255,255,255,0.05); padding: 5px 15px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1);">
+            <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                <input type="checkbox" id="toggleBlockIPs" onchange="fetchLatestData()" checked> Blocked IPs
+            </label>
+            <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                <input type="checkbox" id="toggleWhitelistIPs" onchange="fetchLatestData()"> Whitelisted IPs
+            </label>
+            <div style="width: 1px; height: 15px; background: rgba(255,255,255,0.1); margin: 0 5px;"></div>
+            <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                <input type="checkbox" id="toggleHeatmap" onchange="toggleViewMode()"> Heatmap
+            </label>
+            <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                <input type="checkbox" id="toggleCluster" onchange="toggleViewMode()" checked> Cluster
+            </label>
+            <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                <input type="checkbox" id="toggleServerLines" onchange="toggleViewMode()" checked> Path
+            </label>
+        </div>
+        <span id="live-status">LIVE</span>
+        <a href="/dashboard" class="btn">Back to Dashboard</a>
+        {{ if or (eq .username .admin_username) (contains .permissions "manage_admins") }}
+        <a href="/admin_management" class="btn btn-dark" style="padding: 0.5rem 1rem; font-size: 0.9rem;">Admins</a>
+        {{ end }}
+    </div>
+</div>
+
+<div class="main-layout">
+    <div class="card">
+        <div id="threat-map"></div>
+    </div>
+    <div class="side-panel">
+        <div class="card chart-container">
+            <h3 style="font-size: 0.9rem; margin-top: 0; border-bottom: 1px solid var(--border-red); padding-bottom: 5px;">Country Distribution</h3>
+            <div style="flex: 1; position: relative;">
+                <canvas id="countryChart"></canvas>
+            </div>
+        </div>
+        <div class="card stats-summary">
+            <div class="stat-item">
+                <div class="stat-label">Total IPs Blocked</div>
+                <div id="stat-total" class="stat-value">{{ .total_ips }}</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">Banned (Last 24h)</div>
+                <div id="stat-day" class="stat-value">{{ .stats.day }}</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">Banned (Last Hour)</div>
+                <div id="stat-hour" class="stat-value">{{ .stats.hour }}</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">Blocks Per Minute</div>
+                <div id="bpm-display" class="stat-value">0.0 BPM</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script nonce="{{ .nonce }}">
+    let countryChart = null;
+    let map = null;
+    let markerLayer = null;
+    let clusterLayer = null;
+    let heatmapLayer = null;
+    let lineLayer = null;
+    let liveMarkers = null;
+    let worldLayer = null;
+
+    async function initMap() {
+        map = L.map('threat-map', {
+            center: [20, 0],
+            zoom: 2,
+            zoomControl: true,
+            attributionControl: false,
+            minZoom: 2,
+            maxZoom: 18
+        });
+
+        // Load local world GeoJSON with custom styling
+        try {
+            const response = await fetch('/js/world.json');
+            const worldData = await response.json();
+            
+            worldLayer = L.geoJSON(worldData, {
+                style: {
+                    fillColor: '#0d0d0d',
+                    weight: 1.5,
+                    opacity: 1,
+                    color: '#ff000033', // Subtle red borders
+                    fillOpacity: 1
+                }
+            }).addTo(map);
+        } catch (e) {
+            console.error("Failed to load map data", e);
+        }
+
+        markerLayer = L.layerGroup();
+        clusterLayer = L.markerClusterGroup({
+            showCoverageOnHover: false,
+            maxClusterRadius: 50,
+            iconCreateFunction: function(cluster) {
+                const count = cluster.getChildCount();
+                let size = 'small';
+                if (count > 100) size = 'large';
+                else if (count > 20) size = 'medium';
+                
+                return L.divIcon({ 
+                    html: '<div><span>' + count + '</span></div>', 
+                    className: 'marker-cluster marker-cluster-' + size, 
+                    iconSize: new L.Point(40, 40) 
+                });
+            }
+        });
+        heatmapLayer = L.heatLayer([], { 
+            radius: 20, 
+            blur: 15, 
+            max: 1.0, 
+            minOpacity: 0.4,
+            gradient: {0.4: 'blue', 0.6: 'cyan', 0.7: 'lime', 0.8: 'yellow', 1.0: 'red'} 
+        });
+        lineLayer = L.layerGroup().addTo(map);
+        liveMarkers = L.layerGroup().addTo(map);
+
+        // Initial mode setup
+        toggleViewMode();
+        fetchLatestData();
+    }
+
+    function toggleViewMode() {
+        const isHeatmap = document.getElementById('toggleHeatmap').checked;
+        const isCluster = document.getElementById('toggleCluster').checked;
+        const isLines = document.getElementById('toggleServerLines').checked;
+
+        map.removeLayer(markerLayer);
+        map.removeLayer(clusterLayer);
+        map.removeLayer(heatmapLayer);
+        
+        if (isHeatmap) {
+            map.addLayer(heatmapLayer);
+            heatmapLayer.redraw();
+        } else if (isCluster) {
+            map.addLayer(clusterLayer);
+        } else {
+            map.addLayer(markerLayer);
+        }
+
+        if (isLines) {
+            map.addLayer(lineLayer);
+        } else {
+            map.removeLayer(lineLayer);
+        }
+    }
+
+    function initChart(data) {
+        const ctx = document.getElementById('countryChart').getContext('2d');
+        const labels = data.map(c => c.country || 'Unknown');
+        const values = data.map(c => c.count);
+        
+        if (countryChart) {
+            countryChart.data.labels = labels;
+            countryChart.data.datasets[0].data = values;
+            countryChart.update();
+            return;
+        }
+
+        countryChart = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: labels,
+                datasets: [{
+                    data: values,
+                    backgroundColor: [
+                        '#ff0000', '#8b0000', '#ff4d4d', '#444', '#222', '#666', '#999'
+                    ],
+                    borderWidth: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: { color: '#fff', boxWidth: 10, font: { size: 9 } }
+                    }
+                }
+            }
+        });
+    }
+
+    async function fetchLatestData() {
+        const showBlocks = document.getElementById('toggleBlockIPs').checked;
+        const showWhitelists = document.getElementById('toggleWhitelistIPs').checked;
+
+        let allItems = [];
+
+        // Fetch Blocks if enabled
+        if (showBlocks) {
+            const res = await fetch('/api/v1/ips?limit=500');
+            if (res.ok) {
+                const payload = await res.json();
+                const blocks = payload.items || [];
+                // In this case, "Blocked IPs" means ALL blocks.
+                allItems = allItems.concat(blocks.map(it => ({ ...it, type: 'block' })));
+            }
+        }
+
+        // Fetch Whitelists if enabled
+        if (showWhitelists) {
+            const wres = await fetch('/api/v1/whitelists');
+            if (wres.ok) {
+                const whitelists = await wres.json();
+                const filteredWhitelists = whitelists.filter(it => {
+                    return it.data && it.data.added_by && it.data.added_by.includes('WebhookAuto');
+                });
+                allItems = allItems.concat(filteredWhitelists.map(it => ({ ...it, type: 'whitelist' })));
+            }
+        }
+
+        updateMap(allItems);
+
+        const statsRes = await fetch('/api/v1/stats');
+        if (statsRes.ok) {
+            const s = await statsRes.json();
+            initChart(s.top_countries || []);
+            updateStats(s);
+        }
+    }
+
+    function updateMap(items) {
+        markerLayer.clearLayers();
+        clusterLayer.clearLayers();
+        lineLayer.clearLayers();
+        const heatData = [];
+
+        items.forEach(it => {
+            if (it.data && it.data.geolocation && it.data.geolocation.latitude) {
+                const geo = it.data.geolocation;
+                const color = it.type === 'whitelist' ? "#00ff00" : "#ff0000";
+                const label = it.type === 'whitelist' ? "WHITELIST" : "BLOCK";
+                const ts = it.data.timestamp ? new Date(it.data.timestamp).toLocaleString() : 'N/A';
+                
+                const marker = L.circleMarker([geo.latitude, geo.longitude], {
+                    radius: 4,
+                    fillColor: color,
+                    color: "#fff",
+                    weight: 0.5,
+                    opacity: 1,
+                    fillOpacity: 0.8
+                }).bindPopup(`
+                    <b>[${label}] ${it.ip}</b><br>
+                    ${geo.city}, ${geo.country}<br>
+                    <i>${it.data.reason}</i><br>
+                    <div style="margin-top: 5px; font-size: 0.75rem; border-top: 1px solid #444; padding-top: 5px;">
+                        <b>Source:</b> ${it.data.added_by}<br>
+                        <b>Activity:</b> ${ts}
+                    </div>
+                `);
+
+                markerLayer.addLayer(marker);
+                clusterLayer.addLayer(marker);
+                heatData.push([geo.latitude, geo.longitude, 1.0]); // Full intensity
+            }
+        });
+
+        heatmapLayer.setLatLngs(heatData);
+        if (map.hasLayer(heatmapLayer)) {
+            heatmapLayer.redraw();
+        }
+    }
+
+    function updateStats(s) {
+        if (typeof s.total === 'number') document.getElementById('stat-total').textContent = s.total;
+        if (typeof s.day === 'number') document.getElementById('stat-day').textContent = s.day;
+        if (typeof s.hour === 'number') document.getElementById('stat-hour').textContent = s.hour;
+        if (typeof s.blocks_minute === 'number') document.getElementById('bpm-display').textContent = s.blocks_minute.toFixed(1) + ' BPM';
+    }
+
+    // WebSocket for real-time updates
+    const socket = new WebSocket((window.location.protocol === 'https:' ? 'wss://' : 'ws://') + window.location.host + '/ws');
+    socket.onmessage = function(event) {
+        const msg = JSON.parse(event.data);
+        const showBlocks = document.getElementById('toggleBlockIPs').checked;
+        const showWhitelists = document.getElementById('toggleWhitelistIPs').checked;
+        const showLines = document.getElementById('toggleServerLines').checked;
+
+        if (msg.action === 'block' || msg.action === 'whitelist') {
+            const it = msg.data;
+            const type = msg.action;
+            const addedBy = it.data && it.data.added_by ? it.data.added_by : "";
+            
+            // Check if we should show this live update
+            if (type === 'block' && !showBlocks) return;
+            if (type === 'whitelist') {
+                if (!showWhitelists) return;
+                if (!addedBy.includes('WebhookAuto')) return;
+            }
+
+            if (it.data && it.data.geolocation && it.data.geolocation.latitude) {
+                const geo = it.data.geolocation;
+                const color = type === 'whitelist' ? "#00ff00" : "#ff0000";
+                const label = type === 'whitelist' ? "LIVE WHITELIST" : "LIVE BLOCK";
+                const ts = it.data.timestamp ? new Date(it.data.timestamp).toLocaleString() : 'Just Now';
+                
+                // Create a pulsing live marker
+                const liveIcon = L.divIcon({
+                    className: 'live-spawn-container',
+                    html: `<div class="live-spawn-marker" style="--pulse-color: ${color}"></div>`,
+                    iconSize: [0, 0]
+                });
+                
+                const liveMarker = L.marker([geo.latitude, geo.longitude], { icon: liveIcon })
+                    .addTo(liveMarkers)
+                    .bindPopup(`
+                        <b>${label}: ${it.ip}</b><br>
+                        ${geo.city}, ${geo.country}<br>
+                        <i>${it.data.reason}</i><br>
+                        <div style="margin-top: 5px; font-size: 0.75rem; border-top: 1px solid #444; padding-top: 5px;">
+                            <b>Source:</b> ${it.data.added_by}<br>
+                            <b>Activity:</b> ${ts}
+                        </div>
+                    `)
+                    .openPopup();
+
+                // Draw live connection line if enabled and source_geo is present
+                if (showLines && msg.data.source_geo && msg.data.source_geo.latitude) {
+                    const src = msg.data.source_geo;
+                    const attackPath = L.polyline.antPath([ [src.latitude, src.longitude], [geo.latitude, geo.longitude] ], {
+                        delay: 1000,
+                        dashArray: [10, 20],
+                        weight: 2,
+                        color: color,
+                        pulseColor: '#ffffff'
+                    }).addTo(liveMarkers);
+                    
+                    setTimeout(() => {
+                        liveMarkers.removeLayer(attackPath);
+                    }, 5000); // Display line for 5 seconds (matching pulse roughly)
+                }
+                
+                // Remove the pulse after 10 seconds
+                setTimeout(() => {
+                    liveMarkers.removeLayer(liveMarker);
+                }, 10000);
+
+                if (type === 'block') {
+                    const totalEl = document.getElementById('stat-total');
+                    if (totalEl) totalEl.textContent = (parseInt(totalEl.textContent) + 1).toString();
+                }
+                
+                setTimeout(fetchLatestData, 3000);
+            }
+        }
+    };
+
+    window.onload = initMap;
+</script>
+
+</body>
+</html>

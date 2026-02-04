@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Reference - Blocklist</title>
+    <link rel="icon" type="image/x-icon" href="/cd/favicon-color.png" />
+    <style nonce="{{ .nonce }}">
+        :root {
+            --primary-bg: #000;
+            --secondary-bg: #0a0a0a;
+            --vibrant-red: #ff0000;
+            --border-red: rgba(255, 0, 0, 0.2);
+            --text-main: #ffffff;
+            --secondary-color: #888;
+        }
+        body { margin: 0; background: #000; font-family: 'Inter', sans-serif; color: #fff; }
+        .header-container {
+            background: #000;
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border-red);
+        }
+        .banner img { height: 32px; filter: drop-shadow(0 0 5px rgba(255,0,0,0.5)); }
+        .btn {
+            background: rgba(255,255,255,0.05);
+            color: #fff;
+            padding: 0.6rem 1.2rem;
+            border-radius: 6px;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 0.9rem;
+            border: 1px solid rgba(255,255,255,0.1);
+            transition: all 0.2s;
+            display: inline-block;
+        }
+        .btn:hover { background: rgba(255,255,255,0.12); border-color: rgba(255,255,255,0.3); }
+        .btn-dark { background: rgba(0,0,0,0.5); border-color: var(--border-red); }
+        .btn-dark:hover { background: rgba(255,0,0,0.1); border-color: var(--vibrant-red); }
+    </style>
+    <script type="module" src="/js/rapidoc-min.js"></script>
+</head>
+<body>
+    <div class="header-container">
+        <div style="display: flex; align-items: center; gap: 2rem;">
+            <a href="/dashboard" class="banner"><img src="/cd/logo.png" alt="Logo"></a>
+            <h2 style="margin: 0; font-size: 1.2rem;">API Reference</h2>
+        </div>
+        <div style="display: flex; align-items: center; gap: 1rem;">
+            <a href="/dashboard" class="btn btn-dark" style="min-width: 150px;">Back to Dashboard</a>
+            {{ if or (eq .username .admin_username) (contains .permissions "manage_admins") }}
+            <a href="/admin_management" class="btn btn-dark" style="min-width: 120px;">Admins</a>
+            {{ end }}
+            <a href="/logout" class="btn" style="background: rgba(255,255,255,0.08);">Logout</a>
+        </div>
+    </div>
+    <rapi-doc
+        spec-url="/openapi.json"
+        theme="dark"
+        bg-color="#000"
+        text-color="#fff"
+        primary-color="#ff0000"
+        show-header="false"
+        render-style="read"
+        load-fonts="false"
+    > </rapi-doc>
+</body>
+</html>

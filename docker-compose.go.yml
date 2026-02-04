@@ -1,0 +1,64 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "5000:5000"
+    environment:
+      TZ: "Europe/Vienna"
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_DB: 0
+      REDIS_LIM_DB: 1
+      POSTGRES_URL: "postgres://postgres:password@postgres:5432/blocklist?sslmode=disable"
+      LOGWEB: "true"
+      SECRET_KEY: "XXXXXXXX---SECRET_KEY----"
+      BLOCKED_RANGES: "127.0.0.1/32, 0.0.0.0/32, 192.168.0.0/16, 10.0.0.0/8, 172.12.0.0/12"
+      GUIAdmin: admin
+      GUIPassword: "XXXXXXXX---SECRET_PASSWORD----"
+      REDIS_PASSWORD: "CHANGE_ME_REDIS_PASS"
+      METRICS_ALLOWED_IPS: "127.0.0.1"
+      GEOIPUPDATE_ACCOUNT_ID: "XXXXXX"
+      GEOIPUPDATE_LICENSE_KEY: "XXXXXXXX---SECRET_LICENSEKEY----"
+      TRUSTED_PROXIES: "127.0.0.1,172.16.0.0/12,100.64.0.0/10"
+      USE_CLOUDFLARE: "false"
+      RATE_LIMIT: 500
+      RATE_PERIOD: 30
+      RATE_LIMIT_LOGIN: 10
+      RATE_LIMIT_WEBHOOK: 100
+      PORT: "5000"
+    volumes:
+      - './geoip_data:/home/blocklist/geoip'
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  redis:
+    image: "redis:alpine"
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "CHANGE_ME_REDIS_PASS"]
+    volumes:
+      - ./redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "CHANGE_ME_REDIS_PASS", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  postgres:
+    image: "postgres:16-alpine"
+    environment:
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: blocklist
+    volumes:
+      - ./postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d blocklist"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped

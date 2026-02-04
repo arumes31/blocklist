@@ -1,0 +1,2 @@
+DROP TABLE IF EXISTS api_tokens;
+ALTER TABLE admins DROP COLUMN IF EXISTS role;

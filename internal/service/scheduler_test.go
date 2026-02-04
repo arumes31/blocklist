@@ -1,0 +1,10 @@
+package service
+
+import (
+	"testing"
+)
+
+func TestSchedulerService_CleanOldIPs_Nil(t *testing.T) {
+	svc := NewSchedulerService(nil, nil, nil)
+	svc.CleanOldIPs("ips")
+}

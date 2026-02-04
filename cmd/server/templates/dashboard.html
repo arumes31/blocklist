@@ -1,0 +1,1526 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IP Dashboard</title>
+    <link rel="stylesheet" href="/cd/flag-icon.min.css">
+    <link rel="stylesheet" href="/js/leaflet.css">
+    <link rel="icon" type="image/x-icon" href="/cd/favicon-color.png" />
+    <script src="/js/htmx.min.js"></script>
+    <script src="/js/json-enc.js"></script>
+    <script src="/js/leaflet.js"></script>
+    <script src="/js/chart.js"></script>
+    <style nonce="{{ .nonce }}">
+        :root {
+            --primary-red: #ff0000;
+            --dark-red: #8b0000;
+            --vibrant-red: #ff4d4d;
+            --glass-bg: rgba(20, 20, 20, 0.85);
+            --border-red: rgba(255, 0, 0, 0.3);
+            --secondary-color: #b3b3b3;
+            --success-color: #28a745;
+            --danger-color: #dc3545;
+        }
+        body {
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            background-color: #000;
+            color: #fff;
+        }
+        .header-container {
+            background: var(--glass-bg);
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 12px rgba(255,0,0,0.15);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            backdrop-filter: blur(8px);
+            border-bottom: 1px solid var(--border-red);
+        }
+        .header-container h2 {
+            margin: 0;
+            font-weight: 600;
+            color: #fff;
+        }
+        .banner img { height: 40px; filter: drop-shadow(0 0 6px rgba(255,0,0,0.4)); }
+        .main-content { padding: 2rem; }
+        
+        .btn {
+            padding: 0.6rem 1.2rem;
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(255,255,255,0.05);
+            color: #fff;
+            box-shadow: 0 0 10px rgba(255,0,0,0.08);
+        }
+        .btn-danger { background: linear-gradient(45deg, var(--dark-red), var(--primary-red)); border-color: var(--border-red); }
+        .btn-success { background: rgba(40, 167, 69, 0.2); }
+        .btn-dark { background: rgba(255,255,255,0.08); }
+        .btn:hover { transform: translateY(-1px); box-shadow: 0 0 16px rgba(255,0,0,0.2); }
+
+        .search-container { margin-bottom: 1.5rem; position: relative; }
+        .filter-input {
+            width: 100%;
+            padding: 0.8rem 1rem;
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 8px;
+            font-size: 1rem;
+            background: rgba(255,255,255,0.05);
+            color: #fff;
+            outline: none;
+            appearance: none; /* Reset for custom styling if needed */
+        }
+        select.filter-input[multiple] {
+            height: 120px;
+            padding: 5px;
+        }
+        select.filter-input option {
+            background-color: #1a1a1a;
+            color: #fff;
+        }
+        .filter-input:focus { border-color: var(--primary-red); box-shadow: 0 0 0 2px rgba(255,0,0,0.2); }
+
+        .table-card {
+            background: rgba(20,20,20,0.85);
+            border: 1px solid var(--border-red);
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+            backdrop-filter: blur(8px);
+        }
+        table { border-collapse: collapse; width: 100%; color: #fff; table-layout: fixed; }
+        th, td { text-align: left; padding: 0.5rem; border-bottom: 1px solid rgba(255,255,255,0.06); }
+        th {
+            background-color: rgba(255,255,255,0.04);
+            font-weight: 600;
+            color: var(--secondary-color);
+            text-transform: uppercase;
+            font-size: 0.85rem;
+            letter-spacing: 0.05em;
+        }
+        tr:hover { background-color: rgba(255,255,255,0.02); }
+        
+        /* Modal Styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+            backdrop-filter: blur(4px);
+        }
+        .modal-content {
+            background: rgba(20,20,20,0.95);
+            margin: 10% auto;
+            padding: 2rem;
+            border-radius: 12px;
+            width: 420px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.6);
+            border: 1px solid var(--border-red);
+            color: #fff;
+        }
+        .modal h3 { margin-top: 0; }
+        .form-group { margin-bottom: 1rem; }
+        .form-group label { display: block; margin-bottom: 0.5rem; font-weight: 500; }
+        .form-control {
+            width: 100%;
+            padding: 0.6rem;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+
+        /* Toast Notifications */
+        #toast-container {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 2000;
+        }
+        .toast {
+            background: #333;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            margin-top: 10px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            animation: slideIn 0.3s ease-out;
+        }
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        .toast.success { border-left: 4px solid var(--success-color); }
+        .toast.danger { border-left: 4px solid var(--danger-color); }
+
+        .loading-row { opacity: 0.5; pointer-events: none; }
+        
+        tr.new-row {
+            animation: highlight 2s ease-out;
+        }
+        @keyframes highlight {
+            0% { background-color: #fff3cd; }
+            100% { background-color: transparent; }
+        }
+        /* New entry pulse animation */
+        .pulse-start {
+            position: relative;
+        }
+        .pulse-start::after {
+            content: '';
+            position: absolute;
+            left: -8px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 6px; height: 6px;
+            background: var(--vibrant-red);
+            border-radius: 50%;
+            box-shadow: 0 0 0 0 rgba(255,77,77, 0.7);
+            animation: pulse 1.8s ease-out 2;
+        }
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(255,77,77, 0.7); opacity: 1; }
+            70% { box-shadow: 0 0 0 10px rgba(255,77,77, 0); opacity: 1; }
+            100% { box-shadow: 0 0 0 0 rgba(255,77,77, 0); opacity: 0.6; }
+        }
+        .slide-in {
+            animation: slideInRow 300ms ease-out;
+        }
+        @keyframes slideInRow {
+            from { transform: translateY(-8px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        
+        /* Dashboard enhancements */
+        .status-chip {
+            padding: 0.2rem 0.6rem;
+            border-radius: 999px;
+            font-size: 0.75rem;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+        .status-chip.live { background: rgba(40,167,69,0.2); border-color: rgba(40,167,69,0.4); }
+        .status-chip.paused { background: rgba(255,193,7,0.2); border-color: rgba(255,193,7,0.5); }
+        .status-chip.offline { background: rgba(220,53,69,0.2); border-color: rgba(220,53,69,0.5); }
+        .clear-btn {
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: transparent;
+            border: 1px solid rgba(255,255,255,0.15);
+            color: #fff;
+            padding: 2px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .spinner {
+            width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.3);
+            border-top-color: #fff; border-radius: 50%; display: inline-block;
+            animation: spin 0.8s linear infinite; margin-right: 8px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .loading { text-align: center; color: #ccc; padding: 1rem; }
+        /* Compact density */
+        .compact table td, .compact table th { padding: 0.5rem; }
+        /* Hide Geo column */
+        .hide-geo #ipTable th:nth-child(7), .hide-geo #ipTable td:nth-child(7) { display: none; }
+
+        /* Compact Country Dropdown */
+        .country-dropdown {
+            position: relative;
+            flex: 1;
+            min-width: 150px;
+        }
+        .country-popup {
+            display: none;
+            position: absolute;
+            top: 100%;
+            left: 0;
+            width: 250px;
+            max-height: 400px;
+            background: #1a1a1a;
+            border: 1px solid var(--border-red);
+            border-radius: 8px;
+            z-index: 1000;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+            padding: 10px;
+            margin-top: 5px;
+        }
+        .country-popup.active { display: block; }
+        .country-list {
+            max-height: 300px;
+            overflow-y: auto;
+            margin-top: 10px;
+        }
+        .country-option {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px;
+            cursor: pointer;
+            border-radius: 4px;
+            transition: background 0.2s;
+        }
+        .country-option:hover { background: rgba(255,255,255,0.05); }
+        .country-option input { cursor: pointer; }
+        .country-search {
+            width: 100%;
+            padding: 8px;
+            background: #000;
+            border: 1px solid rgba(255,255,255,0.1);
+            color: #fff;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+
+        /* Side Panel (Detail Drawer) */
+        .side-panel {
+            position: fixed;
+            top: 0;
+            right: -500px;
+            width: 450px;
+            height: 100%;
+            background: rgba(15, 15, 15, 0.98);
+            border-left: 1px solid var(--border-red);
+            z-index: 1500;
+            transition: right 0.3s ease-out;
+            box-shadow: -10px 0 30px rgba(0,0,0,0.5);
+            backdrop-filter: blur(10px);
+            padding: 2rem;
+            overflow-y: auto;
+            color: #fff;
+        }
+        .side-panel.active { right: 0; }
+        .side-panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            padding-bottom: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        .side-panel-close {
+            background: transparent;
+            border: none;
+            color: var(--secondary-color);
+            font-size: 1.5rem;
+            cursor: pointer;
+        }
+        .history-item {
+            padding: 10px;
+            border-left: 2px solid var(--vibrant-red);
+            background: rgba(255,255,255,0.03);
+            margin-bottom: 10px;
+            border-radius: 0 4px 4px 0;
+        }
+        .history-item .ts { font-size: 0.75rem; color: var(--secondary-color); }
+        .history-item .actor { font-size: 0.85rem; font-weight: bold; margin: 4px 0; }
+        
+        .loading-panel-msg { text-align: center; padding: 2rem; }
+        .modal-footer { display: flex; gap: 10px; margin-top: 2rem; }
+        .btn-cancel { flex: 1; background: #eee; color: #333; }
+        .m-0 { margin: 0; }
+
+        /* Reason Presets */
+        .reason-presets {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 10px;
+        }
+        .reason-chip {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .reason-chip:hover {
+            background: rgba(255,0,0,0.1);
+            border-color: var(--vibrant-red);
+        }
+    </style>
+</head>
+<body>
+
+<div id="toast-container"></div>
+
+<div class="header-container">
+    <div style="display: flex; align-items: center; gap: 2rem;">
+        <a href="/dashboard" class="banner">
+            <img src="/cd/logo.png" alt="logo">
+        </a> 
+        <div style="display: flex; align-items: center; gap: 1.5rem;">
+            <h2 class="m-0">Dashboard</h2>
+            <div style="display: flex; gap: 0.8rem;">
+                <button onclick="openModal('blockModal')" class="btn btn-danger">Block IP</button>
+                <a href="/thread-map" class="btn btn-dark" style="min-width: 120px;">Thread Map</a>
+                <a href="/whitelist" class="btn btn-dark" style="min-width: 120px;">Whitelist</a>
+                <a href="/settings" class="btn btn-dark" style="min-width: 120px;">Settings</a>
+                <a href="/docs" class="btn btn-dark" style="min-width: 120px;">API Docs</a>
+                {{ if or (eq .username .admin_username) (contains .permissions "manage_admins") }}
+                <a href="/admin_management" class="btn btn-dark" style="min-width: 120px;">Admins</a>
+                {{ end }}
+            </div>
+        </div>
+    </div>
+    <div style="display: flex; align-items: center; gap: 1rem;">
+        <div class="controls" style="display:flex; align-items:center; gap:0.5rem;">
+            <button id="togglePause" class="btn" aria-label="Toggle live update pause">Pause</button>
+            <button id="toggleGeo" class="btn" aria-label="Toggle Geolocation column visibility">Geo</button>
+            <span id="live-status" class="status-chip live">LIVE</span>
+        </div>
+        <div style="text-align: right;">
+            <div style="font-weight: 700; color: var(--vibrant-red);">
+                Total IPs: <span id="total-ips-count">{{ .total_ips }}</span>
+                <span id="stat-day-delta" style="font-size: 0.8rem; color: var(--success-color); margin-left: 4px;" title="Last 24h">+{{ .stats.day }}</span>
+            </div>
+            <div style="font-size: 0.75rem; color: var(--secondary-color); display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 2px;">
+                <span id="bpm-display" title="Blocks Per Minute">0.0 BPM</span>
+                <span id="last-block-display">Last: never</span>
+                <span id="health-dot" style="width: 8px; height: 8px; background: var(--success-color); border-radius: 50%; display: inline-block;" title="System Health: OK"></span>
+            </div>
+        </div>
+        <a href="/logout" class="btn" style="background: rgba(255,255,255,0.08);">Logout</a>
+    </div>
+</div>
+
+<div class="main-content">
+    <div class="search-container">
+        <div style="display: flex; gap: 10px; margin-bottom: 10px; flex-wrap: wrap;">
+            <input type="text" id="filterInput" class="filter-input" style="flex: 2; min-width: 200px;" placeholder="Quick Search (IP, Reason...)" oninput="debouncedFilterTable()">
+            
+            <div class="country-dropdown">
+                <button type="button" class="filter-input" style="width: 100%; text-align: left; display: flex; justify-content: space-between; align-items: center;" onclick="toggleCountryDropdown()">
+                    <span id="countryLabel">All Countries</span>
+                    <span>▼</span>
+                </button>
+                <div class="country-popup" id="countryPopup">
+                    <input type="text" id="countrySearch" class="country-search" placeholder="Search countries..." oninput="filterCountryList()">
+                    <div class="country-list" id="countryList">
+                        <label class="country-option"><input type="checkbox" value="AF" onchange="applyServerSearch()"> Afghanistan</label>
+                        <label class="country-option"><input type="checkbox" value="AX" onchange="applyServerSearch()"> Åland Islands</label>
+                        <label class="country-option"><input type="checkbox" value="AL" onchange="applyServerSearch()"> Albania</label>
+                        <label class="country-option"><input type="checkbox" value="DZ" onchange="applyServerSearch()"> Algeria</label>
+                        <label class="country-option"><input type="checkbox" value="AS" onchange="applyServerSearch()"> American Samoa</label>
+                        <label class="country-option"><input type="checkbox" value="AD" onchange="applyServerSearch()"> Andorra</label>
+                        <label class="country-option"><input type="checkbox" value="AO" onchange="applyServerSearch()"> Angola</label>
+                        <label class="country-option"><input type="checkbox" value="AI" onchange="applyServerSearch()"> Anguilla</label>
+                        <label class="country-option"><input type="checkbox" value="AQ" onchange="applyServerSearch()"> Antarctica</label>
+                        <label class="country-option"><input type="checkbox" value="AG" onchange="applyServerSearch()"> Antigua and Barbuda</label>
+                        <label class="country-option"><input type="checkbox" value="AR" onchange="applyServerSearch()"> Argentina</label>
+                        <label class="country-option"><input type="checkbox" value="AM" onchange="applyServerSearch()"> Armenia</label>
+                        <label class="country-option"><input type="checkbox" value="AW" onchange="applyServerSearch()"> Aruba</label>
+                        <label class="country-option"><input type="checkbox" value="AU" onchange="applyServerSearch()"> Australia</label>
+                        <label class="country-option"><input type="checkbox" value="AT" onchange="applyServerSearch()"> Austria</label>
+                        <label class="country-option"><input type="checkbox" value="AZ" onchange="applyServerSearch()"> Azerbaijan</label>
+                        <label class="country-option"><input type="checkbox" value="BS" onchange="applyServerSearch()"> Bahamas</label>
+                        <label class="country-option"><input type="checkbox" value="BH" onchange="applyServerSearch()"> Bahrain</label>
+                        <label class="country-option"><input type="checkbox" value="BD" onchange="applyServerSearch()"> Bangladesh</label>
+                        <label class="country-option"><input type="checkbox" value="BB" onchange="applyServerSearch()"> Barbados</label>
+                        <label class="country-option"><input type="checkbox" value="BY" onchange="applyServerSearch()"> Belarus</label>
+                        <label class="country-option"><input type="checkbox" value="BE" onchange="applyServerSearch()"> Belgium</label>
+                        <label class="country-option"><input type="checkbox" value="BZ" onchange="applyServerSearch()"> Belize</label>
+                        <label class="country-option"><input type="checkbox" value="BJ" onchange="applyServerSearch()"> Benin</label>
+                        <label class="country-option"><input type="checkbox" value="BM" onchange="applyServerSearch()"> Bermuda</label>
+                        <label class="country-option"><input type="checkbox" value="BT" onchange="applyServerSearch()"> Bhutan</label>
+                        <label class="country-option"><input type="checkbox" value="BO" onchange="applyServerSearch()"> Bolivia</label>
+                        <label class="country-option"><input type="checkbox" value="BQ" onchange="applyServerSearch()"> Bonaire, Sint Eustatius and Saba</label>
+                        <label class="country-option"><input type="checkbox" value="BA" onchange="applyServerSearch()"> Bosnia and Herzegovina</label>
+                        <label class="country-option"><input type="checkbox" value="BW" onchange="applyServerSearch()"> Botswana</label>
+                        <label class="country-option"><input type="checkbox" value="BV" onchange="applyServerSearch()"> Bouvet Island</label>
+                        <label class="country-option"><input type="checkbox" value="BR" onchange="applyServerSearch()"> Brazil</label>
+                        <label class="country-option"><input type="checkbox" value="IO" onchange="applyServerSearch()"> British Indian Ocean Territory</label>
+                        <label class="country-option"><input type="checkbox" value="BN" onchange="applyServerSearch()"> Brunei Darussalam</label>
+                        <label class="country-option"><input type="checkbox" value="BG" onchange="applyServerSearch()"> Bulgaria</label>
+                        <label class="country-option"><input type="checkbox" value="BF" onchange="applyServerSearch()"> Burkina Faso</label>
+                        <label class="country-option"><input type="checkbox" value="BI" onchange="applyServerSearch()"> Burundi</label>
+                        <label class="country-option"><input type="checkbox" value="CV" onchange="applyServerSearch()"> Cabo Verde</label>
+                        <label class="country-option"><input type="checkbox" value="KH" onchange="applyServerSearch()"> Cambodia</label>
+                        <label class="country-option"><input type="checkbox" value="CM" onchange="applyServerSearch()"> Cameroon</label>
+                        <label class="country-option"><input type="checkbox" value="CA" onchange="applyServerSearch()"> Canada</label>
+                        <label class="country-option"><input type="checkbox" value="KY" onchange="applyServerSearch()"> Cayman Islands</label>
+                        <label class="country-option"><input type="checkbox" value="CF" onchange="applyServerSearch()"> Central African Republic</label>
+                        <label class="country-option"><input type="checkbox" value="TD" onchange="applyServerSearch()"> Chad</label>
+                        <label class="country-option"><input type="checkbox" value="CL" onchange="applyServerSearch()"> Chile</label>
+                        <label class="country-option"><input type="checkbox" value="CN" onchange="applyServerSearch()"> China</label>
+                        <label class="country-option"><input type="checkbox" value="CX" onchange="applyServerSearch()"> Christmas Island</label>
+                        <label class="country-option"><input type="checkbox" value="CC" onchange="applyServerSearch()"> Cocos (Keeling) Islands</label>
+                        <label class="country-option"><input type="checkbox" value="CO" onchange="applyServerSearch()"> Colombia</label>
+                        <label class="country-option"><input type="checkbox" value="KM" onchange="applyServerSearch()"> Comoros</label>
+                        <label class="country-option"><input type="checkbox" value="CG" onchange="applyServerSearch()"> Congo</label>
+                        <label class="country-option"><input type="checkbox" value="CD" onchange="applyServerSearch()"> Congo (Democratic Republic of the)</label>
+                        <label class="country-option"><input type="checkbox" value="CK" onchange="applyServerSearch()"> Cook Islands</label>
+                        <label class="country-option"><input type="checkbox" value="CR" onchange="applyServerSearch()"> Costa Rica</label>
+                        <label class="country-option"><input type="checkbox" value="CI" onchange="applyServerSearch()"> Côte d'Ivoire</label>
+                        <label class="country-option"><input type="checkbox" value="HR" onchange="applyServerSearch()"> Croatia</label>
+                        <label class="country-option"><input type="checkbox" value="CU" onchange="applyServerSearch()"> Cuba</label>
+                        <label class="country-option"><input type="checkbox" value="CW" onchange="applyServerSearch()"> Curaçao</label>
+                        <label class="country-option"><input type="checkbox" value="CY" onchange="applyServerSearch()"> Cyprus</label>
+                        <label class="country-option"><input type="checkbox" value="CZ" onchange="applyServerSearch()"> Czechia</label>
+                        <label class="country-option"><input type="checkbox" value="DK" onchange="applyServerSearch()"> Denmark</label>
+                        <label class="country-option"><input type="checkbox" value="DJ" onchange="applyServerSearch()"> Djibouti</label>
+                        <label class="country-option"><input type="checkbox" value="DM" onchange="applyServerSearch()"> Dominica</label>
+                        <label class="country-option"><input type="checkbox" value="DO" onchange="applyServerSearch()"> Dominican Republic</label>
+                        <label class="country-option"><input type="checkbox" value="EC" onchange="applyServerSearch()"> Ecuador</label>
+                        <label class="country-option"><input type="checkbox" value="EG" onchange="applyServerSearch()"> Egypt</label>
+                        <label class="country-option"><input type="checkbox" value="SV" onchange="applyServerSearch()"> El Salvador</label>
+                        <label class="country-option"><input type="checkbox" value="GQ" onchange="applyServerSearch()"> Equatorial Guinea</label>
+                        <label class="country-option"><input type="checkbox" value="ER" onchange="applyServerSearch()"> Eritrea</label>
+                        <label class="country-option"><input type="checkbox" value="EE" onchange="applyServerSearch()"> Estonia</label>
+                        <label class="country-option"><input type="checkbox" value="SZ" onchange="applyServerSearch()"> Eswatini</label>
+                        <label class="country-option"><input type="checkbox" value="ET" onchange="applyServerSearch()"> Ethiopia</label>
+                        <label class="country-option"><input type="checkbox" value="FK" onchange="applyServerSearch()"> Falkland Islands (Malvinas)</label>
+                        <label class="country-option"><input type="checkbox" value="FO" onchange="applyServerSearch()"> Faroe Islands</label>
+                        <label class="country-option"><input type="checkbox" value="FJ" onchange="applyServerSearch()"> Fiji</label>
+                        <label class="country-option"><input type="checkbox" value="FI" onchange="applyServerSearch()"> Finland</label>
+                        <label class="country-option"><input type="checkbox" value="FR" onchange="applyServerSearch()"> France</label>
+                        <label class="country-option"><input type="checkbox" value="GF" onchange="applyServerSearch()"> French Guiana</label>
+                        <label class="country-option"><input type="checkbox" value="PF" onchange="applyServerSearch()"> French Polynesia</label>
+                        <label class="country-option"><input type="checkbox" value="TF" onchange="applyServerSearch()"> French Southern Territories</label>
+                        <label class="country-option"><input type="checkbox" value="GA" onchange="applyServerSearch()"> Gabon</label>
+                        <label class="country-option"><input type="checkbox" value="GM" onchange="applyServerSearch()"> Gambia</label>
+                        <label class="country-option"><input type="checkbox" value="GE" onchange="applyServerSearch()"> Georgia</label>
+                        <label class="country-option"><input type="checkbox" value="DE" onchange="applyServerSearch()"> Germany</label>
+                        <label class="country-option"><input type="checkbox" value="GH" onchange="applyServerSearch()"> Ghana</label>
+                        <label class="country-option"><input type="checkbox" value="GI" onchange="applyServerSearch()"> Gibraltar</label>
+                        <label class="country-option"><input type="checkbox" value="GR" onchange="applyServerSearch()"> Greece</label>
+                        <label class="country-option"><input type="checkbox" value="GL" onchange="applyServerSearch()"> Greenland</label>
+                        <label class="country-option"><input type="checkbox" value="GD" onchange="applyServerSearch()"> Grenada</label>
+                        <label class="country-option"><input type="checkbox" value="GP" onchange="applyServerSearch()"> Guadeloupe</label>
+                        <label class="country-option"><input type="checkbox" value="GU" onchange="applyServerSearch()"> Guam</label>
+                        <label class="country-option"><input type="checkbox" value="GT" onchange="applyServerSearch()"> Guatemala</label>
+                        <label class="country-option"><input type="checkbox" value="GG" onchange="applyServerSearch()"> Guernsey</label>
+                        <label class="country-option"><input type="checkbox" value="GN" onchange="applyServerSearch()"> Guinea</label>
+                        <label class="country-option"><input type="checkbox" value="GW" onchange="applyServerSearch()"> Guinea-Bissau</label>
+                        <label class="country-option"><input type="checkbox" value="GY" onchange="applyServerSearch()"> Guyana</label>
+                        <label class="country-option"><input type="checkbox" value="HT" onchange="applyServerSearch()"> Haiti</label>
+                        <label class="country-option"><input type="checkbox" value="HM" onchange="applyServerSearch()"> Heard Island and McDonald Islands</label>
+                        <label class="country-option"><input type="checkbox" value="VA" onchange="applyServerSearch()"> Holy See</label>
+                        <label class="country-option"><input type="checkbox" value="HN" onchange="applyServerSearch()"> Honduras</label>
+                        <label class="country-option"><input type="checkbox" value="HK" onchange="applyServerSearch()"> Hong Kong</label>
+                        <label class="country-option"><input type="checkbox" value="HU" onchange="applyServerSearch()"> Hungary</label>
+                        <label class="country-option"><input type="checkbox" value="IS" onchange="applyServerSearch()"> Iceland</label>
+                        <label class="country-option"><input type="checkbox" value="IN" onchange="applyServerSearch()"> India</label>
+                        <label class="country-option"><input type="checkbox" value="ID" onchange="applyServerSearch()"> Indonesia</label>
+                        <label class="country-option"><input type="checkbox" value="IR" onchange="applyServerSearch()"> Iran (Islamic Republic of)</label>
+                        <label class="country-option"><input type="checkbox" value="IQ" onchange="applyServerSearch()"> Iraq</label>
+                        <label class="country-option"><input type="checkbox" value="IE" onchange="applyServerSearch()"> Ireland</label>
+                        <label class="country-option"><input type="checkbox" value="IM" onchange="applyServerSearch()"> Isle of Man</label>
+                        <label class="country-option"><input type="checkbox" value="IL" onchange="applyServerSearch()"> Israel</label>
+                        <label class="country-option"><input type="checkbox" value="IT" onchange="applyServerSearch()"> Italy</label>
+                        <label class="country-option"><input type="checkbox" value="JM" onchange="applyServerSearch()"> Jamaica</label>
+                        <label class="country-option"><input type="checkbox" value="JP" onchange="applyServerSearch()"> Japan</label>
+                        <label class="country-option"><input type="checkbox" value="JE" onchange="applyServerSearch()"> Jersey</label>
+                        <label class="country-option"><input type="checkbox" value="JO" onchange="applyServerSearch()"> Jordan</label>
+                        <label class="country-option"><input type="checkbox" value="KZ" onchange="applyServerSearch()"> Kazakhstan</label>
+                        <label class="country-option"><input type="checkbox" value="KE" onchange="applyServerSearch()"> Kenya</label>
+                        <label class="country-option"><input type="checkbox" value="KI" onchange="applyServerSearch()"> Kiribati</label>
+                        <label class="country-option"><input type="checkbox" value="KP" onchange="applyServerSearch()"> Korea (Democratic People's Republic of)</label>
+                        <label class="country-option"><input type="checkbox" value="KR" onchange="applyServerSearch()"> Korea (Republic of)</label>
+                        <label class="country-option"><input type="checkbox" value="KW" onchange="applyServerSearch()"> Kuwait</label>
+                        <label class="country-option"><input type="checkbox" value="KG" onchange="applyServerSearch()"> Kyrgyzstan</label>
+                        <label class="country-option"><input type="checkbox" value="LA" onchange="applyServerSearch()"> Lao People's Democratic Republic</label>
+                        <label class="country-option"><input type="checkbox" value="LV" onchange="applyServerSearch()"> Latvia</label>
+                        <label class="country-option"><input type="checkbox" value="LB" onchange="applyServerSearch()"> Lebanon</label>
+                        <label class="country-option"><input type="checkbox" value="LS" onchange="applyServerSearch()"> Lesotho</label>
+                        <label class="country-option"><input type="checkbox" value="LR" onchange="applyServerSearch()"> Liberia</label>
+                        <label class="country-option"><input type="checkbox" value="LY" onchange="applyServerSearch()"> Libya</label>
+                        <label class="country-option"><input type="checkbox" value="LI" onchange="applyServerSearch()"> Liechtenstein</label>
+                        <label class="country-option"><input type="checkbox" value="LT" onchange="applyServerSearch()"> Lithuania</label>
+                        <label class="country-option"><input type="checkbox" value="LU" onchange="applyServerSearch()"> Luxembourg</label>
+                        <label class="country-option"><input type="checkbox" value="MO" onchange="applyServerSearch()"> Macao</label>
+                        <label class="country-option"><input type="checkbox" value="MG" onchange="applyServerSearch()"> Madagascar</label>
+                        <label class="country-option"><input type="checkbox" value="MW" onchange="applyServerSearch()"> Malawi</label>
+                        <label class="country-option"><input type="checkbox" value="MY" onchange="applyServerSearch()"> Malaysia</label>
+                        <label class="country-option"><input type="checkbox" value="MV" onchange="applyServerSearch()"> Maldives</label>
+                        <label class="country-option"><input type="checkbox" value="ML" onchange="applyServerSearch()"> Mali</label>
+                        <label class="country-option"><input type="checkbox" value="MT" onchange="applyServerSearch()"> Malta</label>
+                        <label class="country-option"><input type="checkbox" value="MH" onchange="applyServerSearch()"> Marshall Islands</label>
+                        <label class="country-option"><input type="checkbox" value="MQ" onchange="applyServerSearch()"> Martinique</label>
+                        <label class="country-option"><input type="checkbox" value="MR" onchange="applyServerSearch()"> Mauritania</label>
+                        <label class="country-option"><input type="checkbox" value="MU" onchange="applyServerSearch()"> Mauritius</label>
+                        <label class="country-option"><input type="checkbox" value="YT" onchange="applyServerSearch()"> Mayotte</label>
+                        <label class="country-option"><input type="checkbox" value="MX" onchange="applyServerSearch()"> Mexico</label>
+                        <label class="country-option"><input type="checkbox" value="FM" onchange="applyServerSearch()"> Micronesia (Federated States of)</label>
+                        <label class="country-option"><input type="checkbox" value="MD" onchange="applyServerSearch()"> Moldova (Republic of)</label>
+                        <label class="country-option"><input type="checkbox" value="MC" onchange="applyServerSearch()"> Monaco</label>
+                        <label class="country-option"><input type="checkbox" value="MN" onchange="applyServerSearch()"> Mongolia</label>
+                        <label class="country-option"><input type="checkbox" value="ME" onchange="applyServerSearch()"> Montenegro</label>
+                        <label class="country-option"><input type="checkbox" value="MS" onchange="applyServerSearch()"> Montserrat</label>
+                        <label class="country-option"><input type="checkbox" value="MA" onchange="applyServerSearch()"> Morocco</label>
+                        <label class="country-option"><input type="checkbox" value="MZ" onchange="applyServerSearch()"> Mozambique</label>
+                        <label class="country-option"><input type="checkbox" value="MM" onchange="applyServerSearch()"> Myanmar</label>
+                        <label class="country-option"><input type="checkbox" value="NA" onchange="applyServerSearch()"> Namibia</label>
+                        <label class="country-option"><input type="checkbox" value="NR" onchange="applyServerSearch()"> Nauru</label>
+                        <label class="country-option"><input type="checkbox" value="NP" onchange="applyServerSearch()"> Nepal</label>
+                        <label class="country-option"><input type="checkbox" value="NL" onchange="applyServerSearch()"> Netherlands</label>
+                        <label class="country-option"><input type="checkbox" value="NC" onchange="applyServerSearch()"> New Caledonia</label>
+                        <label class="country-option"><input type="checkbox" value="NZ" onchange="applyServerSearch()"> New Zealand</label>
+                        <label class="country-option"><input type="checkbox" value="NI" onchange="applyServerSearch()"> Nicaragua</label>
+                        <label class="country-option"><input type="checkbox" value="NE" onchange="applyServerSearch()"> Niger</label>
+                        <label class="country-option"><input type="checkbox" value="NG" onchange="applyServerSearch()"> Nigeria</label>
+                        <label class="country-option"><input type="checkbox" value="NU" onchange="applyServerSearch()"> Niue</label>
+                        <label class="country-option"><input type="checkbox" value="NF" onchange="applyServerSearch()"> Norfolk Island</label>
+                        <label class="country-option"><input type="checkbox" value="MK" onchange="applyServerSearch()"> North Macedonia</label>
+                        <label class="country-option"><input type="checkbox" value="MP" onchange="applyServerSearch()"> Northern Mariana Islands</label>
+                        <label class="country-option"><input type="checkbox" value="NO" onchange="applyServerSearch()"> Norway</label>
+                        <label class="country-option"><input type="checkbox" value="OM" onchange="applyServerSearch()"> Oman</label>
+                        <label class="country-option"><input type="checkbox" value="PK" onchange="applyServerSearch()"> Pakistan</label>
+                        <label class="country-option"><input type="checkbox" value="PW" onchange="applyServerSearch()"> Palau</label>
+                        <label class="country-option"><input type="checkbox" value="PS" onchange="applyServerSearch()"> Palestine, State of</label>
+                        <label class="country-option"><input type="checkbox" value="PA" onchange="applyServerSearch()"> Panama</label>
+                        <label class="country-option"><input type="checkbox" value="PG" onchange="applyServerSearch()"> Papua New Guinea</label>
+                        <label class="country-option"><input type="checkbox" value="PY" onchange="applyServerSearch()"> Paraguay</label>
+                        <label class="country-option"><input type="checkbox" value="PE" onchange="applyServerSearch()"> Peru</label>
+                        <label class="country-option"><input type="checkbox" value="PH" onchange="applyServerSearch()"> Philippines</label>
+                        <label class="country-option"><input type="checkbox" value="PN" onchange="applyServerSearch()"> Pitcairn</label>
+                        <label class="country-option"><input type="checkbox" value="PL" onchange="applyServerSearch()"> Poland</label>
+                        <label class="country-option"><input type="checkbox" value="PT" onchange="applyServerSearch()"> Portugal</label>
+                        <label class="country-option"><input type="checkbox" value="PR" onchange="applyServerSearch()"> Puerto Rico</label>
+                        <label class="country-option"><input type="checkbox" value="QA" onchange="applyServerSearch()"> Qatar</label>
+                        <label class="country-option"><input type="checkbox" value="RE" onchange="applyServerSearch()"> Réunion</label>
+                        <label class="country-option"><input type="checkbox" value="RO" onchange="applyServerSearch()"> Romania</label>
+                        <label class="country-option"><input type="checkbox" value="RU" onchange="applyServerSearch()"> Russian Federation</label>
+                        <label class="country-option"><input type="checkbox" value="RW" onchange="applyServerSearch()"> Rwanda</label>
+                        <label class="country-option"><input type="checkbox" value="BL" onchange="applyServerSearch()"> Saint Barthélemy</label>
+                        <label class="country-option"><input type="checkbox" value="SH" onchange="applyServerSearch()"> Saint Helena, Ascension and Tristan da Cunha</label>
+                        <label class="country-option"><input type="checkbox" value="KN" onchange="applyServerSearch()"> Saint Kitts and Nevis</label>
+                        <label class="country-option"><input type="checkbox" value="LC" onchange="applyServerSearch()"> Saint Lucia</label>
+                        <label class="country-option"><input type="checkbox" value="MF" onchange="applyServerSearch()"> Saint Martin (French part)</label>
+                        <label class="country-option"><input type="checkbox" value="PM" onchange="applyServerSearch()"> Saint Pierre and Miquelon</label>
+                        <label class="country-option"><input type="checkbox" value="VC" onchange="applyServerSearch()"> Saint Vincent and the Grenadines</label>
+                        <label class="country-option"><input type="checkbox" value="WS" onchange="applyServerSearch()"> Samoa</label>
+                        <label class="country-option"><input type="checkbox" value="SM" onchange="applyServerSearch()"> San Marino</label>
+                        <label class="country-option"><input type="checkbox" value="ST" onchange="applyServerSearch()"> Sao Tome and Principe</option>
+                        <label class="country-option"><input type="checkbox" value="SA" onchange="applyServerSearch()"> Saudi Arabia</label>
+                        <label class="country-option"><input type="checkbox" value="SN" onchange="applyServerSearch()"> Senegal</label>
+                        <label class="country-option"><input type="checkbox" value="RS" onchange="applyServerSearch()"> Serbia</label>
+                        <label class="country-option"><input type="checkbox" value="SC" onchange="applyServerSearch()"> Seychelles</label>
+                        <label class="country-option"><input type="checkbox" value="SL" onchange="applyServerSearch()"> Sierra Leone</label>
+                        <label class="country-option"><input type="checkbox" value="SG" onchange="applyServerSearch()"> Singapore</label>
+                        <label class="country-option"><input type="checkbox" value="SX" onchange="applyServerSearch()"> Sint Maarten (Dutch part)</label>
+                        <label class="country-option"><input type="checkbox" value="SK" onchange="applyServerSearch()"> Slovakia</label>
+                        <label class="country-option"><input type="checkbox" value="SI" onchange="applyServerSearch()"> Slovenia</label>
+                        <label class="country-option"><input type="checkbox" value="SB" onchange="applyServerSearch()"> Solomon Islands</label>
+                        <label class="country-option"><input type="checkbox" value="SO" onchange="applyServerSearch()"> Somalia</label>
+                        <label class="country-option"><input type="checkbox" value="ZA" onchange="applyServerSearch()"> South Africa</label>
+                        <label class="country-option"><input type="checkbox" value="GS" onchange="applyServerSearch()"> South Georgia and the South Sandwich Islands</label>
+                        <label class="country-option"><input type="checkbox" value="SS" onchange="applyServerSearch()"> South Sudan</label>
+                        <label class="country-option"><input type="checkbox" value="ES" onchange="applyServerSearch()"> Spain</label>
+                        <label class="country-option"><input type="checkbox" value="LK" onchange="applyServerSearch()"> Sri Lanka</label>
+                        <label class="country-option"><input type="checkbox" value="SD" onchange="applyServerSearch()"> Sudan</label>
+                        <label class="country-option"><input type="checkbox" value="SR" onchange="applyServerSearch()"> Suriname</label>
+                        <label class="country-option"><input type="checkbox" value="SJ" onchange="applyServerSearch()"> Svalbard and Jan Mayen</label>
+                        <label class="country-option"><input type="checkbox" value="SE" onchange="applyServerSearch()"> Sweden</label>
+                        <label class="country-option"><input type="checkbox" value="CH" onchange="applyServerSearch()"> Switzerland</label>
+                        <label class="country-option"><input type="checkbox" value="SY" onchange="applyServerSearch()"> Syrian Arab Republic</label>
+                        <label class="country-option"><input type="checkbox" value="TW" onchange="applyServerSearch()"> Taiwan, Province of China</label>
+                        <label class="country-option"><input type="checkbox" value="TJ" onchange="applyServerSearch()"> Tajikistan</label>
+                        <label class="country-option"><input type="checkbox" value="TZ" onchange="applyServerSearch()"> Tanzania, United Republic of</label>
+                        <label class="country-option"><input type="checkbox" value="TH" onchange="applyServerSearch()"> Thailand</label>
+                        <label class="country-option"><input type="checkbox" value="TL" onchange="applyServerSearch()"> Timor-Leste</label>
+                        <label class="country-option"><input type="checkbox" value="TG" onchange="applyServerSearch()"> Togo</label>
+                        <label class="country-option"><input type="checkbox" value="TK" onchange="applyServerSearch()"> Tokelau</label>
+                        <label class="country-option"><input type="checkbox" value="TO" onchange="applyServerSearch()"> Tonga</label>
+                        <label class="country-option"><input type="checkbox" value="TT" onchange="applyServerSearch()"> Trinidad and Tobago</label>
+                        <label class="country-option"><input type="checkbox" value="TN" onchange="applyServerSearch()"> Tunisia</label>
+                        <label class="country-option"><input type="checkbox" value="TR" onchange="applyServerSearch()"> Turkey</label>
+                        <label class="country-option"><input type="checkbox" value="TM" onchange="applyServerSearch()"> Turkmenistan</label>
+                        <label class="country-option"><input type="checkbox" value="TC" onchange="applyServerSearch()"> Turks and Caicos Islands</label>
+                        <label class="country-option"><input type="checkbox" value="TV" onchange="applyServerSearch()"> Tuvalu</label>
+                        <label class="country-option"><input type="checkbox" value="UG" onchange="applyServerSearch()"> Uganda</label>
+                        <label class="country-option"><input type="checkbox" value="UA" onchange="applyServerSearch()"> Ukraine</label>
+                        <label class="country-option"><input type="checkbox" value="AE" onchange="applyServerSearch()"> United Arab Emirates</label>
+                        <label class="country-option"><input type="checkbox" value="GB" onchange="applyServerSearch()"> United Kingdom of Great Britain and Northern Ireland</label>
+                        <label class="country-option"><input type="checkbox" value="UM" onchange="applyServerSearch()"> United States Minor Outlying Islands</label>
+                        <label class="country-option"><input type="checkbox" value="US" onchange="applyServerSearch()"> United States of America</label>
+                        <label class="country-option"><input type="checkbox" value="UY" onchange="applyServerSearch()"> Uruguay</label>
+                        <label class="country-option"><input type="checkbox" value="UZ" onchange="applyServerSearch()"> Uzbekistan</label>
+                        <label class="country-option"><input type="checkbox" value="VU" onchange="applyServerSearch()"> Vanuatu</label>
+                        <label class="country-option"><input type="checkbox" value="VE" onchange="applyServerSearch()"> Venezuela (Bolivarian Republic of)</label>
+                        <label class="country-option"><input type="checkbox" value="VN" onchange="applyServerSearch()"> Viet Nam</label>
+                        <label class="country-option"><input type="checkbox" value="VG" onchange="applyServerSearch()"> Virgin Islands (British)</label>
+                        <label class="country-option"><input type="checkbox" value="VI" onchange="applyServerSearch()"> Virgin Islands (U.S.)</label>
+                        <label class="country-option"><input type="checkbox" value="WF" onchange="applyServerSearch()"> Wallis and Futuna</label>
+                        <label class="country-option"><input type="checkbox" value="EH" onchange="applyServerSearch()"> Western Sahara</label>
+                        <label class="country-option"><input type="checkbox" value="YE" onchange="applyServerSearch()"> Yemen</label>
+                        <label class="country-option"><input type="checkbox" value="ZM" onchange="applyServerSearch()"> Zambia</label>
+                        <label class="country-option"><input type="checkbox" value="ZW" onchange="applyServerSearch()"> Zimbabwe</label>
+                    </div>
+                </div>
+            </div>
+            <input type="text" id="addedByFilter" class="filter-input" style="flex: 1; min-width: 120px;" placeholder="Added By..." oninput="debouncedFilterTable()">
+            <input type="datetime-local" id="fromDateFilter" class="filter-input" style="flex: 1; min-width: 160px;" onchange="applyServerSearch()" title="From Date">
+            <input type="datetime-local" id="toDateFilter" class="filter-input" style="flex: 1; min-width: 160px;" onchange="applyServerSearch()" title="To Date">
+            <button id="clearFilter" class="btn btn-dark" style="height: 42px;" title="Clear All Filters">Clear</button>
+            <div style="display: flex; gap: 5px;">
+                <button onclick="exportData('csv')" class="btn btn-dark" style="height: 42px;" title="Export CSV">CSV</button>
+                <button onclick="exportData('ndjson')" class="btn btn-dark" style="height: 42px;" title="Export NDJSON">JSON</button>
+            </div>
+            <select id="savedViews" class="filter-input" style="flex: 1; min-width: 150px;" onchange="loadView(this.value)">
+                <option value="">Saved Views</option>
+                {{ range $i, $v := .views }}
+                    <option value="{{ $v.Filters }}">{{ $v.Name }}</option>
+                {{ end }}
+            </select>
+            <button onclick="saveCurrentView()" class="btn btn-dark" style="height: 42px;" title="Save Current Filters as View">Save View</button>
+        </div>
+        <div id="filter-chips" style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 15px;"></div>
+    </div>
+
+    <div class="stats" style="display:grid; grid-template-columns: repeat(auto-fit,minmax(220px,1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+        <div class="table-card" style="padding:1rem;">
+            <div style="font-size:0.85rem; color:var(--secondary-color);">IPs banned (last hour)</div>
+            <div id="stat-hour" style="font-size:1.6rem; font-weight:700; color:#fff;">{{ .stats.hour }}</div>
+        </div>
+        <div class="table-card" style="padding:1rem;">
+            <div style="font-size:0.85rem; color:var(--secondary-color);">IPs banned (last 24h)</div>
+            <div id="stat-day" style="font-size:1.6rem; font-weight:700; color:#fff;">{{ .stats.day }}</div>
+        </div>
+        <div class="table-card" style="padding:1rem;">
+            <div style="font-size:0.85rem; color:var(--secondary-color);">IPs banned (total)</div>
+            <div id="stat-total" style="font-size:1.6rem; font-weight:700; color:#fff;">{{ .total_ips }}</div>
+        </div>
+        <div class="table-card" style="padding:1rem;">
+            <div style="font-size:0.85rem; color:var(--secondary-color);">Top countries</div>
+            <div id="stat-countries" style="display:flex; gap:0.75rem; align-items:center; margin-top:0.4rem;">
+                {{ range $i, $c := .stats.top_countries }}
+                    <span title="{{ $c.Country }}" style="display:inline-flex; align-items:center; gap:6px;">
+                        <span class="flag-icon flag-icon-{{ lower $c.Country }}"></span><span style="color:#fff; font-weight:600;">{{ $c.Count }}</span>
+                    </span>
+                {{ end }}
+            </div>
+        </div>
+        <div class="table-card" style="padding:1rem;">
+            <div style="font-size:0.85rem; color:var(--secondary-color);">Top ASNs</div>
+            <div id="stat-asns" style="display:flex; flex-direction:column; gap:4px; margin-top:0.4rem;">
+                {{ range $i, $a := .stats.top_asns }}
+                    <div style="font-size:0.85rem; color:#fff; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="{{ $a.ASNOrg }}">
+                        <span style="color:var(--secondary-color);">{{ $a.ASN }}:</span> {{ $a.Count }}
+                    </div>
+                {{ end }}
+            </div>
+        </div>
+        <div class="table-card" style="padding:1rem;">
+            <div style="font-size:0.85rem; color:var(--secondary-color);">Top Reasons</div>
+            <div id="stat-reasons" style="display:flex; flex-direction:column; gap:4px; margin-top:0.4rem;">
+                {{ range $i, $r := .stats.top_reasons }}
+                    <div style="font-size:0.85rem; color:#fff; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="{{ $r.Reason }}">
+                        <span style="color:var(--secondary-color);">{{ $r.Reason }}:</span> {{ $r.Count }}
+                    </div>
+                {{ end }}
+            </div>
+        </div>
+        <div class="table-card" style="padding:1rem;">
+            <div style="font-size:0.85rem; color:var(--secondary-color);">Webhooks (last hour)</div>
+            <div id="stat-webhooks" style="font-size:1.6rem; font-weight:700; color:#fff;">{{ .stats.webhooks_hour }}</div>
+        </div>
+    </div>
+
+    <div class="table-card">
+        <table id="ipTable">
+            <thead>
+                <tr>
+                    <th style="width: 40px;"><input type="checkbox" id="selectAll" onclick="toggleSelectAll(this)"></th>
+                    <th>IP Address</th>
+                    <th>Date Added</th>
+                    <th>Expires At</th>
+                    <th>Reason</th>
+                    <th>Score</th>
+                    <th>By</th>
+                    <th>Geo</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody id="ipTableBody"></tbody>
+        </table>
+    </div>
+    <div id="scroll-sentinel" class="loading" style="display:none;"><span class="spinner"></span> Loading...</div>
+</div>
+
+<div id="bulkActionBar" style="display: none; position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: rgba(20,20,20,0.95); border: 1px solid var(--border-red); border-radius: 12px; padding: 1rem 2rem; z-index: 1001; box-shadow: 0 10px 40px rgba(255,0,0,0.3); align-items: center; gap: 2rem; backdrop-filter: blur(10px);">
+    <div style="font-weight: bold; color: #fff;"><span id="selectedCount">0</span> IPs Selected</div>
+    <div style="display: flex; gap: 1rem;">
+        <button class="btn btn-success" onclick="confirmBulkUnblock()">Unblock All</button>
+        <button class="btn btn-dark" onclick="clearSelection()">Cancel</button>
+    </div>
+</div>
+
+<div id="blockModal" class="modal">
+    <div class="modal-content">
+        <h3>Block New IP</h3>
+        <div class="form-group">
+            <label>IP Address</label>
+            <input type="text" id="ipToBlock" class="form-control" placeholder="e.g. 1.2.3.4">
+        </div>
+        <div class="form-group">
+            <label>Reason</label>
+            <input type="text" id="blockReason" class="form-control" placeholder="e.g. Brute force">
+            <div class="reason-presets">
+                <div class="reason-chip" onclick="setReason('Brute Force')">Brute Force</div>
+                <div class="reason-chip" onclick="setReason('Scraping')">Scraping</div>
+                <div class="reason-chip" onclick="setReason('DDoS')">DDoS</div>
+                <div class="reason-chip" onclick="setReason('Vulnerability Scan')">Vulnerability Scan</div>
+                <div class="reason-chip" onclick="setReason('Spam')">Spam</div>
+            </div>
+        </div>
+        <div class="form-group">
+            <label>TTL (seconds, default 86400)</label>
+            <input type="number" id="blockTTL" class="form-control" placeholder="86400">
+        </div>
+        <div class="form-group">
+            <label style="display: inline-flex; align-items: center; cursor: pointer;">
+                <input type="checkbox" id="persistCheckbox" style="margin-right: 10px;"> Persistent Block
+            </label>
+        </div>
+        <div class="modal-footer">
+            <button onclick="confirmBlock()" class="btn btn-danger" style="flex: 1;">Block IP</button>
+            <button onclick="closeModal('blockModal')" class="btn btn-secondary btn-cancel">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<!-- IP Detail Side Panel -->
+<div id="sidePanel" class="side-panel">
+    <div class="side-panel-header">
+        <h3 class="m-0">IP Details</h3>
+        <button class="side-panel-close" id="closePanelBtn">×</button>
+    </div>
+    <div id="sidePanelContent">
+        <div class="loading-panel-msg">
+            <span class="spinner"></span> Loading details...
+        </div>
+    </div>
+</div>
+
+<script nonce="{{ .nonce }}">
+    // Virtualized dataset and pagination
+    const PAGE_SIZE = 500;
+    let items = [];
+    
+    // UI Event Listeners
+    document.getElementById('closePanelBtn')?.addEventListener('click', closeSidePanel);
+
+    let total = parseInt(document.getElementById('total-ips-count').innerText || '0');
+    let cursor = null; // server-provided cursor for next page
+    let currentFilters = {
+        query: "",
+        country: "",
+        addedBy: "",
+        from: "",
+        to: ""
+    };
+    let inflight = null; // AbortController for in-flight fetch
+    let paused = false;
+    let updateQueue = [];
+    let lastBlockTime = {{ if .stats.last_block_ts }}{{ .stats.last_block_ts }}{{ else }}0{{ end }};
+    const tbody = document.getElementById('ipTableBody');
+
+    function rowHTML(ip, data){
+        const geo = data && data.geolocation && data.geolocation.country ? `<span class="flag-icon flag-icon-${data.geolocation.country.toLowerCase()}"></span> ${data.geolocation.city||''} (${data.geolocation.country})` : '<span style="color: #888;">N/A</span>';
+        const reason = data && data.reason ? data.reason : 'N/A';
+        const score = data && data.threat_score ? data.threat_score : 0;
+        let scoreColor = '#888';
+        if (score >= 75) scoreColor = '#ff0000';
+        else if (score >= 50) scoreColor = '#ff8c00';
+        else if (score >= 25) scoreColor = '#ffd700';
+
+        const addedBy = data && data.added_by ? data.added_by : 'Unknown';
+        const ts = data && data.timestamp ? data.timestamp : '';
+        const expires = data && data.expires_at ? data.expires_at : 'Never';
+        const expiresHTML = expires === 'Never' ? 'Never' : `<span class="utc-timestamp">${expires}</span>`;
+        return `<tr id="row-${ip.toLowerCase().replace(/\./g,'-').replace(/:/g,'-')}">
+            <td><input type="checkbox" class="ip-checkbox" value="${ip}" onclick="updateBulkUI()"></td>
+                            <td class="col-ip">
+                                <a href="#" onclick="event.preventDefault(); showIPDetails('${ip}')" style="color: var(--vibrant-red); text-decoration: none; border-bottom: 1px dashed rgba(255,0,0,0.3);">${ip}</a>
+                            </td>
+            <td><span class="utc-timestamp">${ts}</span></td>
+            <td>${expiresHTML}</td>
+            <td><span style="font-size: 0.9rem; color: var(--secondary-color);">${reason}</span></td>
+            <td><span style="font-weight: bold; color: ${scoreColor}">${score}</span></td>
+            <td>${addedBy}</td>
+            <td>${geo}</td>
+            <td>
+                <button class="btn btn-success" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;"
+                        hx-post="/unblock" hx-ext="json-enc" hx-vals='{"ip": "${ip}"}'
+                        hx-target="closest tr" hx-swap="outerHTML swap:0.5s" title="Unblock this IP">Unblock</button>
+            </td>
+        </tr>`;
+    }
+
+    function setReason(r) {
+        document.getElementById('blockReason').value = r;
+    }
+
+    async function showIPDetails(ip) {
+        const panel = document.getElementById('sidePanel');
+        const content = document.getElementById('sidePanelContent');
+        panel.classList.add('active');
+        content.innerHTML = '<div style="text-align: center; padding: 2rem;"><span class="spinner"></span> Loading details...</div>';
+
+        try {
+            const res = await fetch(`/api/v1/ips/${ip}/details`);
+            const data = await res.json();
+            
+            let historyHTML = data.history.map(h => `
+                <div class="history-item">
+                    <div class="ts">${new Date(h.timestamp).toLocaleString()}</div>
+                    <div class="actor">Action: <span style="color:var(--vibrant-red)">${h.action}</span> by ${h.actor}</div>
+                    <div style="font-size:0.8rem; color:#ccc;">${h.reason || 'No reason provided'}</div>
+                </div>
+            `).join('');
+
+            if (data.history.length === 0) historyHTML = '<p style="color:var(--secondary-color)">No history found for this IP.</p>';
+
+            const current = data.current;
+            const geo = current && current.geolocation ? `
+                <div style="margin-top:1rem; padding:1rem; background:rgba(255,255,255,0.05); border-radius:8px;">
+                    <div style="font-weight:bold; margin-bottom:5px;">Geolocation</div>
+                    <div class="flag-icon flag-icon-${current.geolocation.country.toLowerCase()}"></div> ${current.geolocation.city || ''} (${current.geolocation.country})
+                    <div style="font-size:0.8rem; color:var(--secondary-color); margin-top:5px;">ASN: ${current.geolocation.asn} - ${current.geolocation.asn_org}</div>
+                </div>
+            ` : '';
+
+            content.innerHTML = `
+                <div style="font-size: 1.2rem; font-family: monospace; color: var(--vibrant-red); margin-bottom: 1.5rem;">${ip}</div>
+                <div style="margin-bottom: 2rem;">
+                    <h4 style="margin-bottom:10px; color:var(--secondary-color); text-transform:uppercase; font-size:0.8rem;">Current Status</h4>
+                    ${current ? `
+                        <div class="status-chip live" style="display:inline-block">BLOCKED</div>
+                        <div style="margin-top:10px; font-size:0.9rem;">
+                            <div>Reason: ${current.reason}</div>
+                            <div>Added By: ${current.added_by}</div>
+                            <div>Expires: ${current.expires_at || 'Never'}</div>
+                        </div>
+                        ${geo}
+                    ` : '<div class="status-chip offline" style="display:inline-block">NOT BLOCKED</div>'}
+                </div>
+                
+                <h4 style="margin-bottom:15px; color:var(--secondary-color); text-transform:uppercase; font-size:0.8rem;">Audit Trail</h4>
+                <div class="history-list">
+                    ${historyHTML}
+                </div>
+            `;
+        } catch (e) {
+            content.innerHTML = '<div style="color:var(--primary-red)">Failed to load details.</div>';
+        }
+    }
+
+    function closeSidePanel() {
+        document.getElementById('sidePanel').classList.remove('active');
+    }
+
+    function toggleCountryDropdown() {
+        document.getElementById('countryPopup').classList.toggle('active');
+    }
+
+    // Close dropdown when clicking outside
+    document.addEventListener('click', function(event) {
+        const dropdown = document.querySelector('.country-dropdown');
+        const popup = document.getElementById('countryPopup');
+        if (dropdown && !dropdown.contains(event.target)) {
+            popup.classList.remove('active');
+        }
+    });
+
+    function filterCountryList() {
+        const search = document.getElementById('countrySearch').value.toLowerCase();
+        const options = document.querySelectorAll('.country-option');
+        options.forEach(opt => {
+            const name = opt.innerText.toLowerCase();
+            if (name.includes(search)) {
+                opt.style.display = 'flex';
+            } else {
+                opt.style.display = 'none';
+            }
+        });
+    }
+
+    async function fetchPage(nextCursor){
+        // cancel previous request if still in flight
+        if (inflight) inflight.abort();
+        inflight = new AbortController();
+        
+        let params = new URLSearchParams({
+            limit: PAGE_SIZE
+        });
+        if (nextCursor) params.append('cursor', nextCursor);
+        if (currentFilters.query) params.append('query', currentFilters.query);
+        if (currentFilters.country) params.append('country', currentFilters.country);
+        if (currentFilters.addedBy) params.append('added_by', currentFilters.addedBy);
+        if (currentFilters.from) params.append('from', new Date(currentFilters.from).toISOString());
+        if (currentFilters.to) params.append('to', new Date(currentFilters.to).toISOString());
+
+        const url = `/api/v1/ips?${params.toString()}`;
+        const res = await fetch(url, { headers: { 'Accept': 'application/json' }, signal: inflight.signal }).catch(() => null);
+        if (!res || !res.ok) return { items: [], next: null };
+        const payload = await res.json();
+        // expected: { items: [{ip, data}], next: "cursor", total: N }
+        if (payload.total != null) {
+            total = payload.total;
+            document.getElementById('total-ips-count').innerText = total;
+        }
+        return { items: payload.items || [], next: payload.next || null };
+    }
+
+    function renderWindow(list){
+        const currentTbody = document.getElementById('ipTableBody');
+        if (!currentTbody) return;
+        
+        const frag = document.createDocumentFragment();
+        const container = document.createElement('tbody');
+        container.id = 'ipTableBody';
+        container.innerHTML = list.map(it => rowHTML(it.ip, it.data)).join('');
+        
+        if (currentTbody.parentNode) {
+            currentTbody.parentNode.replaceChild(container, currentTbody);
+        } else {
+            currentTbody.innerHTML = container.innerHTML;
+        }
+        htmx.process(document.getElementById('ipTableBody'));
+        convertTimestamps();
+    }
+
+    async function init(){
+        loadFromURL();
+        renderChips();
+        const page = await fetchPage(null);
+        items = page.items;
+        cursor = page.next;
+        renderWindow(items);
+        if (cursor) observeScroll();
+    }
+
+    function observeScroll(){
+        let loading = false;
+        const sentinel = document.getElementById('scroll-sentinel');
+        sentinel.style.display = 'block';
+        const io = new IntersectionObserver(async (entries) => {
+            if (!entries[0].isIntersecting || loading || !cursor) return;
+            loading = true;
+            const page = await fetchPage(cursor);
+            cursor = page.next;
+            items = items.concat(page.items);
+            const frag = document.createDocumentFragment();
+            page.items.forEach(it => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = rowHTML(it.ip, it.data);
+                frag.appendChild(tr.firstChild);
+            });
+            const tbodyEl = document.getElementById('ipTableBody');
+            tbodyEl.appendChild(frag);
+            htmx.process(tbodyEl);
+            convertTimestamps();
+            loading = false;
+            if (!cursor) sentinel.style.display = 'none';
+        }, { rootMargin: '200px' });
+        io.observe(sentinel);
+    }
+
+    // Periodic stats refresh
+    async function refreshStats(){
+        try {
+            const hr = await fetch('/health');
+            const hdata = await hr.json();
+            const dot = document.getElementById('health-dot');
+            if (hdata.status === 'UP') {
+                dot.style.background = 'var(--success-color)';
+                dot.title = 'System Health: OK';
+            } else {
+                dot.style.background = 'var(--primary-red)';
+                dot.title = 'System Health: ' + hdata.status;
+            }
+
+            const r = await fetch('/api/v1/stats', { headers: { 'Accept': 'application/json' } });
+            if (!r.ok) return;
+            const s = await r.json();
+            if (typeof s.hour === 'number') document.getElementById('stat-hour').textContent = s.hour;
+            if (typeof s.day === 'number') {
+                document.getElementById('stat-day').textContent = s.day;
+                document.getElementById('stat-day-delta').textContent = '+' + s.day;
+            }
+            if (typeof s.total === 'number') {
+                document.getElementById('stat-total').textContent = s.total;
+            }
+            if (typeof s.active_blocks === 'number') {
+                document.getElementById('total-ips-count').textContent = s.active_blocks;
+            }
+            if (typeof s.webhooks_hour === 'number') {
+                document.getElementById('stat-webhooks').textContent = s.webhooks_hour;
+            }
+            if (typeof s.blocks_minute === 'number') {
+                document.getElementById('bpm-display').textContent = s.blocks_minute.toFixed(1) + ' BPM';
+            }
+            if (s.last_block_ts > 0) {
+                lastBlockTime = s.last_block_ts;
+            }
+            
+            if (lastBlockTime > 0) {
+                const diff = Math.floor((Date.now() / 1000) - lastBlockTime);
+                let text = "just now";
+                if (diff > 0) {
+                    if (diff < 60) text = diff + "s ago";
+                    else if (diff < 3600) text = Math.floor(diff/60) + "m ago";
+                    else text = Math.floor(diff/3600) + "h ago";
+                }
+                document.getElementById('last-block-display').textContent = 'Last: ' + text;
+            }
+
+            if (Array.isArray(s.top_countries)) {
+                const wrap = document.getElementById('stat-countries');
+                wrap.innerHTML = s.top_countries.slice(0,3).map(c => `
+                    <span title="${c.country}" style="display:inline-flex; align-items:center; gap:6px;">
+                        <span class="flag-icon flag-icon-${(c.country||'').toLowerCase()}"></span><span style="color:#fff; font-weight:600;">${c.count||0}</span>
+                    </span>
+                `).join('');
+            }
+            if (Array.isArray(s.top_asns)) {
+                const wrap = document.getElementById('stat-asns');
+                wrap.innerHTML = s.top_asns.slice(0,3).map(a => `
+                    <div style="font-size:0.85rem; color:#fff; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${a.asn_org||''}">
+                        <span style="color:var(--secondary-color);">${a.asn}:</span> ${a.count}
+                    </div>
+                `).join('');
+            }
+            if (Array.isArray(s.top_reasons)) {
+                const wrap = document.getElementById('stat-reasons');
+                wrap.innerHTML = s.top_reasons.slice(0,3).map(r => `
+                    <div style="font-size:0.85rem; color:#fff; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${r.reason}">
+                        <span style="color:var(--secondary-color);">${r.reason}:</span> ${r.count}
+                    </div>
+                `).join('');
+            }
+        } catch (_) {}
+    }
+    setInterval(refreshStats, 15000);
+    
+    // WebSocket differential updates
+    const socket = new WebSocket((window.location.protocol === 'https:' ? 'wss://' : 'ws://') + window.location.host + '/ws');
+    socket.onopen = function() { setStatus('live'); };
+    socket.onclose = function() { setStatus('offline'); };
+    socket.onmessage = function(event) {
+        const msg = JSON.parse(event.data);
+        if (paused) { updateQueue.push(msg); return; }
+        applyMessage(msg);
+    };
+
+    function setStatus(mode){
+        const chip = document.getElementById('live-status');
+        chip.classList.remove('live','paused','offline');
+        if (paused) { chip.classList.add('paused'); chip.textContent = 'PAUSED'; return; }
+        if (mode === 'offline') { chip.classList.add('offline'); chip.textContent = 'OFFLINE'; }
+        else { chip.classList.add('live'); chip.textContent = 'LIVE'; }
+    }
+
+    function applyMessage(msg){
+        if (msg.action === 'block') {
+            const ip = msg.data.ip;
+            const entry = { ip, data: msg.data.data };
+            // Check if it matches current filters
+            if (currentFilters.query && !ip.includes(currentFilters.query) && !entry.data.reason.includes(currentFilters.query)) return;
+            if (currentFilters.country && (!entry.data.geolocation || entry.data.geolocation.country !== currentFilters.country)) return;
+            if (currentFilters.addedBy && entry.data.added_by !== currentFilters.addedBy) return;
+            
+            items.unshift(entry);
+            const tbodyEl = document.getElementById('ipTableBody');
+            const temp = document.createElement('tbody');
+            temp.innerHTML = rowHTML(ip, entry.data);
+            const row = temp.firstChild;
+            // add animation classes
+            row.classList.add('slide-in');
+            const firstCell = row.querySelector('td');
+            if (firstCell) firstCell.classList.add('pulse-start');
+            tbodyEl.insertBefore(row, tbodyEl.firstChild);
+            htmx.process(row);
+            convertTimestamps();
+            updateTotalCount(1);
+            // optional toast
+            showToast(`IP Blocked: ${ip}`, 'danger');
+            // bump hour/day/total counters optimistically
+            const h = document.getElementById('stat-hour'); if (h) h.textContent = (parseInt(h.textContent||'0')+1).toString();
+            const d = document.getElementById('stat-day'); if (d) d.textContent = (parseInt(d.textContent||'0')+1).toString();
+            const t = document.getElementById('stat-total'); if (t) t.textContent = (parseInt(t.textContent||'0')+1).toString();
+            
+            // Update BPM and Last Block
+            document.getElementById('last-block-display').textContent = 'Last: just now';
+            lastBlockTime = Date.now() / 1000;
+        } else if (msg.action === 'unblock') {
+            const ip = msg.data.ip;
+            const id = 'row-' + ip.toLowerCase().replace(/\./g,'-').replace(/:/g,'-');
+            const row = document.getElementById(id);
+            if (row) {
+                row.style.transition = 'opacity 250ms ease';
+                row.style.opacity = '0';
+                setTimeout(() => row.remove(), 250);
+            }
+            const idx = items.findIndex(it => it.ip === ip);
+            if (idx >= 0) items.splice(idx, 1);
+            updateTotalCount(-1);
+            showToast(`IP Unblocked: ${ip}`, 'success');
+        }
+    }
+
+    function updateTotalCount(delta) {
+        const el = document.getElementById('total-ips-count');
+        el.innerText = Math.max(0, parseInt(el.innerText) + delta);
+    }
+
+    // Server-side search across all records
+    let debounceTimeout;
+    function debouncedFilterTable() {
+        clearTimeout(debounceTimeout);
+        debounceTimeout = setTimeout(applyServerSearch, 350);
+    }
+
+    async function applyServerSearch(){
+        const countrySelect = document.getElementById('countryPopup');
+        const checkboxes = countrySelect.querySelectorAll('input[type="checkbox"]:checked');
+        const selectedCountries = Array.from(checkboxes).map(cb => cb.value);
+        
+        const label = document.getElementById('countryLabel');
+        if (selectedCountries.length === 0) {
+            label.textContent = 'All Countries';
+        } else {
+            label.textContent = `${selectedCountries.length} Countries Selected`;
+        }
+
+        currentFilters = {
+            query: document.getElementById('filterInput').value.trim(),
+            country: selectedCountries.join(','),
+            addedBy: document.getElementById('addedByFilter').value.trim(),
+            from: document.getElementById('fromDateFilter').value,
+            to: document.getElementById('toDateFilter').value
+        };
+        cursor = null;
+        updateURL();
+        renderChips();
+        const page = await fetchPage(null);
+        items = page.items;
+        renderWindow(items);
+    }
+
+    function updateURL() {
+        const params = new URLSearchParams();
+        Object.entries(currentFilters).forEach(([key, val]) => {
+            if (val) params.append(key, val);
+        });
+        const newurl = window.location.protocol + "//" + window.location.host + window.location.pathname + '?' + params.toString();
+        window.history.pushState({path:newurl},'',newurl);
+    }
+
+    function loadFromURL() {
+        const params = new URLSearchParams(window.location.search);
+        currentFilters.query = params.get('query') || "";
+        currentFilters.country = params.get('country') || "";
+        currentFilters.addedBy = params.get('addedBy') || "";
+        currentFilters.from = params.get('from') || "";
+        currentFilters.to = params.get('to') || "";
+
+        document.getElementById('filterInput').value = currentFilters.query;
+        
+        const countries = currentFilters.country.split(',').filter(c => c !== "");
+        const checkboxes = document.querySelectorAll('#countryList input[type="checkbox"]');
+        checkboxes.forEach(cb => {
+            cb.checked = countries.includes(cb.value);
+        });
+        
+        const label = document.getElementById('countryLabel');
+        if (countries.length === 0) {
+            label.textContent = 'All Countries';
+        } else {
+            label.textContent = `${countries.length} Countries Selected`;
+        }
+
+        document.getElementById('addedByFilter').value = currentFilters.addedBy;
+        document.getElementById('fromDateFilter').value = currentFilters.from || "";
+        document.getElementById('toDateFilter').value = currentFilters.to || "";
+    }
+
+    window.loadView = function(filterJson) {
+        if (!filterJson) return;
+        const filters = JSON.parse(filterJson);
+        currentFilters = filters;
+        
+        document.getElementById('filterInput').value = filters.query || "";
+        
+        const countries = (filters.country || "").split(',').filter(c => c !== "");
+        const checkboxes = document.querySelectorAll('#countryList input[type="checkbox"]');
+        checkboxes.forEach(cb => {
+            cb.checked = countries.includes(cb.value);
+        });
+
+        const label = document.getElementById('countryLabel');
+        if (countries.length === 0) {
+            label.textContent = 'All Countries';
+        } else {
+            label.textContent = `${countries.length} Countries Selected`;
+        }
+
+        document.getElementById('addedByFilter').value = filters.addedBy || "";
+
+        document.getElementById('fromDateFilter').value = filters.from || "";
+        document.getElementById('toDateFilter').value = filters.to || "";
+        
+        applyServerSearch();
+    }
+
+    window.saveCurrentView = function() {
+        const name = prompt("Enter a name for this view:");
+        if (!name) return;
+
+        fetch('/api/v1/views', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                name: name,
+                filters: JSON.stringify(currentFilters)
+            })
+        }).then(r => r.json()).then(data => {
+            if (data.status === 'success') {
+                showToast("View saved successfully", "success");
+                setTimeout(() => window.location.reload(), 1000);
+            } else {
+                showToast(data.error || "Failed to save view", "danger");
+            }
+        });
+    }
+
+    function renderChips() {
+        const container = document.getElementById('filter-chips');
+        container.innerHTML = "";
+        Object.entries(currentFilters).forEach(([key, val]) => {
+            if (val) {
+                if (key === 'country') {
+                    val.split(',').forEach(c => {
+                        const chip = document.createElement('div');
+                        chip.className = 'status-chip live';
+                        chip.style.display = 'inline-flex';
+                        chip.style.alignItems = 'center';
+                        chip.style.gap = '5px';
+                        chip.style.cursor = 'default';
+                        chip.innerHTML = `<span>Country: ${c}</span> <span style="cursor:pointer; font-weight:bold;" onclick="removeCountry('${c}')">×</span>`;
+                        container.appendChild(chip);
+                    });
+                } else {
+                    const chip = document.createElement('div');
+                    chip.className = 'status-chip live';
+                    chip.style.display = 'inline-flex';
+                    chip.style.alignItems = 'center';
+                    chip.style.gap = '5px';
+                    chip.style.cursor = 'default';
+                    
+                    let label = val;
+                    if (key === 'from') label = 'From: ' + new Date(val).toLocaleDateString();
+                    if (key === 'to') label = 'To: ' + new Date(val).toLocaleDateString();
+                    
+                    chip.innerHTML = `<span>${key}: ${label}</span> <span style="cursor:pointer; font-weight:bold;" onclick="removeFilter('${key}')">×</span>`;
+                    container.appendChild(chip);
+                }
+            }
+        });
+    }
+
+    window.removeFilter = function(key) {
+        currentFilters[key] = "";
+        const idMap = {
+            query: 'filterInput',
+            country: 'countryPopup',
+            addedBy: 'addedByFilter',
+            from: 'fromDateFilter',
+            to: 'toDateFilter'
+        };
+        const el = document.getElementById(idMap[key]);
+        if (el) {
+            if (key === 'country') {
+                const checkboxes = el.querySelectorAll('input[type="checkbox"]');
+                checkboxes.forEach(cb => cb.checked = false);
+            } else {
+                el.value = "";
+            }
+        }
+        applyServerSearch();
+    }
+
+    window.removeCountry = function(code) {
+        const checkboxes = document.querySelectorAll('#countryList input[type="checkbox"]');
+        checkboxes.forEach(cb => {
+            if (cb.value === code) cb.checked = false;
+        });
+        applyServerSearch();
+    }
+
+    window.exportData = function(format) {
+        let params = new URLSearchParams();
+        params.append('format', format);
+        Object.entries(currentFilters).forEach(([key, val]) => {
+            if (val) {
+                if (key === 'from' || key === 'to') {
+                    params.append(key, new Date(val).toISOString());
+                } else {
+                    params.append(key, val);
+                }
+            }
+        });
+        window.location.href = `/api/v1/ips/export?${params.toString()}`;
+    }
+
+    // UI Helpers
+    function openModal(id) { document.getElementById(id).style.display = 'block'; }
+    function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+
+    // Close on Escape
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            document.querySelectorAll('.modal').forEach(m => m.style.display = 'none');
+            closeSidePanel();
+        }
+    });
+
+    function showToast(message, type = 'success') {
+        const container = document.getElementById('toast-container');
+        const toast = document.createElement('div');
+        toast.className = `toast ${type}`;
+        toast.innerHTML = `<span>${message}</span>`;
+        container.appendChild(toast);
+        setTimeout(() => {
+            toast.style.opacity = '0';
+            setTimeout(() => toast.remove(), 500);
+        }, 4000);
+    }
+
+    function convertTimestamps() {
+        const utcTimestamps = document.querySelectorAll('.utc-timestamp:not([data-converted])');
+        utcTimestamps.forEach(function(timestamp) {
+            const date = new Date(timestamp.innerText);
+            timestamp.innerText = date.toLocaleString();
+            timestamp.setAttribute('data-converted', 'true');
+        });
+    }
+
+    window.toggleSelectAll = function(el) {
+        const checkboxes = document.querySelectorAll('.ip-checkbox');
+        checkboxes.forEach(c => c.checked = el.checked);
+        updateBulkUI();
+    }
+
+    window.updateBulkUI = function() {
+        const selected = document.querySelectorAll('.ip-checkbox:checked').length;
+        const bar = document.getElementById('bulkActionBar');
+        const count = document.getElementById('selectedCount');
+        if (selected > 0) {
+            bar.style.display = 'flex';
+            count.textContent = selected;
+        } else {
+            bar.style.display = 'none';
+        }
+    }
+
+    window.clearSelection = function() {
+        const checkboxes = document.querySelectorAll('.ip-checkbox');
+        checkboxes.forEach(c => c.checked = false);
+        document.getElementById('selectAll').checked = false;
+        updateBulkUI();
+    }
+
+    window.confirmBulkUnblock = function() {
+        const selected = Array.from(document.querySelectorAll('.ip-checkbox:checked')).map(c => c.value);
+        if (selected.length === 0) return;
+        
+        if (!confirm(`Are you sure you want to unblock ${selected.length} IPs?`)) return;
+
+        fetch('/bulk_unblock', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ips: selected })
+        }).then(r => r.json()).then(data => {
+            if (data.status === 'success') {
+                showToast(`Successfully unblocked ${selected.length} IPs`, 'success');
+                // We could reload or manually remove rows. 
+                // Since WS will trigger unblock events, they should disappear automatically.
+                document.getElementById('selectAll').checked = false;
+                updateBulkUI();
+            } else {
+                showToast(data.error || 'Bulk unblock failed', 'danger');
+            }
+        });
+    }
+
+    // Wire controls
+    document.getElementById('togglePause').addEventListener('click', function() {
+        paused = !paused;
+        const btn = this;
+        if (!paused) {
+            setStatus('live');
+            btn.textContent = 'Pause';
+            btn.classList.remove('btn-danger');
+            const q = updateQueue.splice(0, updateQueue.length);
+            q.forEach(applyMessage);
+        } else {
+            setStatus('paused');
+            btn.textContent = 'Resume';
+            btn.classList.add('btn-danger');
+        }
+    });
+    document.getElementById('toggleGeo').addEventListener('click', () => {
+        document.body.classList.toggle('hide-geo');
+    });
+    document.getElementById('clearFilter').addEventListener('click', () => {
+        const input = document.getElementById('filterInput');
+        input.value = '';
+        debouncedFilterTable();
+    });
+
+    setTimeout(() => { convertTimestamps(); init(); }, 100);
+    document.body.addEventListener('htmx:afterOnLoad', convertTimestamps);
+
+    // HTMX Error Handling
+    document.body.addEventListener('htmx:responseError', function(evt) {
+        showToast('Action failed: ' + (evt.detail.xhr.responseText || 'Server error'), 'danger');
+    });
+
+    function confirmBlock() {
+        const ip = document.getElementById('ipToBlock').value;
+        const reason = document.getElementById('blockReason').value;
+        const persist = document.getElementById('persistCheckbox').checked;
+        const ttl = parseInt(document.getElementById('blockTTL').value) || 0;
+        if (!ip) return showToast('Enter an IP', 'danger');
+
+        fetch('/block', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ip, reason, persist, ttl })
+        }).then(r => r.json()).then(data => {
+            if (data.status === 'success') {
+                closeModal('blockModal');
+                document.getElementById('ipToBlock').value = '';
+                document.getElementById('blockReason').value = '';
+                document.getElementById('blockTTL').value = '';
+            } else {
+                showToast(data.status || 'Failed to block', 'danger');
+            }
+        });
+    }
+</script>
+
+</body>
+</html>

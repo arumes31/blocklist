@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>2FA Setup - Blocklist</title>
+    <style nonce="{{ .nonce }}">
+        :root {
+            --primary-red: #ff0000;
+            --dark-red: #8b0000;
+            --glass-bg: rgba(20, 20, 20, 0.95);
+            --border-red: rgba(255, 0, 0, 0.4);
+        }
+        body {
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: #000;
+            color: #fff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .setup-card {
+            background: var(--glass-bg);
+            border: 1px solid var(--border-red);
+            border-radius: 12px;
+            padding: 2rem;
+            width: 100%;
+            max-width: 450px;
+            box-shadow: 0 10px 40px rgba(255,0,0,0.1);
+            text-align: center;
+            backdrop-filter: blur(10px);
+        }
+        h2 { margin-top: 0; color: #fff; }
+        p { color: #b3b3b3; font-size: 0.9rem; line-height: 1.5; margin-bottom: 1.5rem; }
+        .qr-container {
+            background: #fff;
+            padding: 1rem;
+            border-radius: 8px;
+            display: inline-block;
+            margin-bottom: 1.5rem;
+        }
+        .qr-container img { display: block; max-width: 200px; height: auto; }
+        .secret-container {
+            background: rgba(255,255,255,0.05);
+            padding: 0.8rem;
+            border-radius: 6px;
+            border: 1px solid rgba(255,255,255,0.1);
+            font-family: monospace;
+            font-size: 1.1rem;
+            margin-bottom: 1.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            word-break: break-all;
+        }
+        .btn {
+            width: 100%;
+            padding: 0.8rem;
+            border: none;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 1rem;
+        }
+        .btn-primary {
+            background: linear-gradient(45deg, var(--dark-red), var(--primary-red));
+            color: #fff;
+        }
+        .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 15px rgba(255,0,0,0.3); }
+        .btn-copy {
+            background: transparent;
+            border: 1px solid rgba(255,255,255,0.2);
+            color: #fff;
+            width: auto;
+            padding: 0.3rem 0.6rem;
+            font-size: 0.75rem;
+            margin-left: 10px;
+        }
+        .btn-copy:hover { background: rgba(255,255,255,0.1); }
+        input[type="text"] {
+            width: 100%;
+            padding: 0.8rem;
+            margin-bottom: 1.5rem;
+            border-radius: 6px;
+            border: 1px solid rgba(255,255,255,0.2);
+            background: rgba(255,255,255,0.05);
+            color: #fff;
+            box-sizing: border-box;
+            text-align: center;
+            font-size: 1.2rem;
+            letter-spacing: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="setup-card">
+        <h2>Setup 2FA</h2>
+        <p>Security requirement: Two-factor authentication is mandatory. Scan the QR code with your authenticator app (Google Authenticator, Authy, etc.)</p>
+        
+        <div class="qr-container">
+            <img src="{{ .qr_image | safeURL }}" alt="Scan this QR code">
+        </div>
+
+        <div class="secret-container">
+            <span id="secret-key">{{ .secret }}</span>
+            <button class="btn-copy" onclick="copySecret()">COPY</button>
+        </div>
+
+        <form action="/login" method="POST">
+            <input type="hidden" name="username" value="{{ .username }}">
+            <input type="hidden" name="password" value="{{ .password }}">
+            <input type="hidden" name="setup_secret" value="{{ .secret }}">
+            
+            <label style="display: block; margin-bottom: 0.5rem; font-size: 0.8rem; color: #b3b3b3; text-align: left;">Verify 6-digit code:</label>
+            <input type="text" name="totp" required placeholder="000000" maxlength="6" inputmode="numeric" autofocus>
+            
+            <button type="submit" class="btn btn-primary">COMPLETE SETUP & LOGIN</button>
+        </form>
+    </div>
+
+    <script nonce="{{ .nonce }}">
+        function copySecret() {
+            var secretText = document.getElementById("secret-code");
+            navigator.clipboard.writeText(secret).then(() => {
+                const btn = document.querySelector('.btn-copy');
+                btn.innerText = 'COPIED!';
+                setTimeout(() => btn.innerText = 'COPY', 2000);
+            });
+        }
+    </script>
+</body>
+</html>

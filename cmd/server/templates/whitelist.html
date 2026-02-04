@@ -1,0 +1,291 @@
+<!-- whitelist.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Whitelist Management</title>
+    <link rel="stylesheet" href="/cd/flag-icon.min.css">
+    <link rel="icon" type="image/x-icon" href="/cd/favicon-color.png" />
+    <style nonce="{{ .nonce }}">
+        :root {
+            --primary-red: #ff0000;
+            --dark-red: #8b0000;
+            --vibrant-red: #ff4d4d;
+            --glass-bg: rgba(20, 20, 20, 0.85);
+            --border-red: rgba(255, 0, 0, 0.3);
+            --secondary-color: #b3b3b3;
+            --success-color: #28a745;
+            --danger-color: #dc3545;
+        }
+        body {
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            background-color: #000;
+            color: #fff;
+        }
+        .header-container {
+            background: var(--glass-bg);
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 12px rgba(255,0,0,0.15);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            backdrop-filter: blur(8px);
+            border-bottom: 1px solid var(--border-red);
+        }
+        .header-container h2 {
+            margin: 0;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            color: #fff;
+        }
+        .header-container img { height: 40px; filter: drop-shadow(0 0 6px rgba(255,0,0,0.4)); }
+        
+        .main-content { padding: 2rem; }
+
+        .btn {
+            padding: 0.6rem 1.2rem;
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(255,255,255,0.05);
+            color: #fff;
+            box-shadow: 0 0 10px rgba(255,0,0,0.08);
+        }
+        .btn-danger { background: linear-gradient(45deg, var(--dark-red), var(--primary-red)); border-color: var(--border-red); }
+        .btn-success { background: rgba(40, 167, 69, 0.2); }
+        .btn-dark { background: rgba(255,255,255,0.08); }
+        .btn:hover { transform: translateY(-1px); box-shadow: 0 0 16px rgba(255,0,0,0.2); }
+
+        .filter-input {
+            padding: 0.8rem 1rem;
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 8px;
+            font-size: 1rem;
+            background: rgba(255,255,255,0.05);
+            color: #fff;
+            outline: none;
+        }
+        .filter-input:focus { border-color: var(--primary-red); box-shadow: 0 0 0 2px rgba(255,0,0,0.2); }
+
+        .table-card {
+            background: rgba(20,20,20,0.85);
+            border: 1px solid var(--border-red);
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+            backdrop-filter: blur(8px);
+        }
+        table { border-collapse: collapse; width: 100%; color: #fff; }
+        th, td { text-align: left; padding: 0.75rem; border-bottom: 1px solid rgba(255,255,255,0.06); }
+        th {
+            background-color: rgba(255,255,255,0.04);
+            font-weight: 600;
+            color: var(--secondary-color);
+            text-transform: uppercase;
+            font-size: 0.85rem;
+            letter-spacing: 0.05em;
+        }
+        tr:hover { background-color: rgba(255,255,255,0.02); }
+
+        /* Toast Notifications */
+        #toast-container {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 2000;
+        }
+        .toast {
+            background: #333;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            margin-top: 10px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            animation: slideIn 0.3s ease-out;
+            transition: opacity 0.5s ease;
+        }
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        .toast.success { border-left: 4px solid var(--success-color); }
+        .toast.danger { border-left: 4px solid var(--danger-color); }
+    </style>
+</head>
+<body>
+    <div id="toast-container"></div>
+    <div class="header-container">
+        <div style="display: flex; align-items: center; gap: 2rem;">
+            <a href="/dashboard"><img src="/cd/logo.png" alt="Logo"></a>
+            <h2>IP Whitelist</h2>
+        </div>
+        <div style="display: flex; align-items: center; gap: 1rem;">
+            <div style="text-align: right; margin-right: 1rem;">
+                <div style="font-weight: 700; color: var(--vibrant-red);">Total IPs: {{ len .whitelisted_ips }}</div>
+            </div>
+            <a href="/dashboard" class="btn btn-dark" style="min-width: 150px;">Back to Dashboard</a>
+            {{ if or (eq .username .admin_username) (contains .permissions "manage_admins") }}
+            <a href="/admin_management" class="btn btn-dark" style="min-width: 120px;">Admins</a>
+            {{ end }}
+            <a href="/logout" class="btn" style="background: rgba(255,255,255,0.08);">Logout</a>
+        </div>
+    </div>
+    
+    <div class="main-content">
+        <div class="table-card" style="padding: 1.5rem; margin-bottom: 2rem; display: flex; gap: 10px; align-items: center; justify-content: center;">
+            <input type="text" id="whitelistIP" class="filter-input" style="flex: 1; max-width: 300px;" placeholder="Enter IP to whitelist">
+            <input type="text" id="whitelistReason" class="filter-input" style="flex: 1; max-width: 400px;" placeholder="Enter Reason">
+            <button class="btn btn-danger" onclick="addWhitelist()">Add to Whitelist</button>
+        </div>
+        
+        <div style="margin-bottom: 1.5rem;">
+            <input type="text" id="filterInput" class="filter-input" style="width: 100%; box-sizing: border-box;" onkeyup="filterTable()" placeholder="Search for IP addresses...">
+        </div>
+        
+        <div class="table-card">
+            <table id="whitelistTable">
+                <thead>
+                    <tr>
+                        <th>IP Address / Subnet</th>
+                        <th>Country</th>
+                        <th>City</th>
+                        <th>Added By</th>
+                        <th>Reason</th>
+                        <th>Expires In</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{ range $ip, $data := .whitelisted_ips }}
+                        <tr>
+                            <td style="font-family: monospace; font-weight: 600;">{{ $ip }}</td>
+                            <td>
+                                {{ if $data.Geolocation }}
+                                    <span class="flag-icon flag-icon-{{ lower $data.Geolocation.Country }}"></span>
+                                    {{ $data.Geolocation.Country }}
+                                {{ else }}
+                                    <span style="color: #888;">N/A</span>
+                                {{ end }}
+                            </td>
+                            <td>{{ if $data.Geolocation }}{{ $data.Geolocation.City }}{{ else }}<span style="color: #888;">N/A</span>{{ end }}</td>
+                            <td>{{ if $data.AddedBy }}{{ $data.AddedBy }}{{ else }}Unknown{{ end }}</td>
+                            <td><span style="font-size: 0.9rem; color: var(--secondary-color);">{{ if $data.Reason }}{{ $data.Reason }}{{ else }}No reason provided{{ end }}</span></td>
+                            <td>{{ $data.ExpiresIn }}</td>
+                            <td><button class="btn btn-success" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;" onclick="removeWhitelist('{{ $ip }}')">Delete</button></td>
+                        </tr>
+                    {{ end }}
+                    {{ range $subnet := .blocked_subnets }}
+                        <tr>
+                            <td style="font-family: monospace; font-weight: 600;">{{ $subnet }}</td>
+                            <td><span style="color: #888;">N/A</span></td>
+                            <td><span style="color: #888;">N/A</span></td>
+                            <td>System</td>
+                            <td><span style="font-size: 0.9rem; color: var(--secondary-color);">Docker ENV</span></td>
+                            <td>NEVER</td>
+                            <td style="color: var(--danger-color); font-weight: bold; font-size: 0.8rem;">PROTECTED</td>
+                        </tr>
+                    {{ end }}
+                </tbody>
+            </table>
+        </div>
+        </div>
+    
+        <script nonce="{{ .nonce }}">
+            function showToast(message, type = 'success') {
+                const container = document.getElementById('toast-container');            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.innerHTML = `<span>${message}</span>`;
+            container.appendChild(toast);
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                setTimeout(() => toast.remove(), 500);
+            }, 4000);
+        }
+
+        function addWhitelist() {
+            var ip = document.getElementById('whitelistIP').value;
+            var reason = document.getElementById('whitelistReason').value;
+            if (!ip) {
+                showToast('Please enter an IP address.', 'danger');
+                return;
+            }
+            if (!reason) {
+                showToast('Reason is required.', 'danger');
+                return;
+            }
+            fetch('/add_whitelist', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 'ip': ip, 'persist': true, 'reason': reason })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    showToast('IP added to whitelist!', 'success');
+                    setTimeout(() => location.reload(), 1000);
+                } else {
+                    showToast('Failed to add IP!', 'danger');
+                }
+            });
+        }
+        
+        function removeWhitelist(ip) {
+            if (confirm('Are you sure you want to remove this IP from the whitelist?')) {
+                fetch('/remove_whitelist', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 'ip': ip })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        showToast('IP removed from whitelist!', 'success');
+                        setTimeout(() => location.reload(), 1000);
+                    } else {
+                        showToast('Failed to remove IP!', 'danger');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    showToast('Failed to remove IP!', 'danger');
+                });
+            }
+        }
+        
+        function filterTable() {
+            var input, filter, table, tr, td, i, txtValue;
+            input = document.getElementById("filterInput");
+            filter = input.value.toUpperCase();
+            table = document.getElementById("whitelistTable");
+            tr = table.getElementsByTagName("tr");
+            for (i = 1; i < tr.length; i++) {
+                td = tr[i].getElementsByTagName("td")[0];
+                if (td) {
+                    txtValue = td.textContent || td.innerText;
+                    if (txtValue.toUpperCase().indexOf(filter) > -1) {
+                        tr[i].style.display = "";
+                    } else {
+                        tr[i].style.display = "none";
+                    }
+                }       
+            }
+        }
+    </script>
+</body>
+</html>

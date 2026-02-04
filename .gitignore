@@ -1,0 +1,36 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+blocklist
+blocklist-server
+
+# Local Data
+geoip_data/
+postgres_data/
+out.log
+err.log
+*.local.md
+
+# Environment
+.env
+
+# Go
+vendor/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+Thumbs.db
+.DS_Store
+
+ROADMAP.md
+.geminiignore
+test_output.txt
+api_test.txt

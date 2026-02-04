@@ -1,0 +1,18 @@
+name: Delete Old Packages
+
+on:
+  workflow_dispatch:
+
+jobs:
+  delete-versions:
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    steps:
+      - name: Delete old package versions
+        uses: actions/delete-package-versions@v5
+        with:
+          package-name: ${{ github.event.repository.name }}
+          package-type: 'container'
+          min-versions-to-keep: 10
+          ignore-versions: 'v1,v2,v2_test,latest'

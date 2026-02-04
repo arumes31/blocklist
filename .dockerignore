@@ -1,0 +1,42 @@
+# Git
+.git
+.gitignore
+
+# CI/CD & Meta
+.github
+.qodo
+.vscode
+.idea
+README.md
+ROADMAP.md
+docker-compose.go.yml
+Dockerfile
+.gemini
+.geminiignore
+
+# Binaries & Build Artifacts
+*.exe
+*.dll
+*.so
+*.dylib
+blocklist
+blocklist-server
+
+# Local Environment & Data
+.env
+geoip_data/
+postgres_data/
+out.log
+err.log
+*.local.md
+
+# OS Files
+Thumbs.db
+.DS_Store
+*.swp
+*.swo
+
+# Go
+vendor/
+**/*_test.go
+**/testdata/

@@ -1,0 +1,2 @@
+-- Merging permissions is a lossy operation and cannot be perfectly reversed.
+-- This down migration is left empty.

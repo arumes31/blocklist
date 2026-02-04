@@ -1,0 +1,30 @@
+{{ range $ip, $data := .ips }}
+    <tr id="row-{{ $ip | lower | replace "." "-" | replace ":" "-" }}">
+        <td style="font-family: monospace; font-weight: 600;">{{ $ip }}</td>
+        <td><span class="utc-timestamp">{{ $data.Timestamp }}</span></td>
+        <td><span style="font-size: 0.9rem; color: var(--secondary-color);">{{ if $data.Reason }}{{ $data.Reason }}{{ else }}N/A{{ end }}</span></td>
+        <td>
+            {{ $score := $data.ThreatScore }}
+            <span style="font-weight: bold; color: {{ if ge $score 75 }}#ff0000{{ else if ge $score 50 }}#ff8c00{{ else if ge $score 25 }}#ffd700{{ else }}#888{{ end }}">
+                {{ $score }}
+            </span>
+        </td>
+        <td>{{ if $data.AddedBy }}{{ $data.AddedBy }}{{ else }}Unknown{{ end }}</td>
+        <td>
+            {{ if $data.Geolocation }}
+                <span class="flag-icon flag-icon-{{ lower $data.Geolocation.Country }}"></span>
+                {{ $data.Geolocation.City }} ({{ $data.Geolocation.Country }})
+            {{ else }}
+                <span style="color: #ccc;">N/A</span>
+            {{ end }}
+        </td>
+        <td>
+            <button class="btn btn-success" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;"
+                    hx-post="/unblock" 
+                    hx-ext="json-enc"
+                    hx-vals='{"ip": "{{ $ip }}"}' 
+                    hx-target="closest tr" 
+                    hx-swap="outerHTML swap:0.5s">Unblock</button>
+        </td>
+    </tr>
+{{ end }}
