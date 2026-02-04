@@ -5,8 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
-	"github.com/jmoiron/sqlx"
+
 	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/jmoiron/sqlx"
 )
 
 type PostgresRepository struct {
@@ -55,14 +56,14 @@ func (p *PostgresRepository) EnsurePartitions(retentionMonths int) error {
 		target := now.AddDate(0, i, 0)
 		year := target.Year()
 		month := int(target.Month())
-		
+
 		// Start of month
 		start := time.Date(year, target.Month(), 1, 0, 0, 0, 0, time.UTC)
 		// Start of next month
 		end := start.AddDate(0, 1, 0)
-		
+
 		partitionName := fmt.Sprintf("y%dm%02d", year, month)
-		
+
 		tables := []string{"audit_logs", "webhook_logs"}
 		for _, table := range tables {
 			fullName := fmt.Sprintf("%s_%s", table, partitionName)
@@ -84,7 +85,7 @@ func (p *PostgresRepository) EnsurePartitions(retentionMonths int) error {
 			year := target.Year()
 			month := int(target.Month())
 			partitionName := fmt.Sprintf("y%dm%02d", year, month)
-			
+
 			tables := []string{"audit_logs", "webhook_logs"}
 			for _, table := range tables {
 				fullName := fmt.Sprintf("%s_%s", table, partitionName)
@@ -104,9 +105,15 @@ func (p *PostgresRepository) EnsurePartitions(retentionMonths int) error {
 }
 
 func (p *PostgresRepository) CreateAdmin(admin models.AdminAccount) error {
-	if admin.Role == "" { admin.Role = "operator" }
-	if admin.Permissions == "" { admin.Permissions = "gui_read" }
-	if admin.SessionVersion == 0 { admin.SessionVersion = 1 }
+	if admin.Role == "" {
+		admin.Role = "operator"
+	}
+	if admin.Permissions == "" {
+		admin.Permissions = "gui_read"
+	}
+	if admin.SessionVersion == 0 {
+		admin.SessionVersion = 1
+	}
 	_, err := p.db.NamedExec("INSERT INTO admins (username, password_hash, token, role, permissions, session_version) VALUES (:username, :password_hash, :token, :role, :permissions, :session_version)", admin)
 	return err
 }
@@ -147,6 +154,7 @@ func (p *PostgresRepository) CreateAPIToken(token models.APIToken) error {
 	return err
 }
 
+// GetAPITokenByHash lookups a token by its SHA256 hash
 func (p *PostgresRepository) GetAPITokenByHash(hash string) (*models.APIToken, error) {
 	var token models.APIToken
 	err := p.readDb.Get(&token, "SELECT id, token_hash, name, username, role, permissions, allowed_ips, created_at, expires_at, last_used, last_used_ip FROM api_tokens WHERE token_hash = $1", hash)

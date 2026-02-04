@@ -7,6 +7,7 @@ import (
 	"blocklist/internal/repository"
 	"blocklist/internal/service"
 	"bytes"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/csv"
@@ -516,7 +517,11 @@ func (h *APIHandler) AuthMiddleware() gin.HandlerFunc {
 			}
 
 			if h.pgRepo != nil {
-				token, err := h.pgRepo.GetAPITokenByHash(tokenStr)
+				// Hash the presented token
+				hash := sha256.Sum256([]byte(tokenStr))
+				hashStr := hex.EncodeToString(hash[:])
+
+				token, err := h.pgRepo.GetAPITokenByHash(hashStr)
 				if err == nil && token != nil {
 					// Check expiration
 					if token.ExpiresAt != nil {
@@ -2080,13 +2085,20 @@ func (h *APIHandler) CreateAPIToken(c *gin.Context) {
 		}
 	}
 
-	// Generate random token
-	hash := sha256.New()
-	hash.Write([]byte(fmt.Sprintf("%s-%s-%d", username.(string), name, time.Now().UnixNano())))
-	rawTokenStr := hex.EncodeToString(hash.Sum(nil))
+	// Generate random token using CSPRNG
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		c.String(http.StatusInternalServerError, "failed to generate secure token")
+		return
+	}
+	rawTokenStr := "bl_" + hex.EncodeToString(b)
+
+	// Calculate hash for storage
+	hash := sha256.Sum256([]byte(rawTokenStr))
+	storedHash := hex.EncodeToString(hash[:])
 
 	token := models.APIToken{
-		TokenHash:   rawTokenStr,
+		TokenHash:   storedHash,
 		Name:        name,
 		Username:    username.(string),
 		Role:        role.(string),
