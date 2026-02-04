@@ -29,7 +29,7 @@ type IPServiceProvider interface {
 	}, topReason []struct {
 		Reason string
 		Count  int
-	}, webhooksHour int, lastBlockTs int64, blocksMinute int, err error)
+	}, webhooksHour int, lastBlockTs int64, blocksMinute int, whitelistCount int, err error)
 	GetGeoIP(ipStr string) *models.GeoData
 	IsValidIP(ipStr string) bool
 	CalculateThreatScore(ip string, reason string) int

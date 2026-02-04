@@ -386,6 +386,7 @@
             padding: 0.25rem 0.5rem !important;
             font-size: 0.85rem;
         }
+
         .compact .btn {
             padding: 0.2rem 0.5rem !important;
             font-size: 0.75rem !important;
@@ -1149,21 +1150,34 @@
                     title="Save Current Filters as View">Save View</button>
 
                 <div class="country-dropdown" style="min-width: 180px;">
-                    <button type="button" class="filter-input" style="width: 100%; text-align: left; display: flex; justify-content: space-between; align-items: center;" onclick="toggleViewOptions()">
+                    <button type="button" class="filter-input"
+                        style="width: 100%; text-align: left; display: flex; justify-content: space-between; align-items: center;"
+                        onclick="toggleViewOptions()">
                         <span>View Options</span>
                         <span>⚙️</span>
                     </button>
                     <div class="country-popup" id="viewOptionsPopup" style="width: 200px;">
-                        <div style="padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); margin-bottom: 5px; font-weight: bold; font-size: 0.8rem; color: var(--secondary-color);">DENSITY</div>
-                        <label class="country-option"><input type="radio" name="density" value="comfortable" checked onchange="setDensity('comfortable')"> Comfortable</label>
-                        <label class="country-option"><input type="radio" name="density" value="compact" onchange="setDensity('compact')"> Compact</label>
-                        
-                        <div style="padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); margin: 10px 0 5px 0; font-weight: bold; font-size: 0.8rem; color: var(--secondary-color);">COLUMNS</div>
-                        <label class="country-option"><input type="checkbox" checked onchange="toggleColumn('col-ts')"> Date Added</label>
-                        <label class="country-option"><input type="checkbox" checked onchange="toggleColumn('col-exp')"> Expires At</label>
-                        <label class="country-option"><input type="checkbox" checked onchange="toggleColumn('col-score')"> Score</label>
-                        <label class="country-option"><input type="checkbox" checked onchange="toggleColumn('col-by')"> Added By</label>
-                        <label class="country-option"><input type="checkbox" checked onchange="toggleColumn('col-geo')"> Geo</label>
+                        <div
+                            style="padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); margin-bottom: 5px; font-weight: bold; font-size: 0.8rem; color: var(--secondary-color);">
+                            DENSITY</div>
+                        <label class="country-option"><input type="radio" name="density" value="comfortable" checked
+                                onchange="setDensity('comfortable')"> Comfortable</label>
+                        <label class="country-option"><input type="radio" name="density" value="compact"
+                                onchange="setDensity('compact')"> Compact</label>
+
+                        <div
+                            style="padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); margin: 10px 0 5px 0; font-weight: bold; font-size: 0.8rem; color: var(--secondary-color);">
+                            COLUMNS</div>
+                        <label class="country-option"><input type="checkbox" checked onchange="toggleColumn('col-ts')">
+                            Date Added</label>
+                        <label class="country-option"><input type="checkbox" checked onchange="toggleColumn('col-exp')">
+                            Expires At</label>
+                        <label class="country-option"><input type="checkbox" checked
+                                onchange="toggleColumn('col-score')"> Score</label>
+                        <label class="country-option"><input type="checkbox" checked onchange="toggleColumn('col-by')">
+                            Added By</label>
+                        <label class="country-option"><input type="checkbox" checked onchange="toggleColumn('col-geo')">
+                            Geo</label>
                     </div>
                 </div>
             </div>
@@ -1173,14 +1187,19 @@
 
 
 
-        <!-- Compact Stats Section -->
         <div class="table-card" style="padding: 1rem; margin-bottom: 1rem;">
             <div style="display: flex; align-items: center; gap: 1.5rem; flex-wrap: wrap;">
                 <div style="font-size: 0.85rem; color: var(--secondary-color);">IPs Banned:</div>
                 <div style="display: flex; align-items: baseline; gap: 0.5rem;">
-                    <span id="stat-total" style="font-size: 1.8rem; font-weight: 700; color: #fff;">{{ .total_ips
+                    <span id="stat-total" style="font-size: 1.8rem; font-weight: 700; color: #fff;">{{ .stats.total
                         }}</span>
                     <span style="font-size: 0.85rem; color: var(--secondary-color);">total</span>
+                </div>
+                <div style="height: 24px; width: 1px; background: rgba(255,255,255,0.1);"></div>
+                <div style="display: flex; align-items: baseline; gap: 0.5rem;">
+                    <span id="stat-active" style="font-size: 1.3rem; font-weight: 600; color: #fff;">{{ .total_ips
+                        }}</span>
+                    <span style="font-size: 0.85rem; color: var(--secondary-color);">active</span>
                 </div>
                 <div style="height: 24px; width: 1px; background: rgba(255,255,255,0.1);"></div>
                 <div style="display: flex; align-items: baseline; gap: 0.5rem;">
@@ -1198,10 +1217,15 @@
                 </div>
                 <div style="height: 24px; width: 1px; background: rgba(255,255,255,0.1);"></div>
                 <div style="display: flex; align-items: baseline; gap: 0.5rem;">
-                    <span style="font-size: 0.85rem; color: var(--secondary-color);">Webhooks:</span>
+                    <span id="stat-whitelisted" style="font-size: 1.3rem; font-weight: 600; color: #2ecc71;">{{
+                        .stats.whitelisted }}</span>
+                    <span style="font-size: 0.85rem; color: var(--secondary-color);">Whitelisted</span>
+                </div>
+                <div style="height: 24px; width: 1px; background: rgba(255,255,255,0.1);"></div>
+                <div style="display: flex; align-items: baseline; gap: 0.5rem;">
                     <span id="stat-webhooks" style="font-size: 1.3rem; font-weight: 600; color: #fff;">{{
                         .stats.webhooks_hour }}</span>
-                    <span style="font-size: 0.85rem; color: var(--secondary-color);">/h</span>
+                    <span style="font-size: 0.85rem; color: var(--secondary-color);">Webhooks 1/h</span>
                 </div>
             </div>
         </div>
@@ -1602,19 +1626,23 @@
                 if (typeof s.hour === 'number') document.getElementById('stat-hour').textContent = s.hour;
                 if (typeof s.day === 'number') {
                     document.getElementById('stat-day').textContent = s.day;
-                    document.getElementById('stat-day-delta').textContent = '+' + s.day;
                 }
                 if (typeof s.total === 'number') {
                     document.getElementById('stat-total').textContent = s.total;
                 }
                 if (typeof s.active_blocks === 'number') {
+                    document.getElementById('stat-active').textContent = s.active_blocks;
                     document.getElementById('total-ips-count').textContent = s.active_blocks;
+                }
+                if (typeof s.whitelisted === 'number') {
+                    document.getElementById('stat-whitelisted').textContent = s.whitelisted;
                 }
                 if (typeof s.webhooks_hour === 'number') {
                     document.getElementById('stat-webhooks').textContent = s.webhooks_hour;
                 }
                 if (typeof s.blocks_minute === 'number') {
-                    document.getElementById('bpm-display').textContent = s.blocks_minute.toFixed(1) + ' BPM';
+                    const bpmDisplay = document.getElementById('bpm-display');
+                    if (bpmDisplay) bpmDisplay.textContent = s.blocks_minute.toFixed(1) + ' BPM';
                 }
                 if (s.last_block_ts > 0) {
                     lastBlockTime = s.last_block_ts;

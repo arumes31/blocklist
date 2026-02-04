@@ -359,14 +359,14 @@ func (s *IPService) Stats(ctx context.Context) (hour int, day int, totalEver int
 }, topReason []struct {
 	Reason string
 	Count  int
-}, webhooksHour int, lastBlockTs int64, blocksMinute int, err error) {
+}, webhooksHour int, lastBlockTs int64, blocksMinute int, whitelistCount int, err error) {
 	if s.redisRepo == nil {
-		return 0, 0, 0, 0, nil, nil, nil, 0, 0, 0, nil
+		return 0, 0, 0, 0, nil, nil, nil, 0, 0, 0, 0, nil
 	}
 
 	ips, err := s.redisRepo.GetBlockedIPs()
 	if err != nil {
-		return 0, 0, 0, 0, nil, nil, nil, 0, 0, 0, err
+		return 0, 0, 0, 0, nil, nil, nil, 0, 0, 0, 0, err
 	}
 
 	activeBlocks = len(ips)
@@ -445,7 +445,10 @@ func (s *IPService) Stats(ctx context.Context) (hour int, day int, totalEver int
 	lb, _ := s.redisRepo.GetLastBlockTime()
 	bm, _ := s.redisRepo.CountBlocksLastMinute()
 
-	return h, d, totalEver, activeBlocks, top, topASN, topReason, wh, lb, bm, nil
+	wips, _ := s.redisRepo.GetWhitelistedIPs()
+	whitelistCount = len(wips)
+
+	return h, d, totalEver, activeBlocks, top, topASN, topReason, wh, lb, bm, whitelistCount, nil
 }
 
 // ExportIPs returns all IPs matching the filters for export purposes.

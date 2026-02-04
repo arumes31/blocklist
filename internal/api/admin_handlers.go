@@ -20,7 +20,7 @@ func (h *APIHandler) Dashboard(c *gin.Context) {
 	ips := h.getCombinedIPs()
 
 	// Preload stats for initial render
-	hour, day, totalEver, activeBlocks, top, topASN, topReason, wh, lb, bm, _ := h.ipService.Stats(c.Request.Context())
+	hour, day, totalEver, activeBlocks, top, topASN, topReason, wh, lb, bm, whc, _ := h.ipService.Stats(c.Request.Context())
 
 	tops := make([]map[string]interface{}, 0, len(top))
 	for _, t := range top {
@@ -60,6 +60,7 @@ func (h *APIHandler) Dashboard(c *gin.Context) {
 			"webhooks_hour": wh,
 			"last_block_ts": lb,
 			"blocks_minute": bm,
+			"whitelisted":   whc,
 		},
 	})
 }
@@ -70,7 +71,7 @@ func (h *APIHandler) ThreadMap(c *gin.Context) {
 	username, _ := c.Get("username")
 	permissions, _ := c.Get("permissions")
 
-	hour, day, _, _, top, _, _, _, _, _, _ := h.ipService.Stats(c.Request.Context())
+	hour, day, _, _, top, _, _, _, _, _, _, _ := h.ipService.Stats(c.Request.Context())
 
 	tops := make([]map[string]interface{}, 0, len(top))
 	for _, t := range top {
@@ -365,7 +366,7 @@ func (h *APIHandler) GetQR(c *gin.Context) {
 }
 
 func (h *APIHandler) Stats(c *gin.Context) {
-	hour, day, totalEver, activeBlocks, top, topASN, topReason, wh, lb, bm, err := h.ipService.Stats(c.Request.Context())
+	hour, day, totalEver, activeBlocks, top, topASN, topReason, wh, lb, bm, whc, err := h.ipService.Stats(c.Request.Context())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "stats error"})
 		return
@@ -407,6 +408,7 @@ func (h *APIHandler) Stats(c *gin.Context) {
 		"webhooks_hour": wh,
 		"last_block_ts": lb,
 		"blocks_minute": bm,
+		"whitelisted":   whc,
 	})
 }
 

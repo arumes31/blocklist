@@ -351,7 +351,7 @@
         let liveMarkers = null;
         let worldLayer = null;
 
-        const trendData = [{{ range .block_trend }} { x: "{{ .Hour }}", y: { { .Count } } }, { { end } } ];
+        const trendData = [{{ range .block_trend }} { x: "{{ .Hour }}", y: {{ .Count }} }, {{ end }} ];
 
         async function initMap() {
             map = L.map('threat-map', {
@@ -468,7 +468,7 @@
                     plugins: {
                         legend: {
                             position: 'bottom',
-                            labels: { color: '#fff', boxWidth: 10, font: { size: 9 } }
+                            labels: { color: '#fff', boxWidth: 10, font: { size: 9 }}
                         }
                     }
                 }
@@ -509,7 +509,7 @@
                         },
                         y: {
                             beginAtZero: true,
-                            ticks: { color: '#888', font: { size: 9 } },
+                            ticks: { color: '#888', font: { size: 9 }},
                             grid: { color: 'rgba(255,255,255,0.05)' }
                         }
                     },

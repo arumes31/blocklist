@@ -49,7 +49,7 @@ func TestIPService_Enhanced(t *testing.T) {
 		entry := models.IPEntry{Reason: "test", Timestamp: "2026-01-31 12:00:00 UTC"}
 		_ = rRepo.BlockIP("1.2.3.4", entry)
 
-		h, d, total, active, _, _, _, wh, lb, bm, err := svc.Stats(ctx)
+		h, d, total, active, _, _, _, wh, lb, bm, _, err := svc.Stats(ctx)
 		if err != nil {
 			t.Fatalf("Stats failed: %v", err)
 		}
