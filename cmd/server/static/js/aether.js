@@ -221,13 +221,13 @@ function drawParticle(i) {
             whiteState = 0.01;
             if (rippleCooldown === 0 && Math.random() < 0.000195) { 
                 interactionType = 3; rippleCooldown = 120;
-            } else if (Math.random() < 0.5) {
+            } else if (Math.random() < 0.3) { // Reduced from 0.5
                 interactionType = 2; // Orbit
-                // Rare additions
+                // Rare additions (much lower chance)
                 const r = Math.random();
-                if (r < 0.05) rareEffect = 3; // Supercharge (5%)
-                else if (r < 0.15) rareEffect = 2; // Prism (10%)
-                else if (r < 0.4) rareEffect = 1; // Tension (25%)
+                if (r < 0.02) rareEffect = 3; // Supercharge (2%)
+                else if (r < 0.05) rareEffect = 2; // Prism (3%)
+                else if (r < 0.1) rareEffect = 1; // Tension (5%)
             } else {
                 interactionType = 1; // Quantum
             }
@@ -243,7 +243,10 @@ function drawParticle(i) {
     // Interaction Behaviors
     if (interactionType === 1 && whiteState > 0) {
         whiteState = Math.min(whiteState + 0.02, 1);
-        if (Math.random() < 0.1) { particleProps[i] += randIn(-50, 50); particleProps[i + 1] += randIn(-50, 50); }
+        if (Math.random() < 0.1) { 
+            vx += randIn(-2, 2);
+            vy += randIn(-2, 2);
+        }
         ttl = l + 150;
     }
     else if (interactionType === 2 && whiteState > 0) {
@@ -256,26 +259,28 @@ function drawParticle(i) {
             angle += 0.1;
             const idealRadius = 60;
             const newRadius = lerp(dist, idealRadius, 0.1);
-            particleProps[i] = mouse.x + Math.cos(angle) * newRadius;
-            particleProps[i + 1] = mouse.y + Math.sin(angle) * newRadius;
+            
+            // Calculate orbit position
+            const ox = mouse.x + Math.cos(angle) * newRadius;
+            const oy = mouse.y + Math.sin(angle) * newRadius;
+            
+            // Set velocity to reach orbit position instead of setting position directly
+            // to avoid overwrite conflict later
+            vx = (ox - x) / s;
+            vy = (oy - y) / s;
+            
             ttl = l + 10;
 
-            // Rare 1: Tension Line
-            if (rareEffect === 1) {
-                ctx.save();
-                ctx.beginPath();
-                ctx.strokeStyle = `rgba(255, 255, 255, ${0.2 * Math.sin(tick * 0.1) + 0.2})`;
-                ctx.lineWidth = 0.5;
-                ctx.moveTo(x, y);
-                ctx.lineTo(mouse.x, mouse.y);
-                ctx.stroke();
-                ctx.restore();
-            }
-            // Rare 3: Supercharge Pulse (Attract nearby red dots)
-            if (rareEffect === 3) {
-                // This logic is global and complex, so we'll simulate by pulling dots here
-                // Note: ideally we'd add this point to a gravity list like ripples
-                // For simplicity, we just boost the glow
+            // Rare 1: Tension Line (Flickering and rarer)
+            if (rareEffect === 1 && tick % 3 === 0) {
+                buffer.save();
+                buffer.beginPath();
+                buffer.strokeStyle = `rgba(255, 255, 255, ${0.15 * Math.sin(tick * 0.2) + 0.15})`;
+                buffer.lineWidth = 0.3;
+                buffer.moveTo(x, y);
+                buffer.lineTo(mouse.x, mouse.y);
+                buffer.stroke();
+                buffer.restore();
             }
         } else {
             const dx_c = x - center[0];
