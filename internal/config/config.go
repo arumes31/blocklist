@@ -33,6 +33,8 @@ type Config struct {
 	RateLimitLogin         int
 	RateLimitWebhook       int
 	LogRetentionMonths     int
+	CookieSecure           bool
+	SameSiteStrict         bool
 }
 
 func Load() *Config {
@@ -63,6 +65,8 @@ func Load() *Config {
 		RateLimitLogin:         getEnvInt("RATE_LIMIT_LOGIN", 10),
 		RateLimitWebhook:       getEnvInt("RATE_LIMIT_WEBHOOK", 100),
 		LogRetentionMonths:     getEnvInt("LOG_RETENTION_MONTHS", 6),
+		CookieSecure:           getEnvBool("COOKIE_SECURE", false),
+		SameSiteStrict:         getEnvBool("COOKIE_SAMESITE_STRICT", false),
 	}
 }
 
