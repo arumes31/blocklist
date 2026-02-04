@@ -1185,7 +1185,7 @@
             </div>
             <div class="table-card" style="padding:1rem;">
                 <div style="font-size:0.85rem; color:var(--secondary-color);">IPs banned (total)</div>
-                <div id="stat-total" style="font-size:1.6rem; font-weight:700; color:#fff;">{{ .total_ips }}</div>
+                <div id="stat-total" style="font-size:1.6rem; font-weight:700; color:#fff;">{{ .stats.total }}</div>
             </div>
             <div class="table-card" style="padding:1rem;">
                 <div style="font-size:0.85rem; color:var(--secondary-color);">Top countries</div>
@@ -1325,7 +1325,7 @@
         let inflight = null; // AbortController for in-flight fetch
         let paused = false;
         let updateQueue = [];
-        let lastBlockTime = {{ if .stats.last_block_ts }}{{ .stats.last_block_ts }} {{ else }} 0{{ end }};
+        let lastBlockTime = {{ if .stats.last_block_ts }}{ { .stats.last_block_ts } } { { else } } 0{ { end } };
         const tbody = document.getElementById('ipTableBody');
 
         function rowHTML(ip, data) {
@@ -1543,7 +1543,7 @@
                     dot.title = 'System Health: ' + hdata.status;
                 }
 
-                const r = await fetch('/api/v1/stats', { headers: { 'Accept': 'application/json' }});
+                const r = await fetch('/api/v1/stats', { headers: { 'Accept': 'application/json' } });
                 if (!r.ok) return;
                 const s = await r.json();
                 if (typeof s.hour === 'number') document.getElementById('stat-hour').textContent = s.hour;
@@ -2018,8 +2018,8 @@
         // Chart.js initialization for Block Trend
         const trendData = [
             {{ range .block_trend }}
-        { hour: "{{ .Hour }}", count: {{ .Count }} },
-        {{ end }}
+        { hour: "{{ .Hour }}", count: { { .Count } } },
+        { { end } }
         ];
 
         if (trendData.length > 0) {
@@ -2052,11 +2052,11 @@
                         y: {
                             beginAtZero: true,
                             grid: { color: 'rgba(255, 255, 255, 0.05)' },
-                            ticks: { color: '#b3b3b3', font: { size: 10 }}
+                            ticks: { color: '#b3b3b3', font: { size: 10 } }
                         },
                         x: {
                             grid: { display: false },
-                            ticks: { color: '#b3b3b3', font: { size: 10 }}
+                            ticks: { color: '#b3b3b3', font: { size: 10 } }
                         }
                     },
                     plugins: {
@@ -2076,8 +2076,8 @@
         // Live Attack Map (Leaflet)
         const countryData = [
             {{ range .stats.top_countries }}
-        { name: "{{ .Country }}", count: {{ .Count }} },
-        {{ end }}
+        { name: "{{ .Country }}", count: { { .Count } } },
+        { { end } }
         ];
 
         if (countryData.length > 0) {
