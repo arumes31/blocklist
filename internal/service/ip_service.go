@@ -650,7 +650,6 @@ func (s *IPService) ListIPsPaginatedAdvanced(ctx context.Context, limit int, cur
 		tot := s.GetTotalCount(ctx)
 		items := make([]map[string]interface{}, 0, limit)
 		q := strings.ToLower(strings.TrimSpace(query))
-
 		countryList := []string{}
 		if country != "" {
 			for _, c := range strings.Split(country, ",") {
@@ -659,8 +658,15 @@ func (s *IPService) ListIPsPaginatedAdvanced(ctx context.Context, limit int, cur
 				}
 			}
 		}
-
 		addedBy = strings.ToLower(strings.TrimSpace(addedBy))
+
+		// Optimize CIDR parsing: parse once outside the loop
+		var queryNetwork *net.IPNet
+		if q != "" {
+			if _, network, err := net.ParseCIDR(query); err == nil {
+				queryNetwork = network
+			}
+		}
 
 		for _, z := range zs {
 			if len(items) >= limit {
@@ -684,12 +690,10 @@ func (s *IPService) ListIPsPaginatedAdvanced(ctx context.Context, limit int, cur
 					matches = true
 				}
 
-				// 2. Smart Match: CIDR
-				if !matches {
-					if _, network, err := net.ParseCIDR(query); err == nil {
-						if parsedIP := net.ParseIP(ip); parsedIP != nil && network.Contains(parsedIP) {
-							matches = true
-						}
+				// 2. Smart Match: CIDR (using pre-parsed network)
+				if !matches && queryNetwork != nil {
+					if parsedIP := net.ParseIP(ip); parsedIP != nil && queryNetwork.Contains(parsedIP) {
+						matches = true
 					}
 				}
 
@@ -756,6 +760,14 @@ func (s *IPService) exportFallback(ctx context.Context, query string, country st
 	}
 	addedBy = strings.ToLower(strings.TrimSpace(addedBy))
 
+	// Optimize CIDR parsing
+	var queryNetwork *net.IPNet
+	if q != "" {
+		if _, network, err := net.ParseCIDR(query); err == nil {
+			queryNetwork = network
+		}
+	}
+
 	for ip, raw := range all {
 		var entry models.IPEntry
 		if err := json.Unmarshal([]byte(raw), &entry); err != nil {
@@ -771,11 +783,9 @@ func (s *IPService) exportFallback(ctx context.Context, query string, country st
 				matches = true
 			}
 
-			if !matches {
-				if _, network, err := net.ParseCIDR(query); err == nil {
-					if parsedIP := net.ParseIP(ip); parsedIP != nil && network.Contains(parsedIP) {
-						matches = true
-					}
+			if !matches && queryNetwork != nil {
+				if parsedIP := net.ParseIP(ip); parsedIP != nil && queryNetwork.Contains(parsedIP) {
+					matches = true
 				}
 			}
 

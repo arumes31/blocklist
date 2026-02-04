@@ -53,8 +53,8 @@ func (h *APIHandler) AuthMiddleware() gin.HandlerFunc {
 					if token.ExpiresAt != nil {
 						expiresAt, err := time.Parse(time.RFC3339, *token.ExpiresAt)
 						if err != nil {
-							zlog.Error().Err(err).Str("token", token.Name).Msg("Failed to parse token expiration")
-							c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal authentication error"})
+							zlog.Error().Err(err).Str("token", token.Name).Msg("Failed to parse token expiration, treating as expired")
+							c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token expiration format"})
 							c.Abort()
 							return
 						}

@@ -213,7 +213,9 @@ func (h *APIHandler) CreateAdmin(c *gin.Context) {
 	}
 
 	actor := c.GetString("username")
-	_ = h.pgRepo.LogAction(actor, "CREATE_ADMIN", admin.Username, fmt.Sprintf("Role: %s, Perms: %s", admin.Role, admin.Permissions))
+	if err := h.pgRepo.LogAction(actor, "CREATE_ADMIN", admin.Username, fmt.Sprintf("Role: %s, Perms: %s", admin.Role, admin.Permissions)); err != nil {
+		zlog.Error().Err(err).Str("actor", actor).Str("target", admin.Username).Msg("Failed to record audit log for CREATE_ADMIN")
+	}
 
 	c.JSON(200, gin.H{"status": "success", "username": admin.Username})
 }
@@ -249,7 +251,9 @@ func (h *APIHandler) ChangeAdminPermissions(c *gin.Context) {
 	}
 
 	// Enriched audit log
-	_ = h.pgRepo.LogAction(actor, "CHANGE_PERMISSIONS", req.Username, fmt.Sprintf("From [%s] to [%s]", oldPerms, req.Permissions))
+	if err := h.pgRepo.LogAction(actor, "CHANGE_PERMISSIONS", req.Username, fmt.Sprintf("From [%s] to [%s]", oldPerms, req.Permissions)); err != nil {
+		zlog.Error().Err(err).Str("actor", actor).Str("target", req.Username).Msg("Failed to record audit log for CHANGE_PERMISSIONS")
+	}
 
 	c.JSON(200, gin.H{"status": "success"})
 }
@@ -296,7 +300,9 @@ func (h *APIHandler) DeleteAdmin(c *gin.Context) {
 
 	// Log deletion
 	actor := c.GetString("username")
-	_ = h.pgRepo.LogAction(actor, "DELETE_ADMIN", req.Username, "User account and all associated tokens removed")
+	if err := h.pgRepo.LogAction(actor, "DELETE_ADMIN", req.Username, "User account and all associated tokens removed"); err != nil {
+		zlog.Error().Err(err).Str("actor", actor).Str("target", req.Username).Msg("Failed to record audit log for DELETE_ADMIN")
+	}
 
 	c.JSON(200, gin.H{"status": "success"})
 }
@@ -324,7 +330,9 @@ func (h *APIHandler) ChangeAdminPassword(c *gin.Context) {
 	}
 
 	actor := c.GetString("username")
-	_ = h.pgRepo.LogAction(actor, "CHANGE_PASSWORD", req.Username, "Admin password updated")
+	if err := h.pgRepo.LogAction(actor, "CHANGE_PASSWORD", req.Username, "Admin password updated"); err != nil {
+		zlog.Error().Err(err).Str("actor", actor).Str("target", req.Username).Msg("Failed to record audit log for CHANGE_PASSWORD")
+	}
 
 	c.JSON(200, gin.H{"status": "success"})
 }
@@ -342,7 +350,9 @@ func (h *APIHandler) ChangeAdminTOTP(c *gin.Context) {
 	_ = h.pgRepo.UpdateAdminToken(req.Username, "")
 
 	actor := c.GetString("username")
-	_ = h.pgRepo.LogAction(actor, "RESET_TOTP", req.Username, "TOTP secret cleared, re-setup required on next login")
+	if err := h.pgRepo.LogAction(actor, "RESET_TOTP", req.Username, "TOTP secret cleared, re-setup required on next login"); err != nil {
+		zlog.Error().Err(err).Str("actor", actor).Str("target", req.Username).Msg("Failed to record audit log for RESET_TOTP")
+	}
 
 	c.JSON(200, gin.H{"status": "success"})
 }

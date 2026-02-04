@@ -264,9 +264,10 @@ func main() {
 		sameSite = http.SameSiteStrictMode
 	}
 
-	// Automatically enable Secure cookies if HTTPS is forced or behind Cloudflare
+	// Automatically enable Secure cookies if HTTPS is forced.
+	// We don't force it solely on UseCloudflare because Cloudflare can be used with HTTP.
 	cookieSecure := cfg.CookieSecure
-	if cfg.ForceHTTPS || cfg.UseCloudflare {
+	if cfg.ForceHTTPS {
 		cookieSecure = true
 	}
 
