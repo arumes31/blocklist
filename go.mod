@@ -4,6 +4,7 @@ go 1.24.0
 
 require (
 	github.com/alicebob/miniredis/v2 v2.36.1
+	github.com/bits-and-blooms/bloom/v3 v3.7.1
 	github.com/gin-contrib/sessions v1.0.4
 	github.com/gin-gonic/gin v1.11.0
 	github.com/golang-migrate/migrate/v4 v4.19.1
@@ -29,6 +30,7 @@ require (
 	github.com/Azure/go-ansiterm v0.0.0-20230124172434-306776ec8161 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
+	github.com/bits-and-blooms/bitset v1.24.2 // indirect
 	github.com/boj/redistore v1.4.1 // indirect
 	github.com/boombuler/barcode v1.0.1-0.20190219062509-6c824513bacc // indirect
 	github.com/bytedance/sonic v1.14.0 // indirect

@@ -4,6 +4,7 @@ import (
 	"blocklist/internal/models"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -289,6 +290,68 @@ func (p *PostgresRepository) GetAuditLogs(limit int) ([]models.AuditLog, error) 
 	var logs []models.AuditLog
 	err := p.readDb.Select(&logs, "SELECT id, timestamp, actor, action, target, reason FROM audit_logs ORDER BY timestamp DESC LIMIT $1", limit)
 	return logs, err
+}
+
+func (p *PostgresRepository) GetAuditLogsPaginated(limit, offset int, actor, action, query string) ([]models.AuditLog, int, error) {
+	var logs []models.AuditLog
+	var total int
+
+	baseQuery := "SELECT id, timestamp, actor, action, target, reason FROM audit_logs WHERE 1=1"
+	params := []interface{}{}
+	paramIdx := 1
+
+	if actor != "" {
+		baseQuery += fmt.Sprintf(" AND actor = $%d", paramIdx)
+		params = append(params, actor)
+		paramIdx++
+	}
+	if action != "" {
+		baseQuery += fmt.Sprintf(" AND action = $%d", paramIdx)
+		params = append(params, action)
+		paramIdx++
+	}
+	if query != "" {
+		baseQuery += fmt.Sprintf(" AND (target ILIKE $%d OR reason ILIKE $%d)", paramIdx, paramIdx)
+		params = append(params, "%"+query+"%")
+		paramIdx++
+	}
+
+	// Get total count
+	countQuery := strings.Replace(baseQuery, "id, timestamp, actor, action, target, reason", "COUNT(*)", 1)
+	err := p.readDb.Get(&total, countQuery, params...)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// Get records
+	baseQuery += fmt.Sprintf(" ORDER BY timestamp DESC LIMIT $%d OFFSET $%d", paramIdx, paramIdx+1)
+	params = append(params, limit, offset)
+
+	err = p.readDb.Select(&logs, baseQuery, params...)
+	return logs, total, err
+}
+
+func (p *PostgresRepository) GetBlockTrend() ([]struct {
+	Hour  string `db:"hour"`
+	Count int    `db:"count"`
+}, error) {
+	var trend []struct {
+		Hour  string `db:"hour"`
+		Count int    `db:"count"`
+	}
+	// Query for hourly counts in the last 24 hours
+	query := `
+		SELECT 
+			to_char(date_trunc('hour', timestamp), 'YYYY-MM-DD HH24:00') as hour,
+			count(*) as count
+		FROM audit_logs
+		WHERE action IN ('BLOCK', 'BULK_BLOCK') 
+		  AND timestamp > NOW() - INTERVAL '24 hours'
+		GROUP BY 1
+		ORDER BY 1 ASC
+	`
+	err := p.readDb.Select(&trend, query)
+	return trend, err
 }
 
 func (p *PostgresRepository) GetIPHistory(ip string) ([]models.AuditLog, error) {

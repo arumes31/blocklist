@@ -17,6 +17,9 @@ import (
 	"blocklist/internal/config"
 	"blocklist/internal/models"
 	"blocklist/internal/repository"
+	"sync"
+
+	"github.com/bits-and-blooms/bloom/v3"
 	"github.com/oschwald/geoip2-golang"
 	"github.com/redis/go-redis/v9"
 )
@@ -27,6 +30,8 @@ type IPService struct {
 	blockedRanges []netip.Prefix
 	geoipReader   *geoip2.Reader
 	asnReader     *geoip2.Reader
+	bloomFilter   *bloom.BloomFilter
+	bloomMu       sync.RWMutex
 }
 
 func findGeoIPPath(filename string) string {
@@ -58,7 +63,7 @@ func NewIPService(cfg *config.Config, rRepo *repository.RedisRepository, pgRepo 
 	}
 
 	var reader, aReader *geoip2.Reader
-	
+
 	cityPath := findGeoIPPath("GeoLite2-City.mmdb")
 	if cityPath != "" {
 		if gReader, err := geoip2.Open(cityPath); err == nil {
@@ -66,20 +71,57 @@ func NewIPService(cfg *config.Config, rRepo *repository.RedisRepository, pgRepo 
 		}
 	}
 
-	asnPath := findGeoIPPath("GeoLite2-ASN.mmdb")
-	if asnPath != "" {
-		if gaReader, err := geoip2.Open(asnPath); err == nil {
+	gaPath := findGeoIPPath("GeoLite2-ASN.mmdb")
+	if gaPath != "" {
+		if gaReader, err := geoip2.Open(gaPath); err == nil {
 			aReader = gaReader
 		}
 	}
 
-	return &IPService{
+	svc := &IPService{
 		redisRepo:     rRepo,
 		pgRepo:        pgRepo,
 		blockedRanges: ranges,
 		geoipReader:   reader,
 		asnReader:     aReader,
+		bloomFilter:   bloom.NewWithEstimates(1000000, 0.01),
 	}
+	svc.syncBloomFilter()
+	return svc
+}
+
+func (s *IPService) syncBloomFilter() {
+	s.bloomMu.Lock()
+	defer s.bloomMu.Unlock()
+
+	// Re-initialize if too many false positives expected?
+	// For now, just fill from Redis
+	if s.redisRepo != nil {
+		ips, err := s.redisRepo.GetBlockedIPs()
+		if err == nil {
+			for ip := range ips {
+				s.bloomFilter.AddString(ip)
+			}
+			log.Printf("IPService: Synchronized Bloom Filter with %d IPs", len(ips))
+		}
+	}
+}
+
+func (s *IPService) IsBlocked(ipStr string) bool {
+	// 1. Check Bloom Filter (fast positive check)
+	s.bloomMu.RLock()
+	if s.bloomFilter != nil && !s.bloomFilter.TestString(ipStr) {
+		s.bloomMu.RUnlock()
+		return false // Definitely not blocked
+	}
+	s.bloomMu.RUnlock()
+
+	// 2. Fallback to Redis for confirmation
+	if s.redisRepo != nil {
+		entry, err := s.redisRepo.GetIPEntry(ipStr)
+		return err == nil && entry != nil
+	}
+	return false
 }
 
 func (s *IPService) ReloadReaders() {
@@ -88,7 +130,9 @@ func (s *IPService) ReloadReaders() {
 		if reader, err := geoip2.Open(cityPath); err == nil {
 			old := s.geoipReader
 			s.geoipReader = reader
-			if old != nil { old.Close() }
+			if old != nil {
+				old.Close()
+			}
 			log.Printf("IPService: Reloaded GeoLite2-City")
 		}
 	}
@@ -98,7 +142,9 @@ func (s *IPService) ReloadReaders() {
 		if aReader, err := geoip2.Open(asnPath); err == nil {
 			old := s.asnReader
 			s.asnReader = aReader
-			if old != nil { old.Close() }
+			if old != nil {
+				old.Close()
+			}
 			log.Printf("IPService: Reloaded GeoLite2-ASN")
 		}
 	}
@@ -132,13 +178,15 @@ func (s *IPService) IsValidIP(ipStr string) bool {
 
 // CalculateThreatScore computes a risk score (0-100) for an IP based on its history and current reason.
 func (s *IPService) CalculateThreatScore(ip string, reason string) int {
-	if s.redisRepo == nil { return 0 }
+	if s.redisRepo == nil {
+		return 0
+	}
 	count, _ := s.redisRepo.GetIPBanCount(ip)
-	
-	// Base score: 10 points per previous ban (including this one if already incremented, 
+
+	// Base score: 10 points per previous ban (including this one if already incremented,
 	// but usually we call this before ExecBlockAtomic or we account for it)
-	score := int(count * 10) 
-	
+	score := int(count * 10)
+
 	// Bonus points for reason severity
 	reason = strings.ToLower(reason)
 	if strings.Contains(reason, "brute") || strings.Contains(reason, "ssh") || strings.Contains(reason, "login") {
@@ -150,9 +198,13 @@ func (s *IPService) CalculateThreatScore(ip string, reason string) int {
 	} else if strings.Contains(reason, "scanner") || strings.Contains(reason, "bot") {
 		score += 10
 	}
-	
-	if score > 100 { score = 100 }
-	if score < 0 { score = 0 }
+
+	if score > 100 {
+		score = 100
+	}
+	if score < 0 {
+		score = 0
+	}
 	return score
 }
 
@@ -225,7 +277,9 @@ func (s *IPService) ListIPsPaginated(ctx context.Context, limit int, cursor stri
 		for _, z := range zs {
 			ip := z.Member.(string)
 			entry, err := s.redisRepo.GetIPEntry(ip)
-			if err != nil || entry == nil { continue }
+			if err != nil || entry == nil {
+				continue
+			}
 			if q != "" {
 				if !strings.Contains(strings.ToLower(ip), q) &&
 					!strings.Contains(strings.ToLower(entry.Reason), q) &&
@@ -240,14 +294,22 @@ func (s *IPService) ListIPsPaginated(ctx context.Context, limit int, cursor stri
 	}
 	// fallback to hash listing
 	all, err := s.redisRepo.HGetAllRaw("ips")
-	if err != nil { return nil, "", 0, err }
+	if err != nil {
+		return nil, "", 0, err
+	}
 	total := len(all)
-	type pair struct{ ip string; e models.IPEntry; ts int64 }
+	type pair struct {
+		ip string
+		e  models.IPEntry
+		ts int64
+	}
 	list := make([]pair, 0, total)
 	q := strings.ToLower(strings.TrimSpace(query))
 	for ip, raw := range all {
 		var e models.IPEntry
-		if err := json.Unmarshal([]byte(raw), &e); err != nil { continue }
+		if err := json.Unmarshal([]byte(raw), &e); err != nil {
+			continue
+		}
 		if q != "" {
 			if !strings.Contains(strings.ToLower(ip), q) &&
 				!strings.Contains(strings.ToLower(e.Reason), q) &&
@@ -257,25 +319,45 @@ func (s *IPService) ListIPsPaginated(ctx context.Context, limit int, cursor stri
 			}
 		}
 		var ts int64
-		if t, err := time.Parse("2006-01-02 15:04:05 UTC", e.Timestamp); err == nil { ts = t.Unix() }
+		if t, err := time.Parse("2006-01-02 15:04:05 UTC", e.Timestamp); err == nil {
+			ts = t.Unix()
+		}
 		list = append(list, pair{ip: ip, e: e, ts: ts})
 	}
 	sort.Slice(list, func(i, j int) bool { return list[i].ts > list[j].ts })
 	offset := 0
-	if cursor != "" { if n, err := strconv.Atoi(cursor); err == nil { offset = n } }
+	if cursor != "" {
+		if n, err := strconv.Atoi(cursor); err == nil {
+			offset = n
+		}
+	}
 	end := offset + limit
-	if end > len(list) { end = len(list) }
+	if end > len(list) {
+		end = len(list)
+	}
 	itemsOut := make([]map[string]interface{}, 0, end-offset)
 	for _, p := range list[offset:end] {
 		itemsOut = append(itemsOut, map[string]interface{}{"ip": p.ip, "data": p.e})
 	}
 	nextCursor := ""
-	if end < len(list) { nextCursor = strconv.Itoa(end) }
+	if end < len(list) {
+		nextCursor = strconv.Itoa(end)
+	}
 	return itemsOut, nextCursor, len(list), nil
 }
 
 // Stats computes counts for last hour/day/total and top countries, ASNs, and reasons.
-func (s *IPService) Stats(ctx context.Context) (hour int, day int, totalEver int, activeBlocks int, top []struct{ Country string; Count int }, topASN []struct{ ASN uint; ASNOrg string; Count int }, topReason []struct{ Reason string; Count int }, webhooksHour int, lastBlockTs int64, blocksMinute int, err error) {
+func (s *IPService) Stats(ctx context.Context) (hour int, day int, totalEver int, activeBlocks int, top []struct {
+	Country string
+	Count   int
+}, topASN []struct {
+	ASN    uint
+	ASNOrg string
+	Count  int
+}, topReason []struct {
+	Reason string
+	Count  int
+}, webhooksHour int, lastBlockTs int64, blocksMinute int, err error) {
 	if s.redisRepo == nil {
 		return 0, 0, 0, 0, nil, nil, nil, 0, 0, 0, nil
 	}
@@ -371,7 +453,7 @@ func (s *IPService) ExportIPs(ctx context.Context, query string, country string,
 	}
 	// For export, we fetch a large batch or iterate.
 	// Simple implementation: fetch up to 10k items.
-	
+
 	var fromTime, toTime time.Time
 	if from != "" {
 		fromTime, _ = time.Parse(time.RFC3339, from)
@@ -390,17 +472,19 @@ func (s *IPService) ExportIPs(ctx context.Context, query string, country string,
 		Rev:     true,
 		Count:   1000000,
 	}
-	
+
 	zs, err := s.redisRepo.ZRangeArgsWithScores(ctx, *args)
 	// If ZSET is empty or missing, fallback to full hash scan
 	if err == nil && len(zs) == 0 {
 		return s.exportFallback(ctx, query, country, addedBy, fromTime, toTime)
 	}
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 
 	items := make([]map[string]interface{}, 0)
 	q := strings.ToLower(strings.TrimSpace(query))
-	
+
 	countryList := []string{}
 	if country != "" {
 		for _, c := range strings.Split(country, ",") {
@@ -409,13 +493,15 @@ func (s *IPService) ExportIPs(ctx context.Context, query string, country string,
 			}
 		}
 	}
-	
+
 	addedBy = strings.ToLower(strings.TrimSpace(addedBy))
 
 	for _, z := range zs {
 		ip := z.Member.(string)
 		entry, err := s.redisRepo.GetIPEntry(ip)
-		if err != nil || entry == nil { continue }
+		if err != nil || entry == nil {
+			continue
+		}
 
 		if q != "" {
 			if !strings.Contains(strings.ToLower(ip), q) &&
@@ -448,8 +534,12 @@ func (s *IPService) ExportIPs(ctx context.Context, query string, country string,
 		if !fromTime.IsZero() || !toTime.IsZero() {
 			ts, err := time.Parse("2006-01-02 15:04:05 UTC", entry.Timestamp)
 			if err == nil {
-				if !fromTime.IsZero() && ts.Before(fromTime) { continue }
-				if !toTime.IsZero() && ts.After(toTime) { continue }
+				if !fromTime.IsZero() && ts.Before(fromTime) {
+					continue
+				}
+				if !toTime.IsZero() && ts.After(toTime) {
+					continue
+				}
 			}
 		}
 
@@ -466,16 +556,20 @@ func (s *IPService) BulkBlock(ctx context.Context, ips []string, reason string, 
 	}
 	now := time.Now().UTC()
 	timestamp := now.Format("2006-01-02 15:04:05 UTC")
-	
+
 	expiresAt := ""
 	if !persist {
 		tVal := 86400
-		if ttl > 0 { tVal = ttl }
+		if ttl > 0 {
+			tVal = ttl
+		}
 		expiresAt = now.Add(time.Duration(tVal) * time.Second).Format("2006-01-02 15:04:05 UTC")
 	}
 
 	for _, ip := range ips {
-		if !s.IsValidIP(ip) { continue }
+		if !s.IsValidIP(ip) {
+			continue
+		}
 		geo := s.GetGeoIP(ip)
 		entry := models.IPEntry{
 			Timestamp:   timestamp,
@@ -486,7 +580,7 @@ func (s *IPService) BulkBlock(ctx context.Context, ips []string, reason string, 
 			ExpiresAt:   expiresAt,
 			ThreatScore: s.CalculateThreatScore(ip, reason),
 		}
-		
+
 		if persist && s.pgRepo != nil {
 			_ = s.pgRepo.CreatePersistentBlock(ip, entry)
 			_ = s.pgRepo.LogAction(addedBy, "BLOCK_PERSISTENT", ip, reason)
@@ -496,6 +590,11 @@ func (s *IPService) BulkBlock(ctx context.Context, ips []string, reason string, 
 			}
 		}
 		_ = s.redisRepo.ExecBlockAtomic(ip, entry, now)
+		s.bloomMu.Lock()
+		if s.bloomFilter != nil {
+			s.bloomFilter.AddString(ip)
+		}
+		s.bloomMu.Unlock()
 	}
 	return nil
 }
@@ -512,6 +611,8 @@ func (s *IPService) BulkUnblock(ctx context.Context, ips []string, actor string)
 			_ = s.pgRepo.LogAction(actor, "UNBLOCK", ip, "bulk action")
 		}
 	}
+	// Full re-sync is needed for Bloom filter because it doesn't support removals
+	go s.syncBloomFilter()
 	return nil
 }
 
@@ -533,7 +634,9 @@ func (s *IPService) ListIPsPaginatedAdvanced(ctx context.Context, limit int, cur
 	fetchLimit := limit
 	if query != "" || country != "" || addedBy != "" || from != "" || to != "" {
 		fetchLimit = limit * 2 // Fetch more to account for filtering
-		if fetchLimit > 5000 { fetchLimit = 5000 }
+		if fetchLimit > 5000 {
+			fetchLimit = 5000
+		}
 	}
 
 	zs, next, zerr := s.redisRepo.ZPageByScoreDesc(fetchLimit, cursor)
@@ -541,7 +644,7 @@ func (s *IPService) ListIPsPaginatedAdvanced(ctx context.Context, limit int, cur
 		tot := s.GetTotalCount(ctx)
 		items := make([]map[string]interface{}, 0, limit)
 		q := strings.ToLower(strings.TrimSpace(query))
-		
+
 		countryList := []string{}
 		if country != "" {
 			for _, c := range strings.Split(country, ",") {
@@ -550,17 +653,19 @@ func (s *IPService) ListIPsPaginatedAdvanced(ctx context.Context, limit int, cur
 				}
 			}
 		}
-		
+
 		addedBy = strings.ToLower(strings.TrimSpace(addedBy))
 
 		for _, z := range zs {
 			if len(items) >= limit {
-				break 
+				break
 			}
 
 			ip := z.Member.(string)
 			entry, err := s.redisRepo.GetIPEntry(ip)
-			if err != nil || entry == nil { continue }
+			if err != nil || entry == nil {
+				continue
+			}
 
 			// Apply filters
 			if q != "" {
@@ -594,8 +699,12 @@ func (s *IPService) ListIPsPaginatedAdvanced(ctx context.Context, limit int, cur
 			if !fromTime.IsZero() || !toTime.IsZero() {
 				ts, err := time.Parse("2006-01-02 15:04:05 UTC", entry.Timestamp)
 				if err == nil {
-					if !fromTime.IsZero() && ts.Before(fromTime) { continue }
-					if !toTime.IsZero() && ts.After(toTime) { continue }
+					if !fromTime.IsZero() && ts.Before(fromTime) {
+						continue
+					}
+					if !toTime.IsZero() && ts.After(toTime) {
+						continue
+					}
 				}
 			}
 
@@ -610,7 +719,9 @@ func (s *IPService) ListIPsPaginatedAdvanced(ctx context.Context, limit int, cur
 
 func (s *IPService) exportFallback(ctx context.Context, query string, country string, addedBy string, fromTime, toTime time.Time) ([]map[string]interface{}, error) {
 	all, err := s.redisRepo.HGetAllRaw("ips")
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 
 	items := make([]map[string]interface{}, 0)
 	q := strings.ToLower(strings.TrimSpace(query))
@@ -626,7 +737,9 @@ func (s *IPService) exportFallback(ctx context.Context, query string, country st
 
 	for ip, raw := range all {
 		var entry models.IPEntry
-		if err := json.Unmarshal([]byte(raw), &entry); err != nil { continue }
+		if err := json.Unmarshal([]byte(raw), &entry); err != nil {
+			continue
+		}
 
 		if q != "" {
 			if !strings.Contains(strings.ToLower(ip), q) &&
@@ -647,16 +760,24 @@ func (s *IPService) exportFallback(ctx context.Context, query string, country st
 					}
 				}
 			}
-			if !match { continue }
+			if !match {
+				continue
+			}
 		}
 		if addedBy != "" {
-			if !strings.EqualFold(entry.AddedBy, addedBy) { continue }
+			if !strings.EqualFold(entry.AddedBy, addedBy) {
+				continue
+			}
 		}
 		if !fromTime.IsZero() || !toTime.IsZero() {
 			ts, err := time.Parse("2006-01-02 15:04:05 UTC", entry.Timestamp)
 			if err == nil {
-				if !fromTime.IsZero() && ts.Before(fromTime) { continue }
-				if !toTime.IsZero() && ts.After(toTime) { continue }
+				if !fromTime.IsZero() && ts.Before(fromTime) {
+					continue
+				}
+				if !toTime.IsZero() && ts.After(toTime) {
+					continue
+				}
 			}
 		}
 

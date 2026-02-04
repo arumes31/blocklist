@@ -172,6 +172,7 @@ func (h *APIHandler) isValidRedirect(target string) bool {
 // RegisterRoutes sets up all the API and UI routes for the application.
 func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 	r.Use(h.PrometheusMiddleware())
+	r.Use(h.BlockCheckMiddleware())
 	// Public UI routes
 	r.GET("/", func(c *gin.Context) { c.Redirect(http.StatusFound, "/dashboard") })
 
@@ -234,6 +235,7 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 	{
 		// Dashboard requires view_ips and view_stats
 		auth.GET("/dashboard", h.PermissionMiddleware("view_ips"), h.Dashboard)
+		auth.GET("/audit-logs", h.PermissionMiddleware("view_ips"), h.AuditLogExplorer)
 		auth.GET("/thread-map", h.PermissionMiddleware("view_ips"), h.ThreadMap)
 		auth.GET("/dashboard/table", h.PermissionMiddleware("view_ips"), h.DashboardTable) // For HTMX polling
 
@@ -330,6 +332,8 @@ func (h *APIHandler) Dashboard(c *gin.Context) {
 	views, _ := h.pgRepo.GetSavedViews(username.(string))
 	permissions, _ := c.Get("permissions")
 
+	trend, _ := h.pgRepo.GetBlockTrend()
+
 	h.renderHTML(c, http.StatusOK, "dashboard.html", gin.H{
 		"ips":            ips,
 		"total_ips":      activeBlocks, // Use value from Stats() for consistency
@@ -337,6 +341,7 @@ func (h *APIHandler) Dashboard(c *gin.Context) {
 		"username":       username,
 		"permissions":    permissions,
 		"views":          views,
+		"block_trend":    trend,
 		"stats": gin.H{
 			"hour":          hour,
 			"day":           day,
@@ -498,6 +503,29 @@ func (h *APIHandler) isIPInCIDRs(ipStr string, cidrs string) bool {
 		}
 	}
 	return false
+}
+
+func (h *APIHandler) BlockCheckMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		clientIP := c.ClientIP()
+
+		// Bypass block check for login page and static assets to avoid lockout
+		path := c.Request.URL.Path
+		if path == "/login" || strings.HasPrefix(path, "/static") || strings.HasPrefix(path, "/js") || strings.HasPrefix(path, "/cd") {
+			c.Next()
+			return
+		}
+
+		if h.ipService.IsBlocked(clientIP) {
+			zlog.Warn().Str("ip", clientIP).Str("path", path).Msg("Blocked IP attempted access")
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+				"error": "Your IP has been blocked due to security policies.",
+				"ip":    clientIP,
+			})
+			return
+		}
+		c.Next()
+	}
 }
 
 func (h *APIHandler) AuthMiddleware() gin.HandlerFunc {
@@ -2221,4 +2249,37 @@ func (h *APIHandler) DeleteOutboundWebhook(c *gin.Context) {
 	id, _ := strconv.Atoi(c.Param("id"))
 	_ = h.pgRepo.DeleteOutboundWebhook(id)
 	c.Status(http.StatusOK)
+}
+func (h *APIHandler) AuditLogExplorer(c *gin.Context) {
+	username, _ := c.Get("username")
+	actor := c.Query("actor")
+	action := c.Query("action")
+	query := c.Query("query")
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	limit := 50
+	offset := (page - 1) * limit
+
+	logs, total, err := h.pgRepo.GetAuditLogsPaginated(limit, offset, actor, action, query)
+	if err != nil {
+		c.String(http.StatusInternalServerError, "failed to fetch audit logs")
+		return
+	}
+
+	totalPages := (total + limit - 1) / limit
+	permissions, _ := c.Get("permissions")
+
+	h.renderHTML(c, http.StatusOK, "audit_logs.html", gin.H{
+		"logs":           logs,
+		"total":          total,
+		"page":           page,
+		"total_pages":    totalPages,
+		"username":       username,
+		"admin_username": h.cfg.GUIAdmin,
+		"permissions":    permissions,
+		"filters": gin.H{
+			"actor":  actor,
+			"action": action,
+			"query":  query,
+		},
+	})
 }

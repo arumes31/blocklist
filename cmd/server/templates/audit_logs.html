@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audit Log Explorer</title>
+    <script src="/js/htmx.min.js"></script>
+    <style>
+        :root {
+            --primary-red: #ff0000;
+            --dark-red: #8b0000;
+            --vibrant-red: #ff4d4d;
+            --glass-bg: rgba(20, 20, 20, 0.85);
+            --border-red: rgba(255, 0, 0, 0.3);
+            --secondary-color: #b3b3b3;
+        }
+
+        body {
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            background-color: #000;
+            color: #fff;
+            padding: 2rem;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+        }
+
+        .btn {
+            padding: 0.6rem 1.2rem;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            text-decoration: none;
+            background: rgba(255, 255, 255, 0.05);
+            color: #fff;
+            display: inline-flex;
+            align-items: center;
+        }
+
+        .btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: var(--primary-red);
+        }
+
+        .table-card {
+            background: var(--glass-bg);
+            border: 1px solid var(--border-red);
+            border-radius: 12px;
+            padding: 1rem;
+            backdrop-filter: blur(8px);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1rem;
+        }
+
+        th,
+        td {
+            text-align: left;
+            padding: 0.8rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        th {
+            color: var(--secondary-color);
+            font-size: 0.85rem;
+            text-transform: uppercase;
+        }
+
+        .filter-bar {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .input {
+            background: #111;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #fff;
+            padding: 0.6rem;
+            border-radius: 6px;
+            outline: none;
+        }
+
+        .input:focus {
+            border-color: var(--primary-red);
+        }
+
+        .pagination {
+            display: flex;
+            gap: 0.5rem;
+            justify-content: center;
+            margin-top: 2rem;
+        }
+
+        .page-link {
+            padding: 0.5rem 1rem;
+            background: #111;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+            color: #fff;
+            text-decoration: none;
+        }
+
+        .page-link.active {
+            background: var(--dark-red);
+            border-color: var(--primary-red);
+        }
+
+        .action-chip {
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: bold;
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .action-LOGIN {
+            background: rgba(40, 167, 69, 0.2);
+            color: #28a745;
+        }
+
+        .action-BLOCK {
+            background: rgba(220, 53, 69, 0.2);
+            color: #dc3545;
+        }
+
+        .action-UNBLOCK {
+            background: rgba(0, 123, 255, 0.2);
+            color: #007bff;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="header">
+        <h1>Audit Log Explorer</h1>
+        <a href="/dashboard" class="btn">Back to Dashboard</a>
+    </div>
+
+    <div class="table-card">
+        <form method="GET" action="/audit-logs" class="filter-bar">
+            <input type="text" name="actor" value="{{ .filters.actor }}" placeholder="Actor (username)" class="input">
+            <select name="action" class="input">
+                <option value="">All Actions</option>
+                <option value="LOGIN" {{ if eq .filters.action "LOGIN" }}selected{{ end }}>LOGIN</option>
+                <option value="LOGIN_FAILURE" {{ if eq .filters.action "LOGIN_FAILURE" }}selected{{ end }}>LOGIN_FAILURE
+                </option>
+                <option value="BLOCK" {{ if eq .filters.action "BLOCK" }}selected{{ end }}>BLOCK</option>
+                <option value="UNBLOCK" {{ if eq .filters.action "UNBLOCK" }}selected{{ end }}>UNBLOCK</option>
+                <option value="BULK_BLOCK" {{ if eq .filters.action "BULK_BLOCK" }}selected{{ end }}>BULK_BLOCK</option>
+                <option value="DELETE_ADMIN" {{ if eq .filters.action "DELETE_ADMIN" }}selected{{ end }}>DELETE_ADMIN
+                </option>
+            </select>
+            <input type="text" name="query" value="{{ .filters.query }}" placeholder="Search target/reason..."
+                class="input" style="flex:1;">
+            <button type="submit" class="btn">Filter</button>
+            <a href="/audit-logs" class="btn">Reset</a>
+        </form>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Timestamp</th>
+                    <th>Actor</th>
+                    <th>Action</th>
+                    <th>Target</th>
+                    <th>Reason</th>
+                </tr>
+            </thead>
+            <tbody>
+                {{ range .logs }}
+                <tr>
+                    <td style="font-size: 0.85rem; color: var(--secondary-color);">{{ .Timestamp }}</td>
+                    <td>{{ .Actor }}</td>
+                    <td><span class="action-chip action-{{ .Action }}">{{ .Action }}</span></td>
+                    <td><code>{{ .Target }}</code></td>
+                    <td style="font-size: 0.9rem;">{{ .Reason }}</td>
+                </tr>
+                {{ end }}
+                {{ if not .logs }}
+                <tr>
+                    <td colspan="5" style="text-align: center; padding: 2rem;">No logs found matching filters.</td>
+                </tr>
+                {{ end }}
+            </tbody>
+        </table>
+
+        <div class="pagination">
+            {{ if gt .page 1 }}
+            <a href="/audit-logs?page={{ sub .page 1 }}&actor={{ .filters.actor }}&action={{ .filters.action }}&query={{ .filters.query }}"
+                class="page-link">Prev</a>
+            {{ end }}
+
+            <span style="padding: 0.5rem 1rem; color: var(--secondary-color);">Page {{ .page }} of {{ .total_pages }}
+                ({{ .total }} total)</span>
+
+            {{ if lt .page .total_pages }}
+            <a href="/audit-logs?page={{ add .page 1 }}&actor={{ .filters.actor }}&action={{ .filters.action }}&query={{ .filters.query }}"
+                class="page-link">Next</a>
+            {{ end }}
+        </div>
+    </div>
+</body>
+
+</html>
