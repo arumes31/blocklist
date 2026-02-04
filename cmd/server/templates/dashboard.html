@@ -4,14 +4,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>IP Dashboard</title>
-    <link rel="stylesheet" href="/cd/flag-icon.min.css">
-    <link rel="stylesheet" href="/js/leaflet.css">
-    <link rel="icon" type="image/x-icon" href="/cd/favicon-color.png" />
-    <script src="/js/htmx.min.js"></script>
-    <script src="/js/json-enc.js"></script>
-    <script src="/js/leaflet.js"></script>
+    <title>Blocklist Dashboard</title>
+    <link rel="icon" href="/favicon.ico">
+    <link rel="stylesheet" href="/static/css/chart.css">
+    <link rel="stylesheet" href="/static/css/leaflet.css">
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
     <script src="/js/chart.js"></script>
+    <script src="/static/js/leaflet.js"></script>
     <style nonce="{{ .nonce }}">
         :root {
             --primary-red: #ff0000;
@@ -1166,10 +1165,10 @@
                 </div>
             </div>
             <div class="table-card" style="padding: 1.5rem;">
-                <div style="font-size: 0.9rem; color: var(--secondary-color); margin-bottom: 1rem;">Attack Origins (Top
-                    5)</div>
-                <div style="height: 200px; position: relative;">
-                    <canvas id="countryChart"></canvas>
+                <div style="font-size: 0.9rem; color: var(--secondary-color); margin-bottom: 1rem;">Live Attack Map (Top
+                    Origins)</div>
+                <div style="height: 200px; position: relative; border-radius: 4px; overflow: hidden;">
+                    <div id="attackMap" style="height: 100%; width: 100%; background: #1a1a1a;"></div>
                 </div>
             </div>
         </div>
@@ -1326,7 +1325,7 @@
         let inflight = null; // AbortController for in-flight fetch
         let paused = false;
         let updateQueue = [];
-        let lastBlockTime = {{ if .stats.last_block_ts }}{ { .stats.last_block_ts } } { { else } } 0{ { end } };
+        let lastBlockTime = {{ if .stats.last_block_ts }}{{ .stats.last_block_ts }} {{ else }} 0{{ end }};
         const tbody = document.getElementById('ipTableBody');
 
         function rowHTML(ip, data) {
@@ -1544,7 +1543,7 @@
                     dot.title = 'System Health: ' + hdata.status;
                 }
 
-                const r = await fetch('/api/v1/stats', { headers: { 'Accept': 'application/json' } });
+                const r = await fetch('/api/v1/stats', { headers: { 'Accept': 'application/json' }});
                 if (!r.ok) return;
                 const s = await r.json();
                 if (typeof s.hour === 'number') document.getElementById('stat-hour').textContent = s.hour;
@@ -2019,8 +2018,8 @@
         // Chart.js initialization for Block Trend
         const trendData = [
             {{ range .block_trend }}
-        { hour: "{{ .Hour }}", count: { { .Count } } },
-        { { end } }
+        { hour: "{{ .Hour }}", count: {{ .Count }} },
+        {{ end }}
         ];
 
         if (trendData.length > 0) {
@@ -2053,11 +2052,11 @@
                         y: {
                             beginAtZero: true,
                             grid: { color: 'rgba(255, 255, 255, 0.05)' },
-                            ticks: { color: '#b3b3b3', font: { size: 10 } }
+                            ticks: { color: '#b3b3b3', font: { size: 10 }}
                         },
                         x: {
                             grid: { display: false },
-                            ticks: { color: '#b3b3b3', font: { size: 10 } }
+                            ticks: { color: '#b3b3b3', font: { size: 10 }}
                         }
                     },
                     plugins: {
@@ -2074,53 +2073,53 @@
             });
         }
 
-        // Country Distribution Chart
+        // Live Attack Map (Leaflet)
         const countryData = [
             {{ range .stats.top_countries }}
-        { name: "{{ .Country }}", count: { { .Count } } },
-        { { end } }
+        { name: "{{ .Country }}", count: {{ .Count }} },
+        {{ end }}
         ];
 
         if (countryData.length > 0) {
-            const cctx = document.getElementById('countryChart').getContext('2d');
-            const top5 = countryData.slice(0, 5);
-
-            new Chart(cctx, {
-                type: 'doughnut',
-                data: {
-                    labels: top5.map(d => d.name),
-                    datasets: [{
-                        data: top5.map(d => d.count),
-                        backgroundColor: [
-                            '#ff0000', '#c10000', '#8b0000', '#600000', '#330000'
-                        ],
-                        borderWidth: 0
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: {
-                            position: 'right',
-                            labels: {
-                                color: '#b3b3b3',
-                                usePointStyle: true,
-                                font: { size: 10 }
-                            }
-                        },
-                        tooltip: {
-                            backgroundColor: 'rgba(20, 20, 20, 0.9)',
-                            titleColor: '#fff',
-                            bodyColor: '#fff',
-                            borderColor: '#ff0000',
-                            borderWidth: 1
-                        }
-                    },
-                    cutout: '70%',
-                    elements: { arc: { borderJoinStyle: 'round' } }
-                }
+            const map = L.map('attackMap', {
+                center: [20, 0],
+                zoom: 1,
+                zoomControl: false,
+                attributionControl: false
             });
+
+            // Dark simplified tiles (CartoDB Dark Matter) - strictly HTTPS
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                maxZoom: 19
+            }).addTo(map);
+
+            // Fetch Country Centroids
+            fetch('/static/data/countries.geojson')
+                .then(r => r.json())
+                .then(geo => {
+                    countryData.forEach(c => {
+                        // Find feature by ISO code (assuming ISO 2 in properties)
+                        // The gavinr dataset uses ISO_A2 or ISO_2DIGIT
+                        const feature = geo.features.find(f => f.properties.ISO === c.name || f.properties.ISO_A2 === c.name);
+                        if (feature && feature.geometry && feature.geometry.coordinates) {
+                            const [lon, lat] = feature.geometry.coordinates; // GeoJSON is Lon,Lat
+
+                            L.circleMarker([lat, lon], {
+                                radius: Math.log(c.count + 1) * 3 + 2, // Scale radius
+                                color: '#ff0000',
+                                fillColor: '#ff0000',
+                                fillOpacity: 0.6,
+                                weight: 0
+                            }).addTo(map)
+                                .bindTooltip(`<b>${c.name}</b>: ${c.count} blocks`, {
+                                    permanent: false,
+                                    direction: 'top',
+                                    className: 'map-tooltip' // We can style this if needed
+                                });
+                        }
+                    });
+                })
+                .catch(console.error);
         }
     </script>
 </body>

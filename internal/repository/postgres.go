@@ -331,14 +331,8 @@ func (p *PostgresRepository) GetAuditLogsPaginated(limit, offset int, actor, act
 	return logs, total, err
 }
 
-func (p *PostgresRepository) GetBlockTrend() ([]struct {
-	Hour  string `db:"hour"`
-	Count int    `db:"count"`
-}, error) {
-	var trend []struct {
-		Hour  string `db:"hour"`
-		Count int    `db:"count"`
-	}
+func (p *PostgresRepository) GetBlockTrend() ([]models.BlockTrend, error) {
+	var trend []models.BlockTrend
 	// Query for hourly counts in the last 24 hours
 	query := `
 		SELECT 

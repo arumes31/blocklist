@@ -791,3 +791,106 @@ func (s *IPService) exportFallback(ctx context.Context, query string, country st
 	})
 	return items, nil
 }
+
+// BlockIP blocks a single IP.
+func (s *IPService) BlockIP(ctx context.Context, ip string, reason string, username string, actorIP string, persist bool, duration time.Duration) error {
+	if s.redisRepo == nil {
+		return nil
+	}
+	if !s.IsValidIP(ip) {
+		return fmt.Errorf("invalid IP")
+	}
+
+	now := time.Now().UTC()
+	timestamp := now.Format("2006-01-02 15:04:05 UTC")
+	geo := s.GetGeoIP(ip)
+
+	expiresAt := ""
+	ttl := 0
+	if !persist {
+		ttl = int(duration.Seconds())
+		if ttl <= 0 {
+			ttl = 86400
+		}
+		expiresAt = now.Add(time.Duration(ttl) * time.Second).Format("2006-01-02 15:04:05 UTC")
+	}
+
+	entry := models.IPEntry{
+		Timestamp:   timestamp,
+		Geolocation: geo,
+		Reason:      reason,
+		AddedBy:     fmt.Sprintf("%s (%s)", username, actorIP),
+		TTL:         ttl,
+		ExpiresAt:   expiresAt,
+		ThreatScore: s.CalculateThreatScore(ip, reason),
+	}
+
+	if persist && s.pgRepo != nil {
+		_ = s.pgRepo.CreatePersistentBlock(ip, entry)
+		_ = s.pgRepo.LogAction(username, "BLOCK_PERSISTENT", ip, reason)
+	} else {
+		if s.pgRepo != nil {
+			_ = s.pgRepo.LogAction(username, "BLOCK_EPHEMERAL", ip, reason)
+		}
+	}
+
+	err := s.redisRepo.ExecBlockAtomic(ip, entry, now)
+	if err == nil {
+		s.bloomMu.Lock()
+		if s.bloomFilter != nil {
+			s.bloomFilter.AddString(ip)
+		}
+		s.bloomMu.Unlock()
+	}
+	return err
+}
+
+// UnblockIP unblocks a single IP.
+func (s *IPService) UnblockIP(ctx context.Context, ip string, username string) error {
+	if s.redisRepo == nil {
+		return nil
+	}
+	// Atomic unblock from Redis
+	err := s.redisRepo.ExecUnblockAtomic(ip)
+	if err != nil {
+		return err
+	}
+
+	if s.pgRepo != nil {
+		_ = s.pgRepo.DeletePersistentBlock(ip)
+		_ = s.pgRepo.LogAction(username, "UNBLOCK", ip, "")
+	}
+	return nil
+}
+
+// WhitelistIP adds an IP to the whitelist.
+func (s *IPService) WhitelistIP(ctx context.Context, ip string, reason string, username string) error {
+	geo := s.GetGeoIP(ip)
+	entry := models.WhitelistEntry{
+		Timestamp:   time.Now().UTC().Format("2006-01-02 15:04:05 UTC"),
+		Geolocation: geo,
+		AddedBy:     username,
+		Reason:      reason,
+	}
+	return s.redisRepo.WhitelistIP(ip, entry)
+}
+
+// RemoveWhitelist removes an IP from the whitelist.
+func (s *IPService) RemoveWhitelist(ctx context.Context, ip string, username string) error {
+	return s.redisRepo.RemoveFromWhitelist(ip)
+}
+
+// GetIPDetails retrieves current and historical details for an IP.
+func (s *IPService) GetIPDetails(ctx context.Context, ip string) (map[string]interface{}, error) {
+	entry, err := s.redisRepo.GetIPEntry(ip)
+	history, _ := s.pgRepo.GetIPHistory(ip)
+
+	res := map[string]interface{}{
+		"ip":      ip,
+		"history": history,
+	}
+	if err == nil && entry != nil {
+		res["current"] = entry
+	}
+	return res, nil
+}

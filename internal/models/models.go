@@ -88,3 +88,7 @@ type WebhookLog struct {
 	Attempt      int    `json:"attempt" db:"attempt"`
 	Timestamp    string `json:"timestamp" db:"timestamp"`
 }
+type BlockTrend struct {
+	Hour  string `json:"hour" db:"hour"`
+	Count int    `json:"count" db:"count"`
+}
