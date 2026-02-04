@@ -244,8 +244,10 @@ function drawParticle(i) {
             } else if (rRoll < 0.000234 + 0.000280 && meshCount < 10) { // Ultra Rare: Packet Sonar
                 interactionType = 2;
                 rareEffect = 4;
+                meshCount++;
             } else if (Math.random() < 0.36 && meshCount < 10) { // Mesh Node (Was Orbit)
                 interactionType = 2; 
+                meshCount++;
                 const r = Math.random();
                 if (r < 0.024) rareEffect = 3; // Supercharge
                 else if (r < 0.06) rareEffect = 2; // Prism
