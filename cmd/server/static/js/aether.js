@@ -581,14 +581,31 @@ function draw(currentTime) {
     // Update and Draw Pacman Entities
     ctx.save();
     for (let p of pacmen) {
-        // AI: Hunt the mouse if active, otherwise wander
-        if (mouse.active) {
-            const dx_m = mouse.x - p.x;
-            const dy_m = mouse.y - p.y;
-            const d_m = sqrt(dx_m*dx_m + dy_m*dy_m) || 1;
-            p.vx = lerp(p.vx, (dx_m / d_m) * 3, 0.05);
-            p.vy = lerp(p.vy, (dy_m / d_m) * 3, 0.05);
+        // AI: Hunt the nearest particle
+        let nearestDist = Infinity;
+        let targetX = p.x + p.vx * 10; // Default to current path
+        let targetY = p.y + p.vy * 10;
+
+        for (let i = 0; i < particlePropsLength; i += particlePropCount) {
+            const px = particleProps[i];
+            const py = particleProps[i + 1];
+            const dx = px - p.x;
+            const dy = py - p.y;
+            const d = dx * dx + dy * dy; // Use squared distance for performance
+            if (d < nearestDist) {
+                nearestDist = d;
+                targetX = px;
+                targetY = py;
+            }
         }
+
+        const dx_t = targetX - p.x;
+        const dy_t = targetY - p.y;
+        const d_t = sqrt(dx_t * dx_t + dy_t * dy_t) || 1;
+        
+        // Steer towards target
+        p.vx = lerp(p.vx, (dx_t / d_t) * 2.5, 0.1);
+        p.vy = lerp(p.vy, (dy_t / d_t) * 2.5, 0.1);
 
         p.x += p.vx;
         p.y += p.vy;
