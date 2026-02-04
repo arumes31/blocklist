@@ -46,17 +46,17 @@ type AdminAccount struct {
 }
 
 type APIToken struct {
-	ID          int      `json:"id" db:"id"`
-	TokenHash   string   `json:"-" db:"token_hash"`
-	Name        string   `json:"name" db:"name"`
-	Username    string   `json:"username" db:"username"`
-	Role        string   `json:"role" db:"role"`
-	Permissions string   `json:"permissions" db:"permissions"`
-	AllowedIPs  string   `json:"allowed_ips" db:"allowed_ips"` // Comma-separated CIDRs
-	CreatedAt   string   `json:"created_at" db:"created_at"`
-	ExpiresAt   *string  `json:"expires_at" db:"expires_at"`
-	LastUsed    *string  `json:"last_used" db:"last_used"`
-	LastUsedIP  string   `json:"last_used_ip" db:"last_used_ip"`
+	ID          int     `json:"id" db:"id"`
+	TokenHash   string  `json:"-" db:"token_hash"` // SHA256 sum of the raw token
+	Name        string  `json:"name" db:"name"`
+	Username    string  `json:"username" db:"username"`
+	Role        string  `json:"role" db:"role"`
+	Permissions string  `json:"permissions" db:"permissions"`
+	AllowedIPs  string  `json:"allowed_ips" db:"allowed_ips"` // Comma-separated CIDRs
+	CreatedAt   string  `json:"created_at" db:"created_at"`
+	ExpiresAt   *string `json:"expires_at" db:"expires_at"`
+	LastUsed    *string `json:"last_used" db:"last_used"`
+	LastUsedIP  string  `json:"last_used_ip" db:"last_used_ip"`
 }
 
 type SavedView struct {
@@ -87,4 +87,8 @@ type WebhookLog struct {
 	Error        string `json:"error" db:"error"`
 	Attempt      int    `json:"attempt" db:"attempt"`
 	Timestamp    string `json:"timestamp" db:"timestamp"`
+}
+type BlockTrend struct {
+	Hour  string `json:"hour" db:"hour"`
+	Count int    `json:"count" db:"count"`
 }

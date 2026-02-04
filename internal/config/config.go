@@ -35,6 +35,8 @@ type Config struct {
 	LogRetentionMonths     int
 	CookieSecure           bool
 	SameSiteStrict         bool
+	ForceHTTPS             bool
+	RunWorkerInProcess     bool
 }
 
 func Load() *Config {
@@ -67,6 +69,8 @@ func Load() *Config {
 		LogRetentionMonths:     getEnvInt("LOG_RETENTION_MONTHS", 6),
 		CookieSecure:           getEnvBool("COOKIE_SECURE", false),
 		SameSiteStrict:         getEnvBool("COOKIE_SAMESITE_STRICT", false),
+		ForceHTTPS:             getEnvBool("FORCE_HTTPS", false),
+		RunWorkerInProcess:     getEnvBool("RUN_WORKER_IN_PROCESS", true),
 	}
 }
 

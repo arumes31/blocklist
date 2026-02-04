@@ -2,9 +2,9 @@ name: Go CI
 
 on:
   push:
-    branches: [ main, test, v2_test ]
+    branches: [ main, test, v2b_test ]
   pull_request:
-    branches: [ main, test, v2_test ]
+    branches: [ main, test, v2b_test ]
 
 jobs:
   build:

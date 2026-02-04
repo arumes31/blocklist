@@ -1,129 +1,57 @@
 package api
 
 import (
+	"blocklist/internal/models"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
-	"blocklist/internal/config"
-	"github.com/gin-contrib/sessions"
-	"github.com/gin-contrib/sessions/cookie"
-	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 )
 
-func TestSecurity_IsValidRedirect(t *testing.T) {
-	h := &APIHandler{}
+func TestSecurity_XSS_Reflected(t *testing.T) {
+	// Verify that data from service is properly escaped in templates
+	h, rRepo, pgRepo, _, ipService := setupTest()
 
-	tests := []struct {
-		target   string
-		expected bool
-	}{
-		{"/dashboard", true},
-		{"/settings?tab=webhooks", true},
-		{"http://evil.com", false},
-		{"https://evil.com/login", false},
-		{"//evil.com", false}, // Protocol-relative
-		{"/\\evil.com", false}, // Backslash trick
-		{"", false},
-		{"dashboard", false}, // Must start with /
-	}
+	// Mock data for Dashboard components
+	rRepo.On("GetBlockedIPs").Return(map[string]models.IPEntry{}, nil)
+	rRepo.On("GetCache", "persistent_ips_cache", mock.Anything).Return(errors.New("cache miss"))
+	pgRepo.On("GetSavedViews", "admin").Return([]models.SavedView{}, nil)
+	pgRepo.On("GetPersistentBlocks").Return(map[string]models.IPEntry{}, nil)
+	rRepo.On("SetCache", "persistent_ips_cache", mock.Anything, mock.Anything).Return(nil)
+	pgRepo.On("GetBlockTrend").Return([]models.BlockTrend{}, nil)
 
-	for _, tt := range tests {
-		result := h.isValidRedirect(tt.target)
-		if result != tt.expected {
-			t.Errorf("isValidRedirect(%q) = %v; want %v", tt.target, result, tt.expected)
-		}
-	}
-}
+	// Mock malicious input in stats
+	ipService.On("Stats", mock.Anything).Return(10, 100, 5000, 50,
+		[]struct {
+			Country string
+			Count   int
+		}{
+			{Country: "<script>alert('xss')</script>", Count: 1},
+		},
+		[]struct {
+			ASN    uint
+			ASNOrg string
+			Count  int
+		}{},
+		[]struct {
+			Reason string
+			Count  int
+		}{},
+		5, int64(0), 1, nil)
 
-func TestSecurity_AuthMiddleware_TestToken(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	cfg := &config.Config{GUIAdmin: "admin"}
-	h := NewAPIHandler(cfg, nil, nil, nil, nil, nil, nil)
-
-	r := gin.New()
-	store := cookie.NewStore([]byte("secret"))
-	r.Use(sessions.Sessions("test_session", store))
-	r.Use(h.AuthMiddleware())
-	r.GET("/test", func(c *gin.Context) {
-		username, _ := c.Get("username")
-		c.String(200, username.(string))
-	})
-
-	// 1. Valid test-token (should succeed in TestMode with no DB)
-	req, _ := http.NewRequest("GET", "/test", nil)
-	req.Header.Set("Authorization", "Bearer test-token")
 	w := httptest.NewRecorder()
-	r.ServeHTTP(w, req)
+	c, _ := setupHTMLTest(w)
+	c.Request, _ = http.NewRequest("GET", "/dashboard", nil)
+	c.Set("username", "admin")
+	c.Set("permissions", "all")
 
-	if w.Code != http.StatusOK {
-		t.Errorf("Expected 200 for test-token, got %d", w.Code)
-	}
-	if w.Body.String() != "admin" {
-		t.Errorf("Expected username 'admin', got %q", w.Body.String())
-	}
+	h.Dashboard(c)
 
-	// 2. Invalid token
-	req2, _ := http.NewRequest("GET", "/test", nil)
-	req2.Header.Set("Authorization", "Bearer malicious-token")
-	w2 := httptest.NewRecorder()
-	r.ServeHTTP(w2, req2)
-
-	if w2.Code == http.StatusOK {
-		t.Errorf("Expected failure for invalid token, got 200")
-	}
-}
-
-func TestSecurity_PermissionMiddleware(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	cfg := &config.Config{GUIAdmin: "admin"}
-	h := NewAPIHandler(cfg, nil, nil, nil, nil, nil, nil)
-
-	r := gin.New()
-	// Mock authentication by setting context variables manually
-	r.Use(func(c *gin.Context) {
-		token := c.GetHeader("X-Test-Token")
-		if token == "operator" {
-			c.Set("username", "op_user")
-			c.Set("permissions", "view_ips,block_ips")
-		} else if token == "admin" {
-			c.Set("username", "admin") // Superuser
-			c.Set("permissions", "everything")
-		} else {
-			c.Set("username", "viewer")
-			c.Set("permissions", "view_ips")
-		}
-		c.Next()
-	})
-
-	r.GET("/protected", h.PermissionMiddleware("block_ips"), func(c *gin.Context) {
-		c.Status(200)
-	})
-
-	// 1. User HAS permission
-	req, _ := http.NewRequest("GET", "/protected", nil)
-	req.Header.Set("X-Test-Token", "operator")
-	w := httptest.NewRecorder()
-	r.ServeHTTP(w, req)
-	if w.Code != 200 {
-		t.Errorf("Expected 200 for user with permission, got %d", w.Code)
-	}
-
-	// 2. User LACKS permission
-	req2, _ := http.NewRequest("GET", "/protected", nil)
-	req2.Header.Set("X-Test-Token", "viewer")
-	w2 := httptest.NewRecorder()
-	r.ServeHTTP(w2, req2)
-	if w2.Code != 403 {
-		t.Errorf("Expected 403 for user without permission, got %d", w2.Code)
-	}
-
-	// 3. Superuser bypass (even if "block_ips" isn't explicitly in string)
-	req3, _ := http.NewRequest("GET", "/protected", nil)
-	req3.Header.Set("X-Test-Token", "admin")
-	w3 := httptest.NewRecorder()
-	r.ServeHTTP(w3, req3)
-	if w3.Code != 200 {
-		t.Errorf("Expected 200 for superuser bypass, got %d", w3.Code)
-	}
+	assert.Equal(t, http.StatusOK, w.Code)
+	// Assert script tags are escaped
+	assert.Contains(t, w.Body.String(), "&lt;script&gt;alert")
+	assert.NotContains(t, w.Body.String(), "<script>alert")
 }

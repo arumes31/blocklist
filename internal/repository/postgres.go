@@ -4,9 +4,11 @@ import (
 	"blocklist/internal/models"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
-	"github.com/jmoiron/sqlx"
+
 	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/jmoiron/sqlx"
 )
 
 type PostgresRepository struct {
@@ -55,14 +57,14 @@ func (p *PostgresRepository) EnsurePartitions(retentionMonths int) error {
 		target := now.AddDate(0, i, 0)
 		year := target.Year()
 		month := int(target.Month())
-		
+
 		// Start of month
 		start := time.Date(year, target.Month(), 1, 0, 0, 0, 0, time.UTC)
 		// Start of next month
 		end := start.AddDate(0, 1, 0)
-		
+
 		partitionName := fmt.Sprintf("y%dm%02d", year, month)
-		
+
 		tables := []string{"audit_logs", "webhook_logs"}
 		for _, table := range tables {
 			fullName := fmt.Sprintf("%s_%s", table, partitionName)
@@ -84,7 +86,7 @@ func (p *PostgresRepository) EnsurePartitions(retentionMonths int) error {
 			year := target.Year()
 			month := int(target.Month())
 			partitionName := fmt.Sprintf("y%dm%02d", year, month)
-			
+
 			tables := []string{"audit_logs", "webhook_logs"}
 			for _, table := range tables {
 				fullName := fmt.Sprintf("%s_%s", table, partitionName)
@@ -104,9 +106,15 @@ func (p *PostgresRepository) EnsurePartitions(retentionMonths int) error {
 }
 
 func (p *PostgresRepository) CreateAdmin(admin models.AdminAccount) error {
-	if admin.Role == "" { admin.Role = "operator" }
-	if admin.Permissions == "" { admin.Permissions = "gui_read" }
-	if admin.SessionVersion == 0 { admin.SessionVersion = 1 }
+	if admin.Role == "" {
+		admin.Role = "operator"
+	}
+	if admin.Permissions == "" {
+		admin.Permissions = "gui_read"
+	}
+	if admin.SessionVersion == 0 {
+		admin.SessionVersion = 1
+	}
 	_, err := p.db.NamedExec("INSERT INTO admins (username, password_hash, token, role, permissions, session_version) VALUES (:username, :password_hash, :token, :role, :permissions, :session_version)", admin)
 	return err
 }
@@ -147,6 +155,7 @@ func (p *PostgresRepository) CreateAPIToken(token models.APIToken) error {
 	return err
 }
 
+// GetAPITokenByHash lookups a token by its SHA256 hash
 func (p *PostgresRepository) GetAPITokenByHash(hash string) (*models.APIToken, error) {
 	var token models.APIToken
 	err := p.readDb.Get(&token, "SELECT id, token_hash, name, username, role, permissions, allowed_ips, created_at, expires_at, last_used, last_used_ip FROM api_tokens WHERE token_hash = $1", hash)
@@ -266,8 +275,8 @@ func (p *PostgresRepository) GetPersistentBlocks() (map[string]models.IPEntry, e
 	return ips, nil
 }
 
-func (p *PostgresRepository) GetPersistentCount() (int, error) {
-	var count int
+func (p *PostgresRepository) GetPersistentCount() (int64, error) {
+	var count int64
 	err := p.readDb.Get(&count, "SELECT COUNT(*) FROM persistent_blocks")
 	return count, err
 }
@@ -281,6 +290,62 @@ func (p *PostgresRepository) GetAuditLogs(limit int) ([]models.AuditLog, error) 
 	var logs []models.AuditLog
 	err := p.readDb.Select(&logs, "SELECT id, timestamp, actor, action, target, reason FROM audit_logs ORDER BY timestamp DESC LIMIT $1", limit)
 	return logs, err
+}
+
+func (p *PostgresRepository) GetAuditLogsPaginated(limit, offset int, actor, action, query string) ([]models.AuditLog, int, error) {
+	var logs []models.AuditLog
+	var total int
+
+	baseQuery := "SELECT id, timestamp, actor, action, target, reason FROM audit_logs WHERE 1=1"
+	params := []interface{}{}
+	paramIdx := 1
+
+	if actor != "" {
+		baseQuery += fmt.Sprintf(" AND actor = $%d", paramIdx)
+		params = append(params, actor)
+		paramIdx++
+	}
+	if action != "" {
+		baseQuery += fmt.Sprintf(" AND action = $%d", paramIdx)
+		params = append(params, action)
+		paramIdx++
+	}
+	if query != "" {
+		baseQuery += fmt.Sprintf(" AND (target ILIKE $%d OR reason ILIKE $%d)", paramIdx, paramIdx)
+		params = append(params, "%"+query+"%")
+		paramIdx++
+	}
+
+	// Get total count
+	countQuery := strings.Replace(baseQuery, "id, timestamp, actor, action, target, reason", "COUNT(*)", 1)
+	err := p.readDb.Get(&total, countQuery, params...)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// Get records
+	baseQuery += fmt.Sprintf(" ORDER BY timestamp DESC LIMIT $%d OFFSET $%d", paramIdx, paramIdx+1)
+	params = append(params, limit, offset)
+
+	err = p.readDb.Select(&logs, baseQuery, params...)
+	return logs, total, err
+}
+
+func (p *PostgresRepository) GetBlockTrend() ([]models.BlockTrend, error) {
+	var trend []models.BlockTrend
+	// Query for hourly counts in the last 24 hours
+	query := `
+		SELECT 
+			to_char(date_trunc('hour', timestamp), 'YYYY-MM-DD HH24:00') as hour,
+			count(*) as count
+		FROM audit_logs
+		WHERE action IN ('BLOCK', 'BULK_BLOCK') 
+		  AND timestamp > NOW() - INTERVAL '24 hours'
+		GROUP BY 1
+		ORDER BY 1 ASC
+	`
+	err := p.readDb.Select(&trend, query)
+	return trend, err
 }
 
 func (p *PostgresRepository) GetIPHistory(ip string) ([]models.AuditLog, error) {

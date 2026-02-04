@@ -24,10 +24,9 @@ import (
 	zlog "github.com/rs/zerolog/log"
 
 	"blocklist/internal/api"
+	"blocklist/internal/app"
 	"blocklist/internal/config"
 	"blocklist/internal/models"
-	"blocklist/internal/repository"
-	"blocklist/internal/service"
 	"blocklist/internal/tasks"
 	"crypto/rand"
 	"encoding/base64"
@@ -123,36 +122,21 @@ func main() {
 		zlog.Error().Err(err).Msg("Failed to initialize migrations")
 	}
 
-	// 1. Initialize Repositories
-	redisRepo := repository.NewRedisRepository(cfg.RedisHost, cfg.RedisPort, cfg.RedisPassword, cfg.RedisDB)
-	if err := redisRepo.GetClient().Ping(context.Background()).Err(); err != nil {
-		zlog.Fatal().Err(err).Msg("Failed to connect to Redis")
-	}
-
-	pgRepo, err := repository.NewPostgresRepository(cfg.PostgresURL, cfg.PostgresReadURL)
+	// 1. Bootstrap shared state
+	a, err := app.Bootstrap(cfg)
 	if err != nil {
-		zlog.Fatal().Err(err).Msg("Failed to connect to Postgres")
+		zlog.Fatal().Err(err).Msg("Failed to bootstrap app")
 	}
-
-	// 2. Initialize Services
-	authService := service.NewAuthService(pgRepo, redisRepo)
-	ipService := service.NewIPService(cfg, redisRepo, pgRepo)
-
-	redisOpts := asynq.RedisClientOpt{Addr: fmt.Sprintf("%s:%d", cfg.RedisHost, cfg.RedisPort), Password: cfg.RedisPassword, DB: cfg.RedisDB}
-	webhookService := service.NewWebhookService(pgRepo, cfg, redisOpts)
-	defer webhookService.Close()
-
-	scheduler := service.NewSchedulerService(redisRepo, pgRepo, cfg)
-	geoUpdater := service.NewGeoIPService(cfg, redisOpts)
-	defer geoUpdater.Close()
+	defer a.Close()
 
 	// Seed Admin User if missing
-	if pgRepo != nil && cfg.GUIAdmin != "" {
-		admin, _ := pgRepo.GetAdmin(cfg.GUIAdmin)
+	// Seed Admin User if missing
+	if a.PgRepo != nil && cfg.GUIAdmin != "" {
+		admin, _ := a.PgRepo.GetAdmin(cfg.GUIAdmin)
 		if admin == nil {
 			zlog.Info().Str("username", cfg.GUIAdmin).Msg("Seeding initial admin user")
-			hash, _ := authService.HashPassword(cfg.GUIPassword)
-			err := pgRepo.CreateAdmin(models.AdminAccount{
+			hash, _ := a.AuthService.HashPassword(cfg.GUIPassword)
+			err := a.PgRepo.CreateAdmin(models.AdminAccount{
 				Username:     cfg.GUIAdmin,
 				PasswordHash: hash,
 				Token:        cfg.GUIToken,
@@ -165,54 +149,63 @@ func main() {
 		}
 	}
 
-	// 3. Start Schedulers & Task Workers
-	scheduler.Start()
-	geoUpdater.Start()
+	// 3. Start Schedulers & Task Workers (Optional)
+	var asynqServer *asynq.Server
+	var asynqScheduler *asynq.Scheduler
 
-	// Initialize Asynq Server
-	asynqServer := asynq.NewServer(
-		redisOpts,
-		asynq.Config{
-			Concurrency: 10,
-			Queues: map[string]int{
-				"default": 5,
-				"low":     2,
+	if cfg.RunWorkerInProcess {
+		zlog.Info().Msg("Starting background worker in-process")
+
+		a.Scheduler.Start()
+		a.GeoUpdater.Start()
+
+		// Initialize Asynq Server
+		asynqServer = asynq.NewServer(
+			a.RedisOpts,
+			asynq.Config{
+				Concurrency: 10,
+				Queues: map[string]int{
+					"default": 5,
+					"low":     2,
+				},
 			},
-		},
-	)
+		)
 
-	asynqMux := asynq.NewServeMux()
-	asynqMux.Handle(tasks.TypeWebhookDelivery, tasks.NewWebhookTaskHandler(pgRepo))
-	asynqMux.Handle(tasks.TypeGeoIPUpdate, tasks.NewGeoIPTaskHandler(cfg, ipService))
+		asynqMux := asynq.NewServeMux()
+		asynqMux.Handle(tasks.TypeWebhookDelivery, tasks.NewWebhookTaskHandler(a.PgRepo))
+		asynqMux.Handle(tasks.TypeGeoIPUpdate, tasks.NewGeoIPTaskHandler(cfg, a.IPService))
 
-	go func() {
-		if err := asynqServer.Run(asynqMux); err != nil {
-			zlog.Fatal().Err(err).Msg("Failed to run asynq server")
+		go func() {
+			if err := asynqServer.Run(asynqMux); err != nil {
+				zlog.Fatal().Err(err).Msg("Failed to run asynq server")
+			}
+		}()
+
+		// Initialize Asynq Scheduler for periodic tasks
+		asynqScheduler = asynq.NewScheduler(a.RedisOpts, &asynq.SchedulerOpts{})
+
+		// Schedule GeoIP updates every 72 hours
+		cityTask, _ := tasks.NewGeoIPUpdateTask("GeoLite2-City")
+		asnTask, _ := tasks.NewGeoIPUpdateTask("GeoLite2-ASN")
+
+		if _, err := asynqScheduler.Register("@every 72h", cityTask); err != nil {
+			zlog.Error().Err(err).Msg("Failed to schedule GeoLite2-City update")
 		}
-	}()
-
-	// Initialize Asynq Scheduler for periodic tasks
-	asynqScheduler := asynq.NewScheduler(redisOpts, &asynq.SchedulerOpts{})
-
-	// Schedule GeoIP updates every 72 hours
-	cityTask, _ := tasks.NewGeoIPUpdateTask("GeoLite2-City")
-	asnTask, _ := tasks.NewGeoIPUpdateTask("GeoLite2-ASN")
-
-	if _, err := asynqScheduler.Register("@every 72h", cityTask); err != nil {
-		zlog.Error().Err(err).Msg("Failed to schedule GeoLite2-City update")
-	}
-	if _, err := asynqScheduler.Register("@every 72h", asnTask); err != nil {
-		zlog.Error().Err(err).Msg("Failed to schedule GeoLite2-ASN update")
-	}
-
-	go func() {
-		if err := asynqScheduler.Run(); err != nil {
-			zlog.Fatal().Err(err).Msg("Failed to run asynq scheduler")
+		if _, err := asynqScheduler.Register("@every 72h", asnTask); err != nil {
+			zlog.Error().Err(err).Msg("Failed to schedule GeoLite2-ASN update")
 		}
-	}()
+
+		go func() {
+			if err := asynqScheduler.Run(); err != nil {
+				zlog.Fatal().Err(err).Msg("Failed to run asynq scheduler")
+			}
+		}()
+	} else {
+		zlog.Info().Msg("Background worker disabled (external worker expected)")
+	}
 
 	// 4. Initialize WebSocket Hub
-	hub := api.NewHub(redisRepo.GetClient())
+	hub := api.NewHub(a.RedisRepo.GetClient())
 	go hub.Run()
 
 	// 5. Setup Gin
@@ -246,6 +239,19 @@ func main() {
 		})
 	}
 
+	// Force HTTPS (Improvement)
+	if cfg.ForceHTTPS {
+		r.Use(func(c *gin.Context) {
+			if c.Request.Header.Get("X-Forwarded-Proto") != "https" && c.Request.TLS == nil {
+				target := "https://" + c.Request.Host + c.Request.RequestURI
+				c.Redirect(http.StatusMovedPermanently, target)
+				c.Abort()
+				return
+			}
+			c.Next()
+		})
+	}
+
 	// Sessions
 	store, err := redis.NewStore(10, "tcp", fmt.Sprintf("%s:%d", cfg.RedisHost, cfg.RedisPort), "", cfg.RedisPassword, authKey, blockKey)
 	if err != nil {
@@ -260,7 +266,7 @@ func main() {
 	store.Options(sessions.Options{
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   cfg.CookieSecure || cfg.UseCloudflare,
+		Secure:   cfg.CookieSecure,
 		SameSite: sameSite,
 		MaxAge:   86400 * 7, // 1 week
 	})
@@ -298,6 +304,8 @@ func main() {
 		"contains": strings.Contains,
 		"safeHTML": func(s string) template.HTML { return template.HTML(s) },
 		"safeURL":  func(s string) template.URL { return template.URL(s) },
+		"add":      func(a, b int) int { return a + b },
+		"sub":      func(a, b int) int { return a - b },
 	}
 
 	var templ *template.Template
@@ -424,7 +432,7 @@ func main() {
 	})
 
 	// 6. Initialize API Handler
-	handler := api.NewAPIHandler(cfg, redisRepo, pgRepo, authService, ipService, hub, webhookService)
+	handler := api.NewAPIHandler(cfg, a.RedisRepo, a.PgRepo, a.AuthService, a.IPService, hub, a.WebhookService)
 	handler.SetLimiters(mainLimiter, loginLimiter, webhookLimiter)
 	handler.RegisterRoutes(r)
 
@@ -447,9 +455,13 @@ func main() {
 	<-quit
 	zlog.Info().Msg("Shutting down server...")
 
-	// 1. Stop Asynq components first
-	asynqScheduler.Shutdown()
-	asynqServer.Shutdown()
+	// 1. Stop Asynq components first if they were started
+	if asynqScheduler != nil {
+		asynqScheduler.Shutdown()
+	}
+	if asynqServer != nil {
+		asynqServer.Shutdown()
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
