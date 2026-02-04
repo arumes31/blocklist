@@ -237,11 +237,11 @@ function drawParticle(i) {
             whiteState = 0.01;
             const rRoll = Math.random();
             
-            // Interaction logic (Chances increased by 20%)
-            if (rippleCooldown === 0 && rRoll < 0.000234) { 
+            // Interaction logic (Chances increased)
+            if (rippleCooldown === 0 && rRoll < 0.0004) { 
                 interactionType = 3; 
                 rippleCooldown = 120; // Global cooldown
-            } else if (rRoll < 0.000234 + 0.000280 && meshCount < 10) { // Ultra Rare: Packet Sonar
+            } else if (rRoll < 0.0004 + 0.000280 && meshCount < 10) { // Ultra Rare: Packet Sonar
                 interactionType = 2;
                 rareEffect = 4;
                 meshCount++;
