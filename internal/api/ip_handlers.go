@@ -18,7 +18,7 @@ import (
 
 func (h *APIHandler) isIPInCIDRs(ipStr string, cidrs string) bool {
 	if cidrs == "" {
-		return false
+		return true
 	}
 	ip := net.ParseIP(ipStr)
 	if ip == nil {
@@ -59,10 +59,9 @@ func (h *APIHandler) BlockCheckMiddleware() gin.HandlerFunc {
 		}
 
 		if h.ipService.IsBlocked(clientIP) {
-			zlog.Warn().Str("ip", clientIP).Str("path", path).Msg("Blocked IP attempted access")
+			zlog.Warn().Str("path", path).Msg("Blocked IP attempted access")
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
 				"error": "Your IP has been blocked due to security policies.",
-				"ip":    clientIP,
 			})
 			return
 		}
@@ -363,8 +362,17 @@ func (h *APIHandler) ExportIPs(c *gin.Context) {
 	_ = writer.Write([]string{"IP", "Timestamp", "Reason", "AddedBy", "Country", "City", "Lat", "Lon"})
 
 	for _, item := range items {
-		ip := item["ip"].(string)
-		data := item["data"].(*models.IPEntry)
+		ip, _ := item["ip"].(string)
+		data, ok := item["data"].(*models.IPEntry)
+		if !ok || data == nil {
+			// Try as value type if pointer assertion fails
+			val, okVal := item["data"].(models.IPEntry)
+			if okVal {
+				data = &val
+			} else {
+				continue // Skip invalid entries
+			}
+		}
 
 		countryCode := ""
 		city := ""

@@ -51,7 +51,13 @@ func (h *APIHandler) AuthMiddleware() gin.HandlerFunc {
 				if err == nil && token != nil {
 					// Check expiration
 					if token.ExpiresAt != nil {
-						expiresAt, _ := time.Parse(time.RFC3339, *token.ExpiresAt)
+						expiresAt, err := time.Parse(time.RFC3339, *token.ExpiresAt)
+						if err != nil {
+							zlog.Error().Err(err).Str("token", token.Name).Msg("Failed to parse token expiration")
+							c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal authentication error"})
+							c.Abort()
+							return
+						}
 						if time.Now().After(expiresAt) {
 							c.JSON(http.StatusUnauthorized, gin.H{"error": "Token expired"})
 							c.Abort()
@@ -63,15 +69,15 @@ func (h *APIHandler) AuthMiddleware() gin.HandlerFunc {
 					if !h.isIPInCIDRs(c.ClientIP(), token.AllowedIPs) {
 						zlog.Warn().
 							Str("token", token.Name).
-							Str("client_ip", c.ClientIP()).
-							Str("allowed", token.AllowedIPs).
 							Msg("API Token used from unauthorized IP")
-						c.JSON(http.StatusForbidden, gin.H{"error": "Token not allowed from this IP"})
+						c.JSON(http.StatusForbidden, gin.H{"error": "Token not allowed"})
 						c.Abort()
 						return
 					}
 
-					_ = h.pgRepo.UpdateTokenLastUsed(token.ID, c.ClientIP())
+					if err := h.pgRepo.UpdateTokenLastUsed(token.ID, c.ClientIP()); err != nil {
+						zlog.Error().Err(err).Int("token_id", token.ID).Msg("Failed to update token last_used")
+					}
 					c.Set("username", token.Username)
 					c.Set("role", token.Role)
 					c.Set("permissions", token.Permissions)
@@ -352,14 +358,14 @@ func (h *APIHandler) VerifyFirstFactor(c *gin.Context) {
 
 	admin, err := h.pgRepo.GetAdmin(username)
 	if err != nil {
-		_ = h.pgRepo.LogAction("system", "LOGIN_FAILURE", username, "Invalid Operator ID (Enumeration Protection)")
+		_ = h.pgRepo.LogAction("system", "LOGIN_FAILURE", "REDACTED", "Invalid Operator ID (Enumeration Protection)")
 		h.renderHTML(c, http.StatusOK, "login_error.html", gin.H{"error": "Invalid credentials"})
 		return
 	}
 
 	err = bcrypt.CompareHashAndPassword([]byte(admin.PasswordHash), []byte(password))
 	if err != nil {
-		_ = h.pgRepo.LogAction(username, "LOGIN_FAILURE", c.ClientIP(), "Invalid Password (Enumeration Protection)")
+		_ = h.pgRepo.LogAction(username, "LOGIN_FAILURE", "REDACTED", "Invalid Password (Enumeration Protection)")
 		h.renderHTML(c, http.StatusOK, "login_error.html", gin.H{"error": "Invalid credentials"})
 		return
 	}
@@ -519,7 +525,7 @@ func (h *APIHandler) Login(c *gin.Context) {
 			zlog.Error().Err(err).Msg("Failed to save session during login")
 		}
 
-		_ = h.pgRepo.LogAction(username, "LOGIN_SUCCESS", c.ClientIP(), "")
+		_ = h.pgRepo.LogAction(username, "LOGIN_SUCCESS", "REDACTED", "")
 
 		c.Redirect(http.StatusFound, "/dashboard")
 		return
@@ -531,7 +537,7 @@ func (h *APIHandler) Login(c *gin.Context) {
 	session.Delete("pending_totp_secret")
 	_ = session.Save()
 
-	_ = h.pgRepo.LogAction(username, "LOGIN_FAILURE", c.ClientIP(), "Invalid TOTP or Credentials")
+	_ = h.pgRepo.LogAction(username, "LOGIN_FAILURE", "REDACTED", "Invalid TOTP or Credentials")
 
 	h.renderHTML(c, http.StatusOK, "login.html", gin.H{
 		"error":    "Invalid credentials or TOTP code",
@@ -610,9 +616,9 @@ func (h *APIHandler) Logout(c *gin.Context) {
 }
 
 func (h *APIHandler) CreateAPIToken(c *gin.Context) {
-	username, _ := c.Get("username")
-	role, _ := c.Get("role")
-	userPerms, _ := c.Get("permissions")
+	username := c.GetString("username")
+	role := c.GetString("role")
+	userPerms := c.GetString("permissions")
 	name := c.PostForm("name")
 	requestedPerms := c.PostForm("permissions")
 	allowedIPs := c.PostForm("allowed_ips")
@@ -632,7 +638,7 @@ func (h *APIHandler) CreateAPIToken(c *gin.Context) {
 			finalPerms = requestedPerms
 		} else {
 			// Other users can only grant a subset of their own permissions
-			uPerms := strings.Split(userPerms.(string), ",")
+			uPerms := strings.Split(userPerms, ",")
 			validPerms := []string{}
 			for _, rp := range rPerms {
 				rp = strings.TrimSpace(rp)
@@ -671,8 +677,8 @@ func (h *APIHandler) CreateAPIToken(c *gin.Context) {
 	token := models.APIToken{
 		TokenHash:   storedHash,
 		Name:        name,
-		Username:    username.(string),
-		Role:        role.(string),
+		Username:    username,
+		Role:        role,
 		Permissions: finalPerms,
 		AllowedIPs:  allowedIPs,
 	}
@@ -683,24 +689,35 @@ func (h *APIHandler) CreateAPIToken(c *gin.Context) {
 		return
 	}
 
+	_ = h.pgRepo.LogAction(username, "CREATE_TOKEN", name, "API Token created")
+
 	c.Header("HX-Trigger", fmt.Sprintf(`{"newToken": "%s"}`, rawTokenStr))
 
-	tokens, _ := h.pgRepo.GetAPITokens(username.(string))
+	tokens, _ := h.pgRepo.GetAPITokens(username)
 	h.renderHTML(c, http.StatusOK, "settings_tokens_list.html", gin.H{"tokens": tokens})
 }
 
 func (h *APIHandler) DeleteAPIToken(c *gin.Context) {
-	username, _ := c.Get("username")
-	id, _ := strconv.Atoi(c.Param("id"))
+	username := c.GetString("username")
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		c.Status(http.StatusBadRequest)
+		return
+	}
 
-	_ = h.pgRepo.DeleteAPIToken(id, username.(string))
+	_ = h.pgRepo.DeleteAPIToken(id, username)
+	_ = h.pgRepo.LogAction(username, "DELETE_TOKEN", strconv.Itoa(id), "API Token deleted")
 	c.Status(http.StatusOK)
 }
 
 func (h *APIHandler) UpdateAPITokenPermissions(c *gin.Context) {
-	username, _ := c.Get("username")
-	userPerms, _ := c.Get("permissions")
-	id, _ := strconv.Atoi(c.Param("id"))
+	username := c.GetString("username")
+	userPerms := c.GetString("permissions")
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid token id"})
+		return
+	}
 
 	var req struct {
 		Permissions string `json:"permissions"`
@@ -717,7 +734,7 @@ func (h *APIHandler) UpdateAPITokenPermissions(c *gin.Context) {
 			finalPerms = req.Permissions
 		} else {
 			rPerms := strings.Split(req.Permissions, ",")
-			uPerms := strings.Split(userPerms.(string), ",")
+			uPerms := strings.Split(userPerms, ",")
 			validPerms := []string{}
 			for _, rp := range rPerms {
 				rp = strings.TrimSpace(rp)
@@ -741,19 +758,26 @@ func (h *APIHandler) UpdateAPITokenPermissions(c *gin.Context) {
 		}
 	}
 
-	err := h.pgRepo.UpdateAPITokenPermissions(id, username.(string), finalPerms)
+	err = h.pgRepo.UpdateAPITokenPermissions(id, username, finalPerms)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update permissions"})
 		return
 	}
 
+	_ = h.pgRepo.LogAction(username, "UPDATE_TOKEN_PERMS", strconv.Itoa(id), finalPerms)
+
 	c.JSON(http.StatusOK, gin.H{"status": "success"})
 }
 
 func (h *APIHandler) AdminRevokeAPIToken(c *gin.Context) {
-	id, _ := strconv.Atoi(c.Param("id"))
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		c.Status(http.StatusBadRequest)
+		return
+	}
 
 	userPerms, _ := c.Get("permissions")
+	username := c.GetString("username")
 	hasGlobalTokensPerm := false
 	for _, p := range strings.Split(userPerms.(string), ",") {
 		if strings.TrimSpace(p) == "manage_global_tokens" {
@@ -764,6 +788,7 @@ func (h *APIHandler) AdminRevokeAPIToken(c *gin.Context) {
 
 	if hasGlobalTokensPerm {
 		_ = h.pgRepo.DeleteAPITokenByID(id)
+		_ = h.pgRepo.LogAction(username, "ADMIN_REVOKE_TOKEN", strconv.Itoa(id), "Token revoked by admin")
 		c.Status(http.StatusOK)
 	} else {
 		c.Status(http.StatusForbidden)

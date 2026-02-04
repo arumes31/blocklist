@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net"
 	"net/netip"
 	"os"
@@ -22,6 +21,7 @@ import (
 	"github.com/bits-and-blooms/bloom/v3"
 	"github.com/oschwald/geoip2-golang"
 	"github.com/redis/go-redis/v9"
+	zlog "github.com/rs/zerolog/log"
 )
 
 type IPService struct {
@@ -98,12 +98,14 @@ func (s *IPService) syncBloomFilter() {
 	// For now, just fill from Redis
 	if s.redisRepo != nil {
 		ips, err := s.redisRepo.GetBlockedIPs()
-		if err == nil {
-			for ip := range ips {
-				s.bloomFilter.AddString(ip)
-			}
-			log.Printf("IPService: Synchronized Bloom Filter with %d IPs", len(ips))
+		if err != nil {
+			zlog.Error().Err(err).Msg("IPService: Failed to fetch blocked IPs for Bloom Filter sync")
+			return
 		}
+		for ip := range ips {
+			s.bloomFilter.AddString(ip)
+		}
+		zlog.Info().Int("count", len(ips)).Msg("IPService: Synchronized Bloom Filter")
 	}
 }
 
@@ -133,7 +135,7 @@ func (s *IPService) ReloadReaders() {
 			if old != nil {
 				old.Close()
 			}
-			log.Printf("IPService: Reloaded GeoLite2-City")
+			zlog.Info().Msg("IPService: Reloaded GeoLite2-City")
 		}
 	}
 
@@ -145,7 +147,7 @@ func (s *IPService) ReloadReaders() {
 			if old != nil {
 				old.Close()
 			}
-			log.Printf("IPService: Reloaded GeoLite2-ASN")
+			zlog.Info().Msg("IPService: Reloaded GeoLite2-ASN")
 		}
 	}
 }
@@ -543,7 +545,10 @@ func (s *IPService) ExportIPs(ctx context.Context, query string, country string,
 			}
 		}
 
-		items = append(items, map[string]interface{}{"ip": ip, "data": entry})
+		// Ensure we always store a pointer to IPEntry
+		var dataPtr *models.IPEntry
+		dataPtr = entry // entry is already *models.IPEntry from GetIPEntry
+		items = append(items, map[string]interface{}{"ip": ip, "data": dataPtr})
 	}
 
 	return items, nil

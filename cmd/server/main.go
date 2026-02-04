@@ -243,8 +243,9 @@ func main() {
 	if cfg.ForceHTTPS {
 		r.Use(func(c *gin.Context) {
 			if c.Request.Header.Get("X-Forwarded-Proto") != "https" && c.Request.TLS == nil {
+				// Use 308 Permanent Redirect to preserve non-GET methods (compliance/robustness)
 				target := "https://" + c.Request.Host + c.Request.RequestURI
-				c.Redirect(http.StatusMovedPermanently, target)
+				c.Redirect(http.StatusPermanentRedirect, target)
 				c.Abort()
 				return
 			}
@@ -263,10 +264,16 @@ func main() {
 		sameSite = http.SameSiteStrictMode
 	}
 
+	// Automatically enable Secure cookies if HTTPS is forced or behind Cloudflare
+	cookieSecure := cfg.CookieSecure
+	if cfg.ForceHTTPS || cfg.UseCloudflare {
+		cookieSecure = true
+	}
+
 	store.Options(sessions.Options{
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   cfg.CookieSecure,
+		Secure:   cookieSecure,
 		SameSite: sameSite,
 		MaxAge:   86400 * 7, // 1 week
 	})

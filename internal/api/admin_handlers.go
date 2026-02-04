@@ -8,7 +8,6 @@ import (
 
 	"blocklist/internal/models"
 
-	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 	zlog "github.com/rs/zerolog/log"
 	"github.com/skip2/go-qrcode"
@@ -209,12 +208,14 @@ func (h *APIHandler) CreateAdmin(c *gin.Context) {
 		return
 	}
 
+	actor := c.GetString("username")
+	_ = h.pgRepo.LogAction(actor, "CREATE_ADMIN", admin.Username, fmt.Sprintf("Role: %s, Perms: %s", admin.Role, admin.Permissions))
+
 	c.JSON(200, gin.H{"status": "success", "username": admin.Username})
 }
 
 func (h *APIHandler) ChangeAdminPermissions(c *gin.Context) {
-	session := sessions.Default(c)
-	actor, _ := session.Get("username").(string)
+	actor := c.GetString("username")
 
 	var req struct {
 		Username    string `json:"username"`
@@ -290,8 +291,7 @@ func (h *APIHandler) DeleteAdmin(c *gin.Context) {
 	}
 
 	// Log deletion
-	session := sessions.Default(c)
-	actor, _ := session.Get("username").(string)
+	actor := c.GetString("username")
 	_ = h.pgRepo.LogAction(actor, "DELETE_ADMIN", req.Username, "User account and all associated tokens removed")
 
 	c.JSON(200, gin.H{"status": "success"})
@@ -319,6 +319,9 @@ func (h *APIHandler) ChangeAdminPassword(c *gin.Context) {
 		return
 	}
 
+	actor := c.GetString("username")
+	_ = h.pgRepo.LogAction(actor, "CHANGE_PASSWORD", req.Username, "Admin password updated")
+
 	c.JSON(200, gin.H{"status": "success"})
 }
 
@@ -333,6 +336,9 @@ func (h *APIHandler) ChangeAdminTOTP(c *gin.Context) {
 
 	// Clear TOTP secret to force re-setup on next login
 	_ = h.pgRepo.UpdateAdminToken(req.Username, "")
+
+	actor := c.GetString("username")
+	_ = h.pgRepo.LogAction(actor, "RESET_TOTP", req.Username, "TOTP secret cleared, re-setup required on next login")
 
 	c.JSON(200, gin.H{"status": "success"})
 }
@@ -444,7 +450,11 @@ func (h *APIHandler) AuditLogExplorer(c *gin.Context) {
 	actor := c.Query("actor")
 	action := c.Query("action")
 	query := c.Query("query")
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageStr := c.DefaultQuery("page", "1")
+	page, err := strconv.Atoi(pageStr)
+	if err != nil || page < 1 {
+		page = 1
+	}
 	limit := 50
 	offset := (page - 1) * limit
 
