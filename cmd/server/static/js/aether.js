@@ -26,6 +26,7 @@ let activeSonarRings = [];
 let prevSonarRings = [];
 let rippleCooldown = 0;
 let meshNodes = [];
+let meshCount = 0;
 
 function setup() {
 	tick = 0;
@@ -240,10 +241,10 @@ function drawParticle(i) {
             if (rippleCooldown === 0 && rRoll < 0.000234) { 
                 interactionType = 3; 
                 rippleCooldown = 120; // Global cooldown
-            } else if (rRoll < 0.000234 + 0.000280) { // Ultra Rare: Packet Sonar
+            } else if (rRoll < 0.000234 + 0.000280 && meshCount < 10) { // Ultra Rare: Packet Sonar
                 interactionType = 2;
                 rareEffect = 4;
-            } else if (Math.random() < 0.36) { // Mesh Node (Was Orbit)
+            } else if (Math.random() < 0.36 && meshCount < 10) { // Mesh Node (Was Orbit)
                 interactionType = 2; 
                 const r = Math.random();
                 if (r < 0.024) rareEffect = 3; // Supercharge
@@ -277,14 +278,21 @@ function drawParticle(i) {
         if (mouse.active) {
             const dx_m = mouse.x - x;
             const dy_m = mouse.y - y;
-            const dist = sqrt(dx_m*dx_m + dy_m*dy_m);
+            const dist = sqrt(dx_m*dx_m + dy_m*dy_m) || 1;
             
-            // Mesh Node Movement: Pull to mouse with organic jitter
-            const pull = 0.15;
-            vx = lerp(vx, dx_m / (dist || 1), pull) + randIn(-0.5, 0.5);
-            vy = lerp(vy, dy_m / (dist || 1), pull) + randIn(-0.5, 0.5);
-            
-            ttl = l + 20;
+            if (meshCount > 4) {
+                // Fly Away: Aggressively push away from mouse
+                const push = 0.2;
+                vx = lerp(vx, (-dx_m / dist) * 12, push);
+                vy = lerp(vy, (-dy_m / dist) * 12, push);
+                ttl = l + 10; // Shorter life when flying away
+            } else {
+                // Mesh Node Movement: Pull to mouse with organic jitter
+                const pull = 0.15;
+                vx = lerp(vx, dx_m / dist, pull) + randIn(-0.5, 0.5);
+                vy = lerp(vy, dy_m / dist, pull) + randIn(-0.5, 0.5);
+                ttl = l + 20;
+            }
 
             // Ultra Rare 4: Packet Sonar (Emit Ping)
             if (rareEffect === 4 && tick % 60 === 0) {
@@ -396,6 +404,12 @@ function draw(currentTime) {
 
 	tick++;
 	meshNodes = [];
+    
+    // Count active mesh nodes for behavior logic
+    meshCount = 0;
+    for (let i = 0; i < particlePropsLength; i += particlePropCount) {
+        if (particleProps[i + 10] === 2) meshCount++;
+    }
 	
     if (rippleCooldown > 0) rippleCooldown--;
 
