@@ -242,9 +242,6 @@ function drawParticle(i) {
                     } else if (rRoll < 0.000195 + 0.000234) { // Ultra Rare: Packet Sonar
                         interactionType = 2;
                         rareEffect = 4;
-                    } else if (rRoll < 0.000195 + 0.000468) { // Ultra Rare: Nested Orbits
-                        interactionType = 2;
-                        rareEffect = 1;
                     } else if (Math.random() < 0.3) {
                         interactionType = 2; // Orbit
                         const r = Math.random();
@@ -287,17 +284,6 @@ function drawParticle(i) {
             vy = (oy - y) / s;
             ttl = l + 10;
 
-            // Ultra Rare 1: Nested Orbits (Tiny Moons)
-            if (rareEffect === 1) {
-                buffer.fillStyle = '#fff';
-                for (let m = 0; m < 2; m++) {
-                    const mAngle = tick * 0.2 + (m * Math.PI);
-                    const mx = x + Math.cos(mAngle) * 15;
-                    const my = y + Math.sin(mAngle) * 15;
-                    buffer.fillRect(mx, my, 1.5, 1.5);
-                }
-            }
-            
             // Ultra Rare 4: Packet Sonar (Emit Ping)
             if (rareEffect === 4 && tick % 60 === 0) {
                 activeSonarRings.push({x: x, y: y, radius: 0, max: 400});
