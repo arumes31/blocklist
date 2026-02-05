@@ -1,0 +1,32 @@
+name: Release
+2: 
+3: on:
+4:   push:
+5:     tags:
+6:       - 'v*'
+7: 
+8: permissions:
+9:   contents: write
+10: 
+11: jobs:
+12:   goreleaser:
+13:     runs-on: ubuntu-latest
+14:     steps:
+15:       - name: Checkout
+16:         uses: actions/checkout@v6
+17:         with:
+18:           fetch-depth: 0
+19: 
+20:       - name: Set up Go
+21:         uses: actions/setup-go@v6
+22:         with:
+23:           go-version: '1.24'
+24: 
+25:       - name: Run GoReleaser
+26:         uses: goreleaser/goreleaser-action@v6
+27:         with:
+28:           distribution: goreleaser
+29:           version: latest
+30:           args: release --clean
+31:         env:
+32:           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
