@@ -1,6 +1,6 @@
 module blocklist
 
-go 1.24
+go 1.24.0
 
 require (
 	github.com/alicebob/miniredis/v2 v2.36.1
