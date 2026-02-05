@@ -2,6 +2,7 @@ package api
 
 import (
 	"fmt"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -36,22 +37,37 @@ func (h *APIHandler) Webhook(c *gin.Context) {
 		return
 	}
 
-	// Extract real client IP prioritizing Cloudflare and X-Forwarded-For
-	clientIP := c.GetHeader("CF-Connecting-IP")
-	if clientIP == "" {
-		xff := c.GetHeader("X-Forwarded-For")
-		if xff != "" {
-			parts := strings.Split(xff, ",")
-			clientIP = strings.TrimSpace(parts[0])
+	// Extract real client IP
+	// Gin's c.ClientIP() already respects TrustedProxies for X-Forwarded-For and X-Real-IP.
+	clientIP := c.ClientIP()
+
+	// Only trust CF-Connecting-IP if the request is confirmed to be from a trusted proxy
+	if cfIP := c.GetHeader("CF-Connecting-IP"); cfIP != "" {
+		remoteIP, _, _ := net.SplitHostPort(c.Request.RemoteAddr)
+		if remoteIP != clientIP {
+			// Gin has verified the proxy, so we can trust the CF header
+			if net.ParseIP(cfIP) != nil {
+				clientIP = cfIP
+			}
 		}
 	}
-	if clientIP == "" {
-		clientIP = c.ClientIP()
+
+	// Double check syntactic validity of clientIP
+	if net.ParseIP(clientIP) == nil {
+		zlog.Error().Str("ip", clientIP).Msg("Webhook: detected invalid client IP")
+		c.JSON(http.StatusBadRequest, gin.H{"status": "invalid client IP"})
+		return
 	}
 
 	// Handle selfwhitelist: implicit IP from connection
 	if data.Act == "selfwhitelist" {
 		data.IP = clientIP
+	}
+
+	// Syntactic validation of target IP
+	if data.IP == "" || net.ParseIP(data.IP) == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"status": "invalid target IP"})
+		return
 	}
 
 	// Determine required permission based on action
@@ -88,44 +104,54 @@ func (h *APIHandler) Webhook(c *gin.Context) {
 		}
 	}
 
-	if data.IP == "" || !h.ipService.IsValidIP(data.IP) {
-		c.JSON(400, gin.H{"status": "invalid IP"})
-		return
-	}
-
 	metrics.MetricWebhooksTotal.Inc()
 	_ = h.redisRepo.IndexWebhookHit(time.Now().UTC())
 
 	timestamp := time.Now().UTC().Format("2006-01-02 15:04:05 UTC")
-	geo := h.ipService.GetGeoIP(data.IP)
 	now := time.Now().UTC()
-
-	expiresAt := ""
-	if !data.Persist {
-		tVal := 86400
-		if data.TTL > 0 {
-			tVal = data.TTL
-		}
-		expiresAt = now.Add(time.Duration(tVal) * time.Second).Format("2006-01-02 15:04:05 UTC")
-	}
-
 	sourceIP := clientIP
 	addedBy := fmt.Sprintf("Webhook (%s:%s)", username.(string), sourceIP)
 
-	sourceGeo := h.ipService.GetGeoIP(sourceIP)
-
-	entry := models.IPEntry{
-		Timestamp:   timestamp,
-		Geolocation: geo,
-		Reason:      data.Reason,
-		AddedBy:     addedBy,
-		TTL:         data.TTL,
-		ExpiresAt:   expiresAt,
-		ThreatScore: h.ipService.CalculateThreatScore(data.IP, data.Reason),
+	// Efficient GeoIP lookup: cache results if IPs match
+	geoMap := make(map[string]*models.GeoData)
+	lookup := func(ip string) *models.GeoData {
+		if g, ok := geoMap[ip]; ok {
+			return g
+		}
+		g := h.ipService.GetGeoIP(ip)
+		geoMap[ip] = g
+		return g
 	}
+
+	geo := lookup(data.IP)
+	sourceGeo := lookup(sourceIP)
 
 	switch data.Act {
 	case "ban", "ban-ip":
+		// Only check IsValidIP for ban actions
+		if !h.ipService.IsValidIP(data.IP) {
+			c.JSON(http.StatusBadRequest, gin.H{"status": "IP cannot be banned (protected or already whitelisted)"})
+			return
+		}
+
+		expiresAt := ""
+		if !data.Persist {
+			tVal := 86400 // Default 24h
+			if data.TTL > 0 {
+				tVal = data.TTL
+			}
+			expiresAt = now.Add(time.Duration(tVal) * time.Second).Format("2006-01-02 15:04:05 UTC")
+		}
+
+		entry := models.IPEntry{
+			Timestamp:   timestamp,
+			Geolocation: geo,
+			Reason:      data.Reason,
+			AddedBy:     addedBy,
+			TTL:         data.TTL,
+			ExpiresAt:   expiresAt,
+			ThreatScore: h.ipService.CalculateThreatScore(data.IP, data.Reason),
+		}
 		if data.Persist && h.pgRepo != nil {
 			_ = h.pgRepo.CreatePersistentBlock(data.IP, entry)
 		}
@@ -144,6 +170,7 @@ func (h *APIHandler) Webhook(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "IP banned", "ip": data.IP})
 
 	case "unban", "delete-ban", "unban-ip":
+		_ = h.ipService.UnblockIP(c.Request.Context(), data.IP, username.(string))
 		_ = h.pgRepo.LogAction(addedBy, "UNBLOCK", data.IP, "webhook unban")
 		if h.hub != nil {
 			h.hub.BroadcastEvent("unblock", map[string]interface{}{"ip": data.IP})
@@ -151,18 +178,7 @@ func (h *APIHandler) Webhook(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "IP unbanned", "ip": data.IP})
 
 	case "whitelist", "selfwhitelist":
-		targetIP := data.IP
-		if data.Act == "selfwhitelist" {
-			targetIP = clientIP
-		} else if targetIP == "" {
-			targetIP = clientIP
-		}
-
-		// Proceeding with whitelist even if IsValidIP returns false (e.g. already whitelisted or protected range)
-		// as explicit whitelisting should override those checks.
-
-		geo := h.ipService.GetGeoIP(targetIP)
-
+		// Target IP already validated syntactically above
 		entry := models.WhitelistEntry{
 			Timestamp:   timestamp,
 			Geolocation: geo,
@@ -178,17 +194,17 @@ func (h *APIHandler) Webhook(c *gin.Context) {
 			entry.ExpiresAt = now.Add(24 * time.Hour).Format(time.RFC3339)
 		}
 
-		_ = h.redisRepo.WhitelistIP(targetIP, entry)
+		_ = h.redisRepo.WhitelistIP(data.IP, entry)
 
 		if h.hub != nil {
 			h.hub.BroadcastEvent("whitelist", map[string]interface{}{
-				"ip":         targetIP,
+				"ip":         data.IP,
 				"data":       entry,
 				"source_geo": sourceGeo,
 			})
 		}
 
-		c.JSON(http.StatusOK, gin.H{"status": "IP whitelisted", "ip": targetIP})
+		c.JSON(http.StatusOK, gin.H{"status": "IP whitelisted", "ip": data.IP})
 	}
 }
 

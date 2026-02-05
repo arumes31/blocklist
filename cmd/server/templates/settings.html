@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <title>Settings - Blocklist</title>
@@ -16,25 +17,28 @@
             --success-color: #28a745;
             --danger-color: #dc3545;
         }
+
         body {
             font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
             margin: 0;
             background-color: #000;
             color: #fff;
         }
+
         .header-container {
             background: var(--glass-bg);
             padding: 1rem 2rem;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            box-shadow: 0 2px 12px rgba(255,0,0,0.15);
+            box-shadow: 0 2px 12px rgba(255, 0, 0, 0.15);
             position: sticky;
             top: 0;
             z-index: 100;
             backdrop-filter: blur(8px);
             border-bottom: 1px solid var(--border-red);
         }
+
         .header-container h2 {
             margin: 0;
             font-weight: 600;
@@ -43,24 +47,35 @@
             gap: 1rem;
             color: #fff;
         }
-        .header-container img { height: 40px; filter: drop-shadow(0 0 6px rgba(255,0,0,0.4)); }
-        
-        .main-content { padding: 2rem; }
+
+        .header-container img {
+            height: 40px;
+            filter: drop-shadow(0 0 6px rgba(255, 0, 0, 0.4));
+        }
+
+        .main-content {
+            padding: 2rem;
+        }
 
         .card {
-            background: rgba(20,20,20,0.85);
+            background: rgba(20, 20, 20, 0.85);
             border: 1px solid var(--border-red);
             border-radius: 12px;
             padding: 1.5rem;
             margin-bottom: 2rem;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
             backdrop-filter: blur(8px);
         }
-        h3 { border-bottom: 1px solid var(--border-red); padding-bottom: 0.5rem; margin-top: 0; }
-        
+
+        h3 {
+            border-bottom: 1px solid var(--border-red);
+            padding-bottom: 0.5rem;
+            margin-top: 0;
+        }
+
         .btn {
             padding: 0.6rem 1.2rem;
-            border: 1px solid rgba(255,255,255,0.15);
+            border: 1px solid rgba(255, 255, 255, 0.15);
             border-radius: 6px;
             cursor: pointer;
             font-weight: 600;
@@ -69,41 +84,93 @@
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            background: rgba(255,255,255,0.05);
+            background: rgba(255, 255, 255, 0.05);
             color: #fff;
-            box-shadow: 0 0 10px rgba(255,0,0,0.08);
+            box-shadow: 0 0 10px rgba(255, 0, 0, 0.08);
         }
-        .btn-danger { background: linear-gradient(45deg, var(--dark-red), var(--primary-red)); border-color: var(--border-red); }
-        .btn-dark { background: rgba(255,255,255,0.08); }
-        .btn:hover { transform: translateY(-1px); box-shadow: 0 0 16px rgba(255,0,0,0.2); }
+
+        .btn-danger {
+            background: linear-gradient(45deg, var(--dark-red), var(--primary-red));
+            border-color: var(--border-red);
+        }
+
+        .btn-dark {
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        .btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 0 16px rgba(255, 0, 0, 0.2);
+        }
 
         .filter-input {
             padding: 0.8rem 1rem;
-            border: 1px solid rgba(255,255,255,0.15);
+            border: 1px solid rgba(255, 255, 255, 0.15);
             border-radius: 8px;
             font-size: 1rem;
-            background: rgba(255,255,255,0.05);
+            background: rgba(255, 255, 255, 0.05);
             color: #fff;
             outline: none;
         }
-        .filter-input:focus { border-color: var(--primary-red); box-shadow: 0 0 0 2px rgba(255,0,0,0.2); }
 
-        .form-group { margin-bottom: 1rem; }
-        label { display: block; margin-bottom: 0.4rem; color: var(--secondary-color); font-size: 0.9rem; }
-        
-        table { border-collapse: collapse; width: 100%; color: #fff; margin-top: 1rem; }
-        th, td { text-align: left; padding: 0.75rem; border-bottom: 1px solid rgba(255,255,255,0.06); }
+        .filter-input:focus {
+            border-color: var(--primary-red);
+            box-shadow: 0 0 0 2px rgba(255, 0, 0, 0.2);
+        }
+
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 0.4rem;
+            color: var(--secondary-color);
+            font-size: 0.9rem;
+        }
+
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            color: #fff;
+            margin-top: 1rem;
+        }
+
+        th,
+        td {
+            text-align: left;
+            padding: 0.75rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        }
+
         th {
-            background-color: rgba(255,255,255,0.04);
+            background-color: rgba(255, 255, 255, 0.04);
             font-weight: 600;
             color: var(--secondary-color);
             text-transform: uppercase;
             font-size: 0.85rem;
             letter-spacing: 0.05em;
         }
-        tr:hover { background-color: rgba(255,255,255,0.02); }
-        code { background: rgba(255,255,255,0.1); padding: 0.2rem 0.4rem; border-radius: 4px; font-family: monospace; color: var(--vibrant-red); }
-        pre { background: rgba(0,0,0,0.3); padding: 1rem; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); overflow-x: auto; }
+
+        tr:hover {
+            background-color: rgba(255, 255, 255, 0.02);
+        }
+
+        code {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 0.2rem 0.4rem;
+            border-radius: 4px;
+            font-family: monospace;
+            color: var(--vibrant-red);
+        }
+
+        pre {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 1rem;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            overflow-x: auto;
+        }
 
         /* Toast Notifications */
         #toast-container {
@@ -112,27 +179,43 @@
             right: 20px;
             z-index: 2000;
         }
+
         .toast {
             background: #333;
             color: white;
             padding: 12px 24px;
             border-radius: 8px;
             margin-top: 10px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
             display: flex;
             align-items: center;
             gap: 10px;
             animation: slideIn 0.3s ease-out;
             transition: opacity 0.5s ease;
         }
+
         @keyframes slideIn {
-            from { transform: translateX(100%); opacity: 0; }
-            to { transform: translateX(0); opacity: 1; }
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
         }
-        .toast.success { border-left: 4px solid var(--success-color); }
-        .toast.danger { border-left: 4px solid var(--danger-color); }
+
+        .toast.success {
+            border-left: 4px solid var(--success-color);
+        }
+
+        .toast.danger {
+            border-left: 4px solid var(--danger-color);
+        }
     </style>
 </head>
+
 <body>
     <div id="toast-container"></div>
     <div class="header-container">
@@ -152,24 +235,30 @@
     <div class="main-content">
         <div class="card">
             <h3>Outbound Webhooks</h3>
-            <p style="color: var(--secondary-color);">Configure external services to be notified of block/unblock events.</p>
+            <p style="color: var(--secondary-color);">Configure external services to be notified of block/unblock
+                events.</p>
             <form hx-post="/api/v1/settings/webhooks" hx-target="#webhook-list" hx-swap="afterbegin">
                 <div style="display: grid; grid-template-columns: 1.5fr 1fr 1fr 1fr auto; gap: 10px; align-items: end;">
                     <div class="form-group">
                         <label>URL</label>
-                        <input type="url" name="url" class="filter-input" style="width: 100%; box-sizing: border-box;" placeholder="https://example.com/webhook" required>
+                        <input type="url" name="url" class="filter-input" style="width: 100%; box-sizing: border-box;"
+                            placeholder="https://example.com/webhook" required>
                     </div>
                     <div class="form-group">
                         <label>Secret (HMAC)</label>
-                        <input type="text" name="secret" class="filter-input" style="width: 100%; box-sizing: border-box;" placeholder="optional signature key">
+                        <input type="text" name="secret" class="filter-input"
+                            style="width: 100%; box-sizing: border-box;" placeholder="optional signature key">
                     </div>
                     <div class="form-group">
                         <label>Events</label>
-                        <input type="text" name="events" class="filter-input" style="width: 100%; box-sizing: border-box;" value="block,unblock" placeholder="comma separated">
+                        <input type="text" name="events" class="filter-input"
+                            style="width: 100%; box-sizing: border-box;" value="block,unblock"
+                            placeholder="comma separated">
                     </div>
                     <div class="form-group">
                         <label>Geo Filter</label>
-                        <input type="text" name="geo_filter" class="filter-input" style="width: 100%; box-sizing: border-box;" placeholder="e.g. US,CN,RU">
+                        <input type="text" name="geo_filter" class="filter-input"
+                            style="width: 100%; box-sizing: border-box;" placeholder="e.g. US,CN,RU">
                     </div>
                     <button type="submit" class="btn btn-danger" style="margin-bottom: 1rem;">Add Webhook</button>
                 </div>
@@ -191,9 +280,15 @@
                         <td><code>{{ $w.URL }}</code></td>
                         <td>{{ $w.Events }}</td>
                         <td>{{ if $w.GeoFilter }}<code>{{ $w.GeoFilter }}</code>{{ else }}ALL{{ end }}</td>
-                        <td>{{ if $w.Active }}<span class="btn btn-success" style="padding: 0.2rem 0.5rem; font-size: 0.7rem; pointer-events: none;">ACTIVE</span>{{ else }}<span class="btn btn-dark" style="padding: 0.2rem 0.5rem; font-size: 0.7rem; pointer-events: none;">INACTIVE</span>{{ end }}</td>
+                        <td>{{ if $w.Active }}<span class="btn btn-success"
+                                style="padding: 0.2rem 0.5rem; font-size: 0.7rem; pointer-events: none;">ACTIVE</span>{{
+                            else }}<span class="btn btn-dark"
+                                style="padding: 0.2rem 0.5rem; font-size: 0.7rem; pointer-events: none;">INACTIVE</span>{{
+                            end }}</td>
                         <td>
-                            <button class="btn btn-danger" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;" hx-delete="/api/v1/settings/webhooks/{{ $w.ID }}" hx-target="closest tr" hx-swap="outerHTML">Delete</button>
+                            <button class="btn btn-danger" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;"
+                                hx-delete="/api/v1/settings/webhooks/{{ $w.ID }}" hx-target="closest tr"
+                                hx-swap="outerHTML">Delete</button>
                         </td>
                     </tr>
                     {{ end }}
@@ -204,48 +299,67 @@
         <div class="card">
             <h3>Source Adapters</h3>
             <h4 style="color: var(--vibrant-red); margin-bottom: 0.5rem;">Fail2ban</h4>
-            <p style="color: var(--secondary-color);">Configure Fail2ban to push bans to this app. Add an action file <code>/etc/fail2ban/action.d/blocklist.conf</code>:</p>
+            <p style="color: var(--secondary-color);">Configure Fail2ban to push bans to this app. Add an action file
+                <code>/etc/fail2ban/action.d/blocklist.conf</code>:</p>
             <pre><code>[Definition]
-actionban = curl -X POST -H "Authorization: Bearer YOUR_TOKEN" -H "Content-Type: application/json" -d '{"ip":"&lt;ip&gt;","act":"ban","reason":"fail2ban-&lt;name&gt;"}' {{ .base_url }}/api/v1/webhook
+actionban = curl -X POST -H "Authorization: Bearer YOUR_TOKEN" -H "Content-Type: application/json" -d '{"ip":"&lt;ip&gt;","act":"ban","reason":"fail2ban-&lt;name&gt;","ttl":86400}' {{ .base_url }}/api/v1/webhook
 actionunban = curl -X POST -H "Authorization: Bearer YOUR_TOKEN" -H "Content-Type: application/json" -d '{"ip":"&lt;ip&gt;","act":"unban"}' {{ .base_url }}/api/v1/webhook
 </code></pre>
+            <p style="color: var(--secondary-color); font-size: 0.85rem;">Note: Bans default to 24h (86400s) if
+                <code>persist</code> is false and <code>ttl</code> is omitted.</p>
 
             <h4 style="color: var(--vibrant-red); margin-bottom: 0.5rem; margin-top: 1.5rem;">Suricata / IDS</h4>
-            <p style="color: var(--secondary-color);">Ingest Suricata alerts via custom script or file beat pushing to <code>/api/v1/webhook</code>.</p>
+            <p style="color: var(--secondary-color);">Ingest Suricata alerts via custom script or file beat pushing to
+                <code>/api/v1/webhook</code>.</p>
         </div>
 
         <div class="card">
             <h3>API Access</h3>
             <p style="color: var(--secondary-color);">Your base API URL is: <code>{{ .base_url }}/api/v1</code></p>
-            <p style="color: var(--secondary-color);">Use Bearer tokens for authentication. Tokens are managed below.</p>
-            
+            <p style="color: var(--secondary-color);">Use Bearer tokens for authentication. Tokens are managed below.
+            </p>
+
             <div style="margin-top: 1.5rem; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 1.5rem;">
                 <h4 style="color: #fff; margin-bottom: 1rem;">My API Tokens</h4>
-                <form id="tokenForm" hx-post="/api/v1/settings/tokens" hx-target="#token-list" hx-swap="innerHTML" hx-on:htmx:config-request="prepareTokenPerms()">
+                <form id="tokenForm" hx-post="/api/v1/settings/tokens" hx-target="#token-list" hx-swap="innerHTML"
+                    hx-on:htmx:config-request="prepareTokenPerms()">
                     <div style="display: flex; gap: 10px; margin-bottom: 1rem;">
-                        <input type="text" name="name" class="filter-input" placeholder="Token Name (e.g. CI/CD)" required style="flex: 1;">
-                        <input type="text" name="allowed_ips" class="filter-input" placeholder="Allowed Source IPs/CIDRs (comma-separated, optional)" style="flex: 1.5;">
+                        <input type="text" name="name" class="filter-input" placeholder="Token Name (e.g. CI/CD)"
+                            required style="flex: 1;">
+                        <input type="text" name="allowed_ips" class="filter-input"
+                            placeholder="Allowed Source IPs/CIDRs (comma-separated, optional)" style="flex: 1.5;">
                         <input type="hidden" name="permissions" id="tokenPermsInput">
                         <button type="submit" class="btn btn-danger">Create Token</button>
                     </div>
                     <div style="margin-bottom: 1.5rem;">
-                        <div style="font-size: 0.8rem; color: var(--secondary-color); margin-bottom: 8px;">Scoped Permissions (Optional - Defaults to restricted):</div>
-                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; font-size: 0.8rem;">
+                        <div style="font-size: 0.8rem; color: var(--secondary-color); margin-bottom: 8px;">Scoped
+                            Permissions (Optional - Defaults to restricted):</div>
+                        <div
+                            style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; font-size: 0.8rem;">
                             <label><input type="checkbox" class="token-perm" value="view_ips"> View IPs</label>
                             <label><input type="checkbox" class="token-perm" value="block_ips"> Block IPs</label>
                             <label><input type="checkbox" class="token-perm" value="unblock_ips"> Unblock IPs</label>
-                            <label><input type="checkbox" class="token-perm" value="whitelist_ips"> Whitelist IPs</label>
+                            <label><input type="checkbox" class="token-perm" value="whitelist_ips"> Whitelist
+                                IPs</label>
                             <label><input type="checkbox" class="token-perm" value="export_data"> Export Data</label>
                         </div>
                         <div style="margin-top: 10px; display: flex; gap: 10px; flex-wrap: wrap;">
-                            <button type="button" class="btn btn-dark" style="padding: 0.2rem 0.5rem; font-size: 0.7rem;" onclick="setTokenTemplate('fail2ban')">Fail2ban Template</button>
-                            <button type="button" class="btn btn-dark" style="padding: 0.2rem 0.5rem; font-size: 0.7rem;" onclick="setTokenTemplate('fortigate')">Fortigate Template</button>
-                            <button type="button" class="btn btn-dark" style="padding: 0.2rem 0.5rem; font-size: 0.7rem;" onclick="setTokenTemplate('webhook')">Webhook Template</button>
-                            <button type="button" class="btn btn-dark" style="padding: 0.2rem 0.5rem; font-size: 0.7rem;" onclick="setTokenTemplate('auditor')">Auditor Template</button>
+                            <button type="button" class="btn btn-dark"
+                                style="padding: 0.2rem 0.5rem; font-size: 0.7rem;"
+                                onclick="setTokenTemplate('fail2ban')">Fail2ban Template</button>
+                            <button type="button" class="btn btn-dark"
+                                style="padding: 0.2rem 0.5rem; font-size: 0.7rem;"
+                                onclick="setTokenTemplate('fortigate')">Fortigate Template</button>
+                            <button type="button" class="btn btn-dark"
+                                style="padding: 0.2rem 0.5rem; font-size: 0.7rem;"
+                                onclick="setTokenTemplate('webhook')">Webhook Template</button>
+                            <button type="button" class="btn btn-dark"
+                                style="padding: 0.2rem 0.5rem; font-size: 0.7rem;"
+                                onclick="setTokenTemplate('auditor')">Auditor Template</button>
                         </div>
                     </div>
                 </form>
-                
+
                 <table style="font-size: 0.9rem;">
                     <thead>
                         <tr>
@@ -264,44 +378,60 @@ actionunban = curl -X POST -H "Authorization: Bearer YOUR_TOKEN" -H "Content-Typ
                             <td>
                                 <div class="perm-display" id="perm-display-{{ .ID }}">
                                     {{ if .Permissions }}
-                                        {{ range $p := split .Permissions "," }}
-                                        <span style="background: rgba(255,0,0,0.1); padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; margin-right: 4px;">{{ $p }}</span>
-                                        {{ end }}
-                                    {{ else }}
-                                        <span style="color: var(--secondary-color); font-size: 0.75rem;">None</span>
+                                    {{ range $p := split .Permissions "," }}
+                                    <span
+                                        style="background: rgba(255,0,0,0.1); padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; margin-right: 4px;">{{
+                                        $p }}</span>
                                     {{ end }}
-                                    <button class="btn btn-dark" style="padding: 0.1rem 0.4rem; font-size: 0.7rem; margin-left: 5px;" onclick="editTokenPerms('{{ .ID }}', '{{ .Permissions }}')">Edit</button>
+                                    {{ else }}
+                                    <span style="color: var(--secondary-color); font-size: 0.75rem;">None</span>
+                                    {{ end }}
+                                    <button class="btn btn-dark"
+                                        style="padding: 0.1rem 0.4rem; font-size: 0.7rem; margin-left: 5px;"
+                                        onclick="editTokenPerms('{{ .ID }}', '{{ .Permissions }}')">Edit</button>
                                 </div>
                                 <div class="perm-edit" id="perm-edit-{{ .ID }}" style="display: none;">
-                                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px; font-size: 0.75rem; margin-bottom: 5px;">
-                                        <label><input type="checkbox" class="token-edit-perm-{{ .ID }}" value="view_ips"> View</label>
-                                        <label><input type="checkbox" class="token-edit-perm-{{ .ID }}" value="block_ips"> Block</label>
-                                        <label><input type="checkbox" class="token-edit-perm-{{ .ID }}" value="unblock_ips"> Unblock</label>
-                                        <label><input type="checkbox" class="token-edit-perm-{{ .ID }}" value="whitelist_ips"> Whitelist IPs</label>
-                                        <label><input type="checkbox" class="token-edit-perm-{{ .ID }}" value="export_data"> Export</label>
+                                    <div
+                                        style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px; font-size: 0.75rem; margin-bottom: 5px;">
+                                        <label><input type="checkbox" class="token-edit-perm-{{ .ID }}"
+                                                value="view_ips"> View</label>
+                                        <label><input type="checkbox" class="token-edit-perm-{{ .ID }}"
+                                                value="block_ips"> Block</label>
+                                        <label><input type="checkbox" class="token-edit-perm-{{ .ID }}"
+                                                value="unblock_ips"> Unblock</label>
+                                        <label><input type="checkbox" class="token-edit-perm-{{ .ID }}"
+                                                value="whitelist_ips"> Whitelist IPs</label>
+                                        <label><input type="checkbox" class="token-edit-perm-{{ .ID }}"
+                                                value="export_data"> Export</label>
                                     </div>
                                     <div style="display: flex; gap: 5px;">
-                                        <button class="btn btn-danger" style="padding: 0.1rem 0.4rem; font-size: 0.7rem;" onclick="saveTokenPerms('{{ .ID }}')">Save</button>
-                                        <button class="btn btn-dark" style="padding: 0.1rem 0.4rem; font-size: 0.7rem;" onclick="cancelEditTokenPerms('{{ .ID }}')">Cancel</button>
+                                        <button class="btn btn-danger"
+                                            style="padding: 0.1rem 0.4rem; font-size: 0.7rem;"
+                                            onclick="saveTokenPerms('{{ .ID }}')">Save</button>
+                                        <button class="btn btn-dark" style="padding: 0.1rem 0.4rem; font-size: 0.7rem;"
+                                            onclick="cancelEditTokenPerms('{{ .ID }}')">Cancel</button>
                                     </div>
                                 </div>
                             </td>
                             <td>
                                 {{ if .AllowedIPs }}
-                                    <code>{{ .AllowedIPs }}</code>
+                                <code>{{ .AllowedIPs }}</code>
                                 {{ else }}
-                                    <span style="color: var(--secondary-color); font-size: 0.75rem;">None</span>
+                                <span style="color: var(--secondary-color); font-size: 0.75rem;">None</span>
                                 {{ end }}
                             </td>
                             <td><span class="utc-timestamp">{{ .CreatedAt }}</span></td>
                             <td>
                                 {{ if .LastUsed }}
-                                    <span class="utc-timestamp">{{ .LastUsed }}</span>
-                                    {{ if .LastUsedIP }}<div style="font-size: 0.7rem; color: var(--secondary-color);">from {{ .LastUsedIP }}</div>{{ end }}
+                                <span class="utc-timestamp">{{ .LastUsed }}</span>
+                                {{ if .LastUsedIP }}<div style="font-size: 0.7rem; color: var(--secondary-color);">from
+                                    {{ .LastUsedIP }}</div>{{ end }}
                                 {{ else }}-{{ end }}
                             </td>
                             <td>
-                                <button class="btn btn-danger" style="padding: 0.2rem 0.6rem; font-size: 0.8rem;" hx-delete="/api/v1/settings/tokens/{{ .ID }}" hx-target="closest tr" hx-swap="outerHTML">Revoke</button>
+                                <button class="btn btn-danger" style="padding: 0.2rem 0.6rem; font-size: 0.8rem;"
+                                    hx-delete="/api/v1/settings/tokens/{{ .ID }}" hx-target="closest tr"
+                                    hx-swap="outerHTML">Revoke</button>
                             </td>
                         </tr>
                         {{ end }}
@@ -310,7 +440,8 @@ actionunban = curl -X POST -H "Authorization: Bearer YOUR_TOKEN" -H "Content-Typ
             </div>
 
             {{ if .manage_global_tokens }}
-            <div id="global-tokens" style="margin-top: 2.5rem; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 1.5rem;">
+            <div id="global-tokens"
+                style="margin-top: 2.5rem; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 1.5rem;">
                 <h4 style="color: var(--vibrant-red); margin-bottom: 1rem;">System API Tokens (Admin View)</h4>
                 <table style="font-size: 0.9rem;">
                     <thead>
@@ -330,12 +461,15 @@ actionunban = curl -X POST -H "Authorization: Bearer YOUR_TOKEN" -H "Content-Typ
                             <td><span class="utc-timestamp">{{ .CreatedAt }}</span></td>
                             <td>
                                 {{ if .LastUsed }}
-                                    <span class="utc-timestamp">{{ .LastUsed }}</span>
-                                    {{ if .LastUsedIP }}<div style="font-size: 0.7rem; color: var(--secondary-color);">from {{ .LastUsedIP }}</div>{{ end }}
+                                <span class="utc-timestamp">{{ .LastUsed }}</span>
+                                {{ if .LastUsedIP }}<div style="font-size: 0.7rem; color: var(--secondary-color);">from
+                                    {{ .LastUsedIP }}</div>{{ end }}
                                 {{ else }}-{{ end }}
                             </td>
                             <td>
-                                <button class="btn btn-danger" style="padding: 0.2rem 0.6rem; font-size: 0.8rem;" hx-delete="/api/v1/admin/tokens/{{ .ID }}" hx-target="closest tr" hx-swap="outerHTML" hx-confirm="Revoke this user's token?">Revoke</button>
+                                <button class="btn btn-danger" style="padding: 0.2rem 0.6rem; font-size: 0.8rem;"
+                                    hx-delete="/api/v1/admin/tokens/{{ .ID }}" hx-target="closest tr"
+                                    hx-swap="outerHTML" hx-confirm="Revoke this user's token?">Revoke</button>
                             </td>
                         </tr>
                         {{ end }}
@@ -345,28 +479,31 @@ actionunban = curl -X POST -H "Authorization: Bearer YOUR_TOKEN" -H "Content-Typ
             {{ end }}
 
             <h4 style="color: var(--vibrant-red); margin-top: 2rem; margin-bottom: 0.5rem;">Examples</h4>
-            
+
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
                 <!-- CURL Examples -->
                 <div>
                     <p style="color: #fff; margin-bottom: 0.5rem; font-size: 0.9rem;"><strong>Curl Examples</strong></p>
-                    
+
                     <div style="margin-bottom: 1rem;">
-                        <p style="color: var(--secondary-color); margin-bottom: 0.2rem; font-size: 0.8rem;">List Blocked IPs (JSON)</p>
+                        <p style="color: var(--secondary-color); margin-bottom: 0.2rem; font-size: 0.8rem;">List Blocked
+                            IPs (JSON)</p>
                         <pre style="font-size: 0.75rem;"><code>curl -H "Authorization: Bearer YOUR_TOKEN" \
      {{ .base_url }}/api/v1/ips_list</code></pre>
                     </div>
 
                     <div style="margin-bottom: 1rem;">
-                        <p style="color: var(--secondary-color); margin-bottom: 0.2rem; font-size: 0.8rem;">Block an IP (Webhook style)</p>
+                        <p style="color: var(--secondary-color); margin-bottom: 0.2rem; font-size: 0.8rem;">Block an IP
+                            (Webhook style, 1h TTL)</p>
                         <pre style="font-size: 0.75rem;"><code>curl -X POST {{ .base_url }}/api/v1/webhook \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"ip": "1.2.3.4", "act": "ban", "reason": "manual"}'</code></pre>
+  -d '{"ip": "1.2.3.4", "act": "ban", "reason": "manual", "ttl": 3600}'</code></pre>
                     </div>
 
                     <div>
-                        <p style="color: var(--secondary-color); margin-bottom: 0.2rem; font-size: 0.8rem;">Unblock an IP (Webhook style)</p>
+                        <p style="color: var(--secondary-color); margin-bottom: 0.2rem; font-size: 0.8rem;">Unblock an
+                            IP (Webhook style)</p>
                         <pre style="font-size: 0.75rem;"><code>curl -X POST {{ .base_url }}/api/v1/webhook \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -H "Content-Type: application/json" \
@@ -374,7 +511,8 @@ actionunban = curl -X POST -H "Authorization: Bearer YOUR_TOKEN" -H "Content-Typ
                     </div>
 
                     <div style="margin-top: 1rem;">
-                        <p style="color: var(--secondary-color); margin-bottom: 0.2rem; font-size: 0.8rem;">Add IP to Whitelist (Webhook style)</p>
+                        <p style="color: var(--secondary-color); margin-bottom: 0.2rem; font-size: 0.8rem;">Add IP to
+                            Whitelist (Webhook style)</p>
                         <pre style="font-size: 0.75rem;"><code>curl -X POST {{ .base_url }}/api/v1/webhook \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -H "Content-Type: application/json" \
@@ -385,16 +523,18 @@ actionunban = curl -X POST -H "Authorization: Bearer YOUR_TOKEN" -H "Content-Typ
                 <!-- WGET Examples -->
                 <div>
                     <p style="color: #fff; margin-bottom: 0.5rem; font-size: 0.9rem;"><strong>Wget Examples</strong></p>
-                    
+
                     <div style="margin-bottom: 1rem;">
-                        <p style="color: var(--secondary-color); margin-bottom: 0.2rem; font-size: 0.8rem;">Download Blocklist (TXT)</p>
+                        <p style="color: var(--secondary-color); margin-bottom: 0.2rem; font-size: 0.8rem;">Download
+                            Blocklist (TXT)</p>
                         <pre style="font-size: 0.75rem;"><code>wget --header="Authorization: Bearer YOUR_TOKEN" \
      {{ .base_url }}/api/v1/ips/export?format=txt \
      -O blocklist.txt</code></pre>
                     </div>
 
                     <div style="margin-bottom: 1rem;">
-                        <p style="color: var(--secondary-color); margin-bottom: 0.2rem; font-size: 0.8rem;">Block an IP (POST)</p>
+                        <p style="color: var(--secondary-color); margin-bottom: 0.2rem; font-size: 0.8rem;">Block an IP
+                            (POST)</p>
                         <pre style="font-size: 0.75rem;"><code>wget --header="Authorization: Bearer YOUR_TOKEN" \
      --header="Content-Type: application/json" \
      --post-data='{"ip":"1.2.3.4","act":"ban"}' \
@@ -402,7 +542,8 @@ actionunban = curl -X POST -H "Authorization: Bearer YOUR_TOKEN" -H "Content-Typ
                     </div>
 
                     <div style="margin-bottom: 1rem;">
-                        <p style="color: var(--secondary-color); margin-bottom: 0.2rem; font-size: 0.8rem;">Unblock an IP (POST)</p>
+                        <p style="color: var(--secondary-color); margin-bottom: 0.2rem; font-size: 0.8rem;">Unblock an
+                            IP (POST)</p>
                         <pre style="font-size: 0.75rem;"><code>wget --header="Authorization: Bearer YOUR_TOKEN" \
      --header="Content-Type: application/json" \
      --post-data='{"ip":"1.2.3.4","act":"unban"}' \
@@ -410,7 +551,8 @@ actionunban = curl -X POST -H "Authorization: Bearer YOUR_TOKEN" -H "Content-Typ
                     </div>
 
                     <div>
-                        <p style="color: var(--secondary-color); margin-bottom: 0.2rem; font-size: 0.8rem;">Add IP to Whitelist (POST)</p>
+                        <p style="color: var(--secondary-color); margin-bottom: 0.2rem; font-size: 0.8rem;">Add IP to
+                            Whitelist (POST)</p>
                         <pre style="font-size: 0.75rem;"><code>wget --header="Authorization: Bearer YOUR_TOKEN" \
      --header="Content-Type: application/json" \
      --post-data='{"ip":"1.2.3.4","act":"whitelist","reason":"trusted"}' \
@@ -436,14 +578,14 @@ actionunban = curl -X POST -H "Authorization: Bearer YOUR_TOKEN" -H "Content-Typ
 
         function convertTimestamps() {
             const utcTimestamps = document.querySelectorAll('.utc-timestamp:not([data-converted])');
-            utcTimestamps.forEach(function(timestamp) {
+            utcTimestamps.forEach(function (timestamp) {
                 const date = new Date(timestamp.innerText);
                 timestamp.innerText = date.toLocaleString();
                 timestamp.setAttribute('data-converted', 'true');
             });
         }
 
-        document.body.addEventListener('htmx:afterOnLoad', function(evt) {
+        document.body.addEventListener('htmx:afterOnLoad', function (evt) {
             convertTimestamps(); // Convert for new rows
             if (evt.detail.xhr.status === 200) {
                 if (evt.detail.requestConfig.verb === 'post') {
@@ -455,7 +597,7 @@ actionunban = curl -X POST -H "Authorization: Bearer YOUR_TOKEN" -H "Content-Typ
                             if (data.newToken) {
                                 prompt("API Token Created! Copy it now, you won't see it again:", data.newToken);
                             }
-                        } catch(e) {}
+                        } catch (e) { }
                     }
                     if (evt.detail.target.id === 'webhook-list') {
                         showToast('Webhook added successfully', 'success');
@@ -467,7 +609,7 @@ actionunban = curl -X POST -H "Authorization: Bearer YOUR_TOKEN" -H "Content-Typ
                 showToast('Action failed: ' + (evt.detail.xhr.responseText || 'Server error'), 'danger');
             }
         });
-        
+
         // Initial convert
         convertTimestamps();
 
@@ -480,14 +622,14 @@ actionunban = curl -X POST -H "Authorization: Bearer YOUR_TOKEN" -H "Content-Typ
         function setTokenTemplate(type) {
             const checkboxes = document.querySelectorAll('.token-perm');
             checkboxes.forEach(cb => cb.checked = false);
-            
+
             const perms = {
                 'fail2ban': ['block_ips'],
                 'fortigate': ['block_ips', 'unblock_ips'],
                 'webhook': ['block_ips', 'unblock_ips', 'whitelist_ips'],
                 'auditor': ['view_ips', 'export_data']
             };
-            
+
             if (perms[type]) {
                 perms[type].forEach(p => {
                     const cb = document.querySelector(`.token-perm[value="${p}"]`);
@@ -499,7 +641,7 @@ actionunban = curl -X POST -H "Authorization: Bearer YOUR_TOKEN" -H "Content-Typ
         function editTokenPerms(id, currentPerms) {
             document.getElementById('perm-display-' + id).style.display = 'none';
             document.getElementById('perm-edit-' + id).style.display = 'block';
-            
+
             const perms = currentPerms.split(',');
             const checkboxes = document.querySelectorAll('.token-edit-perm-' + id);
             checkboxes.forEach(cb => {
@@ -515,25 +657,26 @@ actionunban = curl -X POST -H "Authorization: Bearer YOUR_TOKEN" -H "Content-Typ
         function saveTokenPerms(id) {
             const checkboxes = document.querySelectorAll('.token-edit-perm-' + id + ':checked');
             const permissions = Array.from(checkboxes).map(cb => cb.value).join(',');
-            
+
             fetch('/api/v1/settings/tokens/' + id + '/permissions', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ permissions })
             })
-            .then(response => {
-                if (response.ok) {
-                    showToast('Permissions updated successfully', 'success');
-                    // Refresh the token list
-                    htmx.trigger('#tokenForm', 'newToken'); // This is a bit hacky but should work to refresh the list if tokenForm targets it
-                    // Better: just reload the page or use HTMX to refresh the list
-                    location.reload(); 
-                } else {
-                    response.text().then(text => showToast('Failed: ' + text, 'danger'));
-                }
-            })
-            .catch(err => showToast('Error updating permissions', 'danger'));
+                .then(response => {
+                    if (response.ok) {
+                        showToast('Permissions updated successfully', 'success');
+                        // Refresh the token list
+                        htmx.trigger('#tokenForm', 'newToken'); // This is a bit hacky but should work to refresh the list if tokenForm targets it
+                        // Better: just reload the page or use HTMX to refresh the list
+                        location.reload();
+                    } else {
+                        response.text().then(text => showToast('Failed: ' + text, 'danger'));
+                    }
+                })
+                .catch(err => showToast('Error updating permissions', 'danger'));
         }
     </script>
 </body>
+
 </html>

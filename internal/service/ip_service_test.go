@@ -189,3 +189,33 @@ func TestIPService_LimitCapping(t *testing.T) {
 		t.Errorf("expected at most %d items, got %d", MaxPageSize, len(items))
 	}
 }
+
+func TestIPService_IsBlocked_LazyCleanup(t *testing.T) {
+	mr, _ := miniredis.Run()
+	defer mr.Close()
+	port, _ := strconv.Atoi(mr.Port())
+	rRepo := repository.NewRedisRepository(mr.Host(), port, "", 0)
+	svc := NewIPService(&config.Config{}, rRepo, nil)
+
+	ip := "9.9.9.9"
+	// 1. Manually add an expired ban via service to ensure bloom filter is updated
+	_, _ = svc.BlockIP(context.Background(), ip, "test", "admin", "127.0.0.1", false, 1*time.Hour)
+
+	// 2. Overwrite with EXPIRED data in Redis
+	past := time.Now().UTC().Add(-1 * time.Hour).Format("2006-01-02 15:04:05 UTC")
+	entry := models.IPEntry{
+		Timestamp: "2026-01-01 00:00:00 UTC",
+		ExpiresAt: past,
+	}
+	_ = rRepo.BlockIP(ip, entry)
+
+	// 2. IsBlocked should remove it and return false
+	if svc.IsBlocked(ip) {
+		t.Error("expected IsBlocked to return false for expired entry")
+	}
+
+	// 3. Verify it's gone from Redis
+	if mr.HGet("ips", ip) != "" {
+		t.Error("expected expired entry to be removed from Redis")
+	}
+}
