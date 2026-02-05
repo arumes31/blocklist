@@ -47,6 +47,7 @@ func TestAPIHandler_Webhook(t *testing.T) {
 	c2.Set("username", "admin")
 
 	pgRepo.On("LogAction", mock.Anything, "UNBLOCK", "5.6.7.8", "webhook unban").Return(nil)
+	ipService.On("UnblockIP", mock.Anything, "5.6.7.8", "admin").Return(nil)
 
 	h.Webhook(c2)
 	assert.Equal(t, http.StatusOK, w2.Code)
@@ -60,6 +61,7 @@ func TestAPIHandler_Webhook(t *testing.T) {
 	c3.Set("username", "admin")
 
 	pgRepo.On("LogAction", mock.Anything, "UNBLOCK", "9.9.9.9", "webhook unban").Return(nil)
+	ipService.On("UnblockIP", mock.Anything, "9.9.9.9", "admin").Return(nil)
 
 	h.Webhook(c3)
 	assert.Equal(t, http.StatusOK, w3.Code)
