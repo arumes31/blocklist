@@ -2,17 +2,20 @@ package repository
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
 	"blocklist/internal/models"
+
+	"github.com/golang-migrate/migrate/v4"
+	_ "github.com/golang-migrate/migrate/v4/database/postgres"
+	_ "github.com/golang-migrate/migrate/v4/source/file"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/testcontainers/testcontainers-go"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
-	"github.com/golang-migrate/migrate/v4"
-	_ "github.com/golang-migrate/migrate/v4/database/postgres"
-	_ "github.com/golang-migrate/migrate/v4/source/file"
 )
 
 func TestPostgresRepository_Integration(t *testing.T) {
@@ -55,7 +58,7 @@ func TestPostgresRepository_Integration(t *testing.T) {
 		t.Fatalf("failed to run migrations: %v", err)
 	}
 
-	repo, err := NewPostgresRepository(connStr, connStr)
+	repo, err := NewPostgresRepository(connStr, connStr, 0)
 	if err != nil {
 		t.Fatalf("failed to create repository: %v", err)
 	}
@@ -146,6 +149,31 @@ func TestPostgresRepository_Integration(t *testing.T) {
 		err = repo.UpdateTokenLastUsed(got.ID, "127.0.0.1")
 		if err != nil {
 			t.Errorf("UpdateTokenLastUsed failed: %v", err)
+		}
+	})
+
+	t.Run("AuditLogPruning", func(t *testing.T) {
+		limit := 3
+		repoLimit, _ := NewPostgresRepository(connStr, connStr, limit)
+
+		ip := "1.1.1.1"
+		for i := 1; i <= 5; i++ {
+			_ = repoLimit.LogAction("actor", "BLOCK", ip, fmt.Sprintf("reason %d", i))
+			time.Sleep(10 * time.Millisecond) // Ensure distinct timestamps
+		}
+
+		logs, err := repoLimit.GetIPHistory(ip)
+		if err != nil {
+			t.Fatalf("GetIPHistory failed: %v", err)
+		}
+
+		if len(logs) != limit {
+			t.Errorf("expected %d logs, got %d", limit, len(logs))
+		}
+
+		// Should be the latest reasons
+		if !strings.Contains(logs[0].Reason, "5") {
+			t.Errorf("expected latest log to be reason 5, got %s", logs[0].Reason)
 		}
 	})
 

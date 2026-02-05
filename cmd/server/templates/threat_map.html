@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Thread Map - Blocklist</title>
+    <title>Threat Map - Blocklist</title>
     <link rel="stylesheet" href="/cd/flag-icon.min.css">
     <link rel="stylesheet" href="/js/leaflet.css">
     <link rel="stylesheet" href="/js/MarkerCluster.css">
@@ -254,7 +254,7 @@
             <a href="/dashboard" class="banner">
                 <img src="/cd/logo.png" alt="logo">
             </a>
-            <h2 style="margin: 0; font-size: 1.2rem;">Thread Map</h2>
+            <h2 style="margin: 0; font-size: 1.2rem;">Threat Map</h2>
         </div>
         <div style="display: flex; align-items: center; gap: 1rem;">
             <div
@@ -542,10 +542,7 @@
                 const wres = await fetch('/api/v1/whitelists');
                 if (wres.ok) {
                     const whitelists = await wres.json();
-                    const filteredWhitelists = whitelists.filter(it => {
-                        return it.data && it.data.added_by && it.data.added_by.includes('WebhookAuto');
-                    });
-                    allItems = allItems.concat(filteredWhitelists.map(it => ({ ...it, type: 'whitelist' })));
+                    allItems = allItems.concat(whitelists.map(it => ({ ...it, type: 'whitelist' })));
                 }
             }
 
@@ -625,7 +622,6 @@
                 if (type === 'block' && !showBlocks) return;
                 if (type === 'whitelist') {
                     if (!showWhitelists) return;
-                    if (!addedBy.includes('WebhookAuto')) return;
                 }
 
                 if (it.data && it.data.geolocation && it.data.geolocation.latitude) {

@@ -23,6 +23,7 @@ func TestAPIHandler_Webhook(t *testing.T) {
 	ipService.On("GetGeoIP", mock.Anything).Return(&models.GeoData{}).Maybe()
 	ipService.On("CalculateThreatScore", "1.2.3.4", "spam").Return(50)
 
+	pgRepo.On("LogAction", mock.Anything, "BLOCK_EPHEMERAL", "1.2.3.4", "spam").Return(nil)
 	rRepo.On("IndexWebhookHit", mock.Anything).Return(nil)
 	rRepo.On("ExecBlockAtomic", "1.2.3.4", mock.MatchedBy(func(e models.IPEntry) bool {
 		return e.Reason == "spam"
@@ -77,13 +78,14 @@ func TestAPIHandler_Webhook(t *testing.T) {
 	rRepo.On("WhitelistIP", "127.0.0.1", mock.MatchedBy(func(e models.WhitelistEntry) bool {
 		return e.ExpiresAt != ""
 	})).Return(nil)
+	pgRepo.On("LogAction", mock.Anything, "WHITELIST", "127.0.0.1", "me").Return(nil)
 
 	h.Webhook(c4)
 	assert.Equal(t, http.StatusOK, w4.Code)
 }
 
 func TestAPIHandler_Webhook_Security(t *testing.T) {
-	h, rRepo, _, _, ipService := setupTest()
+	h, rRepo, pgRepo, _, ipService := setupTest()
 
 	// 1. Invalid IP Format
 	w1 := httptest.NewRecorder()
@@ -106,6 +108,7 @@ func TestAPIHandler_Webhook_Security(t *testing.T) {
 	c1.Set("username", "admin")
 
 	// IP detected as 1.2.3.4 (RemoteAddr) because CF header is ignored when not behind a verified proxy
+	pgRepo.On("LogAction", mock.Anything, "WHITELIST", "1.2.3.4", "spoof").Return(nil)
 	rRepo.On("IndexWebhookHit", mock.Anything).Return(nil)
 	rRepo.On("WhitelistIP", "1.2.3.4", mock.Anything).Return(nil)
 	ipService.On("GetGeoIP", mock.Anything).Return(&models.GeoData{}).Maybe()
@@ -118,7 +121,7 @@ func TestAPIHandler_Webhook_Security(t *testing.T) {
 }
 
 func TestAPIHandler_Webhook_IPDetection(t *testing.T) {
-	h, rRepo, _, _, ipService := setupTest()
+	h, rRepo, pgRepo, _, ipService := setupTest()
 	defer rRepo.AssertExpectations(t)
 	defer ipService.AssertExpectations(t)
 
@@ -135,6 +138,7 @@ func TestAPIHandler_Webhook_IPDetection(t *testing.T) {
 	c1.Set("username", "admin")
 
 	// IP detected as 2.2.2.2
+	pgRepo.On("LogAction", mock.Anything, "WHITELIST", "2.2.2.2", "cf-test").Return(nil)
 	rRepo.On("IndexWebhookHit", mock.Anything).Return(nil)
 	rRepo.On("WhitelistIP", "2.2.2.2", mock.MatchedBy(func(e models.WhitelistEntry) bool {
 		return e.Reason == "cf-test"
@@ -157,13 +161,14 @@ func TestAPIHandler_Webhook_IPDetection(t *testing.T) {
 
 	// c.ClientIP() will be 1.1.1.1 because proxy is not trusted
 	rRepo.On("WhitelistIP", "1.1.1.1", mock.Anything).Return(nil)
+	pgRepo.On("LogAction", mock.Anything, "WHITELIST", "1.1.1.1", "xff-test").Return(nil)
 
 	h.Webhook(c2)
 	assert.Equal(t, http.StatusOK, w2.Code)
 }
 
 func TestAPIHandler_Webhook_BanTTL(t *testing.T) {
-	h, rRepo, _, _, ipService := setupTest()
+	h, rRepo, pgRepo, _, ipService := setupTest()
 	defer rRepo.AssertExpectations(t)
 	defer ipService.AssertExpectations(t)
 
@@ -177,6 +182,7 @@ func TestAPIHandler_Webhook_BanTTL(t *testing.T) {
 	ipService.On("IsValidIP", "4.4.4.4").Return(true)
 	ipService.On("GetGeoIP", mock.Anything).Return(&models.GeoData{}).Maybe()
 	ipService.On("CalculateThreatScore", "4.4.4.4", "ttl-test").Return(0)
+	pgRepo.On("LogAction", mock.Anything, "BLOCK_EPHEMERAL", "4.4.4.4", "ttl-test").Return(nil)
 	rRepo.On("IndexWebhookHit", mock.Anything).Return(nil)
 
 	// Expect WhitelistIP NOT to be called, but ExecBlockAtomic SHOULD be called with an entry that has ExpiresAt

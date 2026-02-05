@@ -152,8 +152,13 @@ func (h *APIHandler) Webhook(c *gin.Context) {
 			ExpiresAt:   expiresAt,
 			ThreatScore: h.ipService.CalculateThreatScore(data.IP, data.Reason),
 		}
-		if data.Persist && h.pgRepo != nil {
-			_ = h.pgRepo.CreatePersistentBlock(data.IP, entry)
+		if h.pgRepo != nil {
+			actName := "BLOCK_EPHEMERAL"
+			if data.Persist {
+				actName = "BLOCK_PERSISTENT"
+				_ = h.pgRepo.CreatePersistentBlock(data.IP, entry)
+			}
+			_ = h.pgRepo.LogAction(addedBy, actName, data.IP, data.Reason)
 		}
 
 		// Atomic operation updates hash, ZSET index, and persistent counters
@@ -195,6 +200,9 @@ func (h *APIHandler) Webhook(c *gin.Context) {
 		}
 
 		_ = h.redisRepo.WhitelistIP(data.IP, entry)
+		if h.pgRepo != nil {
+			_ = h.pgRepo.LogAction(addedBy, "WHITELIST", data.IP, entry.Reason)
+		}
 
 		if h.hub != nil {
 			h.hub.BroadcastEvent("whitelist", map[string]interface{}{

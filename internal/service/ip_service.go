@@ -946,11 +946,17 @@ func (s *IPService) WhitelistIP(ctx context.Context, ip string, reason string, u
 		AddedBy:     username,
 		Reason:      reason,
 	}
+	if s.pgRepo != nil {
+		_ = s.pgRepo.LogAction(username, "WHITELIST", ip, reason)
+	}
 	return s.redisRepo.WhitelistIP(ip, entry)
 }
 
 // RemoveWhitelist removes an IP from the whitelist.
 func (s *IPService) RemoveWhitelist(ctx context.Context, ip string, username string) error {
+	if s.pgRepo != nil {
+		_ = s.pgRepo.LogAction(username, "UNWHITELIST", ip, "")
+	}
 	return s.redisRepo.RemoveFromWhitelist(ip)
 }
 

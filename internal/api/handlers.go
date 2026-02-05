@@ -219,7 +219,7 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 		// Dashboard requires view_ips and view_stats
 		auth.GET("/dashboard", h.PermissionMiddleware("view_ips"), h.Dashboard)
 		auth.GET("/audit-logs", h.PermissionMiddleware("view_ips"), h.AuditLogExplorer)
-		auth.GET("/thread-map", h.PermissionMiddleware("view_ips"), h.ThreadMap)
+		auth.GET("/threat-map", h.PermissionMiddleware("view_ips"), h.ThreatMap)
 		auth.GET("/dashboard/table", h.PermissionMiddleware("view_ips"), h.DashboardTable) // For HTMX polling
 
 		auth.GET("/api/v1/views", h.PermissionMiddleware("view_ips"), h.GetSavedViews)
