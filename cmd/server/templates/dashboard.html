@@ -1550,15 +1550,24 @@
             if (currentFilters.to) params.append('to', new Date(currentFilters.to).toISOString());
 
             const url = `/api/v1/ips?${params.toString()}`;
-            const res = await fetch(url, { headers: { 'Accept': 'application/json' }, signal: inflight.signal }).catch(() => null);
-            if (!res || !res.ok) return { items: [], next: null };
-            const payload = await res.json();
-            // expected: { items: [{ip, data}], next: "cursor", total: N }
-            if (payload.total != null) {
-                total = payload.total;
-                document.getElementById('total-ips-count').innerText = total;
+            try {
+                const res = await fetch(url, { headers: { 'Accept': 'application/json' }, signal: inflight.signal });
+                if (!res.ok) return { items: [], next: null };
+                const payload = await res.json();
+                if (payload.total != null) {
+                    total = payload.total;
+                    const el = document.getElementById('total-ips-count');
+                    if (el) el.innerText = total;
+                }
+                return { items: payload.items || [], next: payload.next || null };
+            } catch (err) {
+                if (err.name === 'AbortError') {
+                    // Return current state so we don't kill the observer
+                    return { items: [], next: nextCursor, aborted: true };
+                }
+                console.error("fetchPage error:", err);
+                return { items: [], next: null };
             }
-            return { items: payload.items || [], next: payload.next || null };
         }
 
         function renderWindow(list) {
@@ -1597,21 +1606,27 @@
             const io = new IntersectionObserver(async (entries) => {
                 if (!entries[0].isIntersecting || loading || !cursor) return;
                 loading = true;
-                const page = await fetchPage(cursor);
-                cursor = page.next;
-                items = items.concat(page.items);
-                const frag = document.createDocumentFragment();
-                page.items.forEach(it => {
-                    const tr = document.createElement('tr');
-                    tr.innerHTML = rowHTML(it.ip, it.data);
-                    frag.appendChild(tr.firstChild);
-                });
-                const tbodyEl = document.getElementById('ipTableBody');
-                tbodyEl.appendChild(frag);
-                htmx.process(tbodyEl);
-                convertTimestamps();
-                loading = false;
-                if (!cursor) sentinel.style.display = 'none';
+                try {
+                    const page = await fetchPage(cursor);
+                    if (page.aborted) return; // Don't update cursor or items if aborted
+
+                    cursor = page.next;
+                    if (page.items && page.items.length > 0) {
+                        items = items.concat(page.items);
+                        const tbodyEl = document.getElementById('ipTableBody');
+                        if (tbodyEl) {
+                            const html = page.items.map(it => rowHTML(it.ip, it.data)).join('');
+                            tbodyEl.insertAdjacentHTML('beforeend', html);
+                            htmx.process(tbodyEl);
+                            convertTimestamps();
+                        }
+                    }
+                    if (!cursor) sentinel.style.display = 'none';
+                } catch (err) {
+                    console.error("Scroll load error:", err);
+                } finally {
+                    loading = false;
+                }
             }, { rootMargin: '200px' });
             io.observe(sentinel);
         }
@@ -1807,6 +1822,7 @@
             updateURL();
             renderChips();
             const page = await fetchPage(null);
+            cursor = page.next;
             items = page.items;
             renderWindow(items);
         }
