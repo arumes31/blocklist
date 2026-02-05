@@ -66,10 +66,10 @@ graph LR
         - `unban` / `unban-ip`: Removes an IP from the blocklist.
         - `whitelist`: Adds an IP to the whitelist.
         - `selfwhitelist`: Whitelists the caller's source IP.
-    - **Parameters**: `ip`, `act`, `reason`, `persist` (bool).
-    - **Example (Block)**: `curl -X POST -H "Authorization: Bearer YOUR_TOKEN" -H "Content-Type: application/json" -d '{"ip":"1.2.3.4","act":"ban","reason":"manual","persist":false}' http://localhost:5000/api/v1/webhook`
+    - **Parameters**: `ip`, `act`, `reason`, `persist` (bool), `ttl` (int).
+    - **Example (Block)**: `curl -X POST -H "Authorization: Bearer YOUR_TOKEN" -H "Content-Type: application/json" -d '{"ip":"1.2.3.4","act":"ban","reason":"manual","persist":false,"ttl":3600}' http://localhost:5000/api/v1/webhook`
     - **Example (Self-Whitelist)**: `curl -X POST -H "Authorization: Bearer YOUR_TOKEN" -H "Content-Type: application/json" -d '{"act":"selfwhitelist","reason":"homelab"}' http://localhost:5000/api/v1/webhook`
-    - *Note: For `selfwhitelist`, the system automatically detects your source IP via `X-Forwarded-For` or `CF-Connecting-IP` (if trusted proxies are configured).*
+    - *Note: The `ip` parameter is required for all actions except `selfwhitelist`, where the system automatically detects your source IP via `X-Forwarded-For` or `CF-Connecting-IP`.*
 
 ### Data & Stats
 - **`GET /api/v1/ips`**: Paginated list of blocked IPs with advanced filters.
