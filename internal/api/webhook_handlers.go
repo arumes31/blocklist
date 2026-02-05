@@ -42,7 +42,7 @@ func (h *APIHandler) Webhook(c *gin.Context) {
 		requiredPerm = "block_ips"
 	} else if data.Act == "unban" || data.Act == "delete-ban" || data.Act == "unban-ip" {
 		requiredPerm = "unblock_ips"
-	} else if data.Act == "whitelist" {
+	} else if data.Act == "whitelist" || data.Act == "selfwhitelist" {
 		requiredPerm = "whitelist_ips"
 	} else {
 		c.JSON(501, gin.H{"status": "action not implemented"})
@@ -128,9 +128,11 @@ func (h *APIHandler) Webhook(c *gin.Context) {
 			h.hub.BroadcastEvent("unblock", map[string]interface{}{"ip": data.IP})
 		}
 		c.JSON(200, gin.H{"status": "IP unbanned", "ip": data.IP})
-	} else if data.Act == "whitelist" {
+	} else if data.Act == "whitelist" || data.Act == "selfwhitelist" {
 		targetIP := data.IP
-		if targetIP == "" {
+		if data.Act == "selfwhitelist" {
+			targetIP = c.ClientIP()
+		} else if targetIP == "" {
 			targetIP = c.ClientIP()
 		}
 
