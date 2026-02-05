@@ -29,7 +29,7 @@ func Bootstrap(cfg *config.Config) (*App, error) {
 		return nil, fmt.Errorf("failed to connect to Redis: %w", err)
 	}
 
-	pgRepo, err := repository.NewPostgresRepository(cfg.PostgresURL, cfg.PostgresReadURL)
+	pgRepo, err := repository.NewPostgresRepository(cfg.PostgresURL, cfg.PostgresReadURL, cfg.AuditLogLimitPerIP)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to Postgres: %w", err)
 	}

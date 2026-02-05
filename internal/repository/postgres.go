@@ -12,11 +12,12 @@ import (
 )
 
 type PostgresRepository struct {
-	db     *sqlx.DB
-	readDb *sqlx.DB
+	db                 *sqlx.DB
+	readDb             *sqlx.DB
+	auditLogLimitPerIP int
 }
 
-func NewPostgresRepository(url string, readUrl string) (*PostgresRepository, error) {
+func NewPostgresRepository(url string, readUrl string, auditLogLimitPerIP int) (*PostgresRepository, error) {
 	db, err := sqlx.Connect("pgx", url)
 	if err != nil {
 		return nil, err
@@ -38,7 +39,7 @@ func NewPostgresRepository(url string, readUrl string) (*PostgresRepository, err
 		}
 	}
 
-	return &PostgresRepository{db: db, readDb: readDb}, nil
+	return &PostgresRepository{db: db, readDb: readDb, auditLogLimitPerIP: auditLogLimitPerIP}, nil
 }
 
 func (p *PostgresRepository) GetAdmin(username string) (*models.AdminAccount, error) {
@@ -283,6 +284,25 @@ func (p *PostgresRepository) GetPersistentCount() (int64, error) {
 
 func (p *PostgresRepository) LogAction(actor, action, target, reason string) error {
 	_, err := p.db.Exec("INSERT INTO audit_logs (actor, action, target, reason) VALUES ($1, $2, $3, $4)", actor, action, target, reason)
+	if err != nil {
+		return err
+	}
+
+	if p.auditLogLimitPerIP > 0 && target != "" {
+		// Prune old entries for this target
+		// We delete entries where ID <= (at offset p.auditLogLimitPerIP-1)
+		// This keeps exactly p.auditLogLimitPerIP entries
+		query := `
+			DELETE FROM audit_logs 
+			WHERE target = $1 
+			  AND id <= (
+				  SELECT id FROM audit_logs 
+				  WHERE target = $1 
+				  ORDER BY timestamp DESC, id DESC 
+				  OFFSET $2 LIMIT 1
+			  )`
+		_, err = p.db.Exec(query, target, p.auditLogLimitPerIP)
+	}
 	return err
 }
 

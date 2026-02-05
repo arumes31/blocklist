@@ -37,6 +37,7 @@ type Config struct {
 	SameSiteStrict         bool
 	ForceHTTPS             bool
 	RunWorkerInProcess     bool
+	AuditLogLimitPerIP     int
 }
 
 func Load() *Config {
@@ -71,6 +72,7 @@ func Load() *Config {
 		SameSiteStrict:         getEnvBool("COOKIE_SAMESITE_STRICT", false),
 		ForceHTTPS:             getEnvBool("FORCE_HTTPS", false),
 		RunWorkerInProcess:     getEnvBool("RUN_WORKER_IN_PROCESS", true),
+		AuditLogLimitPerIP:     getEnvInt("AUDIT_LOG_LIMIT_PER_IP", 100),
 	}
 }
 
