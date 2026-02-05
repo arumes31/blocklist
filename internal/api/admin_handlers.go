@@ -65,7 +65,7 @@ func (h *APIHandler) Dashboard(c *gin.Context) {
 	})
 }
 
-func (h *APIHandler) ThreadMap(c *gin.Context) {
+func (h *APIHandler) ThreatMap(c *gin.Context) {
 	ips := h.getCombinedIPs()
 	totalCount := len(ips)
 	username, _ := c.Get("username")
@@ -80,7 +80,7 @@ func (h *APIHandler) ThreadMap(c *gin.Context) {
 
 	trend, _ := h.pgRepo.GetBlockTrend()
 
-	h.renderHTML(c, http.StatusOK, "thread_map.html", gin.H{
+	h.renderHTML(c, http.StatusOK, "threat_map.html", gin.H{
 		"total_ips":      totalCount,
 		"admin_username": h.cfg.GUIAdmin,
 		"username":       username,

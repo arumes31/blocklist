@@ -339,7 +339,7 @@ func (p *PostgresRepository) GetBlockTrend() ([]models.BlockTrend, error) {
 			to_char(date_trunc('hour', timestamp), 'YYYY-MM-DD HH24:00') as hour,
 			count(*) as count
 		FROM audit_logs
-		WHERE action IN ('BLOCK', 'BULK_BLOCK') 
+		WHERE action IN ('BLOCK', 'BULK_BLOCK', 'BLOCK_PERSISTENT', 'BLOCK_EPHEMERAL') 
 		  AND timestamp > NOW() - INTERVAL '24 hours'
 		GROUP BY 1
 		ORDER BY 1 ASC
