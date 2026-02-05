@@ -123,7 +123,17 @@ func (s *IPService) IsBlocked(ipStr string) bool {
 	// 2. Fallback to Redis for confirmation
 	if s.redisRepo != nil {
 		entry, err := s.redisRepo.GetIPEntry(ipStr)
-		return err == nil && entry != nil
+		if err == nil && entry != nil {
+			if entry.ExpiresAt != "" {
+				exp, err := time.Parse("2006-01-02 15:04:05 UTC", entry.ExpiresAt)
+				if err == nil && time.Now().UTC().After(exp) {
+					// Entry expired, remove it and treat as not blocked
+					_ = s.redisRepo.UnblockIP(ipStr)
+					return false
+				}
+			}
+			return true
+		}
 	}
 	return false
 }

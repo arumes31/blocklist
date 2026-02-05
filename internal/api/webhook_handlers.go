@@ -102,7 +102,7 @@ func (h *APIHandler) Webhook(c *gin.Context) {
 
 	expiresAt := ""
 	if !data.Persist {
-		tVal := 86400
+		tVal := 86400 // Default 24h
 		if data.TTL > 0 {
 			tVal = data.TTL
 		}

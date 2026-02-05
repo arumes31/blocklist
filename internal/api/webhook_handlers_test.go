@@ -257,6 +257,31 @@ func TestAPIHandler_Webhook_IPDetection(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w2.Code)
 }
 
+func TestAPIHandler_Webhook_BanTTL(t *testing.T) {
+	h, rRepo, _, _, ipService := setupTest()
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	reqBody := `{"act": "ban", "ip": "4.4.4.4", "reason": "ttl-test"}`
+	c.Request, _ = http.NewRequest("POST", "/api/webhook", bytes.NewBufferString(reqBody))
+	c.Request.RemoteAddr = "127.0.0.1:1234"
+	c.Set("username", "admin")
+
+	ipService.On("IsValidIP", "4.4.4.4").Return(true)
+	ipService.On("GetGeoIP", "4.4.4.4").Return(&models.GeoData{Country: "TT"}).Times(2)
+	ipService.On("GetGeoIP", "127.0.0.1").Return(&models.GeoData{Country: "LO"}).Maybe()
+	ipService.On("CalculateThreatScore", "4.4.4.4", "ttl-test").Return(0)
+	rRepo.On("IndexWebhookHit", mock.Anything).Return(nil)
+
+	// Expect WhitelistIP NOT to be called, but ExecBlockAtomic SHOULD be called with an entry that has ExpiresAt
+	rRepo.On("ExecBlockAtomic", "4.4.4.4", mock.MatchedBy(func(e models.IPEntry) bool {
+		return e.ExpiresAt != "" // Verify TTL is set
+	}), mock.Anything).Return(nil)
+
+	h.Webhook(c)
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
 func TestAPIHandler_AddOutboundWebhook(t *testing.T) {
 	h, _, pgRepo, _, _ := setupTest()
 
