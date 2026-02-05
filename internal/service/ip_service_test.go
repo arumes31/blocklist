@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"strconv"
 	"testing"
 	"time"
@@ -117,11 +118,11 @@ func TestIPService_Enhanced(t *testing.T) {
 	t.Run("ListIPsPaginatedAdvanced_CIDRMatching", func(t *testing.T) {
 		ctx := context.Background()
 		// Mock data using service to ensure indexing
-		_ = svc.BlockIP(ctx, "1.1.2.1", "test", "admin", "127.0.0.1", false, 60*time.Minute)
+		_, _ = svc.BlockIP(ctx, "1.1.2.1", "test", "admin", "127.0.0.1", false, 60*time.Hour)
 		time.Sleep(1100 * time.Millisecond) // Ensure distinct Unix seconds
-		_ = svc.BlockIP(ctx, "1.1.2.20", "test", "admin", "127.0.0.1", false, 60*time.Minute)
+		_, _ = svc.BlockIP(ctx, "1.1.2.20", "test", "admin", "127.0.0.1", false, 60*time.Hour)
 		time.Sleep(1100 * time.Millisecond)
-		_ = svc.BlockIP(ctx, "2.2.2.2", "test", "admin", "127.0.0.1", false, 60*time.Minute)
+		_, _ = svc.BlockIP(ctx, "2.2.2.2", "test", "admin", "127.0.0.1", false, 60*time.Hour)
 
 		// Search for CIDR 1.1.2.0/24
 		items, _, _, err := svc.ListIPsPaginatedAdvanced(ctx, 10, "", "1.1.2.0/24", "", "", "", "")
@@ -140,6 +141,34 @@ func TestIPService_Enhanced(t *testing.T) {
 		}
 		if len(items2) != 0 {
 			t.Errorf("expected 0 items for 192.168.1.0/24, got %d", len(items2))
+		}
+	})
+
+	t.Run("IsValidIP_ExpiredWhitelist", func(t *testing.T) {
+		mr.FlushAll()
+
+		// Add an expired whitelist entry
+		expiredTime := time.Now().Add(-1 * time.Hour).Format(time.RFC3339)
+
+		// Manual overwrite in mock redis to simulate expired entry
+		entry := models.WhitelistEntry{
+			Timestamp: time.Now().UTC().Format(time.RFC3339),
+			Reason:    "Expired test",
+			AddedBy:   "admin",
+			ExpiresAt: expiredTime,
+		}
+		marshaled, _ := json.Marshal(entry)
+		mr.HSet("ips_webhook2_whitelist", "9.9.9.9", string(marshaled))
+
+		// IsValidIP should return true (valid to block) because whitelist is expired
+		if !svc.IsValidIP("9.9.9.9") {
+			t.Errorf("expected IsValidIP to be true for expired whitelist entry")
+		}
+
+		// Ensure it was removed from redis
+		res := mr.HGet("ips_webhook2_whitelist", "9.9.9.9")
+		if res != "" {
+			t.Errorf("expected expired whitelist entry to be removed from redis")
 		}
 	})
 }

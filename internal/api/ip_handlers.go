@@ -237,8 +237,34 @@ func (h *APIHandler) Whitelist(c *gin.Context) {
 		permissions = ""
 	}
 
+	type displayEntry struct {
+		models.WhitelistEntry
+		ExpiresIn string `json:"expires_in"`
+	}
+
+	displayItems := make(map[string]displayEntry)
+	for ip, entry := range items {
+		d := displayEntry{WhitelistEntry: entry}
+		if entry.ExpiresAt != "" {
+			exp, err := time.Parse(time.RFC3339, entry.ExpiresAt)
+			if err == nil {
+				if time.Now().After(exp) {
+					d.ExpiresIn = "EXPIRED"
+				} else {
+					diff := time.Until(exp).Round(time.Minute)
+					d.ExpiresIn = diff.String()
+				}
+			} else {
+				d.ExpiresIn = "ERR"
+			}
+		} else {
+			d.ExpiresIn = "NEVER"
+		}
+		displayItems[ip] = d
+	}
+
 	h.renderHTML(c, http.StatusOK, "whitelist.html", gin.H{
-		"whitelisted_ips": items,
+		"whitelisted_ips": displayItems,
 		"username":        username,
 		"page":            "whitelist",
 		"permissions":     permissions,
@@ -337,14 +363,30 @@ func (h *APIHandler) JSONWhitelists(c *gin.Context) {
 	}
 
 	type item struct {
-		IP   string                `json:"ip"`
-		Data models.WhitelistEntry `json:"data"`
+		IP        string                `json:"ip"`
+		Data      models.WhitelistEntry `json:"data"`
+		ExpiresIn string                `json:"expires_in"`
 	}
-	var res []item
+
+	var results []item
 	for k, v := range items {
-		res = append(res, item{IP: k, Data: v})
+		expIn := "NEVER"
+		if v.ExpiresAt != "" {
+			exp, err := time.Parse(time.RFC3339, v.ExpiresAt)
+			if err == nil {
+				if time.Now().After(exp) {
+					expIn = "EXPIRED"
+				} else {
+					expIn = time.Until(exp).Round(time.Minute).String()
+				}
+			} else {
+				expIn = "ERR"
+			}
+		}
+		results = append(results, item{IP: k, Data: v, ExpiresIn: expIn})
 	}
-	c.JSON(http.StatusOK, res)
+
+	c.JSON(http.StatusOK, results)
 }
 
 func (h *APIHandler) RawIPs(c *gin.Context) {

@@ -164,8 +164,18 @@ func (s *IPService) IsValidIP(ipStr string) bool {
 	if s.redisRepo != nil {
 		whitelist, _ := s.redisRepo.GetWhitelistedIPs()
 		if whitelist != nil {
-			if _, ok := whitelist[ipStr]; ok {
-				return false // IP is whitelisted, so it's NOT "valid to block"
+			if entry, ok := whitelist[ipStr]; ok {
+				if entry.ExpiresAt != "" {
+					exp, err := time.Parse(time.RFC3339, entry.ExpiresAt)
+					if err == nil && time.Now().After(exp) {
+						// Entry expired, remove it and treat as not whitelisted
+						_ = s.redisRepo.RemoveFromWhitelist(ipStr)
+					} else {
+						return false // IP is whitelisted (and not expired), so it's NOT "valid to block"
+					}
+				} else {
+					return false // IP is whitelisted (no expiration), so it's NOT "valid to block"
+				}
 			}
 		}
 	}

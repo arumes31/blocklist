@@ -160,6 +160,11 @@ func (h *APIHandler) Webhook(c *gin.Context) {
 			entry.Reason = "Webhook Whitelist"
 		}
 
+		// Self-whitelist entries expire after 24h
+		if data.Act == "selfwhitelist" {
+			entry.ExpiresAt = now.Add(24 * time.Hour).Format(time.RFC3339)
+		}
+
 		_ = h.redisRepo.WhitelistIP(targetIP, entry)
 
 		if h.hub != nil {
