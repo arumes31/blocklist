@@ -204,8 +204,9 @@ func TestAPIHandler_Webhook(t *testing.T) {
 	// We need mocks if it proceeds (it won't currently)
 	// But let's set them up for success path
 	ipService.On("IsValidIP", mock.Anything).Return(true) // Allow any IP validation
-	ipService.On("GetGeoIP", "127.0.0.1").Return(&models.GeoData{Country: "LO"})
+	ipService.On("GetGeoIP", "127.0.0.1").Return(&models.GeoData{Country: "LO"}).Times(3)
 	ipService.On("CalculateThreatScore", "127.0.0.1", "me-no-ip").Return(0)
+	rRepo.On("IndexWebhookHit", mock.Anything).Return(nil)
 
 	// Verify that ExpiresAt is set for selfwhitelist
 	rRepo.On("WhitelistIP", "127.0.0.1", mock.MatchedBy(func(e models.WhitelistEntry) bool {
@@ -214,6 +215,46 @@ func TestAPIHandler_Webhook(t *testing.T) {
 
 	h.Webhook(c5)
 	assert.Equal(t, http.StatusOK, w5.Code)
+}
+
+func TestAPIHandler_Webhook_IPDetection(t *testing.T) {
+	h, rRepo, _, _, ipService := setupTest()
+
+	// 1. Cloudflare Header (CF-Connecting-IP)
+	w1 := httptest.NewRecorder()
+	c1, _ := gin.CreateTestContext(w1)
+	reqBody1 := `{"act": "selfwhitelist", "reason": "cf-test"}`
+	c1.Request, _ = http.NewRequest("POST", "/api/webhook", bytes.NewBufferString(reqBody1))
+	c1.Request.Header.Set("CF-Connecting-IP", "2.2.2.2")
+	c1.Request.RemoteAddr = "127.0.0.1:1234"
+	c1.Set("username", "admin")
+
+	ipService.On("IsValidIP", "2.2.2.2").Return(true)
+	ipService.On("GetGeoIP", "2.2.2.2").Return(&models.GeoData{Country: "CF"}).Times(3)
+	ipService.On("CalculateThreatScore", "2.2.2.2", "cf-test").Return(0)
+	rRepo.On("IndexWebhookHit", mock.Anything).Return(nil)
+	rRepo.On("WhitelistIP", "2.2.2.2", mock.Anything).Return(nil)
+
+	h.Webhook(c1)
+	assert.Equal(t, http.StatusOK, w1.Code)
+
+	// 2. X-Forwarded-For Header
+	w2 := httptest.NewRecorder()
+	c2, _ := gin.CreateTestContext(w2)
+	reqBody2 := `{"act": "selfwhitelist", "reason": "xff-test"}`
+	c2.Request, _ = http.NewRequest("POST", "/api/webhook", bytes.NewBufferString(reqBody2))
+	c2.Request.Header.Set("X-Forwarded-For", "3.3.3.3, 10.0.0.1")
+	c2.Request.RemoteAddr = "127.0.0.1:1234"
+	c2.Set("username", "admin")
+
+	ipService.On("IsValidIP", "3.3.3.3").Return(true)
+	ipService.On("GetGeoIP", "3.3.3.3").Return(&models.GeoData{Country: "XF"}).Times(3)
+	ipService.On("CalculateThreatScore", "3.3.3.3", "xff-test").Return(0)
+	rRepo.On("IndexWebhookHit", mock.Anything).Return(nil)
+	rRepo.On("WhitelistIP", "3.3.3.3", mock.Anything).Return(nil)
+
+	h.Webhook(c2)
+	assert.Equal(t, http.StatusOK, w2.Code)
 }
 
 func TestAPIHandler_AddOutboundWebhook(t *testing.T) {
