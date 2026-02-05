@@ -209,24 +209,44 @@ func (h *APIHandler) Whitelist(c *gin.Context) {
 
 func (h *APIHandler) AddWhitelist(c *gin.Context) {
 	username, _ := c.Get("username")
-	ip := c.PostForm("ip")
-	note := c.PostForm("note")
 
-	if ip == "" {
+	var req struct {
+		IP     string `json:"ip"`
+		Note   string `json:"note"`
+		Reason string `json:"reason"` // Frontend sends 'reason', handler used 'note' previously? Service uses 'note'?
+	}
+
+	// Try JSON first
+	if err := c.ShouldBindJSON(&req); err != nil {
+		// Fallback to Form
+		req.IP = c.PostForm("ip")
+		req.Note = c.PostForm("note")
+		if req.Note == "" {
+			req.Note = c.PostForm("reason")
+		}
+	}
+
+	// Map reason to note if needed, or vice-versa
+	note := req.Note
+	if note == "" {
+		note = req.Reason
+	}
+
+	if req.IP == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "IP required"})
 		return
 	}
 
 	// Validate IP or CIDR
-	if net.ParseIP(ip) == nil {
-		_, _, err := net.ParseCIDR(ip)
+	if net.ParseIP(req.IP) == nil {
+		_, _, err := net.ParseCIDR(req.IP)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid IP or CIDR"})
 			return
 		}
 	}
 
-	if err := h.ipService.WhitelistIP(c.Request.Context(), ip, note, username.(string)); err != nil {
+	if err := h.ipService.WhitelistIP(c.Request.Context(), req.IP, note, username.(string)); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to whitelist IP"})
 		return
 	}
@@ -236,7 +256,26 @@ func (h *APIHandler) AddWhitelist(c *gin.Context) {
 
 func (h *APIHandler) RemoveWhitelist(c *gin.Context) {
 	username, _ := c.Get("username")
+
+	// Check JSON body first (Frontend uses JSON)
+	var req struct {
+		IP string `json:"ip"`
+	}
+	if err := c.ShouldBindJSON(&req); err == nil && req.IP != "" {
+		if err := h.ipService.RemoveWhitelist(c.Request.Context(), req.IP, username.(string)); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to remove from whitelist"})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"status": "success"})
+		return
+	}
+
+	// Fallback to Param (if called via /remove_whitelist/:ip which currently doesn't exist but for safety)
 	ip := c.Param("ip")
+	if ip == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "IP required"})
+		return
+	}
 
 	if err := h.ipService.RemoveWhitelist(c.Request.Context(), ip, username.(string)); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to remove from whitelist"})
