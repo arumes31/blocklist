@@ -231,9 +231,7 @@ func (h *APIHandler) AddWhitelist(c *gin.Context) {
 		return
 	}
 
-	// Return updated list via HTMX
-	items, _ := h.redisRepo.GetWhitelistedIPs()
-	h.renderHTML(c, http.StatusOK, "whitelist_table.html", gin.H{"items": items})
+	c.JSON(http.StatusOK, gin.H{"status": "success"})
 }
 
 func (h *APIHandler) RemoveWhitelist(c *gin.Context) {
@@ -245,7 +243,7 @@ func (h *APIHandler) RemoveWhitelist(c *gin.Context) {
 		return
 	}
 
-	c.Status(http.StatusOK)
+	c.JSON(http.StatusOK, gin.H{"status": "success"})
 }
 
 func (h *APIHandler) JSONWhitelists(c *gin.Context) {

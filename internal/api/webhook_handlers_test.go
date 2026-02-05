@@ -90,6 +90,23 @@ func TestAPIHandler_Webhook(t *testing.T) {
 
 	h.Webhook(c2)
 	assert.Equal(t, http.StatusOK, w2.Code)
+
+	// 3. Success - Unban with alias
+	w3 := httptest.NewRecorder()
+	c3, _ := gin.CreateTestContext(w3)
+	reqBody3 := `{"ip": "9.9.9.9", "act": "unban-ip"}`
+	c3.Request, _ = http.NewRequest("POST", "/api/webhook", bytes.NewBufferString(reqBody3))
+	c3.Request.RemoteAddr = "127.0.0.1:1234"
+	c3.Set("username", "admin")
+
+	// We need expectations for this new call
+	ipService.On("IsValidIP", "9.9.9.9").Return(true)
+	ipService.On("GetGeoIP", "9.9.9.9").Return(&models.GeoData{})
+	ipService.On("CalculateThreatScore", "9.9.9.9", "").Return(0)
+	pgRepo.On("LogAction", mock.Anything, "UNBLOCK", "9.9.9.9", "webhook unban").Return(nil)
+
+	h.Webhook(c3)
+	assert.Equal(t, http.StatusOK, w3.Code)
 }
 
 func TestAPIHandler_AddOutboundWebhook(t *testing.T) {

@@ -40,7 +40,7 @@ func (h *APIHandler) Webhook(c *gin.Context) {
 	requiredPerm := ""
 	if data.Act == "ban" || data.Act == "ban-ip" {
 		requiredPerm = "block_ips"
-	} else if data.Act == "unban" || data.Act == "delete-ban" {
+	} else if data.Act == "unban" || data.Act == "delete-ban" || data.Act == "unban-ip" {
 		requiredPerm = "unblock_ips"
 	} else if data.Act == "whitelist" {
 		requiredPerm = "whitelist_ips"
@@ -122,7 +122,7 @@ func (h *APIHandler) Webhook(c *gin.Context) {
 			})
 		}
 		c.JSON(200, gin.H{"status": "IP banned", "ip": data.IP})
-	} else if data.Act == "unban" || data.Act == "delete-ban" {
+	} else if data.Act == "unban" || data.Act == "delete-ban" || data.Act == "unban-ip" {
 		_ = h.pgRepo.LogAction(addedBy, "UNBLOCK", data.IP, "webhook unban")
 		if h.hub != nil {
 			h.hub.BroadcastEvent("unblock", map[string]interface{}{"ip": data.IP})
