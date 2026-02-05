@@ -318,7 +318,7 @@ func (h *APIHandler) generateQRWithLogo(url string) ([]byte, error) {
 		// Fallback to plain QR if logo not found
 		return qr.PNG(256)
 	}
-	defer logoFile.Close()
+	defer func() { _ = logoFile.Close() }()
 
 	logoImg, _, err := image.Decode(logoFile)
 	if err != nil {

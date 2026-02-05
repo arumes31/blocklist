@@ -6,15 +6,16 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/hibiken/asynq"
-	"blocklist/internal/config"
 	"archive/tar"
+	"blocklist/internal/config"
 	"compress/gzip"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/hibiken/asynq"
 )
 
 const (
@@ -67,7 +68,7 @@ func (h *GeoIPTaskHandler) getDBPath(edition string) string {
 	filename := edition + ".mmdb"
 	// Prefer env-defined path or standard local path
 	primaryPath := filepath.Join("/home/blocklist/geoip", filename)
-	
+
 	// Fallback check if running on windows/local dev without specific mounts
 	if _, err := os.Stat("/home/blocklist"); err != nil {
 		cwd, _ := os.Getwd()
@@ -99,7 +100,7 @@ func (h *GeoIPTaskHandler) Download(edition string) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("bad status: %s", resp.Status)
@@ -109,13 +110,17 @@ func (h *GeoIPTaskHandler) Download(edition string) error {
 	if err != nil {
 		return err
 	}
-	defer gzr.Close()
+	defer func() { _ = gzr.Close() }()
 
 	tr := tar.NewReader(gzr)
 	for {
 		header, err := tr.Next()
-		if err == io.EOF { break }
-		if err != nil { return err }
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
+		}
 
 		if strings.HasSuffix(header.Name, ".mmdb") {
 			destPath := h.getDBPath(edition)
@@ -124,13 +129,15 @@ func (h *GeoIPTaskHandler) Download(edition string) error {
 			}
 
 			outFile, err := os.Create(destPath)
-			if err != nil { return err }
-			
-			if _, err := io.Copy(outFile, tr); err != nil {
-				outFile.Close()
+			if err != nil {
 				return err
 			}
-			outFile.Close()
+
+			if _, err := io.Copy(outFile, tr); err != nil {
+				_ = outFile.Close()
+				return err
+			}
+			_ = outFile.Close()
 			log.Printf("Asynq: Successfully updated GeoIP database: %s", destPath)
 			return nil
 		}

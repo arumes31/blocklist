@@ -133,7 +133,7 @@ func (s *IPService) ReloadReaders() {
 			old := s.geoipReader
 			s.geoipReader = reader
 			if old != nil {
-				old.Close()
+				_ = old.Close()
 			}
 			zlog.Info().Msg("IPService: Reloaded GeoLite2-City")
 		}
@@ -145,7 +145,7 @@ func (s *IPService) ReloadReaders() {
 			old := s.asnReader
 			s.asnReader = aReader
 			if old != nil {
-				old.Close()
+				_ = old.Close()
 			}
 			zlog.Info().Msg("IPService: Reloaded GeoLite2-ASN")
 		}
@@ -286,7 +286,7 @@ func (s *IPService) ListIPsPaginated(ctx context.Context, limit int, cursor stri
 				if !strings.Contains(strings.ToLower(ip), q) &&
 					!strings.Contains(strings.ToLower(entry.Reason), q) &&
 					!strings.Contains(strings.ToLower(entry.AddedBy), q) &&
-					!(entry.Geolocation != nil && strings.Contains(strings.ToLower(entry.Geolocation.Country), q)) {
+					(entry.Geolocation == nil || !strings.Contains(strings.ToLower(entry.Geolocation.Country), q)) {
 					continue
 				}
 			}
@@ -316,7 +316,7 @@ func (s *IPService) ListIPsPaginated(ctx context.Context, limit int, cursor stri
 			if !strings.Contains(strings.ToLower(ip), q) &&
 				!strings.Contains(strings.ToLower(e.Reason), q) &&
 				!strings.Contains(strings.ToLower(e.AddedBy), q) &&
-				!(e.Geolocation != nil && strings.Contains(strings.ToLower(e.Geolocation.Country), q)) {
+				(e.Geolocation == nil || !strings.Contains(strings.ToLower(e.Geolocation.Country), q)) {
 				continue
 			}
 		}
@@ -512,7 +512,7 @@ func (s *IPService) ExportIPs(ctx context.Context, query string, country string,
 			if !strings.Contains(strings.ToLower(ip), q) &&
 				!strings.Contains(strings.ToLower(entry.Reason), q) &&
 				!strings.Contains(strings.ToLower(entry.AddedBy), q) &&
-				!(entry.Geolocation != nil && strings.Contains(strings.ToLower(entry.Geolocation.Country), q)) {
+				(entry.Geolocation == nil || !strings.Contains(strings.ToLower(entry.Geolocation.Country), q)) {
 				continue
 			}
 		}

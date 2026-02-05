@@ -10,13 +10,13 @@ func TestLoad(t *testing.T) {
 	origSecret := os.Getenv("SECRET_KEY")
 	origPort := os.Getenv("PORT")
 	defer func() {
-		os.Setenv("SECRET_KEY", origSecret)
-		os.Setenv("PORT", origPort)
+		_ = os.Setenv("SECRET_KEY", origSecret)
+		_ = os.Setenv("PORT", origPort)
 	}()
 
-	os.Setenv("SECRET_KEY", "test-secret")
-	os.Setenv("PORT", "9999")
-	os.Setenv("ENABLE_OUTBOUND_WEBHOOKS", "true")
+	_ = os.Setenv("SECRET_KEY", "test-secret")
+	_ = os.Setenv("PORT", "9999")
+	_ = os.Setenv("ENABLE_OUTBOUND_WEBHOOKS", "true")
 
 	cfg := Load()
 
@@ -39,7 +39,7 @@ func TestGetEnv(t *testing.T) {
 }
 
 func TestGetEnvInt(t *testing.T) {
-	os.Setenv("TEST_INT", "123")
+	_ = os.Setenv("TEST_INT", "123")
 	val := getEnvInt("TEST_INT", 0)
 	if val != 123 {
 		t.Errorf("expected 123, got %d", val)
@@ -52,17 +52,17 @@ func TestGetEnvInt(t *testing.T) {
 }
 
 func TestGetEnvBool(t *testing.T) {
-	os.Setenv("TEST_BOOL_TRUE", "true")
+	_ = os.Setenv("TEST_BOOL_TRUE", "true")
 	if !getEnvBool("TEST_BOOL_TRUE", false) {
 		t.Error("expected true for 'true'")
 	}
 
-	os.Setenv("TEST_BOOL_1", "1")
+	_ = os.Setenv("TEST_BOOL_1", "1")
 	if !getEnvBool("TEST_BOOL_1", false) {
 		t.Error("expected true for '1'")
 	}
 
-	os.Setenv("TEST_BOOL_FALSE", "false")
+	_ = os.Setenv("TEST_BOOL_FALSE", "false")
 	if getEnvBool("TEST_BOOL_FALSE", true) {
 		t.Error("expected false for 'false'")
 	}
