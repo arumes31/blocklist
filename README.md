@@ -39,6 +39,8 @@ graph LR
 - **Advanced Filtering**: Server-side filtering by IP, Reason, Country, Added By, and Date Range (ISO8601).
 - **Real-time Updates**: Live dashboard updates via WebSockets, now scaled with **Redis Pub/Sub** for multi-instance support.
 - **Visual Threat Intelligence**: Dedicated **Threat Map** page with interactive mapping (Leaflet) and distribution charts (Chart.js) for instant situational awareness.
+- **Audit Trail & Optimization**: Complete history of IP actions with automated **per-IP entry limiting** (configurable) to prevent database bloat.
+- **Ephemeral & Persistent Blocks**: Support for TTL-based temporary bans and manual persistent blocks.
 - **Local Map Solution**: Integrated world GeoJSON for offline mapping without external tile provider dependencies.
 - **Reliable Webhooks**: Persistent **Task Queue** for outbound notifications with automatic retries and exponential backoff.
 - **Bulk Operations**: Multi-select interface for batch unblocking and management.
@@ -58,10 +60,16 @@ graph LR
 ## API Endpoints
 
 ### Automated Webhooks
-- **`POST /api/v1/webhook`**: Authenticated webhook. Supports `ban`, `unban`, and `whitelist` actions.
-    - **Example (Block)**: `curl -X POST -H "Authorization: Bearer YOUR_TOKEN" -H "Content-Type: application/json" -d '{"ip":"1.2.3.4","act":"ban","reason":"manual"}' http://localhost:5000/api/v1/webhook`
-    - **Example (Whitelist)**: `curl -X POST -H "Authorization: Bearer YOUR_TOKEN" -H "Content-Type: application/json" -d '{"ip":"1.2.3.4","act":"whitelist","reason":"trusted"}' http://localhost:5000/api/v1/webhook`
-    - *Note: If no IP is provided for the whitelist action, the caller's source IP is used.*
+- **`POST /api/v1/webhook`**: Authenticated webhook. Supports `ban`, `unban`, `unban-ip`, `whitelist`, and `selfwhitelist` actions.
+    - **Actions**:
+        - `ban`: Blocks an IP. Use `persist: true` for permanent storage.
+        - `unban` / `unban-ip`: Removes an IP from the blocklist.
+        - `whitelist`: Adds an IP to the whitelist.
+        - `selfwhitelist`: Whitelists the caller's source IP.
+    - **Parameters**: `ip`, `act`, `reason`, `persist` (bool).
+    - **Example (Block)**: `curl -X POST -H "Authorization: Bearer YOUR_TOKEN" -H "Content-Type: application/json" -d '{"ip":"1.2.3.4","act":"ban","reason":"manual","persist":false}' http://localhost:5000/api/v1/webhook`
+    - **Example (Self-Whitelist)**: `curl -X POST -H "Authorization: Bearer YOUR_TOKEN" -H "Content-Type: application/json" -d '{"act":"selfwhitelist","reason":"homelab"}' http://localhost:5000/api/v1/webhook`
+    - *Note: For `selfwhitelist`, the system automatically detects your source IP via `X-Forwarded-For` or `CF-Connecting-IP` (if trusted proxies are configured).*
 
 ### Data & Stats
 - **`GET /api/v1/ips`**: Paginated list of blocked IPs with advanced filters.
@@ -128,6 +136,7 @@ The application is configured via environment variables:
 | `COOKIE_SECURE` | Force session cookies to be `Secure` (requires HTTPS) | `false` |
 | `COOKIE_SAMESITE_STRICT` | Set session cookie SameSite policy to `Strict` | `false` |
 | `ENABLE_OUTBOUND_WEBHOOKS` | Master switch for outbound notifications | `false` |
+| `AUDIT_LOG_LIMIT_PER_IP` | Max audit trail entries kept per IP | `100` |
 | `RATE_LIMIT` | Global API rate limit (requests) | `500` |
 | `RATE_PERIOD` | Rate limit window (seconds) | `30` |
 | `RATE_LIMIT_LOGIN` | Rate limit for login attempts | `10` |
