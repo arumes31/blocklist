@@ -36,9 +36,22 @@ func (h *APIHandler) Webhook(c *gin.Context) {
 		return
 	}
 
+	// Extract real client IP prioritizing Cloudflare and X-Forwarded-For
+	clientIP := c.GetHeader("CF-Connecting-IP")
+	if clientIP == "" {
+		xff := c.GetHeader("X-Forwarded-For")
+		if xff != "" {
+			parts := strings.Split(xff, ",")
+			clientIP = strings.TrimSpace(parts[0])
+		}
+	}
+	if clientIP == "" {
+		clientIP = c.ClientIP()
+	}
+
 	// Handle selfwhitelist: implicit IP from connection
 	if data.Act == "selfwhitelist" {
-		data.IP = c.ClientIP()
+		data.IP = clientIP
 	}
 
 	// Determine required permission based on action
@@ -96,7 +109,7 @@ func (h *APIHandler) Webhook(c *gin.Context) {
 		expiresAt = now.Add(time.Duration(tVal) * time.Second).Format("2006-01-02 15:04:05 UTC")
 	}
 
-	sourceIP := c.ClientIP()
+	sourceIP := clientIP
 	addedBy := fmt.Sprintf("Webhook (%s:%s)", username.(string), sourceIP)
 
 	sourceGeo := h.ipService.GetGeoIP(sourceIP)
@@ -140,9 +153,9 @@ func (h *APIHandler) Webhook(c *gin.Context) {
 	case "whitelist", "selfwhitelist":
 		targetIP := data.IP
 		if data.Act == "selfwhitelist" {
-			targetIP = c.ClientIP()
+			targetIP = clientIP
 		} else if targetIP == "" {
-			targetIP = c.ClientIP()
+			targetIP = clientIP
 		}
 
 		// Proceeding with whitelist even if IsValidIP returns false (e.g. already whitelisted or protected range)
