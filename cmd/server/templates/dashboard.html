@@ -239,7 +239,8 @@
             to {
                 transform: translateX(0);
                 opacity: 1;
-            }}
+            }
+        }
 
         .toast.success {
             border-left: 4px solid var(--success-color);
@@ -265,7 +266,8 @@
 
             100% {
                 background-color: transparent;
-            }}
+            }
+        }
 
         /* New entry pulse animation */
         .pulse-start {
@@ -300,7 +302,8 @@
             100% {
                 box-shadow: 0 0 0 0 rgba(255, 77, 77, 0);
                 opacity: 0.6;
-            }}
+            }
+        }
 
         .slide-in {
             animation: slideInRow 300ms ease-out;
@@ -315,7 +318,8 @@
             to {
                 transform: translateY(0);
                 opacity: 1;
-            }}
+            }
+        }
 
         /* Dashboard enhancements */
         .status-chip {
@@ -367,7 +371,8 @@
         @keyframes spin {
             to {
                 transform: rotate(360deg);
-            }}
+            }
+        }
 
         .loading {
             text-align: center;
@@ -1273,6 +1278,7 @@
                     <tr>
                         <th style="width: 40px;"><input type="checkbox" id="selectAll" onclick="toggleSelectAll(this)">
                         </th>
+                        <th class="col-ip">IP</th>
                         <th class="col-ts">Date Added</th>
                         <th class="col-exp">Expires At</th>
                         <th>Reason</th>
@@ -1352,7 +1358,7 @@
         // UI Event Listeners
         document.getElementById('closePanelBtn')?.addEventListener('click', closeSidePanel);
 
-        let total = parseInt(document.getElementById('total-ips-count').innerText || '0');
+        let total = parseInt(document.getElementById('stat-active').innerText || '0');
         let cursor = null; // server-provided cursor for next page
         let currentFilters = {
             query: "",
@@ -1364,7 +1370,7 @@
         let inflight = null; // AbortController for in-flight fetch
         let paused = false;
         let updateQueue = [];
-        let lastBlockTime = {{ if .stats.last_block_ts }}{{ .stats.last_block_ts }} {{ else }} 0{{ end }};
+        let lastBlockTime = 0;
         const tbody = document.getElementById('ipTableBody');
 
         function rowHTML(ip, data) {
@@ -1493,7 +1499,8 @@
             `;
             } catch (e) {
                 content.innerHTML = '<div style="color:var(--primary-red)">Failed to load details.</div>';
-            }}
+            }
+        }
 
         function closeSidePanel() {
             document.getElementById('sidePanel').classList.remove('active');
@@ -1503,13 +1510,16 @@
             document.getElementById('countryPopup').classList.toggle('active');
         }
 
-        // Close dropdown when clicking outside
+        // Close dropdowns when clicking outside
         document.addEventListener('click', function (event) {
-            const dropdown = document.querySelector('.country-dropdown');
-            const popup = document.getElementById('countryPopup');
-            if (dropdown && !dropdown.contains(event.target)) {
-                popup.classList.remove('active');
-            }});
+            // Generalize for all dropdowns with the .country-dropdown class
+            document.querySelectorAll('.country-dropdown').forEach(dropdown => {
+                const popup = dropdown.querySelector('.country-popup');
+                if (popup && popup.classList.contains('active') && !dropdown.contains(event.target)) {
+                    popup.classList.remove('active');
+                }
+            });
+        });
 
         function filterCountryList() {
             const search = document.getElementById('countrySearch').value.toLowerCase();
@@ -1520,7 +1530,8 @@
                     opt.style.display = 'flex';
                 } else {
                     opt.style.display = 'none';
-                }});
+                }
+            });
         }
 
         async function fetchPage(nextCursor) {
@@ -1571,6 +1582,7 @@
         async function init() {
             loadFromURL();
             renderChips();
+            refreshStats(); // Load initial stats including lastBlockTime
             const page = await fetchPage(null);
             items = page.items;
             cursor = page.next;
@@ -1608,6 +1620,7 @@
         async function refreshStats() {
             try {
                 const hr = await fetch('/health');
+                if (!hr.ok) throw new Error(`Health check failed: ${hr.status}`);
                 const hdata = await hr.json();
                 const dot = document.getElementById('health-dot');
                 if (hdata.status === 'UP') {
@@ -1618,8 +1631,8 @@
                     dot.title = 'System Health: ' + hdata.status;
                 }
 
-                const r = await fetch('/api/v1/stats', { headers: { 'Accept': 'application/json' }});
-                if (!r.ok) return;
+                const r = await fetch('/api/v1/stats', { headers: { 'Accept': 'application/json' } });
+                if (!r.ok) throw new Error(`Stats fetch failed: ${r.status}`);
                 const s = await r.json();
                 if (typeof s.hour === 'number') document.getElementById('stat-hour').textContent = s.hour;
                 if (typeof s.day === 'number') {
@@ -1680,7 +1693,17 @@
                         <span style="color:var(--secondary-color);">${r.reason}:</span> ${r.count}
                     </div>
                 `).join('');
-                }} catch (_) { }}
+                }
+            } catch (err) {
+                console.error("refreshStats error:", err);
+                // Optionally show visual feedback of the failure
+                const dot = document.getElementById('health-dot');
+                if (dot) {
+                    dot.style.background = 'orange';
+                    dot.title = 'Stats refresh failed: ' + err.message;
+                }
+            }
+        }
         setInterval(refreshStats, 15000);
 
         // WebSocket differential updates
@@ -1698,7 +1721,8 @@
             chip.classList.remove('live', 'paused', 'offline');
             if (paused) { chip.classList.add('paused'); chip.textContent = 'PAUSED'; return; }
             if (mode === 'offline') { chip.classList.add('offline'); chip.textContent = 'OFFLINE'; }
-            else { chip.classList.add('live'); chip.textContent = 'LIVE'; }}
+            else { chip.classList.add('live'); chip.textContent = 'LIVE'; }
+        }
 
         function applyMessage(msg) {
             if (msg.action === 'block') {
@@ -1745,7 +1769,8 @@
                 if (idx >= 0) items.splice(idx, 1);
                 updateTotalCount(-1);
                 showToast(`IP Unblocked: ${ip}`, 'success');
-            }}
+            }
+        }
 
         function updateTotalCount(delta) {
             const el = document.getElementById('total-ips-count');
@@ -1868,7 +1893,8 @@
                     setTimeout(() => window.location.reload(), 1000);
                 } else {
                     showToast(data.error || "Failed to save view", "danger");
-                }});
+                }
+            });
         }
 
         function renderChips() {
@@ -1901,7 +1927,8 @@
 
                         chip.innerHTML = `<span>${key}: ${label}</span> <span style="cursor:pointer; font-weight:bold;" onclick="removeFilter('${key}')">×</span>`;
                         container.appendChild(chip);
-                    }}
+                    }
+                }
             });
         }
 
@@ -1921,7 +1948,8 @@
                     checkboxes.forEach(cb => cb.checked = false);
                 } else {
                     el.value = "";
-                }}
+                }
+            }
             applyServerSearch();
         }
 
@@ -1942,7 +1970,8 @@
                         params.append(key, new Date(val).toISOString());
                     } else {
                         params.append(key, val);
-                    }}
+                    }
+                }
             });
             window.location.href = `/api/v1/ips/export?${params.toString()}`;
         }
@@ -1956,7 +1985,8 @@
             if (e.key === 'Escape') {
                 document.querySelectorAll('.modal').forEach(m => m.style.display = 'none');
                 closeSidePanel();
-            }});
+            }
+        });
 
         function showToast(message, type = 'success') {
             const container = document.getElementById('toast-container');
@@ -1994,7 +2024,8 @@
                 count.textContent = selected;
             } else {
                 bar.style.display = 'none';
-            }}
+            }
+        }
 
         window.clearSelection = function () {
             const checkboxes = document.querySelectorAll('.ip-checkbox');
@@ -2022,7 +2053,8 @@
                     updateBulkUI();
                 } else {
                     showToast(data.error || 'Bulk unblock failed', 'danger');
-                }});
+                }
+            });
         }
 
         // Wire controls
@@ -2039,7 +2071,8 @@
                 setStatus('paused');
                 btn.textContent = 'Resume';
                 btn.classList.add('btn-danger');
-            }});
+            }
+        });
 
         document.getElementById('clearFilter').addEventListener('click', () => {
             const input = document.getElementById('filterInput');
@@ -2074,7 +2107,8 @@
                     document.getElementById('blockTTL').value = '';
                 } else {
                     showToast(data.status || 'Failed to block', 'danger');
-                }});
+                }
+            });
         }
     </script>
 

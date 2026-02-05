@@ -22,6 +22,7 @@ import (
 	"github.com/golang-migrate/migrate/v4/source/iofs"
 	"github.com/rs/zerolog"
 	zlog "github.com/rs/zerolog/log"
+	"golang.org/x/crypto/hkdf"
 
 	"blocklist/internal/api"
 	"blocklist/internal/app"
@@ -76,14 +77,20 @@ func main() {
 	cfg := config.Load()
 
 	// Ensure SECRET_KEY is stable and correctly sized for AES-256 (32 bytes)
-	// We use SHA-256 to derive two distinct keys from the single input secret.
-	hash := sha256.New()
-	hash.Write([]byte(cfg.SecretKey))
-	authKey := hash.Sum(nil) // 32 bytes for signing
+	// We use HKDF to derive two distinct keys from the single input secret.
+	// 1. Auth Key (Context: "blocklist_auth_key")
+	authKDF := hkdf.New(sha256.New, []byte(cfg.SecretKey), nil, []byte("blocklist_auth_key"))
+	authKey := make([]byte, 32)
+	if _, err := io.ReadFull(authKDF, authKey); err != nil {
+		zlog.Fatal().Err(err).Msg("Failed to derive auth key")
+	}
 
-	hash.Reset()
-	hash.Write([]byte(cfg.SecretKey + "_encryption"))
-	blockKey := hash.Sum(nil) // 32 bytes for encryption
+	// 2. Encryption Key (Context: "blocklist_encryption_key")
+	encKDF := hkdf.New(sha256.New, []byte(cfg.SecretKey), nil, []byte("blocklist_encryption_key"))
+	blockKey := make([]byte, 32)
+	if _, err := io.ReadFull(encKDF, blockKey); err != nil {
+		zlog.Fatal().Err(err).Msg("Failed to derive encryption key")
+	}
 
 	if !cfg.LogWeb {
 		zerolog.SetGlobalLevel(zerolog.InfoLevel)
@@ -264,9 +271,10 @@ func main() {
 		sameSite = http.SameSiteStrictMode
 	}
 
-	// Automatically enable Secure cookies if HTTPS is forced or behind Cloudflare
+	// Automatically enable Secure cookies if HTTPS is forced.
+	// We don't force it solely on UseCloudflare because Cloudflare can be used with HTTP.
 	cookieSecure := cfg.CookieSecure
-	if cfg.ForceHTTPS || cfg.UseCloudflare {
+	if cfg.ForceHTTPS {
 		cookieSecure = true
 	}
 

@@ -34,7 +34,7 @@ func NewHub(rdb *redis.Client) *Hub {
 func (h *Hub) Run() {
 	ctx := context.Background()
 	pubsub := h.redis.Subscribe(ctx, h.channel)
-	defer pubsub.Close()
+	defer func() { _ = pubsub.Close() }()
 
 	ch := pubsub.Channel()
 
@@ -50,7 +50,7 @@ func (h *Hub) Run() {
 			h.mu.Lock()
 			if _, ok := h.clients[client]; ok {
 				delete(h.clients, client)
-				client.Close()
+				_ = client.Close()
 			}
 			h.mu.Unlock()
 		case msg := <-ch:
@@ -58,7 +58,7 @@ func (h *Hub) Run() {
 			for client := range h.clients {
 				err := client.WriteMessage(websocket.TextMessage, []byte(msg.Payload))
 				if err != nil {
-					client.Close()
+					_ = client.Close()
 					delete(h.clients, client)
 				}
 			}
@@ -73,7 +73,7 @@ func (h *Hub) BroadcastEvent(action string, data interface{}) {
 		"data":   data,
 	}
 	msg, _ := json.Marshal(event)
-	
+
 	err := h.redis.Publish(context.Background(), h.channel, msg).Err()
 	if err != nil {
 		zlog.Error().Err(err).Msg("Failed to publish event to Redis")

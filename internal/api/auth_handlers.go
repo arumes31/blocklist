@@ -53,8 +53,8 @@ func (h *APIHandler) AuthMiddleware() gin.HandlerFunc {
 					if token.ExpiresAt != nil {
 						expiresAt, err := time.Parse(time.RFC3339, *token.ExpiresAt)
 						if err != nil {
-							zlog.Error().Err(err).Str("token", token.Name).Msg("Failed to parse token expiration")
-							c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal authentication error"})
+							zlog.Error().Err(err).Str("token", token.Name).Msg("Failed to parse token expiration, treating as expired")
+							c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token expiration format"})
 							c.Abort()
 							return
 						}
@@ -318,7 +318,7 @@ func (h *APIHandler) generateQRWithLogo(url string) ([]byte, error) {
 		// Fallback to plain QR if logo not found
 		return qr.PNG(256)
 	}
-	defer logoFile.Close()
+	defer func() { _ = logoFile.Close() }()
 
 	logoImg, _, err := image.Decode(logoFile)
 	if err != nil {

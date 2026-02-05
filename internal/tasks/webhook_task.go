@@ -6,15 +6,16 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/hibiken/asynq"
 	"blocklist/internal/models"
 	"blocklist/internal/repository"
-	"net/http"
 	"bytes"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
 	"io"
+	"net/http"
+
+	"github.com/hibiken/asynq"
 )
 
 const (
@@ -66,19 +67,19 @@ func (h *WebhookTaskHandler) ProcessTask(ctx context.Context, t *asynq.Task) err
 	// For now, we'll assume we need to re-fetch the webhook details from DB or cache.
 	// Since GetActiveWebhooks returns a list, let's implement a GetWebhookByID in repository or find it.
 	// For simplicity, we might iterate or add a helper.
-	// Optimization: If the payload contained URL/Secret, we wouldn't need a DB lookup, 
+	// Optimization: If the payload contained URL/Secret, we wouldn't need a DB lookup,
 	// but we risk sending to a deleted webhook. Let's look it up.
-	
+
 	// Since we don't have GetWebhookByID yet, we can add it or scan.
 	// Let's rely on the payload having enough info if we trust the enqueuer, OR add the method.
 	// Let's add GetWebhookByID to PostgresRepository.
-	
+
 	// Temporarily: we will fetch all active and find ours.
 	webhooks, err := h.pgRepo.GetActiveWebhooks()
 	if err != nil {
 		return fmt.Errorf("failed to fetch webhooks: %v", err)
 	}
-	
+
 	var webhook *models.OutboundWebhook
 	for _, wh := range webhooks {
 		if wh.ID == p.WebhookID {
@@ -86,7 +87,7 @@ func (h *WebhookTaskHandler) ProcessTask(ctx context.Context, t *asynq.Task) err
 			break
 		}
 	}
-	
+
 	if webhook == nil {
 		// Webhook no longer active or deleted
 		return nil // Do not retry
@@ -99,7 +100,7 @@ func (h *WebhookTaskHandler) ProcessTask(ctx context.Context, t *asynq.Task) err
 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Blocklist-Event", p.Event)
-	
+
 	// Attempt tracking is handled by Asynq automatically via Retried field if we wanted to access it,
 	// but for our custom headers:
 	retryCount, _ := asynq.GetRetryCount(ctx)
@@ -113,7 +114,7 @@ func (h *WebhookTaskHandler) ProcessTask(ctx context.Context, t *asynq.Task) err
 	}
 
 	resp, err := h.client.Do(req)
-	
+
 	logEntry := models.WebhookLog{
 		WebhookID: webhook.ID,
 		Event:     p.Event,
@@ -126,11 +127,11 @@ func (h *WebhookTaskHandler) ProcessTask(ctx context.Context, t *asynq.Task) err
 		_ = h.pgRepo.LogWebhookDelivery(logEntry)
 		return fmt.Errorf("request failed: %v", err)
 	}
-	
+
 	logEntry.StatusCode = resp.StatusCode
 	body, _ := io.ReadAll(resp.Body)
 	logEntry.ResponseBody = string(body)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	_ = h.pgRepo.LogWebhookDelivery(logEntry)
 

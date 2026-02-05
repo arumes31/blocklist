@@ -34,10 +34,9 @@ func TestAPIHandler_Whitelist(t *testing.T) {
 }
 
 func TestAPIHandler_AddWhitelist(t *testing.T) {
-	h, rRepo, _, _, ipService := setupTest()
+	h, _, _, _, ipService := setupTest()
 
 	ipService.On("WhitelistIP", mock.Anything, "5.6.7.8", "manual", "admin").Return(nil)
-	rRepo.On("GetWhitelistedIPs").Return(map[string]models.WhitelistEntry{}, nil) // called to refresh table
 
 	w := httptest.NewRecorder()
 	c, _ := setupHTMLTest(w)
@@ -50,6 +49,7 @@ func TestAPIHandler_AddWhitelist(t *testing.T) {
 	h.AddWhitelist(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
+	assert.JSONEq(t, `{"status":"success"}`, w.Body.String())
 }
 
 func TestAPIHandler_RemoveWhitelist(t *testing.T) {
@@ -66,6 +66,7 @@ func TestAPIHandler_RemoveWhitelist(t *testing.T) {
 	h.RemoveWhitelist(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
+	assert.JSONEq(t, `{"status":"success"}`, w.Body.String())
 }
 
 func TestAPIHandler_JSONWhitelists(t *testing.T) {

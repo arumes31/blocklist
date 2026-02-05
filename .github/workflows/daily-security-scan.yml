@@ -1,5 +1,7 @@
 name: Daily Security Scan
 
+permissions: read-all
+
 on:
   schedule:
     - cron: '0 0 * * *'

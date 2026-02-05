@@ -38,13 +38,14 @@ func (h *APIHandler) Webhook(c *gin.Context) {
 
 	// Determine required permission based on action
 	requiredPerm := ""
-	if data.Act == "ban" || data.Act == "ban-ip" {
+	switch data.Act {
+	case "ban", "ban-ip":
 		requiredPerm = "block_ips"
-	} else if data.Act == "unban" || data.Act == "delete-ban" {
+	case "unban", "delete-ban", "unban-ip":
 		requiredPerm = "unblock_ips"
-	} else if data.Act == "whitelist" {
+	case "whitelist", "selfwhitelist":
 		requiredPerm = "whitelist_ips"
-	} else {
+	default:
 		c.JSON(501, gin.H{"status": "action not implemented"})
 		return
 	}
@@ -105,7 +106,8 @@ func (h *APIHandler) Webhook(c *gin.Context) {
 		ThreatScore: h.ipService.CalculateThreatScore(data.IP, data.Reason),
 	}
 
-	if data.Act == "ban" || data.Act == "ban-ip" {
+	switch data.Act {
+	case "ban", "ban-ip":
 		if data.Persist && h.pgRepo != nil {
 			_ = h.pgRepo.CreatePersistentBlock(data.IP, entry)
 		}
@@ -122,15 +124,19 @@ func (h *APIHandler) Webhook(c *gin.Context) {
 			})
 		}
 		c.JSON(200, gin.H{"status": "IP banned", "ip": data.IP})
-	} else if data.Act == "unban" || data.Act == "delete-ban" {
+
+	case "unban", "delete-ban", "unban-ip":
 		_ = h.pgRepo.LogAction(addedBy, "UNBLOCK", data.IP, "webhook unban")
 		if h.hub != nil {
 			h.hub.BroadcastEvent("unblock", map[string]interface{}{"ip": data.IP})
 		}
 		c.JSON(200, gin.H{"status": "IP unbanned", "ip": data.IP})
-	} else if data.Act == "whitelist" {
+
+	case "whitelist", "selfwhitelist":
 		targetIP := data.IP
-		if targetIP == "" {
+		if data.Act == "selfwhitelist" {
+			targetIP = c.ClientIP()
+		} else if targetIP == "" {
 			targetIP = c.ClientIP()
 		}
 

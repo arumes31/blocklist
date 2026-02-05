@@ -24,6 +24,8 @@ import (
 	zlog "github.com/rs/zerolog/log"
 )
 
+const MaxPageSize = 1000
+
 type IPService struct {
 	redisRepo     *repository.RedisRepository
 	pgRepo        *repository.PostgresRepository
@@ -133,7 +135,7 @@ func (s *IPService) ReloadReaders() {
 			old := s.geoipReader
 			s.geoipReader = reader
 			if old != nil {
-				old.Close()
+				_ = old.Close()
 			}
 			zlog.Info().Msg("IPService: Reloaded GeoLite2-City")
 		}
@@ -145,7 +147,7 @@ func (s *IPService) ReloadReaders() {
 			old := s.asnReader
 			s.asnReader = aReader
 			if old != nil {
-				old.Close()
+				_ = old.Close()
 			}
 			zlog.Info().Msg("IPService: Reloaded GeoLite2-ASN")
 		}
@@ -269,6 +271,9 @@ func (s *IPService) GetTotalCount(ctx context.Context) int {
 // ListIPsPaginated returns items ordered by recency with cursor-based pagination and optional query filter.
 // Fallback implementation using Redis hash if sorted index is unavailable.
 func (s *IPService) ListIPsPaginated(ctx context.Context, limit int, cursor string, query string) ([]map[string]interface{}, string, int, error) {
+	if limit > MaxPageSize {
+		limit = MaxPageSize
+	}
 	// If ZSET exists, use score-based cursor. Otherwise fallback to hash scan.
 	zs, next, zerr := s.redisRepo.ZPageByScoreDesc(limit, cursor)
 	if zerr == nil && len(zs) > 0 {
@@ -286,7 +291,7 @@ func (s *IPService) ListIPsPaginated(ctx context.Context, limit int, cursor stri
 				if !strings.Contains(strings.ToLower(ip), q) &&
 					!strings.Contains(strings.ToLower(entry.Reason), q) &&
 					!strings.Contains(strings.ToLower(entry.AddedBy), q) &&
-					!(entry.Geolocation != nil && strings.Contains(strings.ToLower(entry.Geolocation.Country), q)) {
+					(entry.Geolocation == nil || !strings.Contains(strings.ToLower(entry.Geolocation.Country), q)) {
 					continue
 				}
 			}
@@ -316,7 +321,7 @@ func (s *IPService) ListIPsPaginated(ctx context.Context, limit int, cursor stri
 			if !strings.Contains(strings.ToLower(ip), q) &&
 				!strings.Contains(strings.ToLower(e.Reason), q) &&
 				!strings.Contains(strings.ToLower(e.AddedBy), q) &&
-				!(e.Geolocation != nil && strings.Contains(strings.ToLower(e.Geolocation.Country), q)) {
+				(e.Geolocation == nil || !strings.Contains(strings.ToLower(e.Geolocation.Country), q)) {
 				continue
 			}
 		}
@@ -512,7 +517,7 @@ func (s *IPService) ExportIPs(ctx context.Context, query string, country string,
 			if !strings.Contains(strings.ToLower(ip), q) &&
 				!strings.Contains(strings.ToLower(entry.Reason), q) &&
 				!strings.Contains(strings.ToLower(entry.AddedBy), q) &&
-				!(entry.Geolocation != nil && strings.Contains(strings.ToLower(entry.Geolocation.Country), q)) {
+				(entry.Geolocation == nil || !strings.Contains(strings.ToLower(entry.Geolocation.Country), q)) {
 				continue
 			}
 		}
@@ -637,6 +642,9 @@ func (s *IPService) ListIPsPaginatedAdvanced(ctx context.Context, limit int, cur
 	}
 
 	// We'll fetch a larger batch if filtering is active to try and fulfill 'limit'
+	if limit > MaxPageSize {
+		limit = MaxPageSize
+	}
 	fetchLimit := limit
 	if query != "" || country != "" || addedBy != "" || from != "" || to != "" {
 		fetchLimit = limit * 2 // Fetch more to account for filtering
@@ -650,7 +658,6 @@ func (s *IPService) ListIPsPaginatedAdvanced(ctx context.Context, limit int, cur
 		tot := s.GetTotalCount(ctx)
 		items := make([]map[string]interface{}, 0, limit)
 		q := strings.ToLower(strings.TrimSpace(query))
-
 		countryList := []string{}
 		if country != "" {
 			for _, c := range strings.Split(country, ",") {
@@ -659,8 +666,15 @@ func (s *IPService) ListIPsPaginatedAdvanced(ctx context.Context, limit int, cur
 				}
 			}
 		}
-
 		addedBy = strings.ToLower(strings.TrimSpace(addedBy))
+
+		// Optimize CIDR parsing: parse once outside the loop
+		var queryNetwork *net.IPNet
+		if q != "" {
+			if _, network, err := net.ParseCIDR(query); err == nil {
+				queryNetwork = network
+			}
+		}
 
 		for _, z := range zs {
 			if len(items) >= limit {
@@ -684,12 +698,10 @@ func (s *IPService) ListIPsPaginatedAdvanced(ctx context.Context, limit int, cur
 					matches = true
 				}
 
-				// 2. Smart Match: CIDR
-				if !matches {
-					if _, network, err := net.ParseCIDR(query); err == nil {
-						if parsedIP := net.ParseIP(ip); parsedIP != nil && network.Contains(parsedIP) {
-							matches = true
-						}
+				// 2. Smart Match: CIDR (using pre-parsed network)
+				if !matches && queryNetwork != nil {
+					if parsedIP := net.ParseIP(ip); parsedIP != nil && queryNetwork.Contains(parsedIP) {
+						matches = true
 					}
 				}
 
@@ -756,6 +768,14 @@ func (s *IPService) exportFallback(ctx context.Context, query string, country st
 	}
 	addedBy = strings.ToLower(strings.TrimSpace(addedBy))
 
+	// Optimize CIDR parsing
+	var queryNetwork *net.IPNet
+	if q != "" {
+		if _, network, err := net.ParseCIDR(query); err == nil {
+			queryNetwork = network
+		}
+	}
+
 	for ip, raw := range all {
 		var entry models.IPEntry
 		if err := json.Unmarshal([]byte(raw), &entry); err != nil {
@@ -771,11 +791,9 @@ func (s *IPService) exportFallback(ctx context.Context, query string, country st
 				matches = true
 			}
 
-			if !matches {
-				if _, network, err := net.ParseCIDR(query); err == nil {
-					if parsedIP := net.ParseIP(ip); parsedIP != nil && network.Contains(parsedIP) {
-						matches = true
-					}
+			if !matches && queryNetwork != nil {
+				if parsedIP := net.ParseIP(ip); parsedIP != nil && queryNetwork.Contains(parsedIP) {
+					matches = true
 				}
 			}
 

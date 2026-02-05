@@ -143,3 +143,20 @@ func TestIPService_Enhanced(t *testing.T) {
 		}
 	})
 }
+
+func TestIPService_LimitCapping(t *testing.T) {
+	mr, _ := miniredis.Run()
+	defer mr.Close()
+	port, _ := strconv.Atoi(mr.Port())
+	svc := NewIPService(&config.Config{}, repository.NewRedisRepository(mr.Host(), port, "", 0), nil)
+	ctx := context.Background()
+
+	limit := 100000
+	items, _, _, err := svc.ListIPsPaginated(ctx, limit, "", "")
+	if err != nil {
+		t.Fatalf("ListIPsPaginated failed: %v", err)
+	}
+	if len(items) > MaxPageSize {
+		t.Errorf("expected at most %d items, got %d", MaxPageSize, len(items))
+	}
+}

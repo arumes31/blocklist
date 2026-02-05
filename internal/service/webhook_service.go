@@ -109,6 +109,6 @@ func (s *WebhookService) Notify(ctx context.Context, event string, data interfac
 
 func (s *WebhookService) Close() {
 	if s.asynqClient != nil {
-		s.asynqClient.Close()
+		_ = s.asynqClient.Close()
 	}
 }
