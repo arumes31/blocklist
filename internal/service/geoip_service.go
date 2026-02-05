@@ -6,6 +6,7 @@ import (
 
 	"blocklist/internal/config"
 	"blocklist/internal/tasks"
+
 	"github.com/hibiken/asynq"
 )
 
@@ -30,7 +31,7 @@ func (s *GeoIPService) Start() {
 			s.EnqueueUpdate(edition)
 		}
 	}
-	
+
 	// Note: Scheduled updates are now handled by asynq.Scheduler in main.go
 }
 
@@ -57,6 +58,6 @@ func (s *GeoIPService) getDBPath(edition string) string {
 
 func (s *GeoIPService) Close() {
 	if s.asynqClient != nil {
-		s.asynqClient.Close()
+		_ = s.asynqClient.Close()
 	}
 }
