@@ -24,6 +24,8 @@ import (
 	zlog "github.com/rs/zerolog/log"
 )
 
+const MaxPageSize = 1000
+
 type IPService struct {
 	redisRepo     *repository.RedisRepository
 	pgRepo        *repository.PostgresRepository
@@ -269,6 +271,9 @@ func (s *IPService) GetTotalCount(ctx context.Context) int {
 // ListIPsPaginated returns items ordered by recency with cursor-based pagination and optional query filter.
 // Fallback implementation using Redis hash if sorted index is unavailable.
 func (s *IPService) ListIPsPaginated(ctx context.Context, limit int, cursor string, query string) ([]map[string]interface{}, string, int, error) {
+	if limit > MaxPageSize {
+		limit = MaxPageSize
+	}
 	// If ZSET exists, use score-based cursor. Otherwise fallback to hash scan.
 	zs, next, zerr := s.redisRepo.ZPageByScoreDesc(limit, cursor)
 	if zerr == nil && len(zs) > 0 {
@@ -637,6 +642,9 @@ func (s *IPService) ListIPsPaginatedAdvanced(ctx context.Context, limit int, cur
 	}
 
 	// We'll fetch a larger batch if filtering is active to try and fulfill 'limit'
+	if limit > MaxPageSize {
+		limit = MaxPageSize
+	}
 	fetchLimit := limit
 	if query != "" || country != "" || addedBy != "" || from != "" || to != "" {
 		fetchLimit = limit * 2 // Fetch more to account for filtering
