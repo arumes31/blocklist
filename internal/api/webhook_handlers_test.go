@@ -203,6 +203,7 @@ func TestAPIHandler_Webhook(t *testing.T) {
 
 	// We need mocks if it proceeds (it won't currently)
 	// But let's set them up for success path
+	ipService.On("IsValidIP", mock.Anything).Return(true) // Allow any IP validation
 	ipService.On("GetGeoIP", "127.0.0.1").Return(&models.GeoData{Country: "LO"})
 	ipService.On("CalculateThreatScore", "127.0.0.1", "me-no-ip").Return(0)
 	rRepo.On("WhitelistIP", "127.0.0.1", mock.Anything).Return(nil)

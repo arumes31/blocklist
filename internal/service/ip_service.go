@@ -845,12 +845,13 @@ func (s *IPService) exportFallback(ctx context.Context, query string, country st
 }
 
 // BlockIP blocks a single IP.
-func (s *IPService) BlockIP(ctx context.Context, ip string, reason string, username string, actorIP string, persist bool, duration time.Duration) error {
+// BlockIP blocks a single IP.
+func (s *IPService) BlockIP(ctx context.Context, ip string, reason string, username string, actorIP string, persist bool, duration time.Duration) (*models.IPEntry, error) {
 	if s.redisRepo == nil {
-		return nil
+		return nil, nil
 	}
 	if !s.IsValidIP(ip) {
-		return fmt.Errorf("invalid IP")
+		return nil, fmt.Errorf("invalid IP")
 	}
 
 	now := time.Now().UTC()
@@ -893,8 +894,9 @@ func (s *IPService) BlockIP(ctx context.Context, ip string, reason string, usern
 			s.bloomFilter.AddString(ip)
 		}
 		s.bloomMu.Unlock()
+		return &entry, nil
 	}
-	return err
+	return nil, err
 }
 
 // UnblockIP unblocks a single IP.

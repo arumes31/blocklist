@@ -1,6 +1,7 @@
 package api
 
 import (
+	"blocklist/internal/models"
 	"bytes"
 	"encoding/json"
 	"errors"
@@ -18,7 +19,8 @@ func TestAPIHandler_BlockIP(t *testing.T) {
 	h, _, _, _, ipService := setupTest()
 
 	// 1. Success Case
-	ipService.On("BlockIP", mock.Anything, "1.2.3.4", "spam", "admin", "127.0.0.1", true, time.Duration(0)).Return(nil)
+	entry := &models.IPEntry{} // Valid entry for test
+	ipService.On("BlockIP", mock.Anything, "1.2.3.4", "spam", "admin", "127.0.0.1", true, time.Duration(0)).Return(entry, nil)
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
@@ -43,7 +45,7 @@ func TestAPIHandler_BlockIP(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, w2.Code)
 
 	// 3. Service Error
-	ipService.On("BlockIP", mock.Anything, "5.6.7.8", "", "admin", "127.0.0.1", false, time.Duration(0)).Return(errors.New("db error"))
+	ipService.On("BlockIP", mock.Anything, "5.6.7.8", "", "admin", "127.0.0.1", false, time.Duration(0)).Return(nil, errors.New("db error"))
 
 	w3 := httptest.NewRecorder()
 	c3, _ := gin.CreateTestContext(w3)

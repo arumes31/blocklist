@@ -98,11 +98,20 @@ func (h *APIHandler) BlockIP(c *gin.Context) {
 	// Permission check?
 	// Assuming permission middleware already ran.
 
-	err := h.ipService.BlockIP(c.Request.Context(), ip, req.Reason, username.(string), c.ClientIP(), req.Persist, duration)
+	entry, err := h.ipService.BlockIP(c.Request.Context(), ip, req.Reason, username.(string), c.ClientIP(), req.Persist, duration)
 	if err != nil {
 		zlog.Error().Err(err).Msg("Failed to block IP")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to block IP"})
 		return
+	}
+
+	if h.hub != nil && entry != nil {
+		sourceGeo := h.ipService.GetGeoIP(c.ClientIP())
+		h.hub.BroadcastEvent("block", map[string]interface{}{
+			"ip":         ip,
+			"data":       entry,
+			"source_geo": sourceGeo,
+		})
 	}
 
 	c.JSON(http.StatusOK, gin.H{"status": "blocked", "ip": ip})
@@ -133,6 +142,10 @@ func (h *APIHandler) UnblockIP(c *gin.Context) {
 		return
 	}
 
+	if h.hub != nil {
+		h.hub.BroadcastEvent("unblock", map[string]interface{}{"ip": ip})
+	}
+
 	c.JSON(http.StatusOK, gin.H{"status": "unblocked", "ip": ip})
 }
 
@@ -159,6 +172,25 @@ func (h *APIHandler) BulkBlock(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Bulk block failed"})
 		return
 	}
+
+	if h.hub != nil {
+		sourceGeo := h.ipService.GetGeoIP(c.ClientIP())
+		// We need to fetch details for each blocked IP to broadcast
+		// This is slightly inefficient but necessary unless we refactor BulkBlock to return entries
+		for _, ip := range req.IPs {
+			details, err := h.ipService.GetIPDetails(c.Request.Context(), ip)
+			if err == nil {
+				if entry, ok := details["current"]; ok {
+					h.hub.BroadcastEvent("block", map[string]interface{}{
+						"ip":         ip,
+						"data":       entry,
+						"source_geo": sourceGeo,
+					})
+				}
+			}
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{"status": "success", "count": len(req.IPs)})
 }
 
@@ -177,6 +209,13 @@ func (h *APIHandler) BulkUnblock(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Bulk unblock failed"})
 		return
 	}
+
+	if h.hub != nil {
+		for _, ip := range req.IPs {
+			h.hub.BroadcastEvent("unblock", map[string]interface{}{"ip": ip})
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{"status": "success", "count": len(req.IPs)})
 }
 
@@ -217,7 +256,12 @@ func (h *APIHandler) AddWhitelist(c *gin.Context) {
 	}
 
 	// Try JSON first
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if c.ContentType() == "application/json" {
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON"})
+			return
+		}
+	} else {
 		// Fallback to Form
 		req.IP = c.PostForm("ip")
 		req.Note = c.PostForm("note")

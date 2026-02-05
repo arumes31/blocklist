@@ -39,9 +39,12 @@ func (m *MockIPService) IsBlocked(ipStr string) bool {
 	return args.Bool(0)
 }
 
-func (m *MockIPService) BlockIP(ctx context.Context, ip string, reason string, username string, actorIP string, persist bool, duration time.Duration) error {
+func (m *MockIPService) BlockIP(ctx context.Context, ip string, reason string, username string, actorIP string, persist bool, duration time.Duration) (*models.IPEntry, error) {
 	args := m.Called(ctx, ip, reason, username, actorIP, persist, duration)
-	return args.Error(0)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.IPEntry), args.Error(1)
 }
 
 func (m *MockIPService) UnblockIP(ctx context.Context, ip string, username string) error {
