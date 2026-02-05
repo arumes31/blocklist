@@ -461,13 +461,27 @@ func (h *APIHandler) OpenAPI(c *gin.Context) {
 								"schema": gin.H{
 									"type": "object",
 									"properties": gin.H{
-										"ip":      gin.H{"type": "string", "example": "1.2.3.4", "description": "IPv4 or IPv6 address. Required for all actions except 'selfwhitelist' (which auto-detects caller IP)."},
-										"act":     gin.H{"type": "string", "enum": []string{"ban", "unban", "whitelist", "ban-ip", "unban-ip", "selfwhitelist"}, "description": "Action to perform"},
 										"reason":  gin.H{"type": "string", "example": "Brute force attack", "description": "Reason for the action"},
 										"ttl":     gin.H{"type": "integer", "example": 86400, "description": "Time-to-live in seconds (ephemeral blocks only). Defaults to 86400 (24h) for bans if persist is false."},
 										"persist": gin.H{"type": "boolean", "default": false, "description": "If true, IP is stored in the database indefinitely"},
 									},
-									"required": []string{"act"},
+									"oneOf": []gin.H{
+										{
+											"type": "object",
+											"properties": gin.H{
+												"act": gin.H{"type": "string", "enum": []string{"selfwhitelist"}, "description": "Whitelists the caller's source IP."},
+											},
+											"required": []string{"act"},
+										},
+										{
+											"type": "object",
+											"properties": gin.H{
+												"act": gin.H{"type": "string", "enum": []string{"ban", "unban", "whitelist", "ban-ip", "unban-ip"}, "description": "Enforcement action"},
+												"ip":  gin.H{"type": "string", "example": "1.2.3.4", "description": "IPv4 or IPv6 address. Required for these actions."},
+											},
+											"required": []string{"act", "ip"},
+										},
+									},
 								},
 							},
 						},
