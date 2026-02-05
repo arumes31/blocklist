@@ -141,6 +141,7 @@ func TestAPIHandler_Webhook(t *testing.T) {
 	// Let's assume for this test I send a dummy valid IP to pass validation, verifying the override works.
 	ipService.On("IsValidIP", "1.1.1.1").Return(true)
 	ipService.On("GetGeoIP", "1.1.1.1").Return(&models.GeoData{})
+	ipService.On("CalculateThreatScore", "1.1.1.1", "me").Return(0)
 
 	// But GetGeoIP and Whitelist call will happen on 127.0.0.1
 	ipService.On("GetGeoIP", "127.0.0.1").Return(&models.GeoData{Country: "LO"})
