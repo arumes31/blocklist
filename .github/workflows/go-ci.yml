@@ -1,5 +1,7 @@
 name: Go CI
 
+permissions: read-all
+
 on:
   push:
     branches: [ main, test, v2b_test ]
