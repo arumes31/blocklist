@@ -10,7 +10,7 @@ import (
 // IPServiceProvider defines the interface for IP operations
 type IPServiceProvider interface {
 	IsBlocked(ipStr string) bool
-	BlockIP(ctx context.Context, ip string, reason string, username string, actorIP string, persist bool, duration time.Duration) error
+	BlockIP(ctx context.Context, ip string, reason string, username string, actorIP string, persist bool, duration time.Duration) (*models.IPEntry, error)
 	UnblockIP(ctx context.Context, ip string, username string) error
 	BulkBlock(ctx context.Context, ips []string, reason string, addedBy string, actorIP string, persist bool, ttl int) error
 	BulkUnblock(ctx context.Context, ips []string, actor string) error

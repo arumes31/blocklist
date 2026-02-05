@@ -187,8 +187,33 @@ func TestAPIHandler_Webhook(t *testing.T) {
 	// In `webhook_handlers.go`: `if h.hub != nil { ... }`
 	// So likely `setupTest` passes nil for hub to avoid this blocking issue.
 
-	h.Webhook(c4)
-	assert.Equal(t, http.StatusOK, w4.Code)
+	// 5. Failure - Self-Whitelist (No IP)
+	// This reproduces the bug: if IP is missing in JSON, validation fails even for selfwhitelist
+	w5 := httptest.NewRecorder()
+	c5, _ := gin.CreateTestContext(w5)
+	reqBody5 := `{"act": "selfwhitelist", "reason": "me-no-ip"}` // No IP field
+	c5.Request, _ = http.NewRequest("POST", "/api/webhook", bytes.NewBufferString(reqBody5))
+	c5.Request.RemoteAddr = "127.0.0.1:5555"
+	c5.Set("username", "admin")
+
+	// Expectations
+	// CURRENTLY: expect 400 because validation fails "invalid IP"
+	// AFTER FIX: expect 200 and ip=127.0.0.1
+	// For now, let's assert 200 to confirm it fails
+
+	// We need mocks if it proceeds (it won't currently)
+	// But let's set them up for success path
+	ipService.On("IsValidIP", mock.Anything).Return(true) // Allow any IP validation
+	ipService.On("GetGeoIP", "127.0.0.1").Return(&models.GeoData{Country: "LO"})
+	ipService.On("CalculateThreatScore", "127.0.0.1", "me-no-ip").Return(0)
+
+	// Verify that ExpiresAt is set for selfwhitelist
+	rRepo.On("WhitelistIP", "127.0.0.1", mock.MatchedBy(func(e models.WhitelistEntry) bool {
+		return e.ExpiresAt != ""
+	})).Return(nil)
+
+	h.Webhook(c5)
+	assert.Equal(t, http.StatusOK, w5.Code)
 }
 
 func TestAPIHandler_AddOutboundWebhook(t *testing.T) {

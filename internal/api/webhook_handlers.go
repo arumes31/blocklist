@@ -36,6 +36,11 @@ func (h *APIHandler) Webhook(c *gin.Context) {
 		return
 	}
 
+	// Handle selfwhitelist: implicit IP from connection
+	if data.Act == "selfwhitelist" {
+		data.IP = c.ClientIP()
+	}
+
 	// Determine required permission based on action
 	requiredPerm := ""
 	switch data.Act {
@@ -153,6 +158,11 @@ func (h *APIHandler) Webhook(c *gin.Context) {
 		}
 		if entry.Reason == "" {
 			entry.Reason = "Webhook Whitelist"
+		}
+
+		// Self-whitelist entries expire after 24h
+		if data.Act == "selfwhitelist" {
+			entry.ExpiresAt = now.Add(24 * time.Hour).Format(time.RFC3339)
 		}
 
 		_ = h.redisRepo.WhitelistIP(targetIP, entry)

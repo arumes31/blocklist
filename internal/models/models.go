@@ -24,7 +24,7 @@ type WhitelistEntry struct {
 	Geolocation *GeoData `json:"geolocation"`
 	AddedBy     string   `json:"added_by"`
 	Reason      string   `json:"reason"`
-	ExpiresIn   string   `json:"expires_in,omitempty"`
+	ExpiresAt   string   `json:"expires_at,omitempty"`
 }
 
 type AuditLog struct {

@@ -36,37 +36,67 @@ func TestAPIHandler_Whitelist(t *testing.T) {
 func TestAPIHandler_AddWhitelist(t *testing.T) {
 	h, _, _, _, ipService := setupTest()
 
+	// 1. Success - JSON (New standard)
 	ipService.On("WhitelistIP", mock.Anything, "5.6.7.8", "manual", "admin").Return(nil)
 
 	w := httptest.NewRecorder()
-	c, _ := setupHTMLTest(w)
-
-	form := "ip=5.6.7.8&note=manual"
-	c.Request, _ = http.NewRequest("POST", "/whitelist/add", bytes.NewBufferString(form))
-	c.Request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	c, _ := gin.CreateTestContext(w)
+	reqBody := `{"ip": "5.6.7.8", "reason": "manual"}`
+	c.Request, _ = http.NewRequest("POST", "/whitelist/add", bytes.NewBufferString(reqBody))
+	c.Request.Header.Set("Content-Type", "application/json")
 	c.Set("username", "admin")
 
 	h.AddWhitelist(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.JSONEq(t, `{"status":"success"}`, w.Body.String())
+	ipService.AssertExpectations(t)
+
+	// 2. Success - Form (Legacy/Fallback)
+	ipService.On("WhitelistIP", mock.Anything, "1.2.3.9", "note-val", "admin").Return(nil)
+
+	w2 := httptest.NewRecorder()
+	c2, _ := gin.CreateTestContext(w2)
+	c2.Request, _ = http.NewRequest("POST", "/whitelist/add", bytes.NewBufferString("ip=1.2.3.9&note=note-val"))
+	c2.Request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	c2.Set("username", "admin")
+
+	h.AddWhitelist(c2)
+	assert.Equal(t, http.StatusOK, w2.Code)
 }
 
 func TestAPIHandler_RemoveWhitelist(t *testing.T) {
 	h, _, _, _, ipService := setupTest()
 
+	// 1. Success - JSON (New standard from frontend)
 	ipService.On("RemoveWhitelist", mock.Anything, "1.2.3.4", "admin").Return(nil)
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
-	c.Params = gin.Params{{Key: "ip", Value: "1.2.3.4"}}
-	c.Request, _ = http.NewRequest("DELETE", "/whitelist/remove/1.2.3.4", nil)
+	reqBody := `{"ip": "1.2.3.4"}`
+	c.Request, _ = http.NewRequest("POST", "/whitelist/remove", bytes.NewBufferString(reqBody))
+	c.Request.Header.Set("Content-Type", "application/json")
 	c.Set("username", "admin")
 
 	h.RemoveWhitelist(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.JSONEq(t, `{"status":"success"}`, w.Body.String())
+	ipService.AssertExpectations(t)
+
+	// 2. Success - Param (Legacy/Fallback)
+	ipService.On("RemoveWhitelist", mock.Anything, "1.2.3.5", "admin").Return(nil)
+
+	w2 := httptest.NewRecorder()
+	c2, _ := gin.CreateTestContext(w2)
+	c2.Params = gin.Params{{Key: "ip", Value: "1.2.3.5"}}
+	c2.Request, _ = http.NewRequest("POST", "/whitelist/remove", nil)
+	c2.Set("username", "admin")
+
+	h.RemoveWhitelist(c2)
+
+	assert.Equal(t, http.StatusOK, w2.Code)
+	assert.JSONEq(t, `{"status":"success"}`, w2.Body.String())
 }
 
 func TestAPIHandler_JSONWhitelists(t *testing.T) {

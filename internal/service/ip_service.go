@@ -164,8 +164,18 @@ func (s *IPService) IsValidIP(ipStr string) bool {
 	if s.redisRepo != nil {
 		whitelist, _ := s.redisRepo.GetWhitelistedIPs()
 		if whitelist != nil {
-			if _, ok := whitelist[ipStr]; ok {
-				return false // IP is whitelisted, so it's NOT "valid to block"
+			if entry, ok := whitelist[ipStr]; ok {
+				if entry.ExpiresAt != "" {
+					exp, err := time.Parse(time.RFC3339, entry.ExpiresAt)
+					if err == nil && time.Now().After(exp) {
+						// Entry expired, remove it and treat as not whitelisted
+						_ = s.redisRepo.RemoveFromWhitelist(ipStr)
+					} else {
+						return false // IP is whitelisted (and not expired), so it's NOT "valid to block"
+					}
+				} else {
+					return false // IP is whitelisted (no expiration), so it's NOT "valid to block"
+				}
 			}
 		}
 	}
@@ -845,12 +855,13 @@ func (s *IPService) exportFallback(ctx context.Context, query string, country st
 }
 
 // BlockIP blocks a single IP.
-func (s *IPService) BlockIP(ctx context.Context, ip string, reason string, username string, actorIP string, persist bool, duration time.Duration) error {
+// BlockIP blocks a single IP.
+func (s *IPService) BlockIP(ctx context.Context, ip string, reason string, username string, actorIP string, persist bool, duration time.Duration) (*models.IPEntry, error) {
 	if s.redisRepo == nil {
-		return nil
+		return nil, nil
 	}
 	if !s.IsValidIP(ip) {
-		return fmt.Errorf("invalid IP")
+		return nil, fmt.Errorf("invalid IP")
 	}
 
 	now := time.Now().UTC()
@@ -893,8 +904,9 @@ func (s *IPService) BlockIP(ctx context.Context, ip string, reason string, usern
 			s.bloomFilter.AddString(ip)
 		}
 		s.bloomMu.Unlock()
+		return &entry, nil
 	}
-	return err
+	return nil, err
 }
 
 // UnblockIP unblocks a single IP.

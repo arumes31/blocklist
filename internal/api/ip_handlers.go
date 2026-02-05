@@ -98,11 +98,20 @@ func (h *APIHandler) BlockIP(c *gin.Context) {
 	// Permission check?
 	// Assuming permission middleware already ran.
 
-	err := h.ipService.BlockIP(c.Request.Context(), ip, req.Reason, username.(string), c.ClientIP(), req.Persist, duration)
+	entry, err := h.ipService.BlockIP(c.Request.Context(), ip, req.Reason, username.(string), c.ClientIP(), req.Persist, duration)
 	if err != nil {
 		zlog.Error().Err(err).Msg("Failed to block IP")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to block IP"})
 		return
+	}
+
+	if h.hub != nil && entry != nil {
+		sourceGeo := h.ipService.GetGeoIP(c.ClientIP())
+		h.hub.BroadcastEvent("block", map[string]interface{}{
+			"ip":         ip,
+			"data":       entry,
+			"source_geo": sourceGeo,
+		})
 	}
 
 	c.JSON(http.StatusOK, gin.H{"status": "blocked", "ip": ip})
@@ -133,6 +142,10 @@ func (h *APIHandler) UnblockIP(c *gin.Context) {
 		return
 	}
 
+	if h.hub != nil {
+		h.hub.BroadcastEvent("unblock", map[string]interface{}{"ip": ip})
+	}
+
 	c.JSON(http.StatusOK, gin.H{"status": "unblocked", "ip": ip})
 }
 
@@ -159,6 +172,25 @@ func (h *APIHandler) BulkBlock(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Bulk block failed"})
 		return
 	}
+
+	if h.hub != nil {
+		sourceGeo := h.ipService.GetGeoIP(c.ClientIP())
+		// We need to fetch details for each blocked IP to broadcast
+		// This is slightly inefficient but necessary unless we refactor BulkBlock to return entries
+		for _, ip := range req.IPs {
+			details, err := h.ipService.GetIPDetails(c.Request.Context(), ip)
+			if err == nil {
+				if entry, ok := details["current"]; ok {
+					h.hub.BroadcastEvent("block", map[string]interface{}{
+						"ip":         ip,
+						"data":       entry,
+						"source_geo": sourceGeo,
+					})
+				}
+			}
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{"status": "success", "count": len(req.IPs)})
 }
 
@@ -177,6 +209,13 @@ func (h *APIHandler) BulkUnblock(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Bulk unblock failed"})
 		return
 	}
+
+	if h.hub != nil {
+		for _, ip := range req.IPs {
+			h.hub.BroadcastEvent("unblock", map[string]interface{}{"ip": ip})
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{"status": "success", "count": len(req.IPs)})
 }
 
@@ -198,8 +237,34 @@ func (h *APIHandler) Whitelist(c *gin.Context) {
 		permissions = ""
 	}
 
+	type displayEntry struct {
+		models.WhitelistEntry
+		ExpiresIn string `json:"expires_in"`
+	}
+
+	displayItems := make(map[string]displayEntry)
+	for ip, entry := range items {
+		d := displayEntry{WhitelistEntry: entry}
+		if entry.ExpiresAt != "" {
+			exp, err := time.Parse(time.RFC3339, entry.ExpiresAt)
+			if err == nil {
+				if time.Now().After(exp) {
+					d.ExpiresIn = "EXPIRED"
+				} else {
+					diff := time.Until(exp).Round(time.Minute)
+					d.ExpiresIn = diff.String()
+				}
+			} else {
+				d.ExpiresIn = "ERR"
+			}
+		} else {
+			d.ExpiresIn = "NEVER"
+		}
+		displayItems[ip] = d
+	}
+
 	h.renderHTML(c, http.StatusOK, "whitelist.html", gin.H{
-		"whitelisted_ips": items,
+		"whitelisted_ips": displayItems,
 		"username":        username,
 		"page":            "whitelist",
 		"permissions":     permissions,
@@ -209,24 +274,49 @@ func (h *APIHandler) Whitelist(c *gin.Context) {
 
 func (h *APIHandler) AddWhitelist(c *gin.Context) {
 	username, _ := c.Get("username")
-	ip := c.PostForm("ip")
-	note := c.PostForm("note")
 
-	if ip == "" {
+	var req struct {
+		IP     string `json:"ip"`
+		Note   string `json:"note"`
+		Reason string `json:"reason"` // Frontend sends 'reason', handler used 'note' previously? Service uses 'note'?
+	}
+
+	// Try JSON first
+	if c.ContentType() == "application/json" {
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON"})
+			return
+		}
+	} else {
+		// Fallback to Form
+		req.IP = c.PostForm("ip")
+		req.Note = c.PostForm("note")
+		if req.Note == "" {
+			req.Note = c.PostForm("reason")
+		}
+	}
+
+	// Map reason to note if needed, or vice-versa
+	note := req.Note
+	if note == "" {
+		note = req.Reason
+	}
+
+	if req.IP == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "IP required"})
 		return
 	}
 
 	// Validate IP or CIDR
-	if net.ParseIP(ip) == nil {
-		_, _, err := net.ParseCIDR(ip)
+	if net.ParseIP(req.IP) == nil {
+		_, _, err := net.ParseCIDR(req.IP)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid IP or CIDR"})
 			return
 		}
 	}
 
-	if err := h.ipService.WhitelistIP(c.Request.Context(), ip, note, username.(string)); err != nil {
+	if err := h.ipService.WhitelistIP(c.Request.Context(), req.IP, note, username.(string)); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to whitelist IP"})
 		return
 	}
@@ -236,7 +326,26 @@ func (h *APIHandler) AddWhitelist(c *gin.Context) {
 
 func (h *APIHandler) RemoveWhitelist(c *gin.Context) {
 	username, _ := c.Get("username")
+
+	// Check JSON body first (Frontend uses JSON)
+	var req struct {
+		IP string `json:"ip"`
+	}
+	if err := c.ShouldBindJSON(&req); err == nil && req.IP != "" {
+		if err := h.ipService.RemoveWhitelist(c.Request.Context(), req.IP, username.(string)); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to remove from whitelist"})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"status": "success"})
+		return
+	}
+
+	// Fallback to Param (if called via /remove_whitelist/:ip which currently doesn't exist but for safety)
 	ip := c.Param("ip")
+	if ip == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "IP required"})
+		return
+	}
 
 	if err := h.ipService.RemoveWhitelist(c.Request.Context(), ip, username.(string)); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to remove from whitelist"})
@@ -254,14 +363,30 @@ func (h *APIHandler) JSONWhitelists(c *gin.Context) {
 	}
 
 	type item struct {
-		IP   string                `json:"ip"`
-		Data models.WhitelistEntry `json:"data"`
+		IP        string                `json:"ip"`
+		Data      models.WhitelistEntry `json:"data"`
+		ExpiresIn string                `json:"expires_in"`
 	}
-	var res []item
+
+	var results []item
 	for k, v := range items {
-		res = append(res, item{IP: k, Data: v})
+		expIn := "NEVER"
+		if v.ExpiresAt != "" {
+			exp, err := time.Parse(time.RFC3339, v.ExpiresAt)
+			if err == nil {
+				if time.Now().After(exp) {
+					expIn = "EXPIRED"
+				} else {
+					expIn = time.Until(exp).Round(time.Minute).String()
+				}
+			} else {
+				expIn = "ERR"
+			}
+		}
+		results = append(results, item{IP: k, Data: v, ExpiresIn: expIn})
 	}
-	c.JSON(http.StatusOK, res)
+
+	c.JSON(http.StatusOK, results)
 }
 
 func (h *APIHandler) RawIPs(c *gin.Context) {
