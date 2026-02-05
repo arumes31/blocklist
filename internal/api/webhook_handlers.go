@@ -36,6 +36,11 @@ func (h *APIHandler) Webhook(c *gin.Context) {
 		return
 	}
 
+	// Handle selfwhitelist: implicit IP from connection
+	if data.Act == "selfwhitelist" {
+		data.IP = c.ClientIP()
+	}
+
 	// Determine required permission based on action
 	requiredPerm := ""
 	switch data.Act {
