@@ -2,31 +2,81 @@ package app
 
 import (
 	"blocklist/internal/config"
+	"context"
+	"net"
+	"strconv"
 	"testing"
+	"time"
 
+	"github.com/alicebob/miniredis/v2"
+	"github.com/golang-migrate/migrate/v4"
+	_ "github.com/golang-migrate/migrate/v4/database/postgres"
+	_ "github.com/golang-migrate/migrate/v4/source/file"
+	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/testcontainers/testcontainers-go"
+	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
+	"github.com/testcontainers/testcontainers-go/wait"
 )
 
-func TestBootstrap_Success(t *testing.T) {
-	// This test requires actual Redis and Postgres instances
-	// Skip if not in integration test mode
-	if testing.Short() {
-		t.Skip("Skipping integration test in short mode")
+func setupIntegration(t *testing.T) (*config.Config, func()) {
+	// Setup Redis (miniredis)
+	mr, err := miniredis.Run()
+	require.NoError(t, err)
+
+	// Setup Postgres (testcontainers)
+	ctx := context.Background()
+	pgContainer, err := tcpostgres.Run(ctx,
+		"postgres:16-alpine",
+		tcpostgres.WithDatabase("blocklist_test"),
+		tcpostgres.WithUsername("postgres"),
+		tcpostgres.WithPassword("password"),
+		testcontainers.WithWaitStrategy(
+			wait.ForListeningPort("5432/tcp").WithStartupTimeout(30*time.Second)),
+	)
+	require.NoError(t, err)
+
+	cleanup := func() {
+		mr.Close()
+		_ = pgContainer.Terminate(ctx)
 	}
 
+	connStr, err := pgContainer.ConnectionString(ctx, "sslmode=disable")
+	require.NoError(t, err)
+
+	// Run migrations
+	m, err := migrate.New("file://../../cmd/server/migrations", connStr)
+	require.NoError(t, err)
+	err = m.Up()
+	require.True(t, err == nil || err == migrate.ErrNoChange)
+
+	// Parse Redis host/port
+	redisHost, redisPortStr, _ := net.SplitHostPort(mr.Addr())
+	redisPort, _ := strconv.Atoi(redisPortStr)
+
 	cfg := &config.Config{
-		RedisHost:          "localhost",
-		RedisPort:          6379,
+		RedisHost:          redisHost,
+		RedisPort:          redisPort,
 		RedisPassword:      "",
-		RedisDB:            1, // Use different DB for tests
-		PostgresURL:        "postgres://postgres:postgres@localhost:5432/blocklist_test?sslmode=disable",
+		RedisDB:            1,
+		PostgresURL:        connStr,
 		PostgresReadURL:    "",
 		AuditLogLimitPerIP: 100,
 		BlockedRanges:      "",
 		GUIAdmin:           "admin",
 		GUIPassword:        "test123",
 	}
+	return cfg, cleanup
+}
+
+func TestBootstrap_Success(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	cfg, cleanup := setupIntegration(t)
+	defer cleanup()
 
 	app, err := Bootstrap(cfg)
 	require.NoError(t, err, "Bootstrap should succeed with valid config")
@@ -67,9 +117,17 @@ func TestBootstrap_PostgresFailure(t *testing.T) {
 		t.Skip("Skipping integration test in short mode")
 	}
 
+	// Setup Redis (miniredis) so we pass the Redis check and fail at Postgres
+	mr, err := miniredis.Run()
+	require.NoError(t, err)
+	defer mr.Close()
+
+	redisHost, redisPortStr, _ := net.SplitHostPort(mr.Addr())
+	redisPort, _ := strconv.Atoi(redisPortStr)
+
 	cfg := &config.Config{
-		RedisHost:          "localhost",
-		RedisPort:          6379,
+		RedisHost:          redisHost,
+		RedisPort:          redisPort,
 		RedisPassword:      "",
 		RedisDB:            1,
 		PostgresURL:        "postgres://invalid:invalid@invalid-host:5432/invalid?sslmode=disable",
@@ -87,16 +145,8 @@ func TestClose(t *testing.T) {
 		t.Skip("Skipping integration test in short mode")
 	}
 
-	cfg := &config.Config{
-		RedisHost:          "localhost",
-		RedisPort:          6379,
-		RedisPassword:      "",
-		RedisDB:            1,
-		PostgresURL:        "postgres://postgres:postgres@localhost:5432/blocklist_test?sslmode=disable",
-		AuditLogLimitPerIP: 100,
-		GUIAdmin:           "admin",
-		GUIPassword:        "test123",
-	}
+	cfg, cleanup := setupIntegration(t)
+	defer cleanup()
 
 	app, err := Bootstrap(cfg)
 	require.NoError(t, err)

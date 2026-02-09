@@ -64,9 +64,9 @@ func TestListIPsPaginatedAdvanced_FilterCombinations(t *testing.T) {
 	}
 
 	t.Run("NoFilters", func(t *testing.T) {
-		items, next, total, err := svc.ListIPsPaginatedAdvanced(ctx, 10, "", "", "", "", "", "")
+		items, next, total, err := svc.ListIPsPaginatedAdvanced(ctx, 2, "", "", "", "", "", "")
 		assert.NoError(t, err)
-		assert.Equal(t, 4, len(items))
+		assert.Equal(t, 2, len(items))
 		assert.Equal(t, 4, total)
 		assert.NotEmpty(t, next) // Should have cursor for pagination
 	})
@@ -256,14 +256,16 @@ func TestBulkBlock_EdgeCases(t *testing.T) {
 	})
 
 	t.Run("WithTTL", func(t *testing.T) {
-		ips := []string{"10.0.0.1"}
+		ips := []string{"11.0.0.1"}
 		err := svc.BulkBlock(ctx, ips, "spam", "admin", "127.0.0.1", false, 3600) // 1 hour TTL
 		assert.NoError(t, err)
 
-		entry, _ := svc.redisRepo.GetIPEntry("10.0.0.1")
+		entry, _ := svc.redisRepo.GetIPEntry("11.0.0.1")
 		assert.NotNil(t, entry)
-		assert.Equal(t, 3600, entry.TTL)
-		assert.NotEmpty(t, entry.ExpiresAt)
+		if entry != nil {
+			assert.Equal(t, 3600, entry.TTL)
+			assert.NotEmpty(t, entry.ExpiresAt)
+		}
 	})
 
 	t.Run("PersistentBlocks", func(t *testing.T) {
