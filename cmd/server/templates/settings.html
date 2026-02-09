@@ -300,17 +300,20 @@
             <h3>Source Adapters</h3>
             <h4 style="color: var(--vibrant-red); margin-bottom: 0.5rem;">Fail2ban</h4>
             <p style="color: var(--secondary-color);">Configure Fail2ban to push bans to this app. Add an action file
-                <code>/etc/fail2ban/action.d/blocklist.conf</code>:</p>
+                <code>/etc/fail2ban/action.d/blocklist.conf</code>:
+            </p>
             <pre><code>[Definition]
 actionban = curl -X POST -H "Authorization: Bearer YOUR_TOKEN" -H "Content-Type: application/json" -d '{"ip":"&lt;ip&gt;","act":"ban","reason":"fail2ban-&lt;name&gt;","ttl":86400}' {{ .base_url }}/api/v1/webhook
 actionunban = curl -X POST -H "Authorization: Bearer YOUR_TOKEN" -H "Content-Type: application/json" -d '{"ip":"&lt;ip&gt;","act":"unban"}' {{ .base_url }}/api/v1/webhook
 </code></pre>
             <p style="color: var(--secondary-color); font-size: 0.85rem;">Note: Bans default to 24h (86400s) if
-                <code>persist</code> is false and <code>ttl</code> is omitted.</p>
+                <code>persist</code> is false and <code>ttl</code> is omitted.
+            </p>
 
             <h4 style="color: var(--vibrant-red); margin-bottom: 0.5rem; margin-top: 1.5rem;">Suricata / IDS</h4>
             <p style="color: var(--secondary-color);">Ingest Suricata alerts via custom script or file beat pushing to
-                <code>/api/v1/webhook</code>.</p>
+                <code>/api/v1/webhook</code>.
+            </p>
         </div>
 
         <div class="card">
@@ -486,26 +489,29 @@ actionunban = curl -X POST -H "Authorization: Bearer YOUR_TOKEN" -H "Content-Typ
                     <p style="color: #fff; margin-bottom: 0.5rem; font-size: 0.9rem;"><strong>Curl Examples</strong></p>
 
                     <div style="margin-bottom: 1rem;">
-                        <p style="color: var(--secondary-color); margin-bottom: 0.2rem; font-size: 0.8rem;">List Blocked IPs (JSON)</p>
+                        <p style="color: var(--secondary-color); margin-bottom: 0.2rem; font-size: 0.8rem;">List Blocked
+                            IPs (JSON) <code>[Authenticated, view_ips]</code></p>
                         <pre style="font-size: 0.75rem;"><code>curl -H "Authorization: Bearer YOUR_TOKEN" \
      {{ .base_url }}/api/v1/ips_list</code></pre>
                     </div>
 
                     <div style="margin-bottom: 1rem;">
-                        <p style="color: var(--secondary-color); margin-bottom: 0.2rem; font-size: 0.8rem;">List Whitelisted IPs (JSON)</p>
+                        <p style="color: var(--secondary-color); margin-bottom: 0.2rem; font-size: 0.8rem;">List
+                            Whitelisted IPs (JSON) <code>[Authenticated, view_ips]</code></p>
                         <pre style="font-size: 0.75rem;"><code>curl -H "Authorization: Bearer YOUR_TOKEN" \
      {{ .base_url }}/api/v1/whitelists</code></pre>
                     </div>
 
                     <div style="margin-bottom: 1rem;">
-                        <p style="color: var(--secondary-color); margin-bottom: 0.2rem; font-size: 0.8rem;">List Whitelisted IPs (Raw Text)</p>
+                        <p style="color: var(--secondary-color); margin-bottom: 0.2rem; font-size: 0.8rem;">List
+                            Whitelisted IPs (Raw Text) <code>[Authenticated, view_ips]</code></p>
                         <pre style="font-size: 0.75rem;"><code>curl -H "Authorization: Bearer YOUR_TOKEN" \
      {{ .base_url }}/api/v1/whitelists-raw</code></pre>
                     </div>
 
                     <div style="margin-bottom: 1rem;">
                         <p style="color: var(--secondary-color); margin-bottom: 0.2rem; font-size: 0.8rem;">Block an IP
-                            (Webhook style, 1h TTL)</p>
+                            (Webhook style, 1h TTL) <code>[Authenticated, block_ips]</code></p>
                         <pre style="font-size: 0.75rem;"><code>curl -X POST {{ .base_url }}/api/v1/webhook \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -H "Content-Type: application/json" \
@@ -514,7 +520,7 @@ actionunban = curl -X POST -H "Authorization: Bearer YOUR_TOKEN" -H "Content-Typ
 
                     <div>
                         <p style="color: var(--secondary-color); margin-bottom: 0.2rem; font-size: 0.8rem;">Unblock an
-                            IP (Webhook style)</p>
+                            IP (Webhook style) <code>[Authenticated, unblock_ips]</code></p>
                         <pre style="font-size: 0.75rem;"><code>curl -X POST {{ .base_url }}/api/v1/webhook \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -H "Content-Type: application/json" \
@@ -523,7 +529,7 @@ actionunban = curl -X POST -H "Authorization: Bearer YOUR_TOKEN" -H "Content-Typ
 
                     <div style="margin-top: 1rem;">
                         <p style="color: var(--secondary-color); margin-bottom: 0.2rem; font-size: 0.8rem;">Add IP to
-                            Whitelist (Webhook style)</p>
+                            Whitelist (Webhook style) <code>[Authenticated, whitelist_ips]</code></p>
                         <pre style="font-size: 0.75rem;"><code>curl -X POST {{ .base_url }}/api/v1/webhook \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -H "Content-Type: application/json" \
@@ -536,21 +542,24 @@ actionunban = curl -X POST -H "Authorization: Bearer YOUR_TOKEN" -H "Content-Typ
                     <p style="color: #fff; margin-bottom: 0.5rem; font-size: 0.9rem;"><strong>Wget Examples</strong></p>
 
                     <div style="margin-bottom: 1rem;">
-                        <p style="color: var(--secondary-color); margin-bottom: 0.2rem; font-size: 0.8rem;">Download Blocklist (TXT)</p>
+                        <p style="color: var(--secondary-color); margin-bottom: 0.2rem; font-size: 0.8rem;">Download
+                            Blocklist (TXT) <code>[Authenticated, export_data, Sudo]</code></p>
                         <pre style="font-size: 0.75rem;"><code>wget --header="Authorization: Bearer YOUR_TOKEN" \
      {{ .base_url }}/api/v1/ips/export?format=txt \
      -O blocklist.txt</code></pre>
                     </div>
 
                     <div style="margin-bottom: 1rem;">
-                        <p style="color: var(--secondary-color); margin-bottom: 0.2rem; font-size: 0.8rem;">Download Whitelist (JSON)</p>
+                        <p style="color: var(--secondary-color); margin-bottom: 0.2rem; font-size: 0.8rem;">Download
+                            Whitelist (JSON) <code>[Authenticated, view_ips]</code></p>
                         <pre style="font-size: 0.75rem;"><code>wget --header="Authorization: Bearer YOUR_TOKEN" \
      {{ .base_url }}/api/v1/whitelists \
      -O whitelist.json</code></pre>
                     </div>
 
                     <div style="margin-bottom: 1rem;">
-                        <p style="color: var(--secondary-color); margin-bottom: 0.2rem; font-size: 0.8rem;">Download Whitelist (Raw Text)</p>
+                        <p style="color: var(--secondary-color); margin-bottom: 0.2rem; font-size: 0.8rem;">Download
+                            Whitelist (Raw Text) <code>[Authenticated, view_ips]</code></p>
                         <pre style="font-size: 0.75rem;"><code>wget --header="Authorization: Bearer YOUR_TOKEN" \
      {{ .base_url }}/api/v1/whitelists-raw \
      -O whitelist.txt</code></pre>
@@ -558,7 +567,7 @@ actionunban = curl -X POST -H "Authorization: Bearer YOUR_TOKEN" -H "Content-Typ
 
                     <div style="margin-bottom: 1rem;">
                         <p style="color: var(--secondary-color); margin-bottom: 0.2rem; font-size: 0.8rem;">Block an IP
-                            (POST)</p>
+                            (POST) <code>[Authenticated, block_ips]</code></p>
                         <pre style="font-size: 0.75rem;"><code>wget --header="Authorization: Bearer YOUR_TOKEN" \
      --header="Content-Type: application/json" \
      --post-data='{"ip":"1.2.3.4","act":"ban"}' \
@@ -567,7 +576,7 @@ actionunban = curl -X POST -H "Authorization: Bearer YOUR_TOKEN" -H "Content-Typ
 
                     <div style="margin-bottom: 1rem;">
                         <p style="color: var(--secondary-color); margin-bottom: 0.2rem; font-size: 0.8rem;">Unblock an
-                            IP (POST)</p>
+                            IP (POST) <code>[Authenticated, unblock_ips]</code></p>
                         <pre style="font-size: 0.75rem;"><code>wget --header="Authorization: Bearer YOUR_TOKEN" \
      --header="Content-Type: application/json" \
      --post-data='{"ip":"1.2.3.4","act":"unban"}' \
@@ -576,7 +585,7 @@ actionunban = curl -X POST -H "Authorization: Bearer YOUR_TOKEN" -H "Content-Typ
 
                     <div>
                         <p style="color: var(--secondary-color); margin-bottom: 0.2rem; font-size: 0.8rem;">Add IP to
-                            Whitelist (POST)</p>
+                            Whitelist (POST) <code>[Authenticated, whitelist_ips]</code></p>
                         <pre style="font-size: 0.75rem;"><code>wget --header="Authorization: Bearer YOUR_TOKEN" \
      --header="Content-Type: application/json" \
      --post-data='{"ip":"1.2.3.4","act":"whitelist","reason":"trusted"}' \
