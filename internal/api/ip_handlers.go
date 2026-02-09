@@ -404,6 +404,20 @@ func (h *APIHandler) RawIPs(c *gin.Context) {
 	c.String(http.StatusOK, strings.Join(list, "\n"))
 }
 
+func (h *APIHandler) RawWhitelists(c *gin.Context) {
+	items, err := h.redisRepo.GetWhitelistedIPs()
+	if err != nil {
+		c.String(http.StatusInternalServerError, "Error fetching whitelist")
+		return
+	}
+
+	var list []string
+	for ip := range items {
+		list = append(list, ip)
+	}
+	c.String(http.StatusOK, strings.Join(list, "\n"))
+}
+
 func (h *APIHandler) JSONIPs(c *gin.Context) {
 	ips, err := h.redisRepo.GetBlockedIPs()
 	if err != nil {
