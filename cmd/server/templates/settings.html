@@ -486,10 +486,21 @@ actionunban = curl -X POST -H "Authorization: Bearer YOUR_TOKEN" -H "Content-Typ
                     <p style="color: #fff; margin-bottom: 0.5rem; font-size: 0.9rem;"><strong>Curl Examples</strong></p>
 
                     <div style="margin-bottom: 1rem;">
-                        <p style="color: var(--secondary-color); margin-bottom: 0.2rem; font-size: 0.8rem;">List Blocked
-                            IPs (JSON)</p>
+                        <p style="color: var(--secondary-color); margin-bottom: 0.2rem; font-size: 0.8rem;">List Blocked IPs (JSON)</p>
                         <pre style="font-size: 0.75rem;"><code>curl -H "Authorization: Bearer YOUR_TOKEN" \
      {{ .base_url }}/api/v1/ips_list</code></pre>
+                    </div>
+
+                    <div style="margin-bottom: 1rem;">
+                        <p style="color: var(--secondary-color); margin-bottom: 0.2rem; font-size: 0.8rem;">List Whitelisted IPs (JSON)</p>
+                        <pre style="font-size: 0.75rem;"><code>curl -H "Authorization: Bearer YOUR_TOKEN" \
+     {{ .base_url }}/api/v1/whitelists</code></pre>
+                    </div>
+
+                    <div style="margin-bottom: 1rem;">
+                        <p style="color: var(--secondary-color); margin-bottom: 0.2rem; font-size: 0.8rem;">List Whitelisted IPs (Raw Text)</p>
+                        <pre style="font-size: 0.75rem;"><code>curl -H "Authorization: Bearer YOUR_TOKEN" \
+     {{ .base_url }}/api/v1/whitelists-raw</code></pre>
                     </div>
 
                     <div style="margin-bottom: 1rem;">
@@ -525,11 +536,24 @@ actionunban = curl -X POST -H "Authorization: Bearer YOUR_TOKEN" -H "Content-Typ
                     <p style="color: #fff; margin-bottom: 0.5rem; font-size: 0.9rem;"><strong>Wget Examples</strong></p>
 
                     <div style="margin-bottom: 1rem;">
-                        <p style="color: var(--secondary-color); margin-bottom: 0.2rem; font-size: 0.8rem;">Download
-                            Blocklist (TXT)</p>
+                        <p style="color: var(--secondary-color); margin-bottom: 0.2rem; font-size: 0.8rem;">Download Blocklist (TXT)</p>
                         <pre style="font-size: 0.75rem;"><code>wget --header="Authorization: Bearer YOUR_TOKEN" \
      {{ .base_url }}/api/v1/ips/export?format=txt \
      -O blocklist.txt</code></pre>
+                    </div>
+
+                    <div style="margin-bottom: 1rem;">
+                        <p style="color: var(--secondary-color); margin-bottom: 0.2rem; font-size: 0.8rem;">Download Whitelist (JSON)</p>
+                        <pre style="font-size: 0.75rem;"><code>wget --header="Authorization: Bearer YOUR_TOKEN" \
+     {{ .base_url }}/api/v1/whitelists \
+     -O whitelist.json</code></pre>
+                    </div>
+
+                    <div style="margin-bottom: 1rem;">
+                        <p style="color: var(--secondary-color); margin-bottom: 0.2rem; font-size: 0.8rem;">Download Whitelist (Raw Text)</p>
+                        <pre style="font-size: 0.75rem;"><code>wget --header="Authorization: Bearer YOUR_TOKEN" \
+     {{ .base_url }}/api/v1/whitelists-raw \
+     -O whitelist.txt</code></pre>
                     </div>
 
                     <div style="margin-bottom: 1rem;">
