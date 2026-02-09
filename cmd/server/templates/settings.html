@@ -484,6 +484,17 @@ actionunban = curl -X POST -H "Authorization: Bearer YOUR_TOKEN" -H "Content-Typ
             <h4 style="color: var(--vibrant-red); margin-top: 2rem; margin-bottom: 0.5rem;">Examples</h4>
 
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                <!-- Authentication Notice -->
+                <div
+                    style="background: rgba(255, 193, 7, 0.1); border-left: 4px solid #ffc107; padding: 0.8rem; margin-bottom: 2rem; border-radius: 4px;">
+                    <p style="color: #ffc107; margin-bottom: 0.3rem; font-size: 0.9rem;"><strong>Authentication
+                            Note</strong></p>
+                    <p style="color: var(--secondary-color); font-size: 0.8rem; line-height: 1.4; margin: 0;">
+                        All API endpoints support both <strong>Bearer Tokens</strong> (recommended) and <strong>Basic
+                            Authentication</strong> (username:password) as a fallback.
+                    </p>
+                </div>
+
                 <!-- CURL Examples -->
                 <div>
                     <p style="color: #fff; margin-bottom: 0.5rem; font-size: 0.9rem;"><strong>Curl Examples</strong></p>
@@ -498,15 +509,21 @@ actionunban = curl -X POST -H "Authorization: Bearer YOUR_TOKEN" -H "Content-Typ
                     <div style="margin-bottom: 1rem;">
                         <p style="color: var(--secondary-color); margin-bottom: 0.2rem; font-size: 0.8rem;">List
                             Whitelisted IPs (JSON) <code>[Authenticated, view_ips]</code></p>
-                        <pre style="font-size: 0.75rem;"><code>curl -H "Authorization: Bearer YOUR_TOKEN" \
-     {{ .base_url }}/api/v1/whitelists</code></pre>
+                        <pre style="font-size: 0.75rem;"><code># Bearer Token
+curl -H "Authorization: Bearer YOUR_TOKEN" {{ .base_url }}/api/v1/whitelists
+
+# Basic Auth Fallback
+curl -u admin:password {{ .base_url }}/api/v1/whitelists</code></pre>
                     </div>
 
                     <div style="margin-bottom: 1rem;">
                         <p style="color: var(--secondary-color); margin-bottom: 0.2rem; font-size: 0.8rem;">List
                             Whitelisted IPs (Raw Text) <code>[Authenticated, view_ips]</code></p>
-                        <pre style="font-size: 0.75rem;"><code>curl -H "Authorization: Bearer YOUR_TOKEN" \
-     {{ .base_url }}/api/v1/whitelists-raw</code></pre>
+                        <pre style="font-size: 0.75rem;"><code># Bearer Token
+curl -H "Authorization: Bearer YOUR_TOKEN" {{ .base_url }}/api/v1/whitelists-raw
+
+# Basic Auth Fallback
+curl -u admin:password {{ .base_url }}/api/v1/whitelists-raw</code></pre>
                     </div>
 
                     <div style="margin-bottom: 1rem;">
