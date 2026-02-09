@@ -72,6 +72,8 @@ graph LR
     - *Note: The `ip` parameter is required for all actions except `selfwhitelist`, where the system automatically detects your source IP via `X-Forwarded-For` or `CF-Connecting-IP`.*
 
 ### Data & Stats
+*Note: Basic Authentication is supported as a fallback **ONLY** for whitelist endpoints. All other endpoints require a Bearer Token.*
+
 - **`GET /api/v1/ips`**: Paginated list of blocked IPs with advanced filters.
 - **`GET /api/v1/ips_list`**: Simple JSON array of all blocked IP addresses.
 - **`GET /api/v1/raw`**: Plain-text list of blocked IPs.
