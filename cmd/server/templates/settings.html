@@ -490,8 +490,9 @@ actionunban = curl -X POST -H "Authorization: Bearer YOUR_TOKEN" -H "Content-Typ
                     <p style="color: #ffc107; margin-bottom: 0.3rem; font-size: 0.9rem;"><strong>Authentication
                             Note</strong></p>
                     <p style="color: var(--secondary-color); font-size: 0.8rem; line-height: 1.4; margin: 0;">
-                        All API endpoints support both <strong>Bearer Tokens</strong> (recommended) and <strong>Basic
-                            Authentication</strong> (username:password) as a fallback.
+                        Most API endpoints require <strong>Bearer Tokens</strong>. Standard <strong>Basic
+                            Authentication</strong> (username:password) is supported <em>only</em> as a fallback for the
+                        <strong>Whitelist APIs</strong>.
                     </p>
                 </div>
 

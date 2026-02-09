@@ -87,9 +87,9 @@ func (h *APIHandler) AuthMiddleware() gin.HandlerFunc {
 			}
 		}
 
-		// Fallback to Basic Auth
+		// Fallback to Basic Auth (Restricted to specific endpoints)
 		username, password, ok := c.Request.BasicAuth()
-		if ok && h.pgRepo != nil {
+		if ok && h.pgRepo != nil && (c.Request.URL.Path == "/api/v1/whitelists" || c.Request.URL.Path == "/api/v1/whitelists-raw") {
 			admin, err := h.pgRepo.GetAdmin(username)
 			if err == nil && admin != nil {
 				if bcrypt.CompareHashAndPassword([]byte(admin.PasswordHash), []byte(password)) == nil {
