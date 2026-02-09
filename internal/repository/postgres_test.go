@@ -32,7 +32,9 @@ func TestPostgresRepository_Integration(t *testing.T) {
 		tcpostgres.WithUsername("postgres"),
 		tcpostgres.WithPassword("password"),
 		testcontainers.WithWaitStrategy(
-			wait.ForListeningPort("5432/tcp").WithStartupTimeout(30*time.Second)),
+			wait.ForLog("database system is ready to accept connections").
+				WithOccurrence(2).
+				WithStartupTimeout(60*time.Second)),
 	)
 	if err != nil {
 		t.Fatalf("failed to start container: %s", err)
