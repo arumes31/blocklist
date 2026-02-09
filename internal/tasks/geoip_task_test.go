@@ -51,7 +51,7 @@ func TestGeoIPTaskHandler_ProcessTask_Success(t *testing.T) {
 		// A full implementation would create a proper tar.gz
 		w.WriteHeader(http.StatusOK)
 		// Write minimal tar.gz content (this is a simplified mock)
-		w.Write([]byte("mock-tar-gz-content"))
+		_, _ = w.Write([]byte("mock-tar-gz-content"))
 	}))
 	defer server.Close()
 

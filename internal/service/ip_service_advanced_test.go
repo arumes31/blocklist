@@ -59,8 +59,8 @@ func TestListIPsPaginatedAdvanced_FilterCombinations(t *testing.T) {
 				Country: td.country,
 			},
 		}
-		svc.redisRepo.BlockIP(td.ip, entry)
-		svc.redisRepo.IndexIPTimestamp(td.ip, td.ts)
+		_ = svc.redisRepo.BlockIP(td.ip, entry)
+		_ = svc.redisRepo.IndexIPTimestamp(td.ip, td.ts)
 	}
 
 	t.Run("NoFilters", func(t *testing.T) {
@@ -194,8 +194,8 @@ func TestExportIPs_LargeDataset(t *testing.T) {
 				Country: country,
 			},
 		}
-		svc.redisRepo.BlockIP(ip, entry)
-		svc.redisRepo.IndexIPTimestamp(ip, now.Add(-time.Duration(i)*time.Minute))
+		_ = svc.redisRepo.BlockIP(ip, entry)
+		_ = svc.redisRepo.IndexIPTimestamp(ip, now.Add(-time.Duration(i)*time.Minute))
 	}
 
 	t.Run("ExportAll", func(t *testing.T) {
@@ -302,7 +302,8 @@ func TestBulkUnblock_EdgeCases(t *testing.T) {
 
 	// Setup: Block some IPs first
 	blockIPs := []string{"1.2.3.4", "5.6.7.8", "9.10.11.12"}
-	svc.BulkBlock(ctx, blockIPs, "spam", "admin", "127.0.0.1", false, 0)
+	err := svc.BulkBlock(ctx, blockIPs, "spam", "admin", "127.0.0.1", false, 0)
+	assert.NoError(t, err)
 
 	t.Run("EmptyList", func(t *testing.T) {
 		err := svc.BulkUnblock(ctx, []string{}, "admin")
@@ -337,8 +338,9 @@ func TestBulkUnblock_EdgeCases(t *testing.T) {
 			ips[i] = "150." + strconv.Itoa(i/256) + "." + strconv.Itoa(i%256) + ".1"
 		}
 
-		svc.BulkBlock(ctx, ips, "spam", "admin", "127.0.0.1", false, 0)
-		err := svc.BulkUnblock(ctx, ips, "admin")
+		err := svc.BulkBlock(ctx, ips, "spam", "admin", "127.0.0.1", false, 0)
+		assert.NoError(t, err)
+		err = svc.BulkUnblock(ctx, ips, "admin")
 		assert.NoError(t, err)
 
 		// Give bloom filter sync time
