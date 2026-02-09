@@ -76,9 +76,11 @@ graph LR
 - **`GET /api/v1/ips_list`**: Simple JSON array of all blocked IP addresses.
 - **`GET /api/v1/raw`**: Plain-text list of blocked IPs.
 - **`GET /api/v1/whitelists`**: Authenticated JSON list of all whitelisted IPs with metadata.
-    - **Example**: `curl -H "Authorization: Bearer YOUR_TOKEN" http://localhost:5000/api/v1/whitelists`
+    - **Bearer Example**: `curl -H "Authorization: Bearer YOUR_TOKEN" http://localhost:5000/api/v1/whitelists`
+    - **Basic Auth Example**: `curl -u admin:password http://localhost:5000/api/v1/whitelists`
 - **`GET /api/v1/whitelists-raw`**: Authenticated plain-text, newline-separated list of whitelisted IPs.
-    - **Example**: `curl -H "Authorization: Bearer YOUR_TOKEN" http://localhost:5000/api/v1/whitelists-raw`
+    - **Bearer Example**: `curl -H "Authorization: Bearer YOUR_TOKEN" http://localhost:5000/api/v1/whitelists-raw`
+    - **Basic Auth Example**: `curl -u admin:password http://localhost:5000/api/v1/whitelists-raw`
 - **`GET /api/v1/ips/export`**: Export data in CSV or NDJSON format (Requires `export_data` permission and sudo).
 - **`GET /api/v1/stats`**: Aggregate statistics including top countries, ASNs, and reasons.
 

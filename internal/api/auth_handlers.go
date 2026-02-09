@@ -87,6 +87,21 @@ func (h *APIHandler) AuthMiddleware() gin.HandlerFunc {
 			}
 		}
 
+		// Fallback to Basic Auth
+		username, password, ok := c.Request.BasicAuth()
+		if ok && h.pgRepo != nil {
+			admin, err := h.pgRepo.GetAdmin(username)
+			if err == nil && admin != nil {
+				if bcrypt.CompareHashAndPassword([]byte(admin.PasswordHash), []byte(password)) == nil {
+					c.Set("username", username)
+					c.Set("role", admin.Role)
+					c.Set("permissions", admin.Permissions)
+					c.Next()
+					return
+				}
+			}
+		}
+
 		session := sessions.Default(c)
 
 		// If session is invalid (e.g. key mismatch after restart), clear it
@@ -115,7 +130,15 @@ func (h *APIHandler) AuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		username := session.Get("username").(string)
+		usernameSess := session.Get("username")
+		if usernameSess == nil {
+			session.Clear()
+			_ = session.Save()
+			c.Redirect(http.StatusFound, "/login")
+			c.Abort()
+			return
+		}
+		username = usernameSess.(string)
 
 		// Verify user still exists in database
 		admin, err := h.pgRepo.GetAdmin(username)
