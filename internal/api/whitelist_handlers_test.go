@@ -113,3 +113,24 @@ func TestAPIHandler_JSONWhitelists(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Contains(t, w.Body.String(), "9.9.9.9")
 }
+
+func TestAPIHandler_RawWhitelists(t *testing.T) {
+	h, rRepo, _, _, _ := setupTest()
+
+	rRepo.On("GetWhitelistedIPs").Return(map[string]models.WhitelistEntry{
+		"8.8.8.8": {Reason: "Google DNS"},
+		"1.1.1.1": {Reason: "Cloudflare DNS"},
+	}, nil)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	// We don't rely on router matching here since we call handler directly
+	c.Request, _ = http.NewRequest("GET", "/api/v1/whitelists-raw", nil)
+
+	h.RawWhitelists(c)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	// Since order isn't guaranteed in map iteration, we check for presence
+	assert.Contains(t, w.Body.String(), "8.8.8.8")
+	assert.Contains(t, w.Body.String(), "1.1.1.1")
+}

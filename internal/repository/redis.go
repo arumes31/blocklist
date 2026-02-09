@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
-	"blocklist/internal/models"
 	"blocklist/internal/metrics"
+	"blocklist/internal/models"
+
 	"github.com/redis/go-redis/v9"
 )
 
@@ -96,14 +98,24 @@ func (r *RedisRepository) RemoveIPTimestamp(ip string) error {
 // Cursor format: "<score>:<member>". Empty cursor starts from +inf.
 func (r *RedisRepository) ZPageByScoreDesc(limit int, cursor string) ([]redis.Z, string, error) {
 	defer r.trackDuration("ZPageByScoreDesc", time.Now())
-	
+
 	max := "+inf"
 	var lastMember string
 	if cursor != "" {
 		parts := strings.SplitN(cursor, ":", 2)
-		max = parts[0]
-		if len(parts) > 1 {
-			lastMember = parts[1]
+		valid := true
+		// Validate score is float or inf
+		if parts[0] != "+inf" && parts[0] != "-inf" {
+			if _, err := strconv.ParseFloat(parts[0], 64); err != nil {
+				valid = false
+			}
+		}
+
+		if valid {
+			max = parts[0]
+			if len(parts) > 1 {
+				lastMember = parts[1]
+			}
 		}
 	}
 
@@ -113,9 +125,11 @@ func (r *RedisRepository) ZPageByScoreDesc(limit int, cursor string) ([]redis.Z,
 		Offset: 0,
 		Count:  int64(limit + 50),
 	}
-	
+
 	res, err := r.client.ZRevRangeByScoreWithScores(r.ctx, "ips_by_ts", opt).Result()
-	if err != nil { return nil, "", err }
+	if err != nil {
+		return nil, "", err
+	}
 
 	// If we have a lastMember, we need to filter out items until we find it
 	if lastMember != "" {
@@ -127,15 +141,15 @@ func (r *RedisRepository) ZPageByScoreDesc(limit int, cursor string) ([]redis.Z,
 		}
 	}
 
+	next := ""
 	if len(res) > limit {
 		res = res[:limit]
+		if len(res) > 0 {
+			last := res[len(res)-1]
+			next = fmt.Sprintf("%v:%s", last.Score, last.Member.(string))
+		}
 	}
 
-	next := ""
-	if len(res) > 0 {
-		last := res[len(res)-1]
-		next = fmt.Sprintf("%v:%s", last.Score, last.Member.(string))
-	}
 	return res, next, nil
 }
 
@@ -159,20 +173,26 @@ func (r *RedisRepository) IncrDayBucket(ts time.Time, delta int64) error {
 func (r *RedisRepository) CountLastHour() (int, error) {
 	now := time.Now().UTC()
 	v, e := r.client.Get(r.ctx, fmt.Sprintf("stats:hour:%s", now.Format("2006010215"))).Int()
-	if e == redis.Nil { return 0, nil }
+	if e == redis.Nil {
+		return 0, nil
+	}
 	return v, e
 }
 
 func (r *RedisRepository) CountLastDay() (int, error) {
 	now := time.Now().UTC()
 	v, e := r.client.Get(r.ctx, fmt.Sprintf("stats:day:%s", now.Format("20060102"))).Int()
-	if e == redis.Nil { return 0, nil }
+	if e == redis.Nil {
+		return 0, nil
+	}
 	return v, e
 }
 
 func (r *RedisRepository) CountTotalEver() (int, error) {
 	v, e := r.client.Get(r.ctx, "stats:total_ever").Int()
-	if e == redis.Nil { return 0, nil }
+	if e == redis.Nil {
+		return 0, nil
+	}
 	return v, e
 }
 
@@ -296,7 +316,9 @@ return removed
 func (r *RedisRepository) ExecBlockAtomic(ip string, entry models.IPEntry, now time.Time) error {
 	defer r.trackDuration("ExecBlockAtomic", time.Now())
 	data, err := json.Marshal(entry)
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	_, err = r.client.Eval(r.ctx, blockAtomicScript, []string{}, ip, string(data), fmt.Sprintf("%d", now.Unix())).Result()
 	if err == nil {
 		// Increment persistent counters
@@ -324,13 +346,14 @@ func (r *RedisRepository) GetZSetCount() (int, error) {
 	return int(v), err
 }
 
-
 func (r *RedisRepository) IncrIPBanCount(ip string) (int64, error) {
 	return r.client.HIncrBy(r.ctx, "ips_ban_counts", ip, 1).Result()
 }
 
 func (r *RedisRepository) GetIPBanCount(ip string) (int64, error) {
 	v, err := r.client.HGet(r.ctx, "ips_ban_counts", ip).Int64()
-	if err == redis.Nil { return 0, nil }
+	if err == redis.Nil {
+		return 0, nil
+	}
 	return v, err
 }

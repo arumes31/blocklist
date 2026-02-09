@@ -186,6 +186,7 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 		v1auth.GET("/ips", h.mainLimiter, h.PermissionMiddleware("view_ips"), h.IPsPaginated)
 		v1auth.GET("/ips_list", h.mainLimiter, h.PermissionMiddleware("view_ips"), h.JSONIPs)
 		v1auth.GET("/whitelists", h.mainLimiter, h.PermissionMiddleware("view_ips"), h.JSONWhitelists)
+		v1auth.GET("/whitelists-raw", h.mainLimiter, h.PermissionMiddleware("view_ips"), h.RawWhitelists)
 		v1auth.GET("/ips/:ip/details", h.mainLimiter, h.PermissionMiddleware("view_ips"), h.GetIPDetails)
 
 		// Exports require export_data
@@ -428,6 +429,19 @@ func (h *APIHandler) OpenAPI(c *gin.Context) {
 					"responses": gin.H{
 						"200": gin.H{
 							"description": "Newline-separated list of IPs",
+							"content":     gin.H{"text/plain": gin.H{"schema": gin.H{"type": "string"}}},
+						},
+					},
+				},
+			},
+			"/api/v1/whitelists-raw": gin.H{
+				"get": gin.H{
+					"summary":  "Get plain-text list of whitelisted IPs",
+					"tags":     []string{"Data Retrieval"},
+					"security": []gin.H{{"BearerAuth": []string{}}},
+					"responses": gin.H{
+						"200": gin.H{
+							"description": "Newline-separated list of whitelisted IPs",
 							"content":     gin.H{"text/plain": gin.H{"schema": gin.H{"type": "string"}}},
 						},
 					},
