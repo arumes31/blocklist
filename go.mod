@@ -3,7 +3,7 @@ module blocklist
 go 1.24.0
 
 require (
-	github.com/alicebob/miniredis/v2 v2.36.1
+	github.com/alicebob/miniredis/v2 v2.37.0
 	github.com/bits-and-blooms/bloom/v3 v3.7.1
 	github.com/gin-contrib/sessions v1.0.4
 	github.com/gin-gonic/gin v1.11.0
