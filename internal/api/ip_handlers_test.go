@@ -157,3 +157,25 @@ func TestAPIHandler_ExportIPs(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, "text/csv", w.Header().Get("Content-Type"))
 }
+
+func TestAPIHandler_IPsPaginated_NegativeLimit(t *testing.T) {
+	h, _, _, _, _ := setupTest()
+
+	// 1. Negative limit
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request, _ = http.NewRequest("GET", "/api/ips?limit=-5", nil)
+
+	h.IPsPaginated(c)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	
+	// 2. Zero limit
+	w2 := httptest.NewRecorder()
+	c2, _ := gin.CreateTestContext(w2)
+	c2.Request, _ = http.NewRequest("GET", "/api/ips?limit=0", nil)
+
+	h.IPsPaginated(c2)
+
+	assert.Equal(t, http.StatusBadRequest, w2.Code)
+}

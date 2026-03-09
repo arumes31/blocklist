@@ -188,6 +188,26 @@ func TestIPService_LimitCapping(t *testing.T) {
 	if len(items) > MaxPageSize {
 		t.Errorf("expected at most %d items, got %d", MaxPageSize, len(items))
 	}
+
+	// Code Review Issue: Ensure negative limits are caught and clamped
+	var negLimitTests = []int{0, -1, -500}
+	for _, nl := range negLimitTests {
+		items, _, _, err := svc.ListIPsPaginated(ctx, nl, "", "")
+		if err != nil {
+			t.Fatalf("ListIPsPaginated failed on negative limit %d: %v", nl, err)
+		}
+		if len(items) > MaxPageSize {
+			t.Errorf("expected at most %d items for limit %d, got %d", MaxPageSize, nl, len(items))
+		}
+
+		itemsAdv, _, _, errAdv := svc.ListIPsPaginatedAdvanced(ctx, nl, "", "", "", "", "", "")
+		if errAdv != nil {
+			t.Fatalf("ListIPsPaginatedAdvanced failed on negative limit %d: %v", nl, errAdv)
+		}
+		if len(itemsAdv) > MaxPageSize {
+			t.Errorf("expected at most %d items for limit %d, got %d", MaxPageSize, nl, len(itemsAdv))
+		}
+	}
 }
 
 func TestIPService_IsBlocked_LazyCleanup(t *testing.T) {
