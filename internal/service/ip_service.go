@@ -294,30 +294,54 @@ func (s *IPService) ListIPsPaginated(ctx context.Context, limit int, cursor stri
 	if limit > MaxPageSize {
 		limit = MaxPageSize
 	}
+	q := strings.ToLower(strings.TrimSpace(query))
+
+	fetchLimit := limit
+	if q != "" {
+		fetchLimit = 500
+	}
+
 	// If ZSET exists, use score-based cursor. Otherwise fallback to hash scan.
-	zs, next, zerr := s.redisRepo.ZPageByScoreDesc(limit, cursor)
+	zs, next, zerr := s.redisRepo.ZPageByScoreDesc(fetchLimit, cursor)
 	if zerr == nil && len(zs) > 0 {
 		// total via GetTotalCount
 		tot := s.GetTotalCount(ctx)
-		items := make([]map[string]interface{}, 0, len(zs))
-		q := strings.ToLower(strings.TrimSpace(query))
-		for _, z := range zs {
-			ip := z.Member.(string)
-			entry, err := s.redisRepo.GetIPEntry(ip)
-			if err != nil || entry == nil {
-				continue
-			}
-			if q != "" {
-				if !strings.Contains(strings.ToLower(ip), q) &&
-					!strings.Contains(strings.ToLower(entry.Reason), q) &&
-					!strings.Contains(strings.ToLower(entry.AddedBy), q) &&
-					(entry.Geolocation == nil || !strings.Contains(strings.ToLower(entry.Geolocation.Country), q)) {
+		items := make([]map[string]interface{}, 0, limit)
+		
+		var currentCursor string
+		for {
+			for _, z := range zs {
+				if len(items) >= limit {
+					break
+				}
+				ip := z.Member.(string)
+				entry, err := s.redisRepo.GetIPEntry(ip)
+				if err != nil || entry == nil {
 					continue
 				}
+				if q != "" {
+					if !strings.Contains(strings.ToLower(ip), q) &&
+						!strings.Contains(strings.ToLower(entry.Reason), q) &&
+						!strings.Contains(strings.ToLower(entry.AddedBy), q) &&
+						(entry.Geolocation == nil || !strings.Contains(strings.ToLower(entry.Geolocation.Country), q)) {
+						continue
+					}
+				}
+				items = append(items, map[string]interface{}{"ip": ip, "data": entry})
 			}
-			items = append(items, map[string]interface{}{"ip": ip, "data": entry})
+
+			currentCursor = next
+			if len(items) >= limit || currentCursor == "" {
+				break
+			}
+
+			// Fetch next page
+			zs, next, zerr = s.redisRepo.ZPageByScoreDesc(fetchLimit, currentCursor)
+			if zerr != nil || len(zs) == 0 {
+				break
+			}
 		}
-		return items, next, tot, nil
+		return items, currentCursor, tot, nil
 	}
 	// fallback to hash listing
 	all, err := s.redisRepo.HGetAllRaw("ips")
@@ -331,7 +355,6 @@ func (s *IPService) ListIPsPaginated(ctx context.Context, limit int, cursor stri
 		ts int64
 	}
 	list := make([]pair, 0, total)
-	q := strings.ToLower(strings.TrimSpace(query))
 	for ip, raw := range all {
 		var e models.IPEntry
 		if err := json.Unmarshal([]byte(raw), &e); err != nil {
@@ -667,10 +690,7 @@ func (s *IPService) ListIPsPaginatedAdvanced(ctx context.Context, limit int, cur
 	}
 	fetchLimit := limit
 	if query != "" || country != "" || addedBy != "" || from != "" || to != "" {
-		fetchLimit = limit * 2 // Fetch more to account for filtering
-		if fetchLimit > 5000 {
-			fetchLimit = 5000
-		}
+		fetchLimit = 500 // Fetch in chunks
 	}
 
 	zs, next, zerr := s.redisRepo.ZPageByScoreDesc(fetchLimit, cursor)
@@ -696,74 +716,87 @@ func (s *IPService) ListIPsPaginatedAdvanced(ctx context.Context, limit int, cur
 			}
 		}
 
-		for _, z := range zs {
-			if len(items) >= limit {
-				break
-			}
-
-			ip := z.Member.(string)
-			entry, err := s.redisRepo.GetIPEntry(ip)
-			if err != nil || entry == nil {
-				continue
-			}
-
-			// Apply filters
-			if q != "" {
-				matches := false
-				// 1. Text match on fields
-				if strings.Contains(strings.ToLower(ip), q) ||
-					strings.Contains(strings.ToLower(entry.Reason), q) ||
-					strings.Contains(strings.ToLower(entry.AddedBy), q) ||
-					(entry.Geolocation != nil && strings.Contains(strings.ToLower(entry.Geolocation.Country), q)) {
-					matches = true
+		var currentCursor string
+		for {
+			for _, z := range zs {
+				if len(items) >= limit {
+					break
 				}
 
-				// 2. Smart Match: CIDR (using pre-parsed network)
-				if !matches && queryNetwork != nil {
-					if parsedIP := net.ParseIP(ip); parsedIP != nil && queryNetwork.Contains(parsedIP) {
-						matches = true
-					}
-				}
-
-				if !matches {
+				ip := z.Member.(string)
+				entry, err := s.redisRepo.GetIPEntry(ip)
+				if err != nil || entry == nil {
 					continue
 				}
-			}
-			if len(countryList) > 0 {
-				match := false
-				if entry.Geolocation != nil {
-					cCode := strings.ToLower(entry.Geolocation.Country)
-					for _, c := range countryList {
-						if cCode == c {
-							match = true
-							break
+
+				// Apply filters
+				if q != "" {
+					matches := false
+					// 1. Text match on fields
+					if strings.Contains(strings.ToLower(ip), q) ||
+						strings.Contains(strings.ToLower(entry.Reason), q) ||
+						strings.Contains(strings.ToLower(entry.AddedBy), q) ||
+						(entry.Geolocation != nil && strings.Contains(strings.ToLower(entry.Geolocation.Country), q)) {
+						matches = true
+					}
+
+					// 2. Smart Match: CIDR (using pre-parsed network)
+					if !matches && queryNetwork != nil {
+						if parsedIP := net.ParseIP(ip); parsedIP != nil && queryNetwork.Contains(parsedIP) {
+							matches = true
+						}
+					}
+
+					if !matches {
+						continue
+					}
+				}
+				if len(countryList) > 0 {
+					match := false
+					if entry.Geolocation != nil {
+						cCode := strings.ToLower(entry.Geolocation.Country)
+						for _, c := range countryList {
+							if cCode == c {
+								match = true
+								break
+							}
+						}
+					}
+					if !match {
+						continue
+					}
+				}
+				if addedBy != "" {
+					if !strings.EqualFold(entry.AddedBy, addedBy) {
+						continue
+					}
+				}
+				if !fromTime.IsZero() || !toTime.IsZero() {
+					ts, err := time.Parse("2006-01-02 15:04:05 UTC", entry.Timestamp)
+					if err == nil {
+						if !fromTime.IsZero() && ts.Before(fromTime) {
+							continue
+						}
+						if !toTime.IsZero() && ts.After(toTime) {
+							continue
 						}
 					}
 				}
-				if !match {
-					continue
-				}
-			}
-			if addedBy != "" {
-				if !strings.EqualFold(entry.AddedBy, addedBy) {
-					continue
-				}
-			}
-			if !fromTime.IsZero() || !toTime.IsZero() {
-				ts, err := time.Parse("2006-01-02 15:04:05 UTC", entry.Timestamp)
-				if err == nil {
-					if !fromTime.IsZero() && ts.Before(fromTime) {
-						continue
-					}
-					if !toTime.IsZero() && ts.After(toTime) {
-						continue
-					}
-				}
+
+				items = append(items, map[string]interface{}{"ip": ip, "data": entry})
 			}
 
-			items = append(items, map[string]interface{}{"ip": ip, "data": entry})
+			currentCursor = next
+			if len(items) >= limit || currentCursor == "" {
+				break
+			}
+			
+			zs, next, zerr = s.redisRepo.ZPageByScoreDesc(fetchLimit, currentCursor)
+			if zerr != nil || len(zs) == 0 {
+				break
+			}
 		}
-		return items, next, tot, nil
+		return items, currentCursor, tot, nil
 	}
 
 	// Fallback to hash listing if ZSET is empty/failed
