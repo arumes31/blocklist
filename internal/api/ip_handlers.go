@@ -442,7 +442,11 @@ func (h *APIHandler) GetIPDetails(c *gin.Context) {
 // Response: { items: [{ip, data}], next: "cursor", total: N }
 func (h *APIHandler) IPsPaginated(c *gin.Context) {
 	limitStr := c.DefaultQuery("limit", "50")
-	limit, _ := strconv.Atoi(limitStr)
+	limit, err := strconv.Atoi(limitStr)
+	if err != nil || limit <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid limit parameter"})
+		return
+	}
 	if limit > 1000 {
 		limit = 1000
 	}

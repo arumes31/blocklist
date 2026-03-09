@@ -291,6 +291,9 @@ func (s *IPService) GetTotalCount(ctx context.Context) int {
 // ListIPsPaginated returns items ordered by recency with cursor-based pagination and optional query filter.
 // Fallback implementation using Redis hash if sorted index is unavailable.
 func (s *IPService) ListIPsPaginated(ctx context.Context, limit int, cursor string, query string) ([]map[string]interface{}, string, int, error) {
+	if limit <= 0 {
+		limit = MaxPageSize
+	}
 	if limit > MaxPageSize {
 		limit = MaxPageSize
 	}
@@ -331,13 +334,30 @@ func (s *IPService) ListIPsPaginated(ctx context.Context, limit int, cursor stri
 			}
 
 			currentCursor = next
-			if len(items) >= limit || currentCursor == "" {
+			if len(items) >= limit {
+				// We reached the limit, use the specific item's cursor from the last appended z
+				// Because zs is preserved inside the loop chunk, we find the last item we added
+				if len(items) > 0 {
+					lastItemIP := items[len(items)-1]["ip"].(string)
+					for _, z := range zs {
+						if z.Member.(string) == lastItemIP {
+							currentCursor = fmt.Sprintf("%v:%s", z.Score, z.Member.(string))
+							break
+						}
+					}
+				}
+				break
+			}
+			if currentCursor == "" {
 				break
 			}
 
 			// Fetch next page
 			zs, next, zerr = s.redisRepo.ZPageByScoreDesc(fetchLimit, currentCursor)
-			if zerr != nil || len(zs) == 0 {
+			if zerr != nil {
+				return items, currentCursor, tot, zerr
+			}
+			if len(zs) == 0 {
 				break
 			}
 		}
@@ -685,6 +705,9 @@ func (s *IPService) ListIPsPaginatedAdvanced(ctx context.Context, limit int, cur
 	}
 
 	// We'll fetch a larger batch if filtering is active to try and fulfill 'limit'
+	if limit <= 0 {
+		limit = MaxPageSize
+	}
 	if limit > MaxPageSize {
 		limit = MaxPageSize
 	}
@@ -787,12 +810,28 @@ func (s *IPService) ListIPsPaginatedAdvanced(ctx context.Context, limit int, cur
 			}
 
 			currentCursor = next
-			if len(items) >= limit || currentCursor == "" {
+			if len(items) >= limit {
+				// We reached the limit, use the specific item's cursor from the last appended z
+				if len(items) > 0 {
+					lastItemIP := items[len(items)-1]["ip"].(string)
+					for _, z := range zs {
+						if z.Member.(string) == lastItemIP {
+							currentCursor = fmt.Sprintf("%v:%s", z.Score, z.Member.(string))
+							break
+						}
+					}
+				}
+				break
+			}
+			if currentCursor == "" {
 				break
 			}
 			
 			zs, next, zerr = s.redisRepo.ZPageByScoreDesc(fetchLimit, currentCursor)
-			if zerr != nil || len(zs) == 0 {
+			if zerr != nil {
+				return items, currentCursor, tot, zerr
+			}
+			if len(zs) == 0 {
 				break
 			}
 		}
