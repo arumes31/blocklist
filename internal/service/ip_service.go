@@ -17,6 +17,7 @@ import (
 	"blocklist/internal/models"
 	"blocklist/internal/repository"
 	"sync"
+	"sync/atomic"
 
 	"github.com/bits-and-blooms/bloom/v3"
 	"github.com/oschwald/geoip2-golang"
@@ -30,10 +31,11 @@ type IPService struct {
 	redisRepo     *repository.RedisRepository
 	pgRepo        *repository.PostgresRepository
 	blockedRanges []netip.Prefix
-	geoipReader   *geoip2.Reader
-	asnReader     *geoip2.Reader
-	bloomFilter   *bloom.BloomFilter
-	bloomMu       sync.RWMutex
+	geoipReader    *geoip2.Reader
+	asnReader      *geoip2.Reader
+	bloomFilter    *bloom.BloomFilter
+	bloomMu        sync.RWMutex
+	syncInProgress atomic.Bool
 }
 
 func findGeoIPPath(filename string) string {
@@ -93,6 +95,11 @@ func NewIPService(cfg *config.Config, rRepo *repository.RedisRepository, pgRepo 
 }
 
 func (s *IPService) syncBloomFilter() {
+	if !s.syncInProgress.CompareAndSwap(false, true) {
+		return // A sync is already concurrently running
+	}
+	defer s.syncInProgress.Store(false)
+
 	s.bloomMu.Lock()
 	defer s.bloomMu.Unlock()
 
@@ -640,6 +647,9 @@ func (s *IPService) BulkBlock(ctx context.Context, ips []string, reason string, 
 		expiresAt = now.Add(time.Duration(tVal) * time.Second).Format("2006-01-02 15:04:05 UTC")
 	}
 
+	validIPs := make([]string, 0, len(ips))
+	validEntries := make([]models.IPEntry, 0, len(ips))
+
 	for _, ip := range ips {
 		if !s.IsValidIP(ip) {
 			continue
@@ -654,37 +664,45 @@ func (s *IPService) BulkBlock(ctx context.Context, ips []string, reason string, 
 			ExpiresAt:   expiresAt,
 			ThreatScore: s.CalculateThreatScore(ip, reason),
 		}
+		validIPs = append(validIPs, ip)
+		validEntries = append(validEntries, entry)
+	}
 
-		if persist && s.pgRepo != nil {
-			_ = s.pgRepo.CreatePersistentBlock(ip, entry)
-			_ = s.pgRepo.LogAction(addedBy, "BLOCK_PERSISTENT", ip, reason)
-		} else {
-			if s.pgRepo != nil {
-				_ = s.pgRepo.LogAction(addedBy, "BLOCK_EPHEMERAL", ip, reason)
-			}
-		}
-		_ = s.redisRepo.ExecBlockAtomic(ip, entry, now)
-		s.bloomMu.Lock()
-		if s.bloomFilter != nil {
+	if len(validIPs) == 0 {
+		return nil
+	}
+
+	if persist && s.pgRepo != nil {
+		_ = s.pgRepo.BulkCreatePersistentBlocks(validIPs, validEntries)
+		_ = s.pgRepo.BulkLogAction(addedBy, "BLOCK_PERSISTENT", validIPs, reason)
+	} else if s.pgRepo != nil {
+		_ = s.pgRepo.BulkLogAction(addedBy, "BLOCK_EPHEMERAL", validIPs, reason)
+	}
+	_ = s.redisRepo.ExecBulkBlockAtomic(validIPs, validEntries, now)
+
+	s.bloomMu.Lock()
+	if s.bloomFilter != nil {
+		for _, ip := range validIPs {
 			s.bloomFilter.AddString(ip)
 		}
-		s.bloomMu.Unlock()
 	}
+	s.bloomMu.Unlock()
+
 	return nil
 }
 
 // BulkUnblock unblocks multiple IPs at once.
 func (s *IPService) BulkUnblock(ctx context.Context, ips []string, actor string) error {
-	if s.redisRepo == nil {
+	if s.redisRepo == nil || len(ips) == 0 {
 		return nil
 	}
-	for _, ip := range ips {
-		_ = s.redisRepo.ExecUnblockAtomic(ip)
-		if s.pgRepo != nil {
-			_ = s.pgRepo.DeletePersistentBlock(ip)
-			_ = s.pgRepo.LogAction(actor, "UNBLOCK", ip, "bulk action")
-		}
+	
+	_ = s.redisRepo.ExecBulkUnblockAtomic(ips)
+	if s.pgRepo != nil {
+		_ = s.pgRepo.BulkDeletePersistentBlocks(ips)
+		_ = s.pgRepo.BulkLogAction(actor, "UNBLOCK", ips, "bulk action")
 	}
+
 	// Full re-sync is needed for Bloom filter because it doesn't support removals
 	go s.syncBloomFilter()
 	return nil

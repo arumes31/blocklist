@@ -161,6 +161,10 @@ func (h *APIHandler) BulkBlock(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
 		return
 	}
+	if len(req.IPs) > 500 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Too many IPs. Max 500 allowed per request."})
+		return
+	}
 
 	ttl := 0
 	if req.TTL > 0 {
@@ -201,6 +205,10 @@ func (h *APIHandler) BulkUnblock(c *gin.Context) {
 	}
 	if err := c.ShouldBindJSON(&req); err != nil || len(req.IPs) == 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+		return
+	}
+	if len(req.IPs) > 500 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Too many IPs. Max 500 allowed per request."})
 		return
 	}
 

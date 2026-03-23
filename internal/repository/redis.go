@@ -340,6 +340,54 @@ func (r *RedisRepository) ExecUnblockAtomic(ip string) error {
 	return err
 }
 
+// ExecBulkBlockAtomic executes atomic block writes for multiple IPs using pipelining
+func (r *RedisRepository) ExecBulkBlockAtomic(ips []string, entries []models.IPEntry, now time.Time) error {
+	defer r.trackDuration("ExecBulkBlockAtomic", time.Now())
+	if len(ips) == 0 {
+		return nil
+	}
+
+	pipe := r.client.Pipeline()
+	nowUnix := fmt.Sprintf("%d", now.Unix())
+	
+	for i, ip := range ips {
+		data, _ := json.Marshal(entries[i])
+		pipe.Eval(r.ctx, blockAtomicScript, []string{}, ip, string(data), nowUnix)
+	}
+
+	_, err := pipe.Exec(r.ctx)
+	if err != nil {
+		return err
+	}
+
+	count := int64(len(ips))
+	_ = r.IncrHourBucket(now, count)
+	_ = r.IncrDayBucket(now, count)
+	
+	pipeCounts := r.client.Pipeline()
+	for _, ip := range ips {
+		pipeCounts.HIncrBy(r.ctx, "ips_ban_counts", ip, 1)
+	}
+	_, _ = pipeCounts.Exec(r.ctx)
+
+	return nil
+}
+
+// ExecBulkUnblockAtomic executes atomic unblocks for multiple IPs using pipelining
+func (r *RedisRepository) ExecBulkUnblockAtomic(ips []string) error {
+	defer r.trackDuration("ExecBulkUnblockAtomic", time.Now())
+	if len(ips) == 0 {
+		return nil
+	}
+
+	pipe := r.client.Pipeline()
+	for _, ip := range ips {
+		pipe.Eval(r.ctx, unblockAtomicScript, []string{}, ip)
+	}
+	_, err := pipe.Exec(r.ctx)
+	return err
+}
+
 func (r *RedisRepository) GetTrueRedisCount() (int, error) {
 	v, err := r.client.HLen(r.ctx, "ips").Result()
 	return int(v), err
