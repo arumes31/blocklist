@@ -23,7 +23,7 @@ func (s *SchedulerService) Start() {
 	ticker := time.NewTicker(15 * time.Minute)
 	go func() {
 		for range ticker.C {
-			if acquired, _ := s.redisRepo.AcquireLock("lock_cleanup", 10*time.Minute); acquired {
+			if token, acquired, _ := s.redisRepo.AcquireLock("lock_cleanup", 10*time.Minute); acquired {
 				s.CleanOldIPs("ips")
 				s.CleanOldIPs("ips_webhook2_whitelist")
 
@@ -38,7 +38,7 @@ func (s *SchedulerService) Start() {
 					}
 				}
 
-				_ = s.redisRepo.ReleaseLock("lock_cleanup")
+				_ = s.redisRepo.ReleaseLock("lock_cleanup", token)
 			}
 		}
 	}()

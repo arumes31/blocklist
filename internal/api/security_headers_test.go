@@ -12,7 +12,7 @@ func TestSecurity_Headers(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	r := gin.New()
-	
+
 	// Security headers middleware from main.go
 	r.Use(func(c *gin.Context) {
 		c.Header("X-Content-Type-Options", "nosniff")
@@ -29,7 +29,7 @@ func TestSecurity_Headers(t *testing.T) {
 	r.ServeHTTP(w, req)
 
 	headers := w.Header()
-	
+
 	expectedHeaders := map[string]string{
 		"X-Content-Type-Options": "nosniff",
 		"X-Frame-Options":        "DENY",
@@ -51,7 +51,7 @@ func TestSecurity_CORS_API(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	r := gin.New()
-	
+
 	// Mock CORS logic usually applied to API paths
 	r.Use(func(c *gin.Context) {
 		// In a real app, this might be a library like github.com/gin-contrib/cors

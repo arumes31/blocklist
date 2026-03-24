@@ -79,7 +79,7 @@ func TestRedisRepository_Integration(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ZPageByScoreDesc failed: %v", err)
 		}
-		
+
 		t.Logf("Fetched %d items, next cursor: %s", len(zs), next)
 		for i, z := range zs {
 			t.Logf("  [%d] %s (score: %v)", i, z.Member.(string), z.Score)
@@ -101,7 +101,7 @@ func TestRedisRepository_Integration(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ZPageByScoreDesc with cursor failed: %v", err)
 		}
-		
+
 		t.Logf("Fetched %d items for next page", len(zs2))
 		if len(zs2) == 0 {
 			t.Fatal("expected 1 item from next page, got 0")
@@ -115,9 +115,9 @@ func TestRedisRepository_Integration(t *testing.T) {
 	t.Run("AtomicOperations", func(t *testing.T) {
 		ip := "8.8.8.8"
 		entry := models.IPEntry{
-			Timestamp: "2026-01-31 15:00:00 UTC",
-			Reason:    "atomic-test",
-			AddedBy:   "bot",
+			Timestamp:   "2026-01-31 15:00:00 UTC",
+			Reason:      "atomic-test",
+			AddedBy:     "bot",
 			Geolocation: &models.GeoData{Country: "US"},
 		}
 		now := time.Now().UTC()

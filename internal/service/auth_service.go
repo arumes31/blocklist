@@ -20,7 +20,9 @@ func NewAuthService(pg *repository.PostgresRepository, r *repository.RedisReposi
 }
 
 func (s *AuthService) CheckAuth(username, password, token string) bool {
-	if s.pgRepo == nil { return false }
+	if s.pgRepo == nil {
+		return false
+	}
 	admin, err := s.pgRepo.GetAdmin(username)
 	if err != nil {
 		return false
@@ -32,7 +34,7 @@ func (s *AuthService) CheckAuth(username, password, token string) bool {
 		return false
 	}
 
-// Verify TOTP
+	// Verify TOTP
 	return totp.Validate(token, admin.Token)
 }
 
@@ -53,14 +55,20 @@ func (s *AuthService) HashPassword(password string) (string, error) {
 }
 
 func (s *AuthService) CreateAdmin(username, password, role, permissions string) (*models.AdminAccount, error) {
-	if s.pgRepo == nil { return nil, nil }
+	if s.pgRepo == nil {
+		return nil, nil
+	}
 	hash, err := s.HashPassword(password)
 	if err != nil {
 		return nil, err
 	}
 
-	if role == "" { role = "operator" }
-	if permissions == "" { permissions = "gui_read" }
+	if role == "" {
+		role = "operator"
+	}
+	if permissions == "" {
+		permissions = "gui_read"
+	}
 
 	admin := models.AdminAccount{
 		Username:     username,

@@ -169,7 +169,7 @@ func TestAPIHandler_IPsPaginated_NegativeLimit(t *testing.T) {
 	h.IPsPaginated(c)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
-	
+
 	// 2. Zero limit
 	w2 := httptest.NewRecorder()
 	c2, _ := gin.CreateTestContext(w2)
