@@ -284,9 +284,12 @@ func (r *RedisRepository) GetCache(key string, target interface{}) error {
 
 func (r *RedisRepository) AcquireLock(key string, expiration time.Duration) (string, bool, error) {
 	b := make([]byte, 16)
-	_, _ = rand.Read(b)
+	_, err := rand.Read(b)
+	if err != nil {
+		return "", false, err
+	}
 	token := hex.EncodeToString(b)
-	err := r.client.SetArgs(r.ctx, key, token, redis.SetArgs{Mode: "NX", TTL: expiration}).Err()
+	err = r.client.SetArgs(r.ctx, key, token, redis.SetArgs{Mode: "NX", TTL: expiration}).Err()
 	if err == redis.Nil {
 		return "", false, nil
 	}
