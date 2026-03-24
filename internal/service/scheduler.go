@@ -23,7 +23,12 @@ func (s *SchedulerService) Start() {
 	ticker := time.NewTicker(15 * time.Minute)
 	go func() {
 		for range ticker.C {
-			if acquired, _ := s.redisRepo.AcquireLock("lock_cleanup", 10*time.Minute); acquired {
+			token, acquired, err := s.redisRepo.AcquireLock("lock_cleanup", 10*time.Minute)
+			if err != nil {
+				zlog.Error().Err(err).Msg("Error acquiring cleanup lock")
+				continue
+			}
+			if acquired {
 				s.CleanOldIPs("ips")
 				s.CleanOldIPs("ips_webhook2_whitelist")
 
@@ -38,7 +43,9 @@ func (s *SchedulerService) Start() {
 					}
 				}
 
-				_ = s.redisRepo.ReleaseLock("lock_cleanup")
+				if err := s.redisRepo.ReleaseLock("lock_cleanup", token); err != nil {
+					zlog.Error().Err(err).Str("token", token).Msg("Error releasing cleanup lock")
+				}
 			}
 		}
 	}()

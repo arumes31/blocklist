@@ -10,9 +10,9 @@ import (
 // TestSecurity_ForbiddenPatterns scans the source code for dangerous Go patterns
 func TestSecurity_ForbiddenPatterns(t *testing.T) {
 	forbidden := []string{
-		"os.StartProcess", // Prefer safer alternatives
-		"syscall.Exec",    // Low-level exec
-		"unsafe.Pointer",  // Memory safety
+		"os.StartProcess",        // Prefer safer alternatives
+		"syscall.Exec",           // Low-level exec
+		"unsafe.Pointer",         // Memory safety
 		"http.ListenAndServeTLS", // Ensure we use modern config
 	}
 
@@ -24,7 +24,9 @@ func TestSecurity_ForbiddenPatterns(t *testing.T) {
 	}
 
 	err := filepath.Walk("../..", func(path string, info os.FileInfo, err error) error {
-		if err != nil { return err }
+		if err != nil {
+			return err
+		}
 		if info.IsDir() {
 			if info.Name() == "vendor" || info.Name() == ".git" {
 				return filepath.SkipDir
@@ -37,7 +39,9 @@ func TestSecurity_ForbiddenPatterns(t *testing.T) {
 		}
 
 		content, err := os.ReadFile(path)
-		if err != nil { return err }
+		if err != nil {
+			return err
+		}
 
 		body := string(content)
 		for _, f := range forbidden {

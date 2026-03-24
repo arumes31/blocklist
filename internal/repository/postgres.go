@@ -9,6 +9,7 @@ import (
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/jmoiron/sqlx"
+	zlog "github.com/rs/zerolog/log"
 )
 
 type PostgresRepository struct {
@@ -372,4 +373,97 @@ func (p *PostgresRepository) GetIPHistory(ip string) ([]models.AuditLog, error) 
 	var logs []models.AuditLog
 	err := p.readDb.Select(&logs, "SELECT id, timestamp, actor, action, target, reason FROM audit_logs WHERE target = $1 ORDER BY timestamp DESC", ip)
 	return logs, err
+}
+
+func (p *PostgresRepository) BulkCreatePersistentBlocks(ips []string, entries []models.IPEntry) error {
+	if len(ips) == 0 {
+		return nil
+	}
+	if len(ips) != len(entries) {
+		return fmt.Errorf("length mismatch: ips (%d) != entries (%d)", len(ips), len(entries))
+	}
+	tx, err := p.db.Beginx()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	stmt, err := tx.Preparex("INSERT INTO persistent_blocks (ip, timestamp, reason, added_by, geo_json) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (ip) DO UPDATE SET timestamp = $2, reason = $3, added_by = $4, geo_json = $5")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = stmt.Close() }()
+
+	for i, ip := range ips {
+		geoJSON, err := json.Marshal(entries[i].Geolocation)
+		if err != nil {
+			return err
+		}
+		_, err = stmt.Exec(ip, entries[i].Timestamp, entries[i].Reason, entries[i].AddedBy, geoJSON)
+		if err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+func (p *PostgresRepository) BulkDeletePersistentBlocks(ips []string) error {
+	if len(ips) == 0 {
+		return nil
+	}
+	query, args, err := sqlx.In("DELETE FROM persistent_blocks WHERE ip IN (?)", ips)
+	if err != nil {
+		return err
+	}
+	query = p.db.Rebind(query)
+	_, err = p.db.Exec(query, args...)
+	return err
+}
+
+func (p *PostgresRepository) BulkLogAction(actor, action string, ips []string, reason string) error {
+	if len(ips) == 0 {
+		return nil
+	}
+	tx, err := p.db.Beginx()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	insertStmt, err := tx.Preparex("INSERT INTO audit_logs (actor, action, target, reason) VALUES ($1, $2, $3, $4)")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = insertStmt.Close() }()
+
+	var deleteStmt *sqlx.Stmt
+	if p.auditLogLimitPerIP > 0 {
+		query := `
+			DELETE FROM audit_logs 
+			WHERE target = $1 
+			  AND id <= (
+				  SELECT id FROM audit_logs 
+				  WHERE target = $1 
+				  ORDER BY timestamp DESC, id DESC 
+				  OFFSET $2 LIMIT 1
+			  )`
+		stmt, err := tx.Preparex(query)
+		if err == nil {
+			deleteStmt = stmt
+			defer func() { _ = deleteStmt.Close() }()
+		} else {
+			zlog.Error().Err(err).Msg("failed to prepare audit delete statement")
+		}
+	}
+
+	for _, ip := range ips {
+		_, err = insertStmt.Exec(actor, action, ip, reason)
+		if err != nil {
+			return err
+		}
+		if deleteStmt != nil {
+			_, _ = deleteStmt.Exec(ip, p.auditLogLimitPerIP)
+		}
+	}
+	return tx.Commit()
 }

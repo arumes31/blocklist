@@ -2,6 +2,8 @@ package repository
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"strconv"
@@ -280,12 +282,30 @@ func (r *RedisRepository) GetCache(key string, target interface{}) error {
 	return json.Unmarshal([]byte(val), target)
 }
 
-func (r *RedisRepository) AcquireLock(key string, expiration time.Duration) (bool, error) {
-	return r.client.SetNX(r.ctx, key, "lock", expiration).Result()
+func (r *RedisRepository) AcquireLock(key string, expiration time.Duration) (string, bool, error) {
+	b := make([]byte, 16)
+	_, err := rand.Read(b)
+	if err != nil {
+		return "", false, err
+	}
+	token := hex.EncodeToString(b)
+	err = r.client.SetArgs(r.ctx, key, token, redis.SetArgs{Mode: "NX", TTL: expiration}).Err()
+	if err == redis.Nil {
+		return "", false, nil
+	}
+	return token, err == nil, err
 }
 
-func (r *RedisRepository) ReleaseLock(key string) error {
-	return r.client.Del(r.ctx, key).Err()
+var releaseLockScript = `
+if redis.call("get", KEYS[1]) == ARGV[1] then
+    return redis.call("del", KEYS[1])
+else
+    return 0
+end
+`
+
+func (r *RedisRepository) ReleaseLock(key string, token string) error {
+	return r.client.Eval(r.ctx, releaseLockScript, []string{key}, token).Err()
 }
 
 func (r *RedisRepository) GetClient() *redis.Client {
@@ -312,6 +332,42 @@ end
 return removed
 `
 
+var bulkBlockAtomicScript = `
+local hourBucket = ARGV[1]
+local dayBucket = ARGV[2]
+local ts = tonumber(ARGV[3])
+local count = (#ARGV - 3) / 2
+
+for i = 1, count do
+    local ip = ARGV[3 + (i-1)*2 + 1]
+    local entry = ARGV[3 + (i-1)*2 + 2]
+    
+    redis.call('HSET', 'ips', ip, entry)
+    redis.call('ZADD', 'ips_by_ts', ts, ip)
+    redis.call('HINCRBY', 'ips_ban_counts', ip, 1)
+end
+
+if count > 0 then
+    redis.call('INCRBY', hourBucket, count)
+    redis.call('INCRBY', dayBucket, count)
+    redis.call('INCRBY', 'stats:total_ever', count)
+end
+return count
+`
+
+var bulkUnblockAtomicScript = `
+local count = 0
+for i = 1, #ARGV do
+    local ip = ARGV[i]
+    local removed = redis.call('HDEL', 'ips', ip)
+    if removed == 1 then
+        redis.call('ZREM', 'ips_by_ts', ip)
+        count = count + 1
+    end
+end
+return count
+`
+
 // ExecBlockAtomic executes atomic block writes (hash, zset) and increments persistent counters
 func (r *RedisRepository) ExecBlockAtomic(ip string, entry models.IPEntry, now time.Time) error {
 	defer r.trackDuration("ExecBlockAtomic", time.Now())
@@ -334,6 +390,50 @@ func (r *RedisRepository) ExecUnblockAtomic(ip string) error {
 	defer r.trackDuration("ExecUnblockAtomic", time.Now())
 	_, err := r.client.Eval(r.ctx, unblockAtomicScript, []string{}, ip).Result()
 	return err
+}
+
+// ExecBulkBlockAtomic executes atomic block writes for multiple IPs using a single Lua script
+func (r *RedisRepository) ExecBulkBlockAtomic(ips []string, entries []models.IPEntry, now time.Time) error {
+	defer r.trackDuration("ExecBulkBlockAtomic", time.Now())
+	if len(ips) != len(entries) {
+		return fmt.Errorf("length mismatch: ips (%d) != entries (%d)", len(ips), len(entries))
+	}
+	if len(ips) == 0 {
+		return nil
+	}
+
+	hourKey := fmt.Sprintf("stats:hour:%s", now.UTC().Format("2006010215"))
+	dayKey := fmt.Sprintf("stats:day:%s", now.UTC().Format("20060102"))
+	nowUnix := fmt.Sprintf("%d", now.Unix())
+
+	args := make([]interface{}, 3+len(ips)*2)
+	args[0] = hourKey
+	args[1] = dayKey
+	args[2] = nowUnix
+
+	for i, ip := range ips {
+		data, err := json.Marshal(entries[i])
+		if err != nil {
+			return err
+		}
+		args[3+i*2] = ip
+		args[3+i*2+1] = string(data)
+	}
+
+	return r.client.Eval(r.ctx, bulkBlockAtomicScript, []string{}, args...).Err()
+}
+
+// ExecBulkUnblockAtomic executes atomic unblocks for multiple IPs using a single Lua script
+func (r *RedisRepository) ExecBulkUnblockAtomic(ips []string) error {
+	defer r.trackDuration("ExecBulkUnblockAtomic", time.Now())
+	if len(ips) == 0 {
+		return nil
+	}
+	args := make([]interface{}, len(ips))
+	for i, ip := range ips {
+		args[i] = ip
+	}
+	return r.client.Eval(r.ctx, bulkUnblockAtomicScript, []string{}, args...).Err()
 }
 
 func (r *RedisRepository) GetTrueRedisCount() (int, error) {
