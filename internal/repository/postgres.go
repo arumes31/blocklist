@@ -382,13 +382,13 @@ func (p *PostgresRepository) BulkCreatePersistentBlocks(ips []string, entries []
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	stmt, err := tx.Preparex("INSERT INTO persistent_blocks (ip, timestamp, reason, added_by, geo_json) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (ip) DO UPDATE SET timestamp = $2, reason = $3, added_by = $4, geo_json = $5")
 	if err != nil {
 		return err
 	}
-	defer stmt.Close()
+	defer func() { _ = stmt.Close() }()
 
 	for i, ip := range ips {
 		geoJSON, _ := json.Marshal(entries[i].Geolocation)
@@ -421,13 +421,13 @@ func (p *PostgresRepository) BulkLogAction(actor, action string, ips []string, r
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	insertStmt, err := tx.Preparex("INSERT INTO audit_logs (actor, action, target, reason) VALUES ($1, $2, $3, $4)")
 	if err != nil {
 		return err
 	}
-	defer insertStmt.Close()
+	defer func() { _ = insertStmt.Close() }()
 
 	var deleteStmt *sqlx.Stmt
 	if p.auditLogLimitPerIP > 0 {
@@ -443,7 +443,7 @@ func (p *PostgresRepository) BulkLogAction(actor, action string, ips []string, r
 		stmt, err := tx.Preparex(query)
 		if err == nil {
 			deleteStmt = stmt
-			defer deleteStmt.Close()
+			defer func() { _ = deleteStmt.Close() }()
 		}
 	}
 
