@@ -28,9 +28,9 @@ import (
 const MaxPageSize = 1000
 
 type IPService struct {
-	redisRepo     *repository.RedisRepository
-	pgRepo        *repository.PostgresRepository
-	blockedRanges []netip.Prefix
+	redisRepo      *repository.RedisRepository
+	pgRepo         *repository.PostgresRepository
+	blockedRanges  []netip.Prefix
 	geoipReader    *geoip2.Reader
 	asnReader      *geoip2.Reader
 	bloomFilter    *bloom.BloomFilter
@@ -317,7 +317,7 @@ func (s *IPService) ListIPsPaginated(ctx context.Context, limit int, cursor stri
 		// total via GetTotalCount
 		tot := s.GetTotalCount(ctx)
 		items := make([]map[string]interface{}, 0, limit)
-		
+
 		var currentCursor string
 		for {
 			for _, z := range zs {
@@ -678,7 +678,11 @@ func (s *IPService) BulkBlock(ctx context.Context, ips []string, reason string, 
 	} else if s.pgRepo != nil {
 		_ = s.pgRepo.BulkLogAction(addedBy, "BLOCK_EPHEMERAL", validIPs, reason)
 	}
-	_ = s.redisRepo.ExecBulkBlockAtomic(validIPs, validEntries, now)
+	err := s.redisRepo.ExecBulkBlockAtomic(validIPs, validEntries, now)
+	if err != nil {
+		zlog.Error().Err(err).Msg("ExecBulkBlockAtomic failed")
+		return err
+	}
 
 	s.bloomMu.Lock()
 	if s.bloomFilter != nil {
@@ -696,8 +700,12 @@ func (s *IPService) BulkUnblock(ctx context.Context, ips []string, actor string)
 	if s.redisRepo == nil || len(ips) == 0 {
 		return nil
 	}
-	
-	_ = s.redisRepo.ExecBulkUnblockAtomic(ips)
+
+	err := s.redisRepo.ExecBulkUnblockAtomic(ips)
+	if err != nil {
+		return err
+	}
+
 	if s.pgRepo != nil {
 		_ = s.pgRepo.BulkDeletePersistentBlocks(ips)
 		_ = s.pgRepo.BulkLogAction(actor, "UNBLOCK", ips, "bulk action")
@@ -844,7 +852,7 @@ func (s *IPService) ListIPsPaginatedAdvanced(ctx context.Context, limit int, cur
 			if currentCursor == "" {
 				break
 			}
-			
+
 			zs, next, zerr = s.redisRepo.ZPageByScoreDesc(fetchLimit, currentCursor)
 			if zerr != nil {
 				return items, currentCursor, tot, zerr

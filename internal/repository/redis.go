@@ -346,12 +346,18 @@ func (r *RedisRepository) ExecBulkBlockAtomic(ips []string, entries []models.IPE
 	if len(ips) == 0 {
 		return nil
 	}
+	if len(ips) != len(entries) {
+		return fmt.Errorf("length mismatch: ips (%d) != entries (%d)", len(ips), len(entries))
+	}
 
 	pipe := r.client.Pipeline()
 	nowUnix := fmt.Sprintf("%d", now.Unix())
-	
+
 	for i, ip := range ips {
-		data, _ := json.Marshal(entries[i])
+		data, err := json.Marshal(entries[i])
+		if err != nil {
+			return err
+		}
 		pipe.Eval(r.ctx, blockAtomicScript, []string{}, ip, string(data), nowUnix)
 	}
 
@@ -363,7 +369,7 @@ func (r *RedisRepository) ExecBulkBlockAtomic(ips []string, entries []models.IPE
 	count := int64(len(ips))
 	_ = r.IncrHourBucket(now, count)
 	_ = r.IncrDayBucket(now, count)
-	
+
 	pipeCounts := r.client.Pipeline()
 	for _, ip := range ips {
 		pipeCounts.HIncrBy(r.ctx, "ips_ban_counts", ip, 1)

@@ -9,6 +9,7 @@ import (
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/jmoiron/sqlx"
+	zlog "github.com/rs/zerolog/log"
 )
 
 type PostgresRepository struct {
@@ -378,6 +379,9 @@ func (p *PostgresRepository) BulkCreatePersistentBlocks(ips []string, entries []
 	if len(ips) == 0 {
 		return nil
 	}
+	if len(ips) != len(entries) {
+		return fmt.Errorf("length mismatch: ips (%d) != entries (%d)", len(ips), len(entries))
+	}
 	tx, err := p.db.Beginx()
 	if err != nil {
 		return err
@@ -391,7 +395,10 @@ func (p *PostgresRepository) BulkCreatePersistentBlocks(ips []string, entries []
 	defer func() { _ = stmt.Close() }()
 
 	for i, ip := range ips {
-		geoJSON, _ := json.Marshal(entries[i].Geolocation)
+		geoJSON, err := json.Marshal(entries[i].Geolocation)
+		if err != nil {
+			return err
+		}
 		_, err = stmt.Exec(ip, entries[i].Timestamp, entries[i].Reason, entries[i].AddedBy, geoJSON)
 		if err != nil {
 			return err
@@ -444,6 +451,8 @@ func (p *PostgresRepository) BulkLogAction(actor, action string, ips []string, r
 		if err == nil {
 			deleteStmt = stmt
 			defer func() { _ = deleteStmt.Close() }()
+		} else {
+			zlog.Error().Err(err).Msg("failed to prepare audit delete statement")
 		}
 	}
 
