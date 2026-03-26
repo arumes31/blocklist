@@ -62,8 +62,8 @@ func (m *MockIPService) BulkUnblock(ctx context.Context, ips []string, actor str
 	return args.Error(0)
 }
 
-func (m *MockIPService) WhitelistIP(ctx context.Context, ip string, reason string, username string) error {
-	args := m.Called(ctx, ip, reason, username)
+func (m *MockIPService) WhitelistIP(ctx context.Context, ip string, reason string, username string, expiresAt string) error {
+	args := m.Called(ctx, ip, reason, username, expiresAt)
 	return args.Error(0)
 }
 

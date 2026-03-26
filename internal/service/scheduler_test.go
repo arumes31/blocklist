@@ -100,9 +100,9 @@ func TestSchedulerService_CleanOldIPs_Whitelist(t *testing.T) {
 	activeRFC := time.Now().Add(1 * time.Hour).Format(time.RFC3339)
 	addEntry("3.3.3.3", activeRFC, "")
 
-	// 4. Timestamp Fallback (Expired)
-	tsExpired := time.Now().Add(-25 * time.Hour).Format(time.RFC3339)
-	addEntry("4.4.4.4", "", tsExpired)
+	// 4. No ExpiresAt, only timestamp — should now survive (no fallback expiry)
+	tsOld := time.Now().Add(-25 * time.Hour).Format(time.RFC3339)
+	addEntry("4.4.4.4", "", tsOld)
 
 	svc.CleanOldIPs("test_hash")
 
@@ -118,7 +118,7 @@ func TestSchedulerService_CleanOldIPs_Whitelist(t *testing.T) {
 	if _, ok := res["3.3.3.3"]; !ok {
 		t.Error("Active RFC3339 should remain")
 	}
-	if _, ok := res["4.4.4.4"]; ok {
-		t.Error("Expired Timestamp Fallback should be removed")
+	if _, ok := res["4.4.4.4"]; !ok {
+		t.Error("No ExpiresAt entry should remain (permanent)")
 	}
 }

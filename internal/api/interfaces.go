@@ -14,7 +14,7 @@ type IPServiceProvider interface {
 	UnblockIP(ctx context.Context, ip string, username string) error
 	BulkBlock(ctx context.Context, ips []string, reason string, addedBy string, actorIP string, persist bool, ttl int) error
 	BulkUnblock(ctx context.Context, ips []string, actor string) error
-	WhitelistIP(ctx context.Context, ip string, reason string, username string) error
+	WhitelistIP(ctx context.Context, ip string, reason string, username string, expiresAt string) error
 	RemoveWhitelist(ctx context.Context, ip string, username string) error
 	GetIPDetails(ctx context.Context, ip string) (map[string]interface{}, error)
 	ListIPsPaginatedAdvanced(ctx context.Context, limit int, cursor string, query string, country string, addedBy string, from string, to string) ([]map[string]interface{}, string, int, error)
