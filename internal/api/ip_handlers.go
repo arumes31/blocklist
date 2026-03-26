@@ -284,9 +284,10 @@ func (h *APIHandler) AddWhitelist(c *gin.Context) {
 	username, _ := c.Get("username")
 
 	var req struct {
-		IP     string `json:"ip"`
-		Note   string `json:"note"`
-		Reason string `json:"reason"` // Frontend sends 'reason', handler used 'note' previously? Service uses 'note'?
+		IP        string `json:"ip"`
+		Note      string `json:"note"`
+		Reason    string `json:"reason"`
+		ExpiresAt string `json:"expires_at"`
 	}
 
 	// Try JSON first
@@ -302,6 +303,7 @@ func (h *APIHandler) AddWhitelist(c *gin.Context) {
 		if req.Note == "" {
 			req.Note = c.PostForm("reason")
 		}
+		req.ExpiresAt = c.PostForm("expires_at")
 	}
 
 	// Map reason to note if needed, or vice-versa
@@ -324,7 +326,15 @@ func (h *APIHandler) AddWhitelist(c *gin.Context) {
 		}
 	}
 
-	if err := h.ipService.WhitelistIP(c.Request.Context(), req.IP, note, username.(string)); err != nil {
+	// Validate expires_at if provided
+	if req.ExpiresAt != "" {
+		if _, err := time.Parse(time.RFC3339, req.ExpiresAt); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid expires_at format (expected RFC3339)"})
+			return
+		}
+	}
+
+	if err := h.ipService.WhitelistIP(c.Request.Context(), req.IP, note, username.(string), req.ExpiresAt); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to whitelist IP"})
 		return
 	}

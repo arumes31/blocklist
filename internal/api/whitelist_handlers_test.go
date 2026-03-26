@@ -37,7 +37,7 @@ func TestAPIHandler_AddWhitelist(t *testing.T) {
 	h, _, _, _, ipService := setupTest()
 
 	// 1. Success - JSON (New standard)
-	ipService.On("WhitelistIP", mock.Anything, "5.6.7.8", "manual", "admin").Return(nil)
+	ipService.On("WhitelistIP", mock.Anything, "5.6.7.8", "manual", "admin", "").Return(nil)
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
@@ -53,7 +53,7 @@ func TestAPIHandler_AddWhitelist(t *testing.T) {
 	ipService.AssertExpectations(t)
 
 	// 2. Success - Form (Legacy/Fallback)
-	ipService.On("WhitelistIP", mock.Anything, "1.2.3.9", "note-val", "admin").Return(nil)
+	ipService.On("WhitelistIP", mock.Anything, "1.2.3.9", "note-val", "admin", "").Return(nil)
 
 	w2 := httptest.NewRecorder()
 	c2, _ := gin.CreateTestContext(w2)

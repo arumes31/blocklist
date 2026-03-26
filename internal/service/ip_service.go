@@ -1036,13 +1036,14 @@ func (s *IPService) UnblockIP(ctx context.Context, ip string, username string) e
 }
 
 // WhitelistIP adds an IP to the whitelist.
-func (s *IPService) WhitelistIP(ctx context.Context, ip string, reason string, username string) error {
+func (s *IPService) WhitelistIP(ctx context.Context, ip string, reason string, username string, expiresAt string) error {
 	geo := s.GetGeoIP(ip)
 	entry := models.WhitelistEntry{
 		Timestamp:   time.Now().UTC().Format("2006-01-02 15:04:05 UTC"),
 		Geolocation: geo,
 		AddedBy:     username,
 		Reason:      reason,
+		ExpiresAt:   expiresAt,
 	}
 	if s.pgRepo != nil {
 		_ = s.pgRepo.LogAction(username, "WHITELIST", ip, reason)

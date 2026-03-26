@@ -148,14 +148,19 @@
     </div>
     
     <div class="main-content">
-        <div class="table-card" style="padding: 1.5rem; margin-bottom: 2rem; display: flex; gap: 10px; align-items: center; justify-content: center;">
+        <div class="table-card" style="padding: 1.5rem; margin-bottom: 2rem; display: flex; gap: 10px; align-items: center; justify-content: center; flex-wrap: wrap;">
             <input type="text" id="whitelistIP" class="filter-input" style="flex: 1; max-width: 300px;" placeholder="Enter IP to whitelist">
             <input type="text" id="whitelistReason" class="filter-input" style="flex: 1; max-width: 400px;" placeholder="Enter Reason">
+            <select id="expiryType" class="filter-input" style="max-width: 140px;" onchange="toggleExpiryInput()">
+                <option value="never">Never</option>
+                <option value="custom">Custom</option>
+            </select>
+            <input type="datetime-local" id="expiryDate" class="filter-input" style="max-width: 220px; display: none;">
             <button class="btn btn-danger" onclick="addWhitelist()">Add to Whitelist</button>
         </div>
         
         <div style="margin-bottom: 1.5rem;">
-            <input type="text" id="filterInput" class="filter-input" style="width: 100%; box-sizing: border-box;" onkeyup="filterTable()" placeholder="Search for IP addresses...">
+            <input type="text" id="filterInput" class="filter-input" style="width: 100%; box-sizing: border-box;" onkeyup="filterTable()" placeholder="Search by IP, Added By, or Reason...">
         </div>
         
         <div class="table-card">
@@ -218,6 +223,11 @@
             }, 4000);
         }
 
+        function toggleExpiryInput() {
+            var type = document.getElementById('expiryType').value;
+            document.getElementById('expiryDate').style.display = type === 'custom' ? '' : 'none';
+        }
+
         function addWhitelist() {
             var ip = document.getElementById('whitelistIP').value;
             var reason = document.getElementById('whitelistReason').value;
@@ -229,10 +239,22 @@
                 showToast('Reason is required.', 'danger');
                 return;
             }
+
+            var expiresAt = '';
+            var expiryType = document.getElementById('expiryType').value;
+            if (expiryType === 'custom') {
+                var dateVal = document.getElementById('expiryDate').value;
+                if (!dateVal) {
+                    showToast('Please select an expiry date.', 'danger');
+                    return;
+                }
+                expiresAt = new Date(dateVal).toISOString();
+            }
+
             fetch('/add_whitelist', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 'ip': ip, 'persist': true, 'reason': reason })
+                body: JSON.stringify({ 'ip': ip, 'persist': true, 'reason': reason, 'expires_at': expiresAt })
             })
             .then(response => response.json())
             .then(data => {
@@ -240,7 +262,7 @@
                     showToast('IP added to whitelist!', 'success');
                     setTimeout(() => location.reload(), 1000);
                 } else {
-                    showToast('Failed to add IP!', 'danger');
+                    showToast(data.error || 'Failed to add IP!', 'danger');
                 }
             });
         }
@@ -269,21 +291,21 @@
         }
         
         function filterTable() {
-            var input, filter, table, tr, td, i, txtValue;
-            input = document.getElementById("filterInput");
-            filter = input.value.toUpperCase();
-            table = document.getElementById("whitelistTable");
-            tr = table.getElementsByTagName("tr");
-            for (i = 1; i < tr.length; i++) {
-                td = tr[i].getElementsByTagName("td")[0];
-                if (td) {
-                    txtValue = td.textContent || td.innerText;
-                    if (txtValue.toUpperCase().indexOf(filter) > -1) {
-                        tr[i].style.display = "";
-                    } else {
-                        tr[i].style.display = "none";
+            var input = document.getElementById("filterInput");
+            var filter = input.value.toUpperCase();
+            var table = document.getElementById("whitelistTable");
+            var tr = table.getElementsByTagName("tr");
+            for (var i = 1; i < tr.length; i++) {
+                var tds = tr[i].getElementsByTagName("td");
+                var match = false;
+                // Search columns: 0 (IP), 3 (Added By), 4 (Reason)
+                [0, 3, 4].forEach(function(col) {
+                    if (tds[col]) {
+                        var txt = (tds[col].textContent || tds[col].innerText).toUpperCase();
+                        if (txt.indexOf(filter) > -1) match = true;
                     }
-                }       
+                });
+                tr[i].style.display = match ? "" : "none";
             }
         }
     </script>
