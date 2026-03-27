@@ -103,8 +103,12 @@ func (r *RedisRepository) GetIPEntries(ips []string) ([]*models.IPEntry, error) 
 		if val == nil {
 			continue
 		}
+		strVal, ok := val.(string)
+		if !ok {
+			continue
+		}
 		var e models.IPEntry
-		if err := json.Unmarshal([]byte(val.(string)), &e); err == nil {
+		if err := json.Unmarshal([]byte(strVal), &e); err == nil {
 			entries[i] = &e
 		}
 	}

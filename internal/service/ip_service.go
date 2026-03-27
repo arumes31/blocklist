@@ -591,7 +591,8 @@ func (s *IPService) ExportIPs(ctx context.Context, query string, country string,
 
 		entries, err := s.redisRepo.GetIPEntries(ips)
 		if err != nil {
-			continue
+			zlog.Error().Err(err).Int("batch_start", i).Msg("ExportIPs: failed to fetch batch of IP entries")
+			return nil, err
 		}
 
 		for j, entry := range entries {
