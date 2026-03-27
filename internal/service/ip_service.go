@@ -576,55 +576,74 @@ func (s *IPService) ExportIPs(ctx context.Context, query string, country string,
 
 	addedBy = strings.ToLower(strings.TrimSpace(addedBy))
 
-	for _, z := range zs {
-		ip := z.Member.(string)
-		entry, err := s.redisRepo.GetIPEntry(ip)
-		if err != nil || entry == nil {
-			continue
+	// Batch fetch entries in groups of 100 to avoid N+1 queries
+	batchSize := 100
+	for i := 0; i < len(zs); i += batchSize {
+		end := i + batchSize
+		if end > len(zs) {
+			end = len(zs)
+		}
+		batchZs := zs[i:end]
+		ips := make([]string, len(batchZs))
+		for j, z := range batchZs {
+			ips[j] = z.Member.(string)
 		}
 
-		if q != "" {
-			if !strings.Contains(strings.ToLower(ip), q) &&
-				!strings.Contains(strings.ToLower(entry.Reason), q) &&
-				!strings.Contains(strings.ToLower(entry.AddedBy), q) &&
-				(entry.Geolocation == nil || !strings.Contains(strings.ToLower(entry.Geolocation.Country), q)) {
+		entries, err := s.redisRepo.GetIPEntries(ips)
+		if err != nil {
+			zlog.Error().Err(err).Int("batch_start", i).Msg("ExportIPs: failed to fetch batch of IP entries")
+			return nil, err
+		}
+
+		for j, entry := range entries {
+			if entry == nil {
 				continue
 			}
-		}
-		if len(countryList) > 0 {
-			match := false
-			if entry.Geolocation != nil {
-				cCode := strings.ToLower(entry.Geolocation.Country)
-				for _, c := range countryList {
-					if cCode == c {
-						match = true
-						break
+			ip := ips[j]
+
+			if q != "" {
+				if !strings.Contains(strings.ToLower(ip), q) &&
+					!strings.Contains(strings.ToLower(entry.Reason), q) &&
+					!strings.Contains(strings.ToLower(entry.AddedBy), q) &&
+					(entry.Geolocation == nil || !strings.Contains(strings.ToLower(entry.Geolocation.Country), q)) {
+					continue
+				}
+			}
+			if len(countryList) > 0 {
+				match := false
+				if entry.Geolocation != nil {
+					cCode := strings.ToLower(entry.Geolocation.Country)
+					for _, c := range countryList {
+						if cCode == c {
+							match = true
+							break
+						}
+					}
+				}
+				if !match {
+					continue
+				}
+			}
+			if addedBy != "" {
+				if !strings.EqualFold(entry.AddedBy, addedBy) {
+					continue
+				}
+			}
+			if !fromTime.IsZero() || !toTime.IsZero() {
+				ts, err := time.Parse("2006-01-02 15:04:05 UTC", entry.Timestamp)
+				if err == nil {
+					if !fromTime.IsZero() && ts.Before(fromTime) {
+						continue
+					}
+					if !toTime.IsZero() && ts.After(toTime) {
+						continue
 					}
 				}
 			}
-			if !match {
-				continue
-			}
-		}
-		if addedBy != "" {
-			if !strings.EqualFold(entry.AddedBy, addedBy) {
-				continue
-			}
-		}
-		if !fromTime.IsZero() || !toTime.IsZero() {
-			ts, err := time.Parse("2006-01-02 15:04:05 UTC", entry.Timestamp)
-			if err == nil {
-				if !fromTime.IsZero() && ts.Before(fromTime) {
-					continue
-				}
-				if !toTime.IsZero() && ts.After(toTime) {
-					continue
-				}
-			}
-		}
 
-		// Ensure we always store a pointer to IPEntry
-		items = append(items, map[string]interface{}{"ip": ip, "data": entry})
+			// Ensure we always store a pointer to IPEntry
+			items = append(items, map[string]interface{}{"ip": ip, "data": entry})
+		}
 	}
 
 	return items, nil
