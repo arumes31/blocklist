@@ -24,11 +24,29 @@ func TestWebSocket_CheckOrigin(t *testing.T) {
 			name:     "Mismatching Origin",
 			origin:   "http://evil.com",
 			host:     "localhost:5000",
-			expected: false, // Currently returns true, demonstrating the vulnerability
+			expected: false,
 		},
 		{
 			name:     "No Origin Header",
 			origin:   "",
+			host:     "localhost:5000",
+			expected: true,
+		},
+		{
+			name:     "Mismatching port",
+			origin:   "http://localhost:8080",
+			host:     "localhost:5000",
+			expected: false,
+		},
+		{
+			name:     "Malformed Origin",
+			origin:   "://invalid",
+			host:     "localhost:5000",
+			expected: false,
+		},
+		{
+			name:     "Case-insensitive host match",
+			origin:   "http://LocalHost:5000",
 			host:     "localhost:5000",
 			expected: true,
 		},

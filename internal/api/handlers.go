@@ -77,7 +77,8 @@ var upgrader = websocket.Upgrader{
 		if err != nil {
 			return false
 		}
-		return u.Host == r.Host
+		// Use case-insensitive comparison for the host portion.
+		return strings.EqualFold(u.Host, r.Host)
 	},
 }
 
