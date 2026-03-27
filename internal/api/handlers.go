@@ -77,8 +77,14 @@ var upgrader = websocket.Upgrader{
 		if err != nil {
 			return false
 		}
+		// Derive the request's effective scheme.
+		requestScheme := "http"
+		if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
+			requestScheme = "https"
+		}
+		// The Origin header scheme (e.g. "http", "https") should match the request's.
 		// Use case-insensitive comparison for the host portion.
-		return strings.EqualFold(u.Host, r.Host)
+		return u.Scheme == requestScheme && strings.EqualFold(u.Host, r.Host)
 	},
 }
 

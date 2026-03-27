@@ -1,6 +1,7 @@
 package api
 
 import (
+	"crypto/tls"
 	"net/http"
 	"testing"
 
@@ -9,13 +10,15 @@ import (
 
 func TestWebSocket_CheckOrigin(t *testing.T) {
 	tests := []struct {
-		name     string
-		origin   string
-		host     string
-		expected bool
+		name          string
+		origin        string
+		host          string
+		tls           bool
+		forwardProto string
+		expected      bool
 	}{
 		{
-			name:     "Matching Origin and Host",
+			name:     "Matching Origin and Host (HTTP)",
 			origin:   "http://localhost:5000",
 			host:     "localhost:5000",
 			expected: true,
@@ -50,6 +53,33 @@ func TestWebSocket_CheckOrigin(t *testing.T) {
 			host:     "localhost:5000",
 			expected: true,
 		},
+		{
+			name:     "Matching Origin and Host (HTTPS via TLS)",
+			origin:   "https://localhost:5000",
+			host:     "localhost:5000",
+			tls:      true,
+			expected: true,
+		},
+		{
+			name:          "Matching Origin and Host (HTTPS via Forwarded-Proto)",
+			origin:        "https://localhost:5000",
+			host:          "localhost:5000",
+			forwardProto: "https",
+			expected:      true,
+		},
+		{
+			name:     "Scheme Mismatch (Origin HTTP, Request HTTPS)",
+			origin:   "http://localhost:5000",
+			host:     "localhost:5000",
+			tls:      true,
+			expected: false,
+		},
+		{
+			name:     "Scheme Mismatch (Origin HTTPS, Request HTTP)",
+			origin:   "https://localhost:5000",
+			host:     "localhost:5000",
+			expected: false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -59,10 +89,16 @@ func TestWebSocket_CheckOrigin(t *testing.T) {
 			if tt.origin != "" {
 				req.Header.Set("Origin", tt.origin)
 			}
+			if tt.tls {
+				req.TLS = &tls.ConnectionState{}
+			}
+			if tt.forwardProto != "" {
+				req.Header.Set("X-Forwarded-Proto", tt.forwardProto)
+			}
 
 			// We access the global upgrader variable from handlers.go
 			result := upgrader.CheckOrigin(req)
-			assert.Equal(t, tt.expected, result, "CheckOrigin result for origin %s and host %s", tt.origin, tt.host)
+			assert.Equal(t, tt.expected, result, "CheckOrigin result for origin %s and host %s (tls: %v, proto: %s)", tt.origin, tt.host, tt.tls, tt.forwardProto)
 		})
 	}
 }
