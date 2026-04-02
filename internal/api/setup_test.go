@@ -188,6 +188,14 @@ func (m *MockRedisRepo) GetIPEntry(ip string) (*models.IPEntry, error) {
 	return args.Get(0).(*models.IPEntry), args.Error(1)
 }
 
+func (m *MockRedisRepo) GetIPEntries(ips []string) ([]*models.IPEntry, error) {
+	args := m.Called(ips)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]*models.IPEntry), args.Error(1)
+}
+
 func (m *MockRedisRepo) GetCache(key string, target interface{}) error {
 	args := m.Called(key, target)
 	return args.Error(0)

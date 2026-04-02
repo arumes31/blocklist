@@ -171,8 +171,6 @@ func (h *APIHandler) Health(c *gin.Context) {
 			status = "DEGRADED"
 		}
 		// Check read replica if it's different from primary
-		// We'll add a Ping method to repository later if needed,
-		// for now we just use a simple read-only query.
 		if _, err := h.pgRepo.GetPersistentCount(); err != nil {
 			readDbStatus = "ERROR"
 			status = "DEGRADED"

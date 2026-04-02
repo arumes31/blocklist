@@ -87,6 +87,34 @@ func (r *RedisRepository) GetIPEntry(ip string) (*models.IPEntry, error) {
 	return &e, nil
 }
 
+// GetIPEntries returns multiple IP entries from the hash in a single call.
+func (r *RedisRepository) GetIPEntries(ips []string) ([]*models.IPEntry, error) {
+	if len(ips) == 0 {
+		return nil, nil
+	}
+	defer r.trackDuration("GetIPEntries", time.Now())
+	vals, err := r.client.HMGet(r.ctx, "ips", ips...).Result()
+	if err != nil {
+		return nil, err
+	}
+
+	entries := make([]*models.IPEntry, len(vals))
+	for i, val := range vals {
+		if val == nil {
+			continue
+		}
+		strVal, ok := val.(string)
+		if !ok {
+			continue
+		}
+		var e models.IPEntry
+		if err := json.Unmarshal([]byte(strVal), &e); err == nil {
+			entries[i] = &e
+		}
+	}
+	return entries, nil
+}
+
 // Index helpers for time-ordered queries
 func (r *RedisRepository) IndexIPTimestamp(ip string, ts time.Time) error {
 	return r.client.ZAdd(r.ctx, "ips_by_ts", redis.Z{Score: float64(ts.Unix()), Member: ip}).Err()

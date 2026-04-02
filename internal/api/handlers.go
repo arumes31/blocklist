@@ -6,6 +6,7 @@ import (
 	"blocklist/internal/models"
 	"blocklist/internal/service"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -66,8 +67,24 @@ var upgrader = websocket.Upgrader{
 	WriteBufferSize:   1024,
 	EnableCompression: true,
 	CheckOrigin: func(r *http.Request) bool {
-		// More permissive for production behind proxies
-		return true
+		// Protect against Cross-Site WebSocket Hijacking (CSWSH)
+		// by verifying that the Origin header matches the Host header.
+		origin := r.Header.Get("Origin")
+		if origin == "" {
+			return true
+		}
+		u, err := url.Parse(origin)
+		if err != nil {
+			return false
+		}
+		// Derive the request's effective scheme.
+		requestScheme := "http"
+		if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
+			requestScheme = "https"
+		}
+		// The Origin header scheme (e.g. "http", "https") should match the request's.
+		// Use case-insensitive comparison for the host portion.
+		return u.Scheme == requestScheme && strings.EqualFold(u.Host, r.Host)
 	},
 }
 

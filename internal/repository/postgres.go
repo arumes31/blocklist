@@ -4,6 +4,7 @@ import (
 	"blocklist/internal/models"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -317,38 +318,51 @@ func (p *PostgresRepository) GetAuditLogsPaginated(limit, offset int, actor, act
 	var logs []models.AuditLog
 	var total int
 
-	baseQuery := "SELECT id, timestamp, actor, action, target, reason FROM audit_logs WHERE 1=1"
+	var queryBuilder strings.Builder
+	queryBuilder.Grow(150) // Preallocate capacity to avoid intermediate allocations
+	queryBuilder.WriteString(" FROM audit_logs WHERE 1=1")
+
 	params := []interface{}{}
 	paramIdx := 1
 
 	if actor != "" {
-		baseQuery += fmt.Sprintf(" AND actor = $%d", paramIdx)
+		queryBuilder.WriteString(" AND actor = $")
+		queryBuilder.WriteString(strconv.Itoa(paramIdx))
 		params = append(params, actor)
 		paramIdx++
 	}
 	if action != "" {
-		baseQuery += fmt.Sprintf(" AND action = $%d", paramIdx)
+		queryBuilder.WriteString(" AND action = $")
+		queryBuilder.WriteString(strconv.Itoa(paramIdx))
 		params = append(params, action)
 		paramIdx++
 	}
 	if query != "" {
-		baseQuery += fmt.Sprintf(" AND (target ILIKE $%d OR reason ILIKE $%d)", paramIdx, paramIdx)
+		queryBuilder.WriteString(" AND (target ILIKE $")
+		idxStr := strconv.Itoa(paramIdx)
+		queryBuilder.WriteString(idxStr)
+		queryBuilder.WriteString(" OR reason ILIKE $")
+		queryBuilder.WriteString(idxStr)
+		queryBuilder.WriteString(")")
 		params = append(params, "%"+query+"%")
 		paramIdx++
 	}
 
+	whereClause := queryBuilder.String()
+
 	// Get total count
-	countQuery := strings.Replace(baseQuery, "id, timestamp, actor, action, target, reason", "COUNT(*)", 1)
+	countQuery := "SELECT COUNT(*)" + whereClause
 	err := p.readDb.Get(&total, countQuery, params...)
 	if err != nil {
 		return nil, 0, err
 	}
 
 	// Get records
-	baseQuery += fmt.Sprintf(" ORDER BY timestamp DESC LIMIT $%d OFFSET $%d", paramIdx, paramIdx+1)
+	recordsQuery := "SELECT id, timestamp, actor, action, target, reason" + whereClause +
+		" ORDER BY timestamp DESC LIMIT $" + strconv.Itoa(paramIdx) + " OFFSET $" + strconv.Itoa(paramIdx+1)
 	params = append(params, limit, offset)
 
-	err = p.readDb.Select(&logs, baseQuery, params...)
+	err = p.readDb.Select(&logs, recordsQuery, params...)
 	return logs, total, err
 }
 
