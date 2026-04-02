@@ -89,15 +89,15 @@ func TestSchedulerService_CleanOldIPs_Whitelist(t *testing.T) {
 	}
 
 	// 1. Expired RFC3339
-	expiredRFC := time.Now().Add(-1 * time.Hour).Format(time.RFC3339)
+	expiredRFC := time.Now().UTC().Add(-1 * time.Hour).Format(time.RFC3339)
 	addEntry("1.1.1.1", expiredRFC, "")
 
 	// 2. Expired Custom
-	expiredCustom := time.Now().Add(-1 * time.Hour).Format("2006-01-02 15:04:05 UTC")
+	expiredCustom := time.Now().UTC().Add(-1 * time.Hour).Format("2006-01-02 15:04:05 UTC")
 	addEntry("2.2.2.2", expiredCustom, "")
 
 	// 3. Active RFC3339
-	activeRFC := time.Now().Add(1 * time.Hour).Format(time.RFC3339)
+	activeRFC := time.Now().UTC().Add(1 * time.Hour).Format(time.RFC3339)
 	addEntry("3.3.3.3", activeRFC, "")
 
 	// 4. No ExpiresAt, only timestamp — should now survive (no fallback expiry)
