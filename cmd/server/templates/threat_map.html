@@ -358,6 +358,9 @@
         </div>
     </div>
 
+    <script id="trend-data-json" type="application/json">
+        [{{ range $i, $e := .block_trend }}{{ if $i }},{{ end }}{ "x": "{{ $e.Hour }}", "y": {{ $e.Count }} }{{ end }}]
+    </script>
     <script nonce="{{ .nonce }}">
         let countryChart = null;
         let trendChart = null;
@@ -388,7 +391,13 @@
             fetchTimeout = setTimeout(fetchLatestData, 2500);
         }
 
-        const trendData = [{{ range .block_trend }} { x: "{{ .Hour }}", y: {{ .Count }} }, {{ end }} ];
+        let trendData = [];
+        try {
+            const raw = document.getElementById('trend-data-json');
+            if (raw) trendData = JSON.parse(raw.textContent);
+        } catch (e) {
+            console.error("Failed to parse initial trend data", e);
+        }
 
         async function initMap() {
             map = L.map('threat-map', {
