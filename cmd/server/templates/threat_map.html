@@ -250,16 +250,39 @@
                 grid-template-columns: 1fr;
                 overflow-y: auto;
             }
+
             .header-container {
                 flex-direction: column;
                 gap: 1rem;
                 align-items: flex-start;
+                padding: 1rem;
+                height: auto;
             }
+
+            .header-actions {
+                flex-wrap: wrap;
+                gap: 0.8rem;
+                width: 100%;
+            }
+
+            .toggle-strip {
+                flex-wrap: wrap;
+                gap: 0.5rem;
+                width: 100%;
+                background: rgba(255, 255, 255, 0.03) !important;
+            }
+
             #threat-map {
                 min-height: 400px;
             }
+
             .side-panel {
                 overflow-y: visible;
+            }
+
+            body {
+                overflow-y: auto;
+                height: auto;
             }
         }
     </style>
@@ -274,8 +297,8 @@
             </a>
             <h2 style="margin: 0; font-size: 1.2rem;">Threat Map</h2>
         </div>
-        <div style="display: flex; align-items: center; gap: 1rem;">
-            <div
+        <div class="header-actions" style="display: flex; align-items: center; gap: 1rem;">
+            <div class="toggle-strip"
                 style="display: flex; gap: 1rem; font-size: 0.8rem; background: rgba(255,255,255,0.05); padding: 5px 15px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1);">
                 <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
                     <input type="checkbox" id="toggleBlockIPs" onchange="fetchLatestData()" checked> Blocked IPs
@@ -386,8 +409,9 @@
         }
 
         let fetchTimeout = null;
+        let isFetching = false;
         function debouncedFetchLatestData() {
-            if (!fetchTimeout) {
+            if (!fetchTimeout && !isFetching) {
                 fetchLatestData();
                 fetchTimeout = setTimeout(() => {
                     fetchTimeout = null;
@@ -571,7 +595,11 @@
         }
 
         async function fetchLatestData() {
-            const showBlocks = document.getElementById('toggleBlockIPs').checked;
+            if (isFetching) return;
+            isFetching = true;
+
+            try {
+                const showBlocks = document.getElementById('toggleBlockIPs').checked;
             const showWhitelists = document.getElementById('toggleWhitelistIPs').checked;
 
             let allItems = [];
@@ -604,7 +632,10 @@
                 initChart(s.top_countries || []);
                 updateStats(s);
             }
+        } finally {
+            isFetching = false;
         }
+    }
 
         function updateMap(items) {
             markerLayer.clearLayers();
