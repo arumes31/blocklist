@@ -724,7 +724,7 @@
                     // Draw live connection line if enabled and source_geo is present
                     if (showLines && msg.data.source_geo && msg.data.source_geo.latitude) {
                         const src = msg.data.source_geo;
-                        const attackPath = L.polyline.antPath([[src.latitude, src.longitude], [geo.latitude, geo.longitude]], {
+                        const attackPath = L.polyline.antPath([[geo.latitude, geo.longitude], [src.latitude, src.longitude]], {
                             delay: 1000,
                             dashArray: [10, 20],
                             weight: 2,

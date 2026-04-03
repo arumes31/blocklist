@@ -382,26 +382,17 @@ func (h *APIHandler) Stats(c *gin.Context) {
 
 	// shape to match frontend expectations
 	tops := make([]gin.H, 0, len(top))
-	for i, t := range top {
-		if i >= 3 {
-			break
-		}
+	for _, t := range top {
 		tops = append(tops, gin.H{"country": t.Country, "count": t.Count})
 	}
 
 	asns := make([]gin.H, 0, len(topASN))
-	for i, a := range topASN {
-		if i >= 3 {
-			break
-		}
+	for _, a := range topASN {
 		asns = append(asns, gin.H{"asn": a.ASN, "asn_org": a.ASNOrg, "count": a.Count})
 	}
 
 	reasons := make([]gin.H, 0, len(topReason))
-	for i, r := range topReason {
-		if i >= 3 {
-			break
-		}
+	for _, r := range topReason {
 		reasons = append(reasons, gin.H{"reason": r.Reason, "count": r.Count})
 	}
 
