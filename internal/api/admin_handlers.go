@@ -41,12 +41,9 @@ func (h *APIHandler) Dashboard(c *gin.Context) {
 
 	views, _ := h.pgRepo.GetSavedViews(username.(string))
 	permissions, _ := c.Get("permissions")
-
 	trend, err := h.pgRepo.GetBlockTrend()
 	if err != nil {
 		zlog.Error().Err(err).Msg("failed to get block trend")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
-		return
 	}
 
 	h.renderHTML(c, http.StatusOK, "dashboard.html", gin.H{
@@ -88,8 +85,6 @@ func (h *APIHandler) ThreatMap(c *gin.Context) {
 	trend, err := h.pgRepo.GetBlockTrend()
 	if err != nil {
 		zlog.Error().Err(err).Msg("failed to get block trend")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
-		return
 	}
 	trendData := make([]map[string]interface{}, 0, len(trend))
 	for _, t := range trend {
@@ -98,8 +93,7 @@ func (h *APIHandler) ThreatMap(c *gin.Context) {
 	trendJSON, err := json.Marshal(trendData)
 	if err != nil {
 		zlog.Error().Err(err).Msg("failed to marshal trend data")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
-		return
+		trendJSON = []byte("[]")
 	}
 
 	h.renderHTML(c, http.StatusOK, "threat_map.html", gin.H{

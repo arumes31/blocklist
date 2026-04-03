@@ -387,8 +387,12 @@
 
         let fetchTimeout = null;
         function debouncedFetchLatestData() {
-            if (fetchTimeout) clearTimeout(fetchTimeout);
-            fetchTimeout = setTimeout(fetchLatestData, 2500);
+            if (!fetchTimeout) {
+                fetchLatestData();
+                fetchTimeout = setTimeout(() => {
+                    fetchTimeout = null;
+                }, 2500);
+            }
         }
 
         let trendData = [];
@@ -776,6 +780,7 @@
                 }
             } else if (msg.action === 'unblock') {
                 addTickerEvent('unblock', msg.data.ip, "Manual/System Unblock", "#00ff00");
+                debouncedFetchLatestData();
             }
         };
         }
