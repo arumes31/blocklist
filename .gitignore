@@ -10,8 +10,7 @@ blocklist-server
 # Local Data
 geoip_data/
 postgres_data/
-out.log
-err.log
+*.log
 *.local.md
 
 # Environment
@@ -19,6 +18,9 @@ err.log
 
 # Go
 vendor/
+*.test
+*.prof
+*.pprof
 
 # IDEs
 .vscode/
@@ -32,9 +34,10 @@ Thumbs.db
 
 ROADMAP.md
 .geminiignore
+*test*.txt
 test_output.txt
 api_test.txt
-.qodo
+.qodo/
 walkthrough.md
-coverage
+coverage/
 coverage*

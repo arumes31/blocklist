@@ -184,14 +184,14 @@
                         <tr>
                             <td style="font-family: monospace; font-weight: 600;">{{ $ip }}</td>
                             <td>
-                                {{ if $data.Geolocation }}
+                                {{ if and $data.Geolocation $data.Geolocation.Country }}
                                     <span class="flag-icon flag-icon-{{ lower $data.Geolocation.Country }}"></span>
                                     {{ $data.Geolocation.Country }}
                                 {{ else }}
                                     <span style="color: #888;">N/A</span>
                                 {{ end }}
                             </td>
-                            <td>{{ if $data.Geolocation }}{{ $data.Geolocation.City }}{{ else }}<span style="color: #888;">N/A</span>{{ end }}</td>
+                            <td>{{ if and $data.Geolocation $data.Geolocation.City }}{{ $data.Geolocation.City }}{{ else }}<span style="color: #888;">N/A</span>{{ end }}</td>
                             <td>{{ if $data.AddedBy }}{{ $data.AddedBy }}{{ else }}Unknown{{ end }}</td>
                             <td><span style="font-size: 0.9rem; color: var(--secondary-color);">{{ if $data.Reason }}{{ $data.Reason }}{{ else }}No reason provided{{ end }}</span></td>
                             <td>{{ $data.ExpiresIn }}</td>
