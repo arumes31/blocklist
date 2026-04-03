@@ -244,6 +244,24 @@
                 transform: translateY(0);
             }
         }
+
+        @media (max-width: 900px) {
+            .main-layout {
+                grid-template-columns: 1fr;
+                overflow-y: auto;
+            }
+            .header-container {
+                flex-direction: column;
+                gap: 1rem;
+                align-items: flex-start;
+            }
+            #threat-map {
+                min-height: 400px;
+            }
+            .side-panel {
+                overflow-y: visible;
+            }
+        }
     </style>
 </head>
 
@@ -350,6 +368,25 @@
         let lineLayer = null;
         let liveMarkers = null;
         let worldLayer = null;
+
+        function escapeHTML(str) {
+            if (!str) return '';
+            return str.toString().replace(/[&<>'"]/g, 
+                tag => ({
+                    '&': '&amp;',
+                    '<': '&lt;',
+                    '>': '&gt;',
+                    "'": '&#39;',
+                    '"': '&quot;'
+                }[tag] || tag)
+            );
+        }
+
+        let fetchTimeout = null;
+        function debouncedFetchLatestData() {
+            if (fetchTimeout) clearTimeout(fetchTimeout);
+            fetchTimeout = setTimeout(fetchLatestData, 2500);
+        }
 
         const trendData = [{{ range .block_trend }} { x: "{{ .Hour }}", y: {{ .Count }} }, {{ end }} ];
 
@@ -577,12 +614,12 @@
                         opacity: 1,
                         fillOpacity: 0.8
                     }).bindPopup(`
-                    <b>[${label}] ${it.ip}</b><br>
-                    ${geo.city}, ${geo.country}<br>
-                    <i>${it.data.reason}</i><br>
+                    <b>[${label}] ${escapeHTML(it.ip)}</b><br>
+                    ${escapeHTML(geo.city)}, ${escapeHTML(geo.country)}<br>
+                    <i>${escapeHTML(it.data.reason)}</i><br>
                     <div style="margin-top: 5px; font-size: 0.75rem; border-top: 1px solid #444; padding-top: 5px;">
-                        <b>Source:</b> ${it.data.added_by}<br>
-                        <b>Activity:</b> ${ts}
+                        <b>Source:</b> ${escapeHTML(it.data.added_by)}<br>
+                        <b>Activity:</b> ${escapeHTML(ts)}
                     </div>
                 `);
 
@@ -606,8 +643,33 @@
         }
 
         // WebSocket for real-time updates
-        const socket = new WebSocket((window.location.protocol === 'https:' ? 'wss://' : 'ws://') + window.location.host + '/ws');
-        socket.onmessage = function (event) {
+        let socket;
+        let reconnectTimeout = null;
+
+        function connectWS() {
+            socket = new WebSocket((window.location.protocol === 'https:' ? 'wss://' : 'ws://') + window.location.host + '/ws');
+            
+            socket.onopen = function () {
+                document.getElementById('live-status').textContent = 'LIVE';
+                document.getElementById('live-status').style.background = 'rgba(40, 167, 69, 0.2)';
+                document.getElementById('live-status').style.borderColor = 'rgba(40, 167, 69, 0.4)';
+            };
+
+            socket.onclose = function () {
+                document.getElementById('live-status').textContent = 'OFFLINE';
+                document.getElementById('live-status').style.background = 'rgba(255, 0, 0, 0.2)';
+                document.getElementById('live-status').style.borderColor = 'rgba(255, 0, 0, 0.4)';
+                
+                if (reconnectTimeout) clearTimeout(reconnectTimeout);
+                reconnectTimeout = setTimeout(connectWS, 3000);
+            };
+
+            socket.onerror = function (err) {
+                console.error("WebSocket error:", err);
+                socket.close();
+            };
+
+            socket.onmessage = function (event) {
             const msg = JSON.parse(event.data);
             const showBlocks = document.getElementById('toggleBlockIPs').checked;
             const showWhitelists = document.getElementById('toggleWhitelistIPs').checked;
@@ -640,12 +702,12 @@
                     const liveMarker = L.marker([geo.latitude, geo.longitude], { icon: liveIcon })
                         .addTo(liveMarkers)
                         .bindPopup(`
-                        <b>${label}: ${it.ip}</b><br>
-                        ${geo.city}, ${geo.country}<br>
-                        <i>${it.data.reason}</i><br>
+                        <b>${label}: ${escapeHTML(it.ip)}</b><br>
+                        ${escapeHTML(geo.city)}, ${escapeHTML(geo.country)}<br>
+                        <i>${escapeHTML(it.data.reason)}</i><br>
                         <div style="margin-top: 5px; font-size: 0.75rem; border-top: 1px solid #444; padding-top: 5px;">
-                            <b>Source:</b> ${it.data.added_by}<br>
-                            <b>Activity:</b> ${ts}
+                            <b>Source:</b> ${escapeHTML(it.data.added_by)}<br>
+                            <b>Activity:</b> ${escapeHTML(ts)}
                         </div>
                     `)
                         .openPopup();
@@ -678,12 +740,15 @@
 
                     addTickerEvent(type, it.ip, it.data ? it.data.reason : "", color);
 
-                    setTimeout(fetchLatestData, 3000);
+                    debouncedFetchLatestData();
                 }
             } else if (msg.action === 'unblock') {
                 addTickerEvent('unblock', msg.data.ip, "Manual/System Unblock", "#00ff00");
             }
         };
+        }
+        
+        connectWS();
 
         function addTickerEvent(type, ip, reason, color) {
             const ticker = document.getElementById('eventTicker');
