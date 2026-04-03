@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -79,6 +80,11 @@ func (h *APIHandler) ThreatMap(c *gin.Context) {
 	}
 
 	trend, _ := h.pgRepo.GetBlockTrend()
+	trendData := make([]map[string]interface{}, 0, len(trend))
+	for _, t := range trend {
+		trendData = append(trendData, map[string]interface{}{"x": t.Hour, "y": t.Count})
+	}
+	trendJSON, _ := json.Marshal(trendData)
 
 	h.renderHTML(c, http.StatusOK, "threat_map.html", gin.H{
 		"total_ips":      totalCount,
@@ -86,6 +92,7 @@ func (h *APIHandler) ThreatMap(c *gin.Context) {
 		"username":       username,
 		"permissions":    permissions,
 		"block_trend":    trend,
+		"trend_json":     string(trendJSON),
 		"stats": gin.H{
 			"hour":          hour,
 			"day":           day,

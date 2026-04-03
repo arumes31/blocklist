@@ -359,7 +359,7 @@
     </div>
 
     <script id="trend-data-json" type="application/json">
-        [{{ range $i, $e := .block_trend }}{{ if $i }},{{ end }}{ "x": "{{ $e.Hour }}", "y": {{ $e.Count }} }{{ end }}]
+        {{ .trend_json }}
     </script>
     <script nonce="{{ .nonce }}">
         let countryChart = null;
@@ -654,23 +654,31 @@
         // WebSocket for real-time updates
         let socket;
         let reconnectTimeout = null;
+        let reconnectInterval = 3000;
 
         function connectWS() {
+            if (reconnectTimeout) {
+                clearTimeout(reconnectTimeout);
+                reconnectTimeout = null;
+            }
+
             socket = new WebSocket((window.location.protocol === 'https:' ? 'wss://' : 'ws://') + window.location.host + '/ws');
-            
+
             socket.onopen = function () {
                 document.getElementById('live-status').textContent = 'LIVE';
                 document.getElementById('live-status').style.background = 'rgba(40, 167, 69, 0.2)';
                 document.getElementById('live-status').style.borderColor = 'rgba(40, 167, 69, 0.4)';
+                reconnectInterval = 3000; // Reset on success
             };
 
             socket.onclose = function () {
                 document.getElementById('live-status').textContent = 'OFFLINE';
                 document.getElementById('live-status').style.background = 'rgba(255, 0, 0, 0.2)';
                 document.getElementById('live-status').style.borderColor = 'rgba(255, 0, 0, 0.4)';
-                
-                if (reconnectTimeout) clearTimeout(reconnectTimeout);
-                reconnectTimeout = setTimeout(connectWS, 3000);
+
+                console.log(`WebSocket closed. Reconnecting in ${reconnectInterval}ms...`);
+                reconnectTimeout = setTimeout(connectWS, reconnectInterval);
+                reconnectInterval = Math.min(reconnectInterval * 2, 30000);
             };
 
             socket.onerror = function (err) {
