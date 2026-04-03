@@ -662,6 +662,15 @@
                 reconnectTimeout = null;
             }
 
+            if (socket && socket.readyState !== WebSocket.CLOSED) {
+                socket.onopen = null;
+                socket.onclose = null;
+                socket.onerror = null;
+                socket.onmessage = null;
+                socket.close(1000);
+                socket = null;
+            }
+
             socket = new WebSocket((window.location.protocol === 'https:' ? 'wss://' : 'ws://') + window.location.host + '/ws');
 
             socket.onopen = function () {
@@ -687,7 +696,13 @@
             };
 
             socket.onmessage = function (event) {
-            const msg = JSON.parse(event.data);
+                let msg;
+                try {
+                    msg = JSON.parse(event.data);
+                } catch (e) {
+                    console.error("Malformed WebSocket message received:", e, event.data);
+                    return;
+                }
             const showBlocks = document.getElementById('toggleBlockIPs').checked;
             const showWhitelists = document.getElementById('toggleWhitelistIPs').checked;
             const showLines = document.getElementById('toggleServerLines').checked;
