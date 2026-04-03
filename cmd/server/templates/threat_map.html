@@ -765,7 +765,6 @@
         };
         }
         
-        connectWS();
 
         function addTickerEvent(type, ip, reason, color) {
             const ticker = document.getElementById('eventTicker');
@@ -801,9 +800,10 @@
             if (ticker.children.length > 50) ticker.lastChild.remove();
         }
 
-        window.onload = () => {
-            initMap();
+        window.onload = async () => {
+            await initMap();
             initTrendChart();
+            connectWS();
         };
     </script>
 

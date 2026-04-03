@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"html/template"
 	"net/http"
 	"strconv"
 	"strings"
@@ -84,15 +85,19 @@ func (h *APIHandler) ThreatMap(c *gin.Context) {
 	for _, t := range trend {
 		trendData = append(trendData, map[string]interface{}{"x": t.Hour, "y": t.Count})
 	}
-	trendJSON, _ := json.Marshal(trendData)
+	trendJSON, err := json.Marshal(trendData)
+	if err != nil {
+		zlog.Error().Err(err).Msg("failed to marshal trend data")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		return
+	}
 
 	h.renderHTML(c, http.StatusOK, "threat_map.html", gin.H{
 		"total_ips":      totalCount,
 		"admin_username": h.cfg.GUIAdmin,
 		"username":       username,
 		"permissions":    permissions,
-		"block_trend":    trend,
-		"trend_json":     string(trendJSON),
+		"trend_json":     template.JS(string(trendJSON)),
 		"stats": gin.H{
 			"hour":          hour,
 			"day":           day,
