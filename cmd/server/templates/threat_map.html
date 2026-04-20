@@ -244,6 +244,47 @@
                 transform: translateY(0);
             }
         }
+
+        @media (max-width: 900px) {
+            .main-layout {
+                grid-template-columns: 1fr;
+                overflow-y: auto;
+            }
+
+            .header-container {
+                flex-direction: column;
+                gap: 1rem;
+                align-items: flex-start;
+                padding: 1rem;
+                height: auto;
+            }
+
+            .header-actions {
+                flex-wrap: wrap;
+                gap: 0.8rem;
+                width: 100%;
+            }
+
+            .toggle-strip {
+                flex-wrap: wrap;
+                gap: 0.5rem;
+                width: 100%;
+                background: rgba(255, 255, 255, 0.03) !important;
+            }
+
+            #threat-map {
+                min-height: 400px;
+            }
+
+            .side-panel {
+                overflow-y: visible;
+            }
+
+            body {
+                overflow-y: auto;
+                height: auto;
+            }
+        }
     </style>
 </head>
 
@@ -256,8 +297,8 @@
             </a>
             <h2 style="margin: 0; font-size: 1.2rem;">Threat Map</h2>
         </div>
-        <div style="display: flex; align-items: center; gap: 1rem;">
-            <div
+        <div class="header-actions" style="display: flex; align-items: center; gap: 1rem;">
+            <div class="toggle-strip"
                 style="display: flex; gap: 1rem; font-size: 0.8rem; background: rgba(255,255,255,0.05); padding: 5px 15px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1);">
                 <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
                     <input type="checkbox" id="toggleBlockIPs" onchange="fetchLatestData()" checked> Blocked IPs
@@ -340,6 +381,9 @@
         </div>
     </div>
 
+    <script id="trend-data-json" type="application/json">
+        {{ .trend_json }}
+    </script>
     <script nonce="{{ .nonce }}">
         let countryChart = null;
         let trendChart = null;
@@ -351,7 +395,37 @@
         let liveMarkers = null;
         let worldLayer = null;
 
-        const trendData = [{{ range .block_trend }} { x: "{{ .Hour }}", y: {{ .Count }} }, {{ end }} ];
+        function escapeHTML(str) {
+            if (!str) return '';
+            return str.toString().replace(/[&<>'"]/g, 
+                tag => ({
+                    '&': '&amp;',
+                    '<': '&lt;',
+                    '>': '&gt;',
+                    "'": '&#39;',
+                    '"': '&quot;'
+                }[tag] || tag)
+            );
+        }
+
+        let fetchTimeout = null;
+        let isFetching = false;
+        function debouncedFetchLatestData() {
+            if (!fetchTimeout && !isFetching) {
+                fetchLatestData();
+                fetchTimeout = setTimeout(() => {
+                    fetchTimeout = null;
+                }, 2500);
+            }
+        }
+
+        let trendData = [];
+        try {
+            const raw = document.getElementById('trend-data-json');
+            if (raw) trendData = JSON.parse(raw.textContent);
+        } catch (e) {
+            console.error("Failed to parse initial trend data", e);
+        }
 
         async function initMap() {
             map = L.map('threat-map', {
@@ -521,7 +595,11 @@
         }
 
         async function fetchLatestData() {
-            const showBlocks = document.getElementById('toggleBlockIPs').checked;
+            if (isFetching) return;
+            isFetching = true;
+
+            try {
+                const showBlocks = document.getElementById('toggleBlockIPs').checked;
             const showWhitelists = document.getElementById('toggleWhitelistIPs').checked;
 
             let allItems = [];
@@ -554,7 +632,10 @@
                 initChart(s.top_countries || []);
                 updateStats(s);
             }
+        } finally {
+            isFetching = false;
         }
+    }
 
         function updateMap(items) {
             markerLayer.clearLayers();
@@ -577,12 +658,12 @@
                         opacity: 1,
                         fillOpacity: 0.8
                     }).bindPopup(`
-                    <b>[${label}] ${it.ip}</b><br>
-                    ${geo.city}, ${geo.country}<br>
-                    <i>${it.data.reason}</i><br>
+                    <b>[${label}] ${escapeHTML(it.ip)}</b><br>
+                    ${escapeHTML(geo.city)}, ${escapeHTML(geo.country)}<br>
+                    <i>${escapeHTML(it.data.reason)}</i><br>
                     <div style="margin-top: 5px; font-size: 0.75rem; border-top: 1px solid #444; padding-top: 5px;">
-                        <b>Source:</b> ${it.data.added_by}<br>
-                        <b>Activity:</b> ${ts}
+                        <b>Source:</b> ${escapeHTML(it.data.added_by)}<br>
+                        <b>Activity:</b> ${escapeHTML(ts)}
                     </div>
                 `);
 
@@ -606,9 +687,57 @@
         }
 
         // WebSocket for real-time updates
-        const socket = new WebSocket((window.location.protocol === 'https:' ? 'wss://' : 'ws://') + window.location.host + '/ws');
-        socket.onmessage = function (event) {
-            const msg = JSON.parse(event.data);
+        let socket;
+        let reconnectTimeout = null;
+        let reconnectInterval = 3000;
+
+        function connectWS() {
+            if (reconnectTimeout) {
+                clearTimeout(reconnectTimeout);
+                reconnectTimeout = null;
+            }
+
+            if (socket && socket.readyState !== WebSocket.CLOSED) {
+                socket.onopen = null;
+                socket.onclose = null;
+                socket.onerror = null;
+                socket.onmessage = null;
+                socket.close(1000);
+                socket = null;
+            }
+
+            socket = new WebSocket((window.location.protocol === 'https:' ? 'wss://' : 'ws://') + window.location.host + '/ws');
+
+            socket.onopen = function () {
+                document.getElementById('live-status').textContent = 'LIVE';
+                document.getElementById('live-status').style.background = 'rgba(40, 167, 69, 0.2)';
+                document.getElementById('live-status').style.borderColor = 'rgba(40, 167, 69, 0.4)';
+                reconnectInterval = 3000; // Reset on success
+            };
+
+            socket.onclose = function () {
+                document.getElementById('live-status').textContent = 'OFFLINE';
+                document.getElementById('live-status').style.background = 'rgba(255, 0, 0, 0.2)';
+                document.getElementById('live-status').style.borderColor = 'rgba(255, 0, 0, 0.4)';
+
+                console.log(`WebSocket closed. Reconnecting in ${reconnectInterval}ms...`);
+                reconnectTimeout = setTimeout(connectWS, reconnectInterval);
+                reconnectInterval = Math.min(reconnectInterval * 2, 30000);
+            };
+
+            socket.onerror = function (err) {
+                console.error("WebSocket error:", err);
+                socket.close();
+            };
+
+            socket.onmessage = function (event) {
+                let msg;
+                try {
+                    msg = JSON.parse(event.data);
+                } catch (e) {
+                    console.error("Malformed WebSocket message received:", e, event.data);
+                    return;
+                }
             const showBlocks = document.getElementById('toggleBlockIPs').checked;
             const showWhitelists = document.getElementById('toggleWhitelistIPs').checked;
             const showLines = document.getElementById('toggleServerLines').checked;
@@ -640,12 +769,12 @@
                     const liveMarker = L.marker([geo.latitude, geo.longitude], { icon: liveIcon })
                         .addTo(liveMarkers)
                         .bindPopup(`
-                        <b>${label}: ${it.ip}</b><br>
-                        ${geo.city}, ${geo.country}<br>
-                        <i>${it.data.reason}</i><br>
+                        <b>${label}: ${escapeHTML(it.ip)}</b><br>
+                        ${escapeHTML(geo.city)}, ${escapeHTML(geo.country)}<br>
+                        <i>${escapeHTML(it.data.reason)}</i><br>
                         <div style="margin-top: 5px; font-size: 0.75rem; border-top: 1px solid #444; padding-top: 5px;">
-                            <b>Source:</b> ${it.data.added_by}<br>
-                            <b>Activity:</b> ${ts}
+                            <b>Source:</b> ${escapeHTML(it.data.added_by)}<br>
+                            <b>Activity:</b> ${escapeHTML(ts)}
                         </div>
                     `)
                         .openPopup();
@@ -653,7 +782,7 @@
                     // Draw live connection line if enabled and source_geo is present
                     if (showLines && msg.data.source_geo && msg.data.source_geo.latitude) {
                         const src = msg.data.source_geo;
-                        const attackPath = L.polyline.antPath([[src.latitude, src.longitude], [geo.latitude, geo.longitude]], {
+                        const attackPath = L.polyline.antPath([[geo.latitude, geo.longitude], [src.latitude, src.longitude]], {
                             delay: 1000,
                             dashArray: [10, 20],
                             weight: 2,
@@ -678,12 +807,15 @@
 
                     addTickerEvent(type, it.ip, it.data ? it.data.reason : "", color);
 
-                    setTimeout(fetchLatestData, 3000);
+                    debouncedFetchLatestData();
                 }
             } else if (msg.action === 'unblock') {
                 addTickerEvent('unblock', msg.data.ip, "Manual/System Unblock", "#00ff00");
+                debouncedFetchLatestData();
             }
         };
+        }
+        
 
         function addTickerEvent(type, ip, reason, color) {
             const ticker = document.getElementById('eventTicker');
@@ -719,9 +851,10 @@
             if (ticker.children.length > 50) ticker.lastChild.remove();
         }
 
-        window.onload = () => {
-            initMap();
+        window.onload = async () => {
+            await initMap();
             initTrendChart();
+            connectWS();
         };
     </script>
 

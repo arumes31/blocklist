@@ -1,7 +1,9 @@
 package api
 
 import (
+	"encoding/json"
 	"fmt"
+	"html/template"
 	"net/http"
 	"strconv"
 	"strings"
@@ -20,7 +22,12 @@ func (h *APIHandler) Dashboard(c *gin.Context) {
 	ips := h.getCombinedIPs()
 
 	// Preload stats for initial render
-	hour, day, totalEver, activeBlocks, top, topASN, topReason, wh, lb, bm, whc, _ := h.ipService.Stats(c.Request.Context())
+	hour, day, totalEver, activeBlocks, top, topASN, topReason, wh, lb, bm, whc, err := h.ipService.Stats(c.Request.Context())
+	if err != nil {
+		zlog.Error().Err(err).Msg("failed to fetch dashboard stats")
+		c.String(http.StatusInternalServerError, "failed to fetch dashboard stats")
+		return
+	}
 
 	tops := make([]map[string]interface{}, 0, len(top))
 	for _, t := range top {
@@ -39,8 +46,10 @@ func (h *APIHandler) Dashboard(c *gin.Context) {
 
 	views, _ := h.pgRepo.GetSavedViews(username.(string))
 	permissions, _ := c.Get("permissions")
-
-	trend, _ := h.pgRepo.GetBlockTrend()
+	trend, err := h.pgRepo.GetBlockTrend()
+	if err != nil {
+		zlog.Error().Err(err).Msg("failed to get block trend")
+	}
 
 	h.renderHTML(c, http.StatusOK, "dashboard.html", gin.H{
 		"ips":            ips,
@@ -71,21 +80,38 @@ func (h *APIHandler) ThreatMap(c *gin.Context) {
 	username, _ := c.Get("username")
 	permissions, _ := c.Get("permissions")
 
-	hour, day, _, _, top, _, _, _, _, _, _, _ := h.ipService.Stats(c.Request.Context())
+	hour, day, _, _, top, _, _, _, _, _, _, err := h.ipService.Stats(c.Request.Context())
+	if err != nil {
+		zlog.Error().Err(err).Msg("failed to fetch threat map stats")
+		c.String(http.StatusInternalServerError, "failed to fetch threat map stats")
+		return
+	}
 
 	tops := make([]map[string]interface{}, 0, len(top))
 	for _, t := range top {
 		tops = append(tops, map[string]interface{}{"Country": t.Country, "Count": t.Count})
 	}
 
-	trend, _ := h.pgRepo.GetBlockTrend()
+	trend, err := h.pgRepo.GetBlockTrend()
+	if err != nil {
+		zlog.Error().Err(err).Msg("failed to get block trend")
+	}
+	trendData := make([]map[string]interface{}, 0, len(trend))
+	for _, t := range trend {
+		trendData = append(trendData, map[string]interface{}{"x": t.Hour, "y": t.Count})
+	}
+	trendJSON, err := json.Marshal(trendData)
+	if err != nil {
+		zlog.Error().Err(err).Msg("failed to marshal trend data")
+		trendJSON = []byte("[]")
+	}
 
 	h.renderHTML(c, http.StatusOK, "threat_map.html", gin.H{
 		"total_ips":      totalCount,
 		"admin_username": h.cfg.GUIAdmin,
 		"username":       username,
 		"permissions":    permissions,
-		"block_trend":    trend,
+		"trend_json":     template.JS(string(trendJSON)),
 		"stats": gin.H{
 			"hour":          hour,
 			"day":           day,
@@ -382,26 +408,17 @@ func (h *APIHandler) Stats(c *gin.Context) {
 
 	// shape to match frontend expectations
 	tops := make([]gin.H, 0, len(top))
-	for i, t := range top {
-		if i >= 3 {
-			break
-		}
+	for _, t := range top {
 		tops = append(tops, gin.H{"country": t.Country, "count": t.Count})
 	}
 
 	asns := make([]gin.H, 0, len(topASN))
-	for i, a := range topASN {
-		if i >= 3 {
-			break
-		}
+	for _, a := range topASN {
 		asns = append(asns, gin.H{"asn": a.ASN, "asn_org": a.ASNOrg, "count": a.Count})
 	}
 
 	reasons := make([]gin.H, 0, len(topReason))
-	for i, r := range topReason {
-		if i >= 3 {
-			break
-		}
+	for _, r := range topReason {
 		reasons = append(reasons, gin.H{"reason": r.Reason, "count": r.Count})
 	}
 
