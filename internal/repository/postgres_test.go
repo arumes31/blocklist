@@ -65,6 +65,13 @@ func TestPostgresRepository_Integration(t *testing.T) {
 		t.Fatalf("failed to create repository: %v", err)
 	}
 
+	t.Run("EnsurePartitions", func(t *testing.T) {
+		err := repo.EnsurePartitions(6)
+		if err != nil {
+			t.Errorf("EnsurePartitions failed: %v", err)
+		}
+	})
+
 	t.Run("AdminOperations", func(t *testing.T) {
 		admin := models.AdminAccount{
 			Username:     "admin_test",
@@ -179,10 +186,4 @@ func TestPostgresRepository_Integration(t *testing.T) {
 		}
 	})
 
-	t.Run("EnsurePartitions", func(t *testing.T) {
-		err := repo.EnsurePartitions(6)
-		if err != nil {
-			t.Errorf("EnsurePartitions failed: %v", err)
-		}
-	})
 }
