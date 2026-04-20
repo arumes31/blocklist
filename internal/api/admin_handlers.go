@@ -22,7 +22,12 @@ func (h *APIHandler) Dashboard(c *gin.Context) {
 	ips := h.getCombinedIPs()
 
 	// Preload stats for initial render
-	hour, day, totalEver, activeBlocks, top, topASN, topReason, wh, lb, bm, whc, _ := h.ipService.Stats(c.Request.Context())
+	hour, day, totalEver, activeBlocks, top, topASN, topReason, wh, lb, bm, whc, err := h.ipService.Stats(c.Request.Context())
+	if err != nil {
+		zlog.Error().Err(err).Msg("failed to fetch dashboard stats")
+		c.String(http.StatusInternalServerError, "failed to fetch dashboard stats")
+		return
+	}
 
 	tops := make([]map[string]interface{}, 0, len(top))
 	for _, t := range top {
@@ -75,7 +80,12 @@ func (h *APIHandler) ThreatMap(c *gin.Context) {
 	username, _ := c.Get("username")
 	permissions, _ := c.Get("permissions")
 
-	hour, day, _, _, top, _, _, _, _, _, _, _ := h.ipService.Stats(c.Request.Context())
+	hour, day, _, _, top, _, _, _, _, _, _, err := h.ipService.Stats(c.Request.Context())
+	if err != nil {
+		zlog.Error().Err(err).Msg("failed to fetch threat map stats")
+		c.String(http.StatusInternalServerError, "failed to fetch threat map stats")
+		return
+	}
 
 	tops := make([]map[string]interface{}, 0, len(top))
 	for _, t := range top {
