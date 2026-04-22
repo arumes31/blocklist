@@ -10,6 +10,8 @@ import (
 
 	"blocklist/internal/models"
 
+	"github.com/gin-contrib/sessions"
+	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -74,28 +76,31 @@ func TestAPIHandler_CreateAdmin(t *testing.T) {
 }
 
 func TestAPIHandler_DeleteAdmin(t *testing.T) {
-	_, _, pgRepo, _, _ := setupTest()
+	h, _, pgRepo, _, _ := setupTest()
 
 	pgRepo.On("DeleteAdmin", "oldadmin").Return(nil)
 	pgRepo.On("LogAction", "admin", "DELETE_ADMIN", "oldadmin", mock.Anything).Return(nil)
 
 	w := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(w)
+	r := gin.New()
+	store := cookie.NewStore([]byte("secret"))
+	r.Use(sessions.Sessions("mysession", store))
+
+	r.POST("/api/admin/delete", func(c *gin.Context) {
+		session := sessions.Default(c)
+		session.Set("username", "admin")
+		_ = session.Save()
+		c.Set("username", "admin")
+		h.DeleteAdmin(c)
+	})
+
 	reqBody := `{"username": "oldadmin"}`
-	c.Request, _ = http.NewRequest("POST", "/api/admin/delete", bytes.NewBufferString(reqBody))
-	c.Set("username", "admin")
+	req, _ := http.NewRequest("POST", "/api/admin/delete", bytes.NewBufferString(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
 
-	// Mock session
-	// DeleteAdmin uses sessions.Default(c) to get username for logging
-	// Since we can't easily mock the session middleware context here without valid store,
-	// checking if it panics or if we can rely on c.Set logic in DeleteAdmin (it uses session.Get).
-	// DeleteAdmin code:
-	// session := sessions.Default(c)
-	// actor, _ := session.Get("username").(string)
-
-	// Just skip session part or refactor handler to use context user if available.
-	// For now, assert 500 or panic is expected without session middleware.
-	// To fix test, we need session middleware.
+	assert.Equal(t, http.StatusOK, w.Code)
+	pgRepo.AssertExpectations(t)
 }
 
 func TestAPIHandler_Stats(t *testing.T) {
@@ -164,7 +169,30 @@ func TestAPIHandler_AuditLogExplorer(t *testing.T) {
 }
 
 func TestAPIHandler_ChangeAdminPermissions(t *testing.T) {
-	setupTest()
+	h, _, pgRepo, _, _ := setupTest()
 
-	// Need session for this handler too
+	pgRepo.On("GetAdmin", "targetadmin").Return(&models.AdminAccount{Username: "targetadmin", Permissions: "old_perm"}, nil)
+	pgRepo.On("UpdateAdminPermissions", "targetadmin", "new_perm").Return(nil)
+	pgRepo.On("LogAction", "admin", "CHANGE_PERMISSIONS", "targetadmin", mock.Anything).Return(nil)
+
+	w := httptest.NewRecorder()
+	r := gin.New()
+	store := cookie.NewStore([]byte("secret"))
+	r.Use(sessions.Sessions("mysession", store))
+
+	r.POST("/api/admin/permissions", func(c *gin.Context) {
+		session := sessions.Default(c)
+		session.Set("username", "admin")
+		_ = session.Save()
+		c.Set("username", "admin")
+		h.ChangeAdminPermissions(c)
+	})
+
+	reqBody := `{"username": "targetadmin", "permissions": "new_perm"}`
+	req, _ := http.NewRequest("POST", "/api/admin/permissions", bytes.NewBufferString(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	pgRepo.AssertExpectations(t)
 }
