@@ -10,6 +10,7 @@ import (
 
 	"blocklist/internal/metrics"
 	"blocklist/internal/models"
+	"blocklist/internal/security"
 
 	"github.com/gin-gonic/gin"
 	zlog "github.com/rs/zerolog/log"
@@ -219,6 +220,13 @@ func (h *APIHandler) Webhook(c *gin.Context) {
 func (h *APIHandler) AddOutboundWebhook(c *gin.Context) {
 	var wh models.OutboundWebhook
 	wh.URL = c.PostForm("url")
+
+	// SSRF Protection: Validate URL
+	if !security.IsSafeURL(wh.URL) {
+		c.String(http.StatusBadRequest, "invalid or unsafe webhook URL")
+		return
+	}
+
 	wh.Secret = c.PostForm("secret")
 	wh.Events = c.PostForm("events")
 	wh.GeoFilter = c.PostForm("geo_filter")
