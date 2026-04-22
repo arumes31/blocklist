@@ -122,6 +122,30 @@ func TestAPIHandler_CreateAPIToken(t *testing.T) {
 	assert.Contains(t, w.Header().Get("HX-Trigger"), "newToken")
 }
 
+func TestAPIHandler_CreateAPIToken_InsufficientPerms(t *testing.T) {
+	h, _, _ := setupAuthTest()
+
+	w := httptest.NewRecorder()
+	_, r := setupHTMLTest(w)
+
+	r.POST("/api/tokens", func(c *gin.Context) {
+		c.Set("username", "user1")
+		c.Set("role", "operator")
+		c.Set("permissions", "view_ips") // User only has view_ips
+		h.CreateAPIToken(c)
+	})
+
+	form := url.Values{}
+	form.Add("name", "New Token")
+	form.Add("permissions", "block_ips") // Requested block_ips
+	req, _ := http.NewRequest("POST", "/api/tokens", bytes.NewBufferString(form.Encode()))
+	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusForbidden, w.Code)
+	assert.Contains(t, w.Body.String(), "insufficient permissions to grant: block_ips")
+}
+
 func TestAPIHandler_RevokeAPIToken(t *testing.T) {
 	h, _, pgRepo, _, _ := setupTest()
 

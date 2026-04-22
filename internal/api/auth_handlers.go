@@ -638,6 +638,35 @@ func (h *APIHandler) Logout(c *gin.Context) {
 	c.Redirect(http.StatusFound, "/login")
 }
 
+func (h *APIHandler) validatePermissionSubset(requestedPerms, userPerms string) (string, error) {
+	if requestedPerms == "" {
+		return "", nil
+	}
+
+	rPerms := strings.Split(requestedPerms, ",")
+	uPerms := strings.Split(userPerms, ",")
+	validPerms := []string{}
+
+	for _, rp := range rPerms {
+		rp = strings.TrimSpace(rp)
+		if rp == "" {
+			continue
+		}
+		found := false
+		for _, up := range uPerms {
+			if rp == strings.TrimSpace(up) {
+				validPerms = append(validPerms, rp)
+				found = true
+				break
+			}
+		}
+		if !found {
+			return "", fmt.Errorf("insufficient permissions to grant: %s", rp)
+		}
+	}
+	return strings.Join(validPerms, ","), nil
+}
+
 func (h *APIHandler) CreateAPIToken(c *gin.Context) {
 	username := c.GetString("username")
 	role := c.GetString("role")
@@ -654,34 +683,16 @@ func (h *APIHandler) CreateAPIToken(c *gin.Context) {
 	// Validate permissions
 	finalPerms := ""
 	if requestedPerms != "" {
-		rPerms := strings.Split(requestedPerms, ",")
-
 		if username == h.cfg.GUIAdmin {
 			// Superuser can grant any permissions to a token
 			finalPerms = requestedPerms
 		} else {
-			// Other users can only grant a subset of their own permissions
-			uPerms := strings.Split(userPerms, ",")
-			validPerms := []string{}
-			for _, rp := range rPerms {
-				rp = strings.TrimSpace(rp)
-				if rp == "" {
-					continue
-				}
-				found := false
-				for _, up := range uPerms {
-					if rp == strings.TrimSpace(up) {
-						validPerms = append(validPerms, rp)
-						found = true
-						break
-					}
-				}
-				if !found {
-					c.String(http.StatusForbidden, fmt.Sprintf("insufficient permissions to grant: %s", rp))
-					return
-				}
+			var err error
+			finalPerms, err = h.validatePermissionSubset(requestedPerms, userPerms)
+			if err != nil {
+				c.String(http.StatusForbidden, err.Error())
+				return
 			}
-			finalPerms = strings.Join(validPerms, ",")
 		}
 	}
 
@@ -756,28 +767,12 @@ func (h *APIHandler) UpdateAPITokenPermissions(c *gin.Context) {
 		if username == h.cfg.GUIAdmin {
 			finalPerms = req.Permissions
 		} else {
-			rPerms := strings.Split(req.Permissions, ",")
-			uPerms := strings.Split(userPerms, ",")
-			validPerms := []string{}
-			for _, rp := range rPerms {
-				rp = strings.TrimSpace(rp)
-				if rp == "" {
-					continue
-				}
-				found := false
-				for _, up := range uPerms {
-					if rp == strings.TrimSpace(up) {
-						validPerms = append(validPerms, rp)
-						found = true
-						break
-					}
-				}
-				if !found {
-					c.JSON(http.StatusForbidden, gin.H{"error": fmt.Sprintf("insufficient permissions to grant: %s", rp)})
-					return
-				}
+			var err error
+			finalPerms, err = h.validatePermissionSubset(req.Permissions, userPerms)
+			if err != nil {
+				c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+				return
 			}
-			finalPerms = strings.Join(validPerms, ",")
 		}
 	}
 
