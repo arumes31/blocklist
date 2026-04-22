@@ -105,16 +105,13 @@ func TestAPIHandler_Webhook_Security(t *testing.T) {
 	c2.Request, _ = http.NewRequest("POST", "/api/webhook", bytes.NewBufferString(reqBody2))
 	c2.Request.Header.Set("CF-Connecting-IP", "5.5.5.5")
 	c2.Request.RemoteAddr = "1.2.3.4:1234"
-	c1.Set("username", "admin")
+	c2.Set("username", "admin")
 
 	// IP detected as 1.2.3.4 (RemoteAddr) because CF header is ignored when not behind a verified proxy
 	pgRepo.On("LogAction", mock.Anything, "WHITELIST", "1.2.3.4", "spoof").Return(nil)
 	rRepo.On("IndexWebhookHit", mock.Anything).Return(nil)
 	rRepo.On("WhitelistIP", "1.2.3.4", mock.Anything).Return(nil)
 	ipService.On("GetGeoIP", mock.Anything).Return(&models.GeoData{}).Maybe()
-
-	// Wait, I used c1 accidentally in line 107 in my scratchpad, fixing it to c2.
-	c2.Set("username", "admin")
 
 	h.Webhook(c2)
 	assert.Equal(t, http.StatusOK, w2.Code)
