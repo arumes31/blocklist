@@ -8,12 +8,15 @@ import (
 
 	"blocklist/internal/models"
 	"blocklist/internal/repository"
+	"blocklist/internal/security"
 	"bytes"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
 	"io"
+	"net"
 	"net/http"
+	"syscall"
 
 	"github.com/hibiken/asynq"
 )
@@ -49,9 +52,37 @@ type WebhookTaskHandler struct {
 }
 
 func NewWebhookTaskHandler(pg *repository.PostgresRepository) *WebhookTaskHandler {
+	// SSRF Protection: custom dialer to prevent internal IP connections
+	dialer := &net.Dialer{
+		Timeout:   5 * time.Second,
+		KeepAlive: 30 * time.Second,
+		Control: func(network, address string, c syscall.RawConn) error {
+			host, _, err := net.SplitHostPort(address)
+			if err != nil {
+				return err
+			}
+			ip := net.ParseIP(host)
+			if ip != nil && security.IsInternalIP(ip) {
+				return fmt.Errorf("connection to internal IP %s is prohibited", host)
+			}
+			return nil
+		},
+	}
+
+	transport := &http.Transport{
+		DialContext:           dialer.DialContext,
+		MaxIdleConns:          100,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   5 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+	}
+
 	return &WebhookTaskHandler{
 		pgRepo: pg,
-		client: &http.Client{Timeout: 10 * time.Second},
+		client: &http.Client{
+			Timeout:   10 * time.Second,
+			Transport: transport,
+		},
 	}
 }
 
