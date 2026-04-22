@@ -30,7 +30,7 @@ func IsInternalIP(ip net.IP) bool {
 		return false
 	}
 	// Use built-in methods for standard ranges
-	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsPrivate() {
+	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsPrivate() || ip.IsUnspecified() {
 		return true
 	}
 	// Fallback for any other explicitly defined blocks

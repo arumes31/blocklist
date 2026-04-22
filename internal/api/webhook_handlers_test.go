@@ -201,7 +201,9 @@ func TestAPIHandler_AddOutboundWebhook(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	c, _ := setupHTMLTest(w)
-	c.Request, _ = http.NewRequest("POST", "/webhooks", nil)
+	// Use a safe URL to pass SSRF validation
+	formData := "url=https://example.com/webhook&secret=shh&events=block"
+	c.Request, _ = http.NewRequest("POST", "/webhooks", bytes.NewBufferString(formData))
 	c.Request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	h.AddOutboundWebhook(c)
