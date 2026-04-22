@@ -3,6 +3,7 @@ package repository
 import (
 	"blocklist/internal/models"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -81,6 +82,7 @@ func (p *PostgresRepository) EnsurePartitions(retentionMonths int) error {
 	}
 
 	// 2. Drop partitions older than retentionMonths
+	var errs []error
 	if retentionMonths > 0 {
 		cutoff := now.AddDate(0, -retentionMonths, 0)
 		// We iterate back a few more months to be sure we catch old ones if the job didn't run
@@ -99,13 +101,14 @@ func (p *PostgresRepository) EnsurePartitions(retentionMonths int) error {
 				_, err := p.db.Exec(query)
 				if err != nil {
 					// Log error but continue
-					fmt.Printf("Error dropping partition %s: %v\n", fullName, err)
+					zlog.Error().Err(err).Str("partition", fullName).Msg("Error dropping partition")
+					errs = append(errs, fmt.Errorf("drop partition %s: %w", fullName, err))
 				}
 			}
 		}
 	}
 
-	return nil
+	return errors.Join(errs...)
 }
 
 func (p *PostgresRepository) CreateAdmin(admin models.AdminAccount) error {
