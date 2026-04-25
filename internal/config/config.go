@@ -51,7 +51,7 @@ func Load() *Config {
 		PostgresURL:            getEnv("POSTGRES_URL", "postgres://postgres:password@localhost:5432/blocklist?sslmode=disable"),
 		PostgresReadURL:        getEnv("POSTGRES_READ_URL", getEnv("POSTGRES_URL", "postgres://postgres:password@localhost:5432/blocklist?sslmode=disable")),
 		GUIAdmin:               getEnv("GUIAdmin", "admin"),
-		GUIPassword:            getEnv("GUIPassword", "password"),
+		GUIPassword:            getEnv("GUIPassword", ""),
 		GUIToken:               getEnv("GUIToken", ""),
 		LogWeb:                 getEnvBool("LOGWEB", false),
 		BlockedRanges:          getEnv("BLOCKED_RANGES", ""),
