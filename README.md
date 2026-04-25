@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <a href="#"><img src="https://img.shields.io/badge/Go-1.24-00ADD8?logo=go" alt="Go 1.24" /></a>
+  <a href="#"><img src="https://img.shields.io/badge/Go-1.26-00ADD8?logo=go" alt="Go 1.26" /></a>
   <a href="#"><img src="https://img.shields.io/badge/Redis-required-DC382D?logo=redis&logoColor=white" alt="Redis required" /></a>
   <a href="#"><img src="https://img.shields.io/badge/Docker-hardened-2496ED?logo=docker&logoColor=white" alt="Docker hardened" /></a>
   <a href="#"><img src="https://img.shields.io/badge/CI-GitHub_Actions-blue?logo=githubactions" alt="CI" /></a>
@@ -101,8 +101,13 @@ graph LR
 3. **Run Migrations**: Handled automatically on server start.
 4. **Build & Run**:
    ```bash
+   # Build Server
    go build -o blocklist-server ./cmd/server/main.go
    ./blocklist-server
+
+   # Build Standalone Worker (Optional)
+   go build -o blocklist-worker ./cmd/worker/main.go
+   ./blocklist-worker
    ```
 
 ## Docker Deployment
@@ -131,6 +136,7 @@ The application is configured via environment variables:
 | `REDIS_DB` | Redis database for IP storage | `0` |
 | `REDIS_LIM_DB` | Redis database for rate limiting | `1` |
 | `POSTGRES_URL` | PostgreSQL connection string | `postgres://...` |
+| `POSTGRES_READ_URL` | PostgreSQL connection string for read-only operations | (same as `POSTGRES_URL`) |
 | `GUIAdmin` | Primary administrator username | `admin` |
 | `GUIPassword` | Primary administrator password | (empty) |
 | `GUIToken` | Primary administrator 2FA seed (optional) | (empty) |
@@ -143,8 +149,11 @@ The application is configured via environment variables:
 | `USE_CLOUDFLARE` | Enable Cloudflare specific header handling | `false` |
 | `COOKIE_SECURE` | Force session cookies to be `Secure` (requires HTTPS) | `false` |
 | `COOKIE_SAMESITE_STRICT` | Set session cookie SameSite policy to `Strict` | `false` |
+| `FORCE_HTTPS` | Redirect HTTP to HTTPS | `false` |
+| `RUN_WORKER_IN_PROCESS` | Run background workers within the server process | `true` |
 | `ENABLE_OUTBOUND_WEBHOOKS` | Master switch for outbound notifications | `false` |
 | `AUDIT_LOG_LIMIT_PER_IP` | Max audit trail entries kept per IP | `100` |
+| `LOG_RETENTION_MONTHS` | Number of months to retain logs | `6` |
 | `RATE_LIMIT` | Global API rate limit (requests) | `500` |
 | `RATE_PERIOD` | Rate limit window (seconds) | `30` |
 | `RATE_LIMIT_LOGIN` | Rate limit for login attempts | `10` |
