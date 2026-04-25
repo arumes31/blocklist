@@ -22,6 +22,12 @@ const (
 	TypeWebhookDelivery = "webhook:deliver"
 )
 
+// WebhookRepository defines the database operations needed for webhook tasks.
+type WebhookRepository interface {
+	GetActiveWebhooks() ([]models.OutboundWebhook, error)
+	LogWebhookDelivery(logEntry models.WebhookLog) error
+}
+
 type WebhookPayload struct {
 	WebhookID int    `json:"webhook_id"`
 	Event     string `json:"event"`
@@ -44,13 +50,13 @@ func NewWebhookDeliveryTask(webhookID int, event string, data []byte) (*asynq.Ta
 
 // WebhookTaskHandler handles webhook delivery tasks.
 type WebhookTaskHandler struct {
-	pgRepo *repository.PostgresRepository
+	repo   WebhookRepository
 	client *http.Client
 }
 
-func NewWebhookTaskHandler(pg *repository.PostgresRepository) *WebhookTaskHandler {
+func NewWebhookTaskHandler(repo WebhookRepository) *WebhookTaskHandler {
 	return &WebhookTaskHandler{
-		pgRepo: pg,
+		repo:   repo,
 		client: &http.Client{Timeout: 10 * time.Second},
 	}
 }
@@ -75,7 +81,7 @@ func (h *WebhookTaskHandler) ProcessTask(ctx context.Context, t *asynq.Task) err
 	// Let's add GetWebhookByID to PostgresRepository.
 
 	// Temporarily: we will fetch all active and find ours.
-	webhooks, err := h.pgRepo.GetActiveWebhooks()
+	webhooks, err := h.repo.GetActiveWebhooks()
 	if err != nil {
 		return fmt.Errorf("failed to fetch webhooks: %v", err)
 	}
@@ -124,7 +130,7 @@ func (h *WebhookTaskHandler) ProcessTask(ctx context.Context, t *asynq.Task) err
 
 	if err != nil {
 		logEntry.Error = err.Error()
-		_ = h.pgRepo.LogWebhookDelivery(logEntry)
+		_ = h.repo.LogWebhookDelivery(logEntry)
 		return fmt.Errorf("request failed: %v", err)
 	}
 
@@ -133,7 +139,7 @@ func (h *WebhookTaskHandler) ProcessTask(ctx context.Context, t *asynq.Task) err
 	logEntry.ResponseBody = string(body)
 	_ = resp.Body.Close()
 
-	_ = h.pgRepo.LogWebhookDelivery(logEntry)
+	_ = h.repo.LogWebhookDelivery(logEntry)
 
 	if resp.StatusCode >= 400 {
 		return fmt.Errorf("webhook returned status %d", resp.StatusCode)
