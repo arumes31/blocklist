@@ -179,3 +179,73 @@ func TestAPIHandler_IPsPaginated_NegativeLimit(t *testing.T) {
 
 	assert.Equal(t, http.StatusBadRequest, w2.Code)
 }
+
+func TestAPIHandler_RawIPs(t *testing.T) {
+	h, rRepo, _, _, _ := setupTest()
+
+	// 1. Success case
+	ips := map[string]models.IPEntry{
+		"1.1.1.1": {},
+		"2.2.2.2": {},
+	}
+	rRepo.On("GetBlockedIPs").Return(ips, nil).Once()
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request, _ = http.NewRequest("GET", "/api/v1/ips-raw", nil)
+
+	h.RawIPs(c)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	body := w.Body.String()
+	assert.Contains(t, body, "1.1.1.1")
+	assert.Contains(t, body, "2.2.2.2")
+	// Verify it contains a newline if there are multiple IPs
+	assert.Contains(t, body, "\n")
+
+	// 2. Error case
+	rRepo.On("GetBlockedIPs").Return(map[string]models.IPEntry{}, errors.New("redis error")).Once()
+
+	w2 := httptest.NewRecorder()
+	c2, _ := gin.CreateTestContext(w2)
+	c2.Request, _ = http.NewRequest("GET", "/api/v1/ips-raw", nil)
+
+	h.RawIPs(c2)
+
+	assert.Equal(t, http.StatusInternalServerError, w2.Code)
+	assert.Equal(t, "Error fetching IPs", w2.Body.String())
+}
+
+func TestAPIHandler_JSONIPs(t *testing.T) {
+	h, rRepo, _, _, _ := setupTest()
+
+	// 1. Success case
+	ips := map[string]models.IPEntry{
+		"1.1.1.1": {Reason: "test"},
+	}
+	rRepo.On("GetBlockedIPs").Return(ips, nil).Once()
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request, _ = http.NewRequest("GET", "/api/v1/ips", nil)
+
+	h.JSONIPs(c)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var resp map[string]models.IPEntry
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	assert.NoError(t, err)
+	assert.Equal(t, "test", resp["1.1.1.1"].Reason)
+
+	// 2. Error case
+	rRepo.On("GetBlockedIPs").Return(map[string]models.IPEntry{}, errors.New("redis error")).Once()
+
+	w2 := httptest.NewRecorder()
+	c2, _ := gin.CreateTestContext(w2)
+	c2.Request, _ = http.NewRequest("GET", "/api/v1/ips", nil)
+
+	h.JSONIPs(c2)
+
+	assert.Equal(t, http.StatusInternalServerError, w2.Code)
+	assert.JSONEq(t, `{"error":"Error fetching IPs"}`, w2.Body.String())
+}
