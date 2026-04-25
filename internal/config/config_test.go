@@ -26,6 +26,9 @@ func TestLoad(t *testing.T) {
 	if cfg.Port != "9999" {
 		t.Errorf("expected 9999, got %s", cfg.Port)
 	}
+	if cfg.GUIPassword != "" {
+		t.Errorf("expected empty GUIPassword default, got %s", cfg.GUIPassword)
+	}
 	if !cfg.EnableOutboundWebhooks {
 		t.Error("expected EnableOutboundWebhooks to be true")
 	}

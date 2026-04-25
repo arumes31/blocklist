@@ -141,6 +141,9 @@ func main() {
 	if a.PgRepo != nil && cfg.GUIAdmin != "" {
 		admin, _ := a.PgRepo.GetAdmin(cfg.GUIAdmin)
 		if admin == nil {
+			if cfg.GUIPassword == "" {
+				zlog.Fatal().Msg("GUIPassword environment variable must be set for initial administrator seeding.")
+			}
 			zlog.Info().Str("username", cfg.GUIAdmin).Msg("Seeding initial admin user")
 			hash, _ := a.AuthService.HashPassword(cfg.GUIPassword)
 			err := a.PgRepo.CreateAdmin(models.AdminAccount{

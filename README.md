@@ -132,7 +132,7 @@ The application is configured via environment variables:
 | `REDIS_LIM_DB` | Redis database for rate limiting | `1` |
 | `POSTGRES_URL` | PostgreSQL connection string | `postgres://...` |
 | `GUIAdmin` | Primary administrator username | `admin` |
-| `GUIPassword` | Primary administrator password | `password` |
+| `GUIPassword` | Primary administrator password | (empty) |
 | `GUIToken` | Primary administrator 2FA seed (optional) | (empty) |
 | `DISABLE_GUIADMIN_LOGIN` | Disable login for the default admin user | `false` |
 | `LOGWEB` | Enable verbose web logging (debug level) | `false` |
