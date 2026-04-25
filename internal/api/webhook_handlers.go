@@ -10,6 +10,7 @@ import (
 
 	"blocklist/internal/metrics"
 	"blocklist/internal/models"
+	"blocklist/internal/security"
 
 	"github.com/gin-gonic/gin"
 	zlog "github.com/rs/zerolog/log"
@@ -223,6 +224,12 @@ func (h *APIHandler) AddOutboundWebhook(c *gin.Context) {
 	wh.Events = c.PostForm("events")
 	wh.GeoFilter = c.PostForm("geo_filter")
 	wh.Active = true
+
+	if err := security.IsSafeURL(wh.URL); err != nil {
+		zlog.Warn().Err(err).Str("url", wh.URL).Msg("Attempted to add unsafe webhook URL")
+		c.String(http.StatusBadRequest, "Invalid or unsafe webhook URL")
+		return
+	}
 
 	err := h.pgRepo.CreateOutboundWebhook(wh)
 	if err != nil {

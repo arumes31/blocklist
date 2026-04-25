@@ -52,7 +52,7 @@ func TestNewWebhookDeliveryTask(t *testing.T) {
 
 func TestWebhookTaskHandler_ProcessTask_InvalidPayload(t *testing.T) {
 	repo := new(mockWebhookRepository)
-	handler := NewWebhookTaskHandler(repo)
+	handler := NewWebhookTaskHandlerWithClient(repo, &http.Client{})
 
 	task := asynq.NewTask(TypeWebhookDelivery, []byte("invalid json"))
 	err := handler.ProcessTask(context.Background(), task)
@@ -63,7 +63,7 @@ func TestWebhookTaskHandler_ProcessTask_InvalidPayload(t *testing.T) {
 
 func TestWebhookTaskHandler_ProcessTask_Success(t *testing.T) {
 	repo := new(mockWebhookRepository)
-	handler := NewWebhookTaskHandler(repo)
+	handler := NewWebhookTaskHandlerWithClient(repo, &http.Client{})
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "POST", r.Method)
@@ -97,7 +97,7 @@ func TestWebhookTaskHandler_ProcessTask_Success(t *testing.T) {
 
 func TestWebhookTaskHandler_ProcessTask_DeletedWebhook(t *testing.T) {
 	repo := new(mockWebhookRepository)
-	handler := NewWebhookTaskHandler(repo)
+	handler := NewWebhookTaskHandlerWithClient(repo, &http.Client{})
 
 	repo.On("GetActiveWebhooks").Return([]models.OutboundWebhook{}, nil)
 
@@ -113,7 +113,7 @@ func TestWebhookTaskHandler_ProcessTask_DeletedWebhook(t *testing.T) {
 
 func TestWebhookTaskHandler_ProcessTask_HTTPError(t *testing.T) {
 	repo := new(mockWebhookRepository)
-	handler := NewWebhookTaskHandler(repo)
+	handler := NewWebhookTaskHandlerWithClient(repo, &http.Client{})
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -144,7 +144,7 @@ func TestWebhookTaskHandler_ProcessTask_HTTPError(t *testing.T) {
 
 func TestWebhookTaskHandler_ProcessTask_WithSecret(t *testing.T) {
 	repo := new(mockWebhookRepository)
-	handler := NewWebhookTaskHandler(repo)
+	handler := NewWebhookTaskHandlerWithClient(repo, &http.Client{})
 	secret := "test-secret"
 
 	data := []byte(`{"ip":"1.2.3.4"}`)

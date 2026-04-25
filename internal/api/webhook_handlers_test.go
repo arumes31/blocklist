@@ -198,7 +198,7 @@ func TestAPIHandler_AddOutboundWebhook(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	c, _ := setupHTMLTest(w)
-	c.Request, _ = http.NewRequest("POST", "/webhooks", nil)
+	c.Request, _ = http.NewRequest("POST", "/webhooks", bytes.NewBufferString("url=http://example.com/webhook&secret=test&events=block&geo_filter="))
 	c.Request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	h.AddOutboundWebhook(c)
