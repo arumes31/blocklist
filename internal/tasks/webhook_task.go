@@ -7,11 +7,13 @@ import (
 	"time"
 
 	"blocklist/internal/models"
+	"blocklist/internal/security"
 	"bytes"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
 	"io"
+	"net"
 	"net/http"
 
 	"github.com/hibiken/asynq"
@@ -54,9 +56,27 @@ type WebhookTaskHandler struct {
 }
 
 func NewWebhookTaskHandler(repo WebhookRepository) *WebhookTaskHandler {
+	return NewWebhookTaskHandlerWithClient(repo, nil)
+}
+
+func NewWebhookTaskHandlerWithClient(repo WebhookRepository, client *http.Client) *WebhookTaskHandler {
+	if client == nil {
+		dialer := &net.Dialer{
+			Timeout:   10 * time.Second,
+			KeepAlive: 10 * time.Second,
+			Control:   security.SafeSocketControl,
+		}
+		transport := &http.Transport{
+			DialContext: dialer.DialContext,
+		}
+		client = &http.Client{
+			Timeout:   10 * time.Second,
+			Transport: transport,
+		}
+	}
 	return &WebhookTaskHandler{
 		repo:   repo,
-		client: &http.Client{Timeout: 10 * time.Second},
+		client: client,
 	}
 }
 
