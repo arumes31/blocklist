@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"blocklist/internal/models"
-	"blocklist/internal/repository"
 	"bytes"
 	"crypto/hmac"
 	"crypto/sha256"
