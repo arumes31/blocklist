@@ -7,6 +7,7 @@
   <a href="#"><img src="https://img.shields.io/badge/Redis-required-DC382D?logo=redis&logoColor=white" alt="Redis required" /></a>
   <a href="#"><img src="https://img.shields.io/badge/Docker-hardened-2496ED?logo=docker&logoColor=white" alt="Docker hardened" /></a>
   <a href="#"><img src="https://img.shields.io/badge/CI-GitHub_Actions-blue?logo=githubactions" alt="CI" /></a>
+  <a href="#"><img src="https://img.shields.io/badge/Security-CodeQL-blue?logo=github" alt="CodeQL" /></a>
   <a href="#"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License: MIT" /></a>
 </p>
 
@@ -45,6 +46,7 @@ graph LR
 - **Reliable Webhooks**: Persistent **Task Queue** for outbound notifications with automatic retries and exponential backoff.
 - **Bulk Operations**: Multi-select interface for batch unblocking and management.
 - **Security Hardening**: Session invalidation on permission changes and mandatory 2FA setup.
+- **Continuous Analysis**: Integrated **CodeQL** and **Gosec** for automated vulnerability detection and static analysis.
 - **Interactive API Docs**: Embedded **API Reference** via RapiDoc/Scalar at `/docs`.
 - **GeoIP Enrichment**: Automated ASN, Country, and City detection for all entries.
 - **Observability**: Prometheus metrics for latency and operations, protected by IP-based ACL.
