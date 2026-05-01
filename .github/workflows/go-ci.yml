@@ -4,9 +4,9 @@ permissions: read-all
 
 on:
   push:
-    branches: [ main, test, v2b_test ]
+    branches: [ main, test, v2_test, v2b_test ]
   pull_request:
-    branches: [ main, test, v2b_test ]
+    branches: [ main, test, v2_test, v2b_test ]
 
 jobs:
   build:
@@ -29,3 +29,8 @@ jobs:
       uses: golangci/golangci-lint-action@v9
       with:
         version: v2.11.4
+
+    - name: Run Gosec Security Scan
+      uses: securego/gosec@master
+      with:
+        args: ./...
