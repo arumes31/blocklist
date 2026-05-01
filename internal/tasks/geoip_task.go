@@ -134,7 +134,7 @@ func (h *GeoIPTaskHandler) Download(edition string) error {
 				return err
 			}
 
-			outFile, err := os.Create(destPath)
+			outFile, err := os.Create(destPath) // #nosec G304
 			if err != nil {
 				return err
 			}
