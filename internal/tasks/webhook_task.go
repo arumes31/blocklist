@@ -154,7 +154,8 @@ func (h *WebhookTaskHandler) ProcessTask(ctx context.Context, t *asynq.Task) err
 	}
 
 	logEntry.StatusCode = resp.StatusCode
-	body, _ := io.ReadAll(resp.Body)
+	// Limit to 1MB to prevent unconstrained resource consumption (CWE-400)
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024*1024))
 	logEntry.ResponseBody = string(body)
 	_ = resp.Body.Close()
 
