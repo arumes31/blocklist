@@ -111,7 +111,7 @@ func (h *APIHandler) ThreatMap(c *gin.Context) {
 		"admin_username": h.cfg.GUIAdmin,
 		"username":       username,
 		"permissions":    permissions,
-		"trend_json":     template.JS(string(trendJSON)),
+		"trend_json":     template.JS(string(trendJSON)), // #nosec G203
 		"stats": gin.H{
 			"hour":          hour,
 			"day":           day,

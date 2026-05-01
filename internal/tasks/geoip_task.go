@@ -53,6 +53,12 @@ func (h *GeoIPTaskHandler) ProcessTask(ctx context.Context, t *asynq.Task) error
 		return fmt.Errorf("json.Unmarshal failed: %v: %w", err, asynq.SkipRetry)
 	}
 
+	// Clean edition string to prevent directory traversal
+	p.Edition = filepath.Base(filepath.Clean(p.Edition))
+	if p.Edition == "." || p.Edition == "/" {
+		return fmt.Errorf("invalid edition: %s", p.Edition)
+	}
+
 	if err := h.Download(p.Edition); err != nil {
 		return err
 	}
@@ -124,7 +130,7 @@ func (h *GeoIPTaskHandler) Download(edition string) error {
 
 		if strings.HasSuffix(header.Name, ".mmdb") {
 			destPath := h.getDBPath(edition)
-			if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
+			if err := os.MkdirAll(filepath.Dir(destPath), 0750); err != nil {
 				return err
 			}
 
@@ -133,7 +139,10 @@ func (h *GeoIPTaskHandler) Download(edition string) error {
 				return err
 			}
 
-			if _, err := io.Copy(outFile, tr); err != nil {
+			// Use LimitReader to prevent decompression bomb (CWE-409)
+			// MaxMind GeoLite2 databases are typically < 100MB, so 256MB is a safe upper bound.
+			lr := io.LimitReader(tr, 256*1024*1024)
+			if _, err := io.Copy(outFile, lr); err != nil {
 				_ = outFile.Close()
 				return err
 			}
