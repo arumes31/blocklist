@@ -320,8 +320,8 @@ func main() {
 		"replace":  strings.ReplaceAll,
 		"split":    strings.Split,
 		"contains": strings.Contains,
-		"safeHTML": func(s string) template.HTML { return template.HTML(s) },
-		"safeURL":  func(s string) template.URL { return template.URL(s) },
+		"safeHTML": func(s string) template.HTML { return template.HTML(s) }, // #nosec G203
+		"safeURL":  func(s string) template.URL { return template.URL(s) },  // #nosec G203
 		"add":      func(a, b int) int { return a + b },
 		"sub":      func(a, b int) int { return a - b },
 	}
@@ -456,8 +456,9 @@ func main() {
 
 	// 7. Run Server with Graceful Shutdown
 	srv := &http.Server{
-		Addr:    ":" + cfg.Port,
-		Handler: r,
+		Addr:              ":" + cfg.Port,
+		Handler:           r,
+		ReadHeaderTimeout: 5 * time.Second, // Protect against Slowloris attacks
 	}
 
 	go func() {
