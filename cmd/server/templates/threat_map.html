@@ -5,37 +5,36 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Threat Map - Blocklist</title>
+    
+    <!-- Local Assets -->
     <link rel="stylesheet" href="/cd/flag-icon.min.css">
-    <link rel="stylesheet" href="/js/leaflet.css">
-    <link rel="stylesheet" href="/js/MarkerCluster.css">
-    <link rel="stylesheet" href="/js/MarkerCluster.Default.css">
     <link rel="icon" type="image/x-icon" href="/cd/favicon-color.png" />
     <script src="/js/htmx.min.js"></script>
     <script src="/js/json-enc.js"></script>
-    <script src="/js/leaflet.js"></script>
-    <script src="/js/leaflet.markercluster.js"></script>
-    <script src="/js/leaflet-heat.js"></script>
-    <script src="/js/leaflet-ant-path.js"></script>
     <script src="/js/chart.js"></script>
+    <script src="/js/globe.gl.min.js"></script>
+    <script src="/js/topojson-client.min.js"></script>
+
     <style nonce="{{ .nonce }}">
         :root {
             --primary-red: #ff0000;
             --dark-red: #8b0000;
             --vibrant-red: #ff4d4d;
-            --glass-bg: rgba(20, 20, 20, 0.85);
-            --border-red: rgba(255, 0, 0, 0.3);
+            --glass-bg: rgba(15, 15, 15, 0.85);
+            --border-red: rgba(255, 0, 0, 0.4);
             --secondary-color: #b3b3b3;
+            --accent-glow: 0 0 20px rgba(255, 0, 0, 0.2);
         }
 
         body {
-            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-            margin: 0;
-            background-color: #000;
+            background-color: #050505;
             color: #fff;
+            font-family: 'Inter', -apple-system, sans-serif;
+            margin: 0;
+            overflow: hidden;
             height: 100vh;
             display: flex;
             flex-direction: column;
-            overflow: hidden;
         }
 
         .header-container {
@@ -44,54 +43,72 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            backdrop-filter: blur(8px);
+            backdrop-filter: blur(12px);
             border-bottom: 1px solid var(--border-red);
             z-index: 100;
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5);
         }
 
         .banner img {
             height: 32px;
+            filter: drop-shadow(0 0 5px var(--primary-red));
         }
 
         .btn {
-            padding: 0.5rem 1rem;
-            border: 1px solid rgba(255, 255, 255, 0.15);
-            border-radius: 6px;
+            padding: 0.5rem 1.2rem;
+            border: 1px solid var(--border-red);
+            border-radius: 8px;
             cursor: pointer;
             font-weight: 600;
-            transition: all 0.2s;
+            transition: all 0.3s;
             text-decoration: none;
-            background: rgba(255, 255, 255, 0.05);
+            background: rgba(255, 0, 0, 0.1);
             color: #fff;
+            text-transform: uppercase;
+            font-size: 0.75rem;
+            letter-spacing: 1px;
         }
 
         .btn:hover {
-            background: rgba(255, 255, 255, 0.1);
+            background: rgba(255, 0, 0, 0.25);
+            box-shadow: 0 0 15px rgba(255, 0, 0, 0.4);
+            transform: translateY(-1px);
         }
 
         .main-layout {
             flex: 1;
             display: grid;
-            grid-template-columns: 3fr 1fr;
+            grid-template-columns: 1fr 350px;
             gap: 1rem;
             padding: 1rem;
             box-sizing: border-box;
             overflow: hidden;
+            background: radial-gradient(circle at 40% 50%, #1a0505 0%, #050505 100%);
         }
 
         .card {
-            background: rgba(20, 20, 20, 0.85);
+            background: var(--glass-bg);
             border: 1px solid var(--border-red);
-            border-radius: 12px;
+            border-radius: 16px;
             overflow: hidden;
             display: flex;
             flex-direction: column;
+            box-shadow: var(--accent-glow);
+            backdrop-filter: blur(10px);
+        }
+
+        #map-container {
+            flex: 1;
+            position: relative;
+            background: #000;
+            border-radius: 16px;
+            overflow: hidden;
+            border: 1px solid var(--border-red);
         }
 
         #threat-map {
-            flex: 1;
             width: 100%;
-            background: #0a0a0a;
+            height: 100%;
         }
 
         .side-panel {
@@ -101,189 +118,158 @@
             overflow-y: auto;
         }
 
+        .side-panel::-webkit-scrollbar {
+            width: 4px;
+        }
+        .side-panel::-webkit-scrollbar-thumb {
+            background: var(--border-red);
+            border-radius: 10px;
+        }
+
         .chart-container {
-            padding: 1rem;
+            padding: 1.2rem;
             flex: 1;
-            min-height: 300px;
+            min-height: 250px;
         }
 
         .stats-summary {
-            padding: 1rem;
+            padding: 1.2rem;
             display: grid;
-            grid-template-columns: 1fr;
-            gap: 0.8rem;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
         }
 
         .stat-item {
             background: rgba(255, 255, 255, 0.03);
-            padding: 0.8rem;
-            border-radius: 8px;
-            border: 1px solid rgba(255, 255, 255, 0.05);
+            padding: 1rem;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 0, 0, 0.15);
+            transition: all 0.3s;
+        }
+
+        .stat-item:hover {
+            border-color: var(--primary-red);
+            background: rgba(255, 0, 0, 0.05);
         }
 
         .stat-label {
-            font-size: 0.75rem;
+            font-size: 0.7rem;
             color: var(--secondary-color);
             text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: 600;
         }
 
         .stat-value {
-            font-size: 1.2rem;
-            font-weight: 700;
-            margin-top: 2px;
+            font-size: 1.4rem;
+            font-weight: 800;
+            margin-top: 5px;
+            font-family: 'JetBrains Mono', monospace;
         }
 
         #live-status {
-            padding: 0.2rem 0.6rem;
-            border-radius: 999px;
-            font-size: 0.75rem;
-            background: rgba(40, 167, 69, 0.2);
+            padding: 0.3rem 0.8rem;
+            border-radius: 20px;
+            font-size: 0.7rem;
+            font-weight: 800;
+            letter-spacing: 1px;
+            background: rgba(40, 167, 69, 0.15);
             border: 1px solid rgba(40, 167, 69, 0.4);
-            color: #fff;
+            color: #4ade80;
+            box-shadow: 0 0 10px rgba(40, 167, 69, 0.2);
         }
 
-        .leaflet-container {
-            background: #0a0a0a !important;
-        }
-
-        @keyframes spawn-pulse {
-            0% {
-                transform: translate(-50%, -50%) scale(0.1);
-                opacity: 0.8;
-                box-shadow: 0 0 0 0 var(--pulse-color, rgba(255, 0, 0, 0.7));
-            }
-
-            70% {
-                transform: translate(-50%, -50%) scale(2.5);
-                opacity: 0.3;
-                box-shadow: 0 0 0 20px rgba(255, 0, 0, 0);
-            }
-
-            100% {
-                transform: translate(-50%, -50%) scale(1);
-                opacity: 1;
-                box-shadow: 0 0 0 0 rgba(255, 0, 0, 0);
-            }
-        }
-
-        .live-spawn-marker {
-            width: 12px;
-            height: 12px;
-            background: var(--pulse-color, var(--primary-red));
-            border: 2px solid #fff;
-            border-radius: 50%;
+        .map-overlay-controls {
             position: absolute;
-            animation: spawn-pulse 1.5s ease-out infinite;
-            pointer-events: none;
+            top: 20px;
+            right: 20px;
+            background: var(--glass-bg);
+            padding: 15px;
+            border-radius: 12px;
+            border: 1px solid var(--border-red);
+            z-index: 10;
+            font-size: 0.8rem;
+            min-width: 200px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.6);
         }
 
-        /* Marker Cluster Customization */
-        .marker-cluster-small {
-            background-color: rgba(255, 0, 0, 0.6);
+        .control-group {
+            margin-bottom: 12px;
         }
+        .control-group:last-child { margin-bottom: 0; }
 
-        .marker-cluster-small div {
-            background-color: rgba(255, 0, 0, 0.6);
-            color: #fff;
+        .control-label {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+            padding: 4px 0;
+            transition: color 0.2s;
         }
+        .control-label:hover { color: var(--primary-red); }
 
-        .marker-cluster-medium {
-            background-color: rgba(255, 0, 0, 0.7);
-        }
-
-        .marker-cluster-medium div {
-            background-color: rgba(255, 0, 0, 0.7);
-            color: #fff;
-        }
-
-        .marker-cluster-large {
-            background-color: rgba(255, 0, 0, 0.8);
-        }
-
-        .marker-cluster-large div {
-            background-color: rgba(255, 0, 0, 0.8);
-            color: #fff;
+        .control-label input[type="checkbox"] {
+            accent-color: var(--primary-red);
         }
 
         .ticker-container {
             flex: 1;
             overflow-y: auto;
             padding: 0;
-            background: rgba(0, 0, 0, 0.2);
-            border-radius: 8px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 12px;
             font-size: 0.75rem;
-            max-height: 200px;
         }
 
         .ticker-item {
-            padding: 8px 12px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+            padding: 10px 15px;
+            border-bottom: 1px solid rgba(255, 0, 0, 0.1);
             display: flex;
             flex-direction: column;
-            gap: 2px;
-            animation: fadeIn 0.3s ease-out;
+            gap: 4px;
+            animation: slideIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
         }
 
         .ticker-item .ts {
-            color: var(--secondary-color);
-            font-size: 0.65rem;
-        }
-
-        .ticker-item .msg {
+            color: #666;
+            font-size: 0.6rem;
             font-family: monospace;
         }
 
-        @keyframes fadeIn {
-            from {
-                opacity: 0;
-                transform: translateY(-5px);
-            }
-
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
+        .ticker-item .msg {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
         }
 
-        @media (max-width: 900px) {
-            .main-layout {
-                grid-template-columns: 1fr;
-                overflow-y: auto;
-            }
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(20px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
 
-            .header-container {
-                flex-direction: column;
-                gap: 1rem;
-                align-items: flex-start;
-                padding: 1rem;
-                height: auto;
-            }
+        h3 {
+            font-size: 0.85rem;
+            margin: 0 0 10px 0;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: var(--primary-red);
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
 
-            .header-actions {
-                flex-wrap: wrap;
-                gap: 0.8rem;
-                width: 100%;
-            }
+        h3::before {
+            content: '';
+            width: 3px;
+            height: 12px;
+            background: var(--primary-red);
+        }
 
-            .toggle-strip {
-                flex-wrap: wrap;
-                gap: 0.5rem;
-                width: 100%;
-                background: rgba(255, 255, 255, 0.03) !important;
-            }
-
-            #threat-map {
-                min-height: 400px;
-            }
-
-            .side-panel {
-                overflow-y: visible;
-            }
-
-            body {
-                overflow-y: auto;
-                height: auto;
-            }
+        @media (max-width: 1100px) {
+            .main-layout { grid-template-columns: 1fr; overflow-y: auto; }
+            .side-panel { height: auto; overflow: visible; }
+            #map-container { min-height: 500px; }
+            body { overflow-y: auto; height: auto; }
         }
     </style>
 </head>
@@ -291,91 +277,95 @@
 <body>
 
     <div class="header-container">
-        <div style="display: flex; align-items: center; gap: 2rem;">
+        <div style="display: flex; align-items: center; gap: 2.5rem;">
             <a href="/dashboard" class="banner">
                 <img src="/cd/logo.png" alt="logo">
             </a>
-            <h2 style="margin: 0; font-size: 1.2rem;">Threat Map</h2>
+            <h2 style="margin: 0; font-size: 1.1rem; text-transform: uppercase; letter-spacing: 3px; font-weight: 800; color: #fff;">
+                Global <span style="color: var(--primary-red);">Threat</span> Pulse
+            </h2>
         </div>
-        <div class="header-actions" style="display: flex; align-items: center; gap: 1rem;">
-            <div class="toggle-strip"
-                style="display: flex; gap: 1rem; font-size: 0.8rem; background: rgba(255,255,255,0.05); padding: 5px 15px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1);">
-                <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
-                    <input type="checkbox" id="toggleBlockIPs" onchange="fetchLatestData()" checked> Blocked IPs
-                </label>
-                <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
-                    <input type="checkbox" id="toggleWhitelistIPs" onchange="fetchLatestData()"> Whitelisted IPs
-                </label>
-                <div style="width: 1px; height: 15px; background: rgba(255,255,255,0.1); margin: 0 5px;"></div>
-                <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
-                    <input type="checkbox" id="toggleHeatmap" onchange="toggleViewMode()"> Heatmap
-                </label>
-                <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
-                    <input type="checkbox" id="toggleCluster" onchange="toggleViewMode()" checked> Cluster
-                </label>
-                <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
-                    <input type="checkbox" id="toggleServerLines" onchange="toggleViewMode()" checked> Path
-                </label>
-            </div>
-            <span id="live-status">LIVE</span>
-            <a href="/dashboard" class="btn">Back to Dashboard</a>
+        <div class="header-actions" style="display: flex; align-items: center; gap: 1.5rem;">
+            <span id="live-status">LIVE MONITOR</span>
+            <a href="/dashboard" class="btn">Terminal</a>
             {{ if or (eq .username .admin_username) (contains .permissions "manage_admins") }}
-            <a href="/admin_management" class="btn btn-dark" style="padding: 0.5rem 1rem; font-size: 0.9rem;">Admins</a>
+            <a href="/admin_management" class="btn" style="background: rgba(255,255,255,0.05);">Security Ops</a>
             {{ end }}
         </div>
     </div>
 
     <div class="main-layout">
-        <div class="card">
-            <div id="threat-map" style="flex: 1;"></div>
-        </div>
-        <div class="side-panel">
-            <div class="card stats-summary">
-                <div style="display: flex; justify-content: space-between; gap: 0.5rem;">
-                    <div class="stat-item" style="flex: 1;">
-                        <div class="stat-label">Total Blocked</div>
-                        <div id="stat-total" class="stat-value" style="font-size: 1rem;">{{ .total_ips }}</div>
-                    </div>
-                    <div class="stat-item" style="flex: 1;">
-                        <div class="stat-label">Last 24h</div>
-                        <div id="stat-day" class="stat-value" style="font-size: 1rem; color: var(--vibrant-red);">{{
-                            .stats.day }}</div>
-                    </div>
+        <div id="map-container">
+            <div id="threat-map"></div>
+            
+            <div class="map-overlay-controls">
+                <h3 style="border-bottom: 1px solid rgba(255,0,0,0.2); padding-bottom: 8px; margin-bottom: 12px;">Visual Layers</h3>
+                <div class="control-group">
+                    <label class="control-label">
+                        <input type="checkbox" id="toggleBlockIPs" onchange="fetchLatestData()" checked> 
+                        <span>Active Blocks</span>
+                    </label>
+                    <label class="control-label">
+                        <input type="checkbox" id="toggleWhitelistIPs" onchange="fetchLatestData()"> 
+                        <span>Trust Assets</span>
+                    </label>
                 </div>
-                <div style="display: flex; justify-content: space-between; gap: 0.5rem;">
-                    <div class="stat-item" style="flex: 1;">
-                        <div class="stat-label">Last Hour</div>
-                        <div id="stat-hour" class="stat-value" style="font-size: 1rem;">{{ .stats.hour }}</div>
-                    </div>
-                    <div class="stat-item" style="flex: 1;">
-                        <div class="stat-label">BPM</div>
-                        <div id="bpm-display" class="stat-value" style="font-size: 1rem;">0.0</div>
-                    </div>
+                <div style="height: 1px; background: rgba(255,0,0,0.1); margin: 10px 0;"></div>
+                <div class="control-group">
+                    <label class="control-label">
+                        <input type="checkbox" id="toggleHeatmap" onchange="toggleViewMode()"> 
+                        <span>Density Cloud</span>
+                    </label>
+                    <label class="control-label">
+                        <input type="checkbox" id="toggleServerLines" onchange="toggleViewMode()" checked> 
+                        <span>Attack Vectors</span>
+                    </label>
+                    <label class="control-label">
+                        <input type="checkbox" id="toggleAutoRotate" onchange="toggleRotation()" checked> 
+                        <span>Auto Orbital</span>
+                    </label>
                 </div>
             </div>
-            <div class="card chart-container" style="min-height: 200px; padding: 0.8rem;">
-                <h3
-                    style="font-size: 0.8rem; margin-top: 0; border-bottom: 1px solid var(--border-red); padding-bottom: 3px;">
-                    Country Distribution</h3>
+        </div>
+
+        <div class="side-panel">
+            <div class="card stats-summary">
+                <div class="stat-item">
+                    <div class="stat-label">Total Blocks</div>
+                    <div id="stat-total" class="stat-value" style="color: #fff;">{{ .total_ips }}</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">24H Delta</div>
+                    <div id="stat-day" class="stat-value" style="color: var(--vibrant-red);">{{ .stats.day }}</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">Hourly Load</div>
+                    <div id="stat-hour" class="stat-value" style="color: #ff9f43;">{{ .stats.hour }}</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">Intensity</div>
+                    <div id="bpm-display" class="stat-value" style="color: #00d2ff;">0.0 <span style="font-size: 0.6rem;">BPM</span></div>
+                </div>
+            </div>
+
+            <div class="card chart-container">
+                <h3>Origin Distribution</h3>
                 <div style="flex: 1; position: relative;">
                     <canvas id="countryChart"></canvas>
                 </div>
             </div>
-            <div class="card chart-container" style="min-height: 200px; padding: 0.8rem;">
-                <h3
-                    style="font-size: 0.8rem; margin-top: 0; border-bottom: 1px solid var(--border-red); padding-bottom: 3px;">
-                    Block Trend (24h)</h3>
+
+            <div class="card chart-container">
+                <h3>Block Velocity</h3>
                 <div style="flex: 1; position: relative;">
                     <canvas id="trendChart"></canvas>
                 </div>
             </div>
-            <div class="card"
-                style="padding: 1rem; display: flex; flex-direction: column; gap: 0.5rem; flex: 1; min-height: 200px;">
-                <h3
-                    style="font-size: 0.8rem; margin: 0; border-bottom: 1px solid var(--border-red); padding-bottom: 3px;">
-                    Live Ticker</h3>
-                <div id="eventTicker" class="ticker-container" style="max-height: none;">
-                    <div style="padding: 10px; color: #666; font-style: italic;">Awaiting events...</div>
+
+            <div class="card" style="padding: 1.2rem; flex: 1.5; min-height: 250px;">
+                <h3>Signal Stream</h3>
+                <div id="eventTicker" class="ticker-container">
+                    <div style="padding: 20px; color: #444; font-style: italic; text-align: center;">Synchronizing with backbone...</div>
                 </div>
             </div>
         </div>
@@ -384,131 +374,197 @@
     <script id="trend-data-json" type="application/json">
         {{ .trend_json }}
     </script>
+
     <script nonce="{{ .nonce }}">
         let countryChart = null;
         let trendChart = null;
-        let map = null;
-        let markerLayer = null;
-        let clusterLayer = null;
-        let heatmapLayer = null;
-        let lineLayer = null;
-        let liveMarkers = null;
-        let worldLayer = null;
+        let worldGlobe = null;
+        
+        let historicalItems = [];
+        let liveArcs = [];
+        let livePoints = [];
+        let countryHits = {};
 
         function escapeHTML(str) {
             if (!str) return '';
-            return str.toString().replace(/[&<>'"]/g, 
-                tag => ({
-                    '&': '&amp;',
-                    '<': '&lt;',
-                    '>': '&gt;',
-                    "'": '&#39;',
-                    '"': '&quot;'
-                }[tag] || tag)
-            );
+            const p = document.createElement('p');
+            p.textContent = str;
+            return p.innerHTML;
         }
 
-        let fetchTimeout = null;
-        let isFetching = false;
-        function debouncedFetchLatestData() {
-            if (!fetchTimeout && !isFetching) {
-                fetchLatestData();
-                fetchTimeout = setTimeout(() => {
-                    fetchTimeout = null;
-                }, 2500);
-            }
-        }
+        async function initGlobe() {
+            const mapContainer = document.getElementById('threat-map');
+            worldGlobe = Globe()
+                (mapContainer)
+                .globeImageUrl('/js/earth-night.jpg')
+                .bumpImageUrl('/js/earth-topology.png')
+                .backgroundImageUrl('/js/night-sky.png')
+                .backgroundColor('#000000')
+                .showAtmosphere(true)
+                .atmosphereColor('#ff0000')
+                .atmosphereAlpha(0.15)
+                .onPointClick(point => {
+                    // Show popup or zoom to point
+                    worldGlobe.pointOfView({ lat: point.lat, lng: point.lng, altitude: 0.5 }, 1000);
+                });
 
-        let trendData = [];
-        try {
-            const raw = document.getElementById('trend-data-json');
-            if (raw) trendData = JSON.parse(raw.textContent);
-        } catch (e) {
-            console.error("Failed to parse initial trend data", e);
-        }
+            // Set Initial POV
+            worldGlobe.pointOfView({ lat: 20, lng: 0, altitude: 2.5 });
 
-        async function initMap() {
-            map = L.map('threat-map', {
-                center: [20, 0],
-                zoom: 2,
-                zoomControl: true,
-                attributionControl: false,
-                minZoom: 2,
-                maxZoom: 18
-            });
+            // Styling Points
+            worldGlobe
+                .pointRadius(0.5)
+                .pointColor('color')
+                .pointAltitude(0.01)
+                .pointLabel(d => `
+                    <div style="background: rgba(0,0,0,0.8); border: 1px solid #ff0000; padding: 10px; border-radius: 8px; font-size: 12px; color: #fff;">
+                        <b style="color: #ff4d4d;">${d.type.toUpperCase()}: ${d.ip}</b><br>
+                        ${d.city}, ${d.country}<br>
+                        <i style="color: #aaa;">${d.reason}</i>
+                    </div>
+                `);
 
-            // Load local world GeoJSON with custom styling
+            // Styling Arcs
+            worldGlobe
+                .arcColor('color')
+                .arcDashLength(0.4)
+                .arcDashGap(4)
+                .arcDashInitialGap(() => Math.random() * 5)
+                .arcDashAnimateTime(1000)
+                .arcStroke(0.3)
+                .arcCurve(0.5);
+
+            // Styling Polygons (Heatmap)
+            worldGlobe
+                .polygonSideColor(() => 'rgba(255, 0, 0, 0.05)')
+                .polygonStrokeColor(() => 'rgba(255, 0, 0, 0.2)')
+                .polygonCapColor(d => {
+                    const hits = countryHits[d.properties.ISO_A3] || 0;
+                    if (hits === 0) return 'rgba(255, 0, 0, 0.01)';
+                    const opacity = Math.min(0.8, 0.1 + (hits / 50));
+                    return `rgba(255, 0, 0, ${opacity})`;
+                })
+                .polygonLabel(d => {
+                    const hits = countryHits[d.properties.ISO_A3] || 0;
+                    return `<b>${d.properties.NAME}</b>: ${hits} detections`;
+                });
+
+            // Load geography data
             try {
                 const response = await fetch('/js/world.json');
                 const worldData = await response.json();
-
-                worldLayer = L.geoJSON(worldData, {
-                    style: {
-                        fillColor: '#0d0d0d',
-                        weight: 1.5,
-                        opacity: 1,
-                        color: '#ff000033', // Subtle red borders
-                        fillOpacity: 1
-                    }
-                }).addTo(map);
+                worldGlobe.polygonsData(worldData.features);
             } catch (e) {
                 console.error("Failed to load map data", e);
             }
 
-            markerLayer = L.layerGroup();
-            clusterLayer = L.markerClusterGroup({
-                showCoverageOnHover: false,
-                maxClusterRadius: 50,
-                iconCreateFunction: function (cluster) {
-                    const count = cluster.getChildCount();
-                    let size = 'small';
-                    if (count > 100) size = 'large';
-                    else if (count > 20) size = 'medium';
+            if (document.getElementById('toggleAutoRotate').checked) {
+                worldGlobe.controls().autoRotate = true;
+                worldGlobe.controls().autoRotateSpeed = 0.5;
+            }
 
-                    return L.divIcon({
-                        html: '<div><span>' + count + '</span></div>',
-                        className: 'marker-cluster marker-cluster-' + size,
-                        iconSize: new L.Point(40, 40)
-                    });
-                }
-            });
-            heatmapLayer = L.heatLayer([], {
-                radius: 20,
-                blur: 15,
-                max: 1.0,
-                minOpacity: 0.4,
-                gradient: { 0.4: 'blue', 0.6: 'cyan', 0.7: 'lime', 0.8: 'yellow', 1.0: 'red' }
-            });
-            lineLayer = L.layerGroup().addTo(map);
-            liveMarkers = L.layerGroup().addTo(map);
-
-            // Initial mode setup
-            toggleViewMode();
             fetchLatestData();
+        }
+
+        function toggleRotation() {
+            if (!worldGlobe) return;
+            worldGlobe.controls().autoRotate = document.getElementById('toggleAutoRotate').checked;
         }
 
         function toggleViewMode() {
             const isHeatmap = document.getElementById('toggleHeatmap').checked;
-            const isCluster = document.getElementById('toggleCluster').checked;
-            const isLines = document.getElementById('toggleServerLines').checked;
+            const showLines = document.getElementById('toggleServerLines').checked;
 
-            map.removeLayer(markerLayer);
-            map.removeLayer(clusterLayer);
-            map.removeLayer(heatmapLayer);
-
+            // Update globe visibility
             if (isHeatmap) {
-                map.addLayer(heatmapLayer);
-                heatmapLayer.redraw();
-            } else if (isCluster) {
-                map.addLayer(clusterLayer);
+                worldGlobe.polygonsTransitionDuration(500).polygonAltitude(d => {
+                    const hits = countryHits[d.properties.ISO_A3] || 0;
+                    return Math.min(0.2, hits / 200);
+                });
             } else {
-                map.addLayer(markerLayer);
+                worldGlobe.polygonsTransitionDuration(500).polygonAltitude(0.001);
             }
 
-            if (isLines) {
-                map.addLayer(lineLayer);
-            } else {
-                map.removeLayer(lineLayer);
+            worldGlobe.arcsData(showLines ? liveArcs : []);
+        }
+
+        async function fetchLatestData() {
+            try {
+                const showBlocks = document.getElementById('toggleBlockIPs').checked;
+                const showWhitelists = document.getElementById('toggleWhitelistIPs').checked;
+
+                let allItems = [];
+                countryHits = {};
+
+                if (showBlocks) {
+                    const res = await fetch('/api/v1/ips?limit=500');
+                    if (res.ok) {
+                        const payload = await res.json();
+                        const blocks = payload.items || [];
+                        allItems = allItems.concat(blocks.map(it => ({ ...it, type: 'block' })));
+                    }
+                }
+
+                if (showWhitelists) {
+                    const wres = await fetch('/api/v1/whitelists');
+                    if (wres.ok) {
+                        const whitelists = await wres.json();
+                        allItems = allItems.concat(whitelists.map(it => ({ ...it, type: 'whitelist' })));
+                    }
+                }
+
+                historicalItems = allItems;
+                renderPoints();
+
+                const statsRes = await fetch('/api/v1/stats');
+                if (statsRes.ok) {
+                    const s = await statsRes.json();
+                    initChart(s.top_countries || []);
+                    updateStats(s);
+                }
+            } catch (e) {
+                console.error("Failed to fetch data", e);
+            }
+        }
+
+        const isoAlpha2To3 = {
+            'AF': 'AFG', 'AX': 'ALA', 'AL': 'ALB', 'DZ': 'DZA', 'AS': 'ASM', 'AD': 'AND', 'AO': 'AGO', 'AI': 'AIA', 'AQ': 'ATA', 'AG': 'ATG', 'AR': 'ARG', 'AM': 'ARM', 'AW': 'ABW', 'AU': 'AUS', 'AT': 'AUT', 'AZ': 'AZE', 'BS': 'BHS', 'BH': 'BHR', 'BD': 'BGD', 'BB': 'BRB', 'BY': 'BLR', 'BE': 'BEL', 'BZ': 'BLZ', 'BJ': 'BEN', 'BM': 'BMU', 'BT': 'BTN', 'BO': 'BOL', 'BA': 'BIH', 'BW': 'BWA', 'BV': 'BVT', 'BR': 'BRA', 'IO': 'IOT', 'BN': 'BRN', 'BG': 'BGR', 'BF': 'BFA', 'BI': 'BDI', 'KH': 'KHM', 'CM': 'CMR', 'CA': 'CAN', 'CV': 'CPV', 'KY': 'CYM', 'CF': 'CAF', 'TD': 'TCD', 'CL': 'CHL', 'CN': 'CHN', 'CX': 'CXR', 'CC': 'CCK', 'CO': 'COL', 'KM': 'COM', 'CG': 'COG', 'CD': 'COD', 'CK': 'COK', 'CR': 'CRI', 'CI': 'CIV', 'HR': 'HRV', 'CU': 'CUB', 'CY': 'CYP', 'CZ': 'CZE', 'DK': 'DNK', 'DJ': 'DJI', 'DM': 'DMA', 'DO': 'DOM', 'EC': 'ECU', 'EG': 'EGY', 'SV': 'SLV', 'GQ': 'GNQ', 'ER': 'ERI', 'EE': 'EST', 'ET': 'ETH', 'FK': 'FLK', 'FO': 'FRO', 'FJ': 'FJI', 'FI': 'FIN', 'FR': 'FRA', 'GF': 'GUF', 'PF': 'PYF', 'TF': 'ATF', 'GA': 'GAB', 'GM': 'GMB', 'GE': 'GEO', 'DE': 'DEU', 'GH': 'GHA', 'GI': 'GIB', 'GR': 'GRC', 'GL': 'GRL', 'GD': 'GRD', 'GP': 'GLP', 'GU': 'GUM', 'GT': 'GTM', 'GG': 'GGY', 'GN': 'GIN', 'GW': 'GNB', 'GY': 'GUY', 'HT': 'HTI', 'HM': 'HMD', 'VA': 'VAT', 'HN': 'HND', 'HK': 'HKG', 'HU': 'HUN', 'IS': 'ISL', 'IN': 'IND', 'ID': 'IDN', 'IR': 'IRN', 'IQ': 'IRQ', 'IE': 'IRL', 'IM': 'IMN', 'IL': 'ISR', 'IT': 'ITA', 'JM': 'JAM', 'JP': 'JPN', 'JE': 'JEY', 'JO': 'JOR', 'KZ': 'KAZ', 'KE': 'KEN', 'KI': 'KIR', 'KP': 'PRK', 'KR': 'KOR', 'KW': 'KWT', 'KG': 'KGZ', 'LA': 'LAO', 'LV': 'LVA', 'LB': 'LBN', 'LS': 'LSO', 'LR': 'LBR', 'LY': 'LBY', 'LI': 'LIE', 'LT': 'LTU', 'LU': 'LUX', 'MO': 'MAC', 'MK': 'MKD', 'MG': 'MDG', 'MW': 'MWI', 'MY': 'MYS', 'MV': 'MDV', 'ML': 'MLI', 'MT': 'MLT', 'MH': 'MHL', 'MQ': 'MTQ', 'MR': 'MRT', 'MU': 'MUS', 'YT': 'MYT', 'MX': 'MEX', 'FM': 'FSM', 'MD': 'MDA', 'MC': 'MCO', 'MN': 'MNG', 'ME': 'MNE', 'MS': 'MSR', 'MA': 'MAR', 'MZ': 'MOZ', 'MM': 'MMR', 'NA': 'NAM', 'NR': 'NRU', 'NP': 'NPL', 'NL': 'NLD', 'AN': 'ANT', 'NC': 'NCL', 'NZ': 'NZL', 'NI': 'NIC', 'NE': 'NER', 'NG': 'NGA', 'NU': 'NIU', 'NF': 'NFK', 'MP': 'MNP', 'NO': 'NOR', 'OM': 'OMN', 'PK': 'PAK', 'PW': 'PLW', 'PS': 'PSE', 'PA': 'PAN', 'PG': 'PNG', 'PY': 'PRY', 'PE': 'PER', 'PH': 'PHL', 'PN': 'PCN', 'PL': 'POL', 'PT': 'PRT', 'PR': 'PRI', 'QA': 'QAT', 'RE': 'REU', 'RO': 'ROU', 'RU': 'RUS', 'RW': 'RWA', 'BL': 'BLM', 'SH': 'SHN', 'KN': 'KNA', 'LC': 'LCA', 'MF': 'MAF', 'PM': 'SPM', 'VC': 'VCT', 'WS': 'WSM', 'SM': 'SMR', 'ST': 'STP', 'SA': 'SAU', 'SN': 'SEN', 'RS': 'SRB', 'SC': 'SYC', 'SL': 'SLE', 'SG': 'SGP', 'SK': 'SVK', 'SI': 'SVN', 'SB': 'SLB', 'SO': 'SOM', 'ZA': 'ZAF', 'GS': 'SGS', 'ES': 'ESP', 'LK': 'LKA', 'SD': 'SDN', 'SR': 'SUR', 'SJ': 'SJM', 'SZ': 'SWZ', 'SE': 'SWE', 'CH': 'CHE', 'SY': 'SYR', 'TW': 'TWN', 'TJ': 'TJK', 'TZ': 'TZA', 'TH': 'THA', 'TL': 'TLS', 'TG': 'TGO', 'TK': 'TKL', 'TO': 'TON', 'TT': 'TTO', 'TN': 'TUN', 'TR': 'TUR', 'TM': 'TKM', 'TC': 'TCA', 'TV': 'TUV', 'UG': 'UGA', 'UA': 'UKR', 'AE': 'ARE', 'GB': 'GBR', 'US': 'USA', 'UM': 'UMI', 'UY': 'URY', 'UZ': 'UZB', 'VU': 'VUT', 'VE': 'VEN', 'VN': 'VNM', 'VG': 'VGB', 'VI': 'VIR', 'WF': 'WLF', 'EH': 'ESH', 'YE': 'YEM', 'ZM': 'ZMB', 'ZW': 'ZWE'
+        };
+
+        function renderPoints() {
+            if (!worldGlobe) return;
+
+            const points = historicalItems
+                .filter(it => it.data && it.data.geolocation && it.data.geolocation.latitude)
+                .map(it => {
+                    const geo = it.data.geolocation;
+                    
+                    // Track country hits for heatmap
+                    if (it.type === 'block') {
+                        let code = geo.country; // This is alpha-2 from Go service
+                        if (code && code.length === 2) {
+                            code = isoAlpha2To3[code] || code;
+                        }
+                        if (code) countryHits[code] = (countryHits[code] || 0) + 1;
+                    }
+
+                    return {
+                        lat: geo.latitude,
+                        lng: geo.longitude,
+                        ip: it.ip,
+                        city: geo.city,
+                        country: geo.country,
+                        reason: it.data.reason,
+                        type: it.type,
+                        color: it.type === 'whitelist' ? '#00ffcc' : '#ff0000'
+                    };
+                });
+
+            worldGlobe.pointsData(points);
+            
+            // Refresh heatmap if active
+            if (document.getElementById('toggleHeatmap').checked) {
+                worldGlobe.polygonAltitude(d => Math.min(0.2, (countryHits[d.id] || 0) / 200));
             }
         }
 
@@ -530,9 +586,7 @@
                     labels: labels,
                     datasets: [{
                         data: values,
-                        backgroundColor: [
-                            '#ff0000', '#8b0000', '#ff4d4d', '#444', '#222', '#666', '#999'
-                        ],
+                        backgroundColor: ['#ff0000', '#8b0000', '#ff4d4d', '#444', '#222', '#666', '#999'],
                         borderWidth: 0
                     }]
                 },
@@ -542,7 +596,7 @@
                     plugins: {
                         legend: {
                             position: 'bottom',
-                            labels: { color: '#fff', boxWidth: 10, font: { size: 9 }}
+                            labels: { color: '#888', boxWidth: 8, font: { size: 8 }}
                         }
                     }
                 }
@@ -551,6 +605,12 @@
 
         function initTrendChart() {
             const ctx = document.getElementById('trendChart').getContext('2d');
+            let trendData = [];
+            try {
+                const raw = document.getElementById('trend-data-json');
+                if (raw) trendData = JSON.parse(raw.textContent);
+            } catch (e) {}
+
             if (trendChart) {
                 trendChart.data.datasets[0].data = trendData;
                 trendChart.update();
@@ -568,296 +628,130 @@
                         borderWidth: 2,
                         fill: true,
                         tension: 0.4,
-                        pointRadius: 2,
-                        pointBackgroundColor: '#ff0000'
+                        pointRadius: 0
                     }]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
                     scales: {
-                        x: {
-                            type: 'category',
-                            ticks: { color: '#888', font: { size: 9 }, maxRotation: 45, minRotation: 45 },
-                            grid: { color: 'rgba(255,255,255,0.05)' }
-                        },
+                        x: { display: false },
                         y: {
                             beginAtZero: true,
-                            ticks: { color: '#888', font: { size: 9 }},
-                            grid: { color: 'rgba(255,255,255,0.05)' }
+                            ticks: { color: '#444', font: { size: 8 }},
+                            grid: { color: 'rgba(255,255,255,0.02)' }
                         }
                     },
-                    plugins: {
-                        legend: { display: false }
-                    }
+                    plugins: { legend: { display: false } }
                 }
             });
-        }
-
-        async function fetchLatestData() {
-            if (isFetching) return;
-            isFetching = true;
-
-            try {
-                const showBlocks = document.getElementById('toggleBlockIPs').checked;
-            const showWhitelists = document.getElementById('toggleWhitelistIPs').checked;
-
-            let allItems = [];
-
-            // Fetch Blocks if enabled
-            if (showBlocks) {
-                const res = await fetch('/api/v1/ips?limit=500');
-                if (res.ok) {
-                    const payload = await res.json();
-                    const blocks = payload.items || [];
-                    // In this case, "Blocked IPs" means ALL blocks.
-                    allItems = allItems.concat(blocks.map(it => ({ ...it, type: 'block' })));
-                }
-            }
-
-            // Fetch Whitelists if enabled
-            if (showWhitelists) {
-                const wres = await fetch('/api/v1/whitelists');
-                if (wres.ok) {
-                    const whitelists = await wres.json();
-                    allItems = allItems.concat(whitelists.map(it => ({ ...it, type: 'whitelist' })));
-                }
-            }
-
-            updateMap(allItems);
-
-            const statsRes = await fetch('/api/v1/stats');
-            if (statsRes.ok) {
-                const s = await statsRes.json();
-                initChart(s.top_countries || []);
-                updateStats(s);
-            }
-        } finally {
-            isFetching = false;
-        }
-    }
-
-        function updateMap(items) {
-            markerLayer.clearLayers();
-            clusterLayer.clearLayers();
-            lineLayer.clearLayers();
-            const heatData = [];
-
-            items.forEach(it => {
-                if (it.data && it.data.geolocation && it.data.geolocation.latitude) {
-                    const geo = it.data.geolocation;
-                    const color = it.type === 'whitelist' ? "#00ff00" : "#ff0000";
-                    const label = it.type === 'whitelist' ? "WHITELIST" : "BLOCK";
-                    const ts = it.data.timestamp ? new Date(it.data.timestamp).toLocaleString() : 'N/A';
-
-                    const marker = L.circleMarker([geo.latitude, geo.longitude], {
-                        radius: 4,
-                        fillColor: color,
-                        color: "#fff",
-                        weight: 0.5,
-                        opacity: 1,
-                        fillOpacity: 0.8
-                    }).bindPopup(`
-                    <b>[${label}] ${escapeHTML(it.ip)}</b><br>
-                    ${escapeHTML(geo.city)}, ${escapeHTML(geo.country)}<br>
-                    <i>${escapeHTML(it.data.reason)}</i><br>
-                    <div style="margin-top: 5px; font-size: 0.75rem; border-top: 1px solid #444; padding-top: 5px;">
-                        <b>Source:</b> ${escapeHTML(it.data.added_by)}<br>
-                        <b>Activity:</b> ${escapeHTML(ts)}
-                    </div>
-                `);
-
-                    markerLayer.addLayer(marker);
-                    clusterLayer.addLayer(marker);
-                    heatData.push([geo.latitude, geo.longitude, 1.0]); // Full intensity
-                }
-            });
-
-            heatmapLayer.setLatLngs(heatData);
-            if (map.hasLayer(heatmapLayer)) {
-                heatmapLayer.redraw();
-            }
         }
 
         function updateStats(s) {
             if (typeof s.total === 'number') document.getElementById('stat-total').textContent = s.total;
             if (typeof s.day === 'number') document.getElementById('stat-day').textContent = s.day;
             if (typeof s.hour === 'number') document.getElementById('stat-hour').textContent = s.hour;
-            if (typeof s.blocks_minute === 'number') document.getElementById('bpm-display').textContent = s.blocks_minute.toFixed(1) + ' BPM';
+            if (typeof s.blocks_minute === 'number') document.getElementById('bpm-display').innerHTML = s.blocks_minute.toFixed(1) + ' <span style="font-size: 0.6rem;">BPM</span>';
         }
 
         // WebSocket for real-time updates
         let socket;
-        let reconnectTimeout = null;
-        let reconnectInterval = 3000;
-
         function connectWS() {
-            if (reconnectTimeout) {
-                clearTimeout(reconnectTimeout);
-                reconnectTimeout = null;
-            }
-
-            if (socket && socket.readyState !== WebSocket.CLOSED) {
-                socket.onopen = null;
-                socket.onclose = null;
-                socket.onerror = null;
-                socket.onmessage = null;
-                socket.close(1000);
-                socket = null;
-            }
-
             socket = new WebSocket((window.location.protocol === 'https:' ? 'wss://' : 'ws://') + window.location.host + '/ws');
 
-            socket.onopen = function () {
-                document.getElementById('live-status').textContent = 'LIVE';
-                document.getElementById('live-status').style.background = 'rgba(40, 167, 69, 0.2)';
-                document.getElementById('live-status').style.borderColor = 'rgba(40, 167, 69, 0.4)';
-                reconnectInterval = 3000; // Reset on success
+            socket.onopen = () => {
+                document.getElementById('live-status').textContent = 'LIVE FEED';
+                document.getElementById('live-status').style.background = 'rgba(40, 167, 69, 0.15)';
             };
 
-            socket.onclose = function () {
-                document.getElementById('live-status').textContent = 'OFFLINE';
-                document.getElementById('live-status').style.background = 'rgba(255, 0, 0, 0.2)';
-                document.getElementById('live-status').style.borderColor = 'rgba(255, 0, 0, 0.4)';
-
-                console.log(`WebSocket closed. Reconnecting in ${reconnectInterval}ms...`);
-                reconnectTimeout = setTimeout(connectWS, reconnectInterval);
-                reconnectInterval = Math.min(reconnectInterval * 2, 30000);
+            socket.onclose = () => {
+                document.getElementById('live-status').textContent = 'SIGNAL LOST';
+                document.getElementById('live-status').style.background = 'rgba(255, 0, 0, 0.15)';
+                setTimeout(connectWS, 3000);
             };
 
-            socket.onerror = function (err) {
-                console.error("WebSocket error:", err);
-                socket.close();
-            };
-
-            socket.onmessage = function (event) {
+            socket.onmessage = (event) => {
                 let msg;
-                try {
-                    msg = JSON.parse(event.data);
-                } catch (e) {
-                    console.error("Malformed WebSocket message received:", e, event.data);
-                    return;
+                try { msg = JSON.parse(event.data); } catch (e) { return; }
+
+                if (msg.action === 'block' || msg.action === 'whitelist') {
+                    handleLiveEvent(msg);
+                } else if (msg.action === 'unblock') {
+                    addTickerEvent('unblock', msg.data.ip, "Manual Release", "#00ffcc");
                 }
-            const showBlocks = document.getElementById('toggleBlockIPs').checked;
-            const showWhitelists = document.getElementById('toggleWhitelistIPs').checked;
-            const showLines = document.getElementById('toggleServerLines').checked;
-
-            if (msg.action === 'block' || msg.action === 'whitelist') {
-                const it = msg.data;
-                const type = msg.action;
-                const addedBy = it.data && it.data.added_by ? it.data.added_by : "";
-
-                // Check if we should show this live update
-                if (type === 'block' && !showBlocks) return;
-                if (type === 'whitelist') {
-                    if (!showWhitelists) return;
-                }
-
-                if (it.data && it.data.geolocation && it.data.geolocation.latitude) {
-                    const geo = it.data.geolocation;
-                    const color = type === 'whitelist' ? "#00ff00" : "#ff0000";
-                    const label = type === 'whitelist' ? "LIVE WHITELIST" : "LIVE BLOCK";
-                    const ts = it.data.timestamp ? new Date(it.data.timestamp).toLocaleString() : 'Just Now';
-
-                    // Create a pulsing live marker
-                    const liveIcon = L.divIcon({
-                        className: 'live-spawn-container',
-                        html: `<div class="live-spawn-marker" style="--pulse-color: ${color}"></div>`,
-                        iconSize: [0, 0]
-                    });
-
-                    const liveMarker = L.marker([geo.latitude, geo.longitude], { icon: liveIcon })
-                        .addTo(liveMarkers)
-                        .bindPopup(`
-                        <b>${label}: ${escapeHTML(it.ip)}</b><br>
-                        ${escapeHTML(geo.city)}, ${escapeHTML(geo.country)}<br>
-                        <i>${escapeHTML(it.data.reason)}</i><br>
-                        <div style="margin-top: 5px; font-size: 0.75rem; border-top: 1px solid #444; padding-top: 5px;">
-                            <b>Source:</b> ${escapeHTML(it.data.added_by)}<br>
-                            <b>Activity:</b> ${escapeHTML(ts)}
-                        </div>
-                    `)
-                        .openPopup();
-
-                    // Draw live connection line if enabled and source_geo is present
-                    if (showLines && msg.data.source_geo && msg.data.source_geo.latitude) {
-                        const src = msg.data.source_geo;
-                        const attackPath = L.polyline.antPath([[geo.latitude, geo.longitude], [src.latitude, src.longitude]], {
-                            delay: 1000,
-                            dashArray: [10, 20],
-                            weight: 2,
-                            color: color,
-                            pulseColor: '#ffffff'
-                        }).addTo(liveMarkers);
-
-                        setTimeout(() => {
-                            liveMarkers.removeLayer(attackPath);
-                        }, 5000); // Display line for 5 seconds (matching pulse roughly)
-                    }
-
-                    // Remove the pulse after 10 seconds
-                    setTimeout(() => {
-                        liveMarkers.removeLayer(liveMarker);
-                    }, 10000);
-
-                    if (type === 'block') {
-                        const totalEl = document.getElementById('stat-total');
-                        if (totalEl) totalEl.textContent = (parseInt(totalEl.textContent) + 1).toString();
-                    }
-
-                    addTickerEvent(type, it.ip, it.data ? it.data.reason : "", color);
-
-                    debouncedFetchLatestData();
-                }
-            } else if (msg.action === 'unblock') {
-                addTickerEvent('unblock', msg.data.ip, "Manual/System Unblock", "#00ff00");
-                debouncedFetchLatestData();
-            }
-        };
+            };
         }
-        
+
+        function handleLiveEvent(msg) {
+            const it = msg.data;
+            const type = msg.action;
+            const geo = it.data ? it.data.geolocation : null;
+
+            if (geo && geo.latitude) {
+                const color = type === 'whitelist' ? '#00ffcc' : '#ff0000';
+                
+                // Add to Ticker
+                addTickerEvent(type, it.ip, it.data.reason, color);
+
+                // Live Point
+                const livePt = {
+                    lat: geo.latitude,
+                    lng: geo.longitude,
+                    color: color,
+                    size: 1.0
+                };
+                livePoints.push(livePt);
+                
+                // Live Arc if source exists
+                if (msg.data.source_geo && msg.data.source_geo.latitude) {
+                    const src = msg.data.source_geo;
+                    const arc = {
+                        startLat: src.latitude,
+                        startLng: src.longitude,
+                        endLat: geo.latitude,
+                        endLng: geo.longitude,
+                        color: ['rgba(255,255,255,0.8)', color]
+                    };
+                    liveArcs.push(arc);
+                    worldGlobe.arcsData(document.getElementById('toggleServerLines').checked ? liveArcs : []);
+                    
+                    setTimeout(() => {
+                        liveArcs = liveArcs.filter(a => a !== arc);
+                        worldGlobe.arcsData(document.getElementById('toggleServerLines').checked ? liveArcs : []);
+                    }, 6000);
+                }
+
+                // Temporary live points display could be handled by a separate layer or merging
+                // For now, let's just trigger a full fetch refresh to keep it simple and sync
+                fetchLatestData();
+            }
+        }
 
         function addTickerEvent(type, ip, reason, color) {
             const ticker = document.getElementById('eventTicker');
-            const empty = ticker.querySelector('div[style*="font-style: italic"]');
+            const empty = ticker.querySelector('div[style*="italic"]');
             if (empty) empty.remove();
 
             const item = document.createElement('div');
             item.className = 'ticker-item';
-            const ts = new Date().toLocaleTimeString();
-            const label = type.toUpperCase();
-            const tsDiv = document.createElement('div');
-            tsDiv.className = 'ts';
-            tsDiv.textContent = ts;
+            
+            item.innerHTML = `
+                <div class="ts">${new Date().toLocaleTimeString()}</div>
+                <div class="msg"><span style="color: ${color}; font-weight: 800;">${type.toUpperCase()}</span> ${ip}</div>
+                <div style="font-size: 0.65rem; color: #888; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                    ${reason || 'Anomaly detected'}
+                </div>
+            `;
 
-            const msgDiv = document.createElement('div');
-            msgDiv.className = 'msg';
-            const span = document.createElement('span');
-            span.style.color = color;
-            span.style.fontWeight = 'bold';
-            span.textContent = label + ':';
-            msgDiv.appendChild(span);
-            msgDiv.appendChild(document.createTextNode(' ' + ip));
-
-            const reasonDiv = document.createElement('div');
-            reasonDiv.style.fontSize = '0.65rem';
-            reasonDiv.style.color = '#888';
-            reasonDiv.textContent = reason || 'No reason';
-
-            item.appendChild(tsDiv);
-            item.appendChild(msgDiv);
-            item.appendChild(reasonDiv);
             ticker.insertBefore(item, ticker.firstChild);
-            if (ticker.children.length > 50) ticker.lastChild.remove();
+            if (ticker.children.length > 30) ticker.lastChild.remove();
         }
 
         window.onload = async () => {
-            await initMap();
+            await initGlobe();
             initTrendChart();
             connectWS();
         };
     </script>
-
 </body>
-
 </html>
