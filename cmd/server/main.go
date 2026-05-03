@@ -320,10 +320,18 @@ func main() {
 		"replace":  strings.ReplaceAll,
 		"split":    strings.Split,
 		"contains": strings.Contains,
-		"safeHTML": func(s string) template.HTML { return template.HTML(s) }, // #nosec G203
-		"safeURL":  func(s string) template.URL { return template.URL(s) },  // #nosec G203
-		"add":      func(a, b int) int { return a + b },
-		"sub":      func(a, b int) int { return a - b },
+		"safeURL": func(s string) template.URL {
+			if strings.HasPrefix(s, "data:image/png;base64,") {
+				return template.URL(s) // #nosec G203
+			}
+			u, err := url.Parse(s)
+			if err != nil || (u.Scheme != "https" && u.Scheme != "mailto") {
+				return template.URL("#")
+			}
+			return template.URL(s) // #nosec G203
+		},
+		"add": func(a, b int) int { return a + b },
+		"sub": func(a, b int) int { return a - b },
 	}
 
 	var templ *template.Template
@@ -369,6 +377,7 @@ func main() {
 	})
 
 	// Basic CSRF: enforce same-origin on unsafe methods via Origin/Referer
+	// AND verify synchronizer token if session is present.
 	r.Use(func(c *gin.Context) {
 		if c.Request.Method == http.MethodGet || c.Request.Method == http.MethodHead || c.Request.Method == http.MethodOptions {
 			c.Next()
@@ -386,7 +395,7 @@ func main() {
 		host := c.Request.Host
 		ok := false
 
-		// Handle cases where Origin might be "null" due to browser privacy settings
+		// 1. Same-Origin Check (First Line of Defense)
 		if origin != "" && origin != "null" {
 			if u, err := url.Parse(origin); err == nil && u.Host == host {
 				ok = true
@@ -400,18 +409,30 @@ func main() {
 			}
 		}
 
-		// In case of non-browser clients (like curl) that don't send Origin/Referer
-		// but aren't using session cookies. Note: AuthMiddleware will still verify credentials.
-		if !ok && origin == "" && ref == "" {
-			// Check if there's a session cookie. If not, it's likely a non-browser API client.
-			session := sessions.Default(c)
-			if session.Get("logged_in") == nil {
+		// 2. Synchronizer Token Check (Second Line of Defense)
+		session := sessions.Default(c)
+		if session.Get("logged_in") != nil {
+			csrfToken := session.Get("csrf_token")
+			headerToken := c.GetHeader("X-CSRF-Token")
+
+			if csrfToken == nil || headerToken == "" || csrfToken.(string) != headerToken {
+				zlog.Warn().
+					Str("ip", c.ClientIP()).
+					Str("path", c.Request.URL.Path).
+					Msg("CSRF token validation failed")
+				c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Invalid CSRF token"})
+				return
+			}
+		} else {
+			// In case of non-browser clients (like curl) that don't send Origin/Referer
+			// but aren't using session cookies. Note: AuthMiddleware will still verify credentials.
+			if !ok && origin == "" && ref == "" {
 				ok = true
 			}
 		}
 
 		if !ok {
-			zlog.Warn().Str("origin", origin).Str("referer", ref).Str("host", host).Msg("CSRF check failed")
+			zlog.Warn().Str("origin", origin).Str("referer", ref).Str("host", host).Msg("CSRF same-origin check failed")
 			c.AbortWithStatus(http.StatusForbidden)
 			return
 		}

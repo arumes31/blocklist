@@ -12,10 +12,14 @@ func main() {
 		"replace":  strings.ReplaceAll,
 		"split":    strings.Split,
 		"contains": strings.Contains,
-		"safeHTML": func(s string) template.HTML { return template.HTML(s) }, // #nosec G203
-		"safeURL":  func(s string) template.URL { return template.URL(s) },  // #nosec G203
-		"add":      func(a, b int) int { return a + b },
-		"sub":      func(a, b int) int { return a - b },
+		"safeURL": func(s string) template.URL {
+			if strings.HasPrefix(s, "data:image/png;base64,") {
+				return template.URL(s) // #nosec G203
+			}
+			return template.URL("#")
+		},
+		"add": func(a, b int) int { return a + b },
+		"sub": func(a, b int) int { return a - b },
 	}
 
 	_, err := template.New("").Funcs(funcMap).ParseGlob("cmd/server/templates/*.html")

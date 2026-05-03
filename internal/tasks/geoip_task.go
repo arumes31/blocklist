@@ -112,7 +112,8 @@ func (h *GeoIPTaskHandler) Download(edition string) error {
 		return fmt.Errorf("bad status: %s", resp.Status)
 	}
 
-	gzr, err := gzip.NewReader(resp.Body)
+	counter := &byteCounter{r: resp.Body}
+	gzr, err := gzip.NewReader(counter)
 	if err != nil {
 		return err
 	}
@@ -147,10 +148,27 @@ func (h *GeoIPTaskHandler) Download(edition string) error {
 				return err
 			}
 			_ = outFile.Close()
+			
+			// Verify overall download wasn't truncated
+			if resp.ContentLength > 0 && counter.count != resp.ContentLength {
+				return fmt.Errorf("download truncated: expected %d bytes, got %d", resp.ContentLength, counter.count)
+			}
+			
 			log.Printf("Asynq: Successfully updated GeoIP database: %s", destPath)
 			return nil
 		}
 	}
 
 	return fmt.Errorf("mmdb not found in archive")
+}
+
+type byteCounter struct {
+	r     io.Reader
+	count int64
+}
+
+func (bc *byteCounter) Read(p []byte) (int, error) {
+	n, err := bc.r.Read(p)
+	bc.count += int64(n)
+	return n, err
 }

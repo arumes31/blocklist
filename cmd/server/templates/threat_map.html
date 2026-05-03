@@ -5,6 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Threat Map - Blocklist</title>
+    <meta name="csrf-token" content="{{ .csrf_token }}">
     
     <!-- Local Assets -->
     <link rel="stylesheet" href="/cd/flag-icon.min.css">
@@ -652,15 +653,23 @@
                 .pointColor('color')
                 .pointRadius(0.5)
                 .pointsTransitionDuration(500)
-                .pointLabel(d => `
-                    <div style="background: rgba(0,0,0,0.85); border: 1px solid #ff0000; padding: 12px; border-radius: 8px; font-size: 11px; color: #fff; backdrop-filter: blur(5px);">
-                        <b style="color: #ff4d4d; font-size: 13px;">${d.type.toUpperCase()}</b><br>
-                        <span style="color: #fff; font-family: 'JetBrains Mono';">${d.ip}</span><br>
-                        <span style="color: #aaa;">${d.city || 'Unknown City'}, ${d.country || 'Unknown Country'}</span><br>
-                        <hr style="border: 0; border-top: 1px solid rgba(255,0,0,0.2); margin: 5px 0;">
-                        <i style="color: #888;">${d.reason || 'Manual classification'}</i>
-                    </div>
-                `)
+                .pointLabel(d => {
+                    const safeIP = (d.ip || '?.?.?.?').replace(/[<>]/g, '');
+                    const safeCity = (d.city || 'Unknown City').replace(/[<>]/g, '');
+                    const safeCountry = (d.country || 'Unknown Country').replace(/[<>]/g, '');
+                    const safeReason = (d.reason || 'Manual classification').replace(/[<>]/g, '');
+                    const safeType = (d.type || 'unknown').toUpperCase().replace(/[<>]/g, '');
+
+                    return `
+                        <div style="background: rgba(0,0,0,0.85); border: 1px solid #ff0000; padding: 12px; border-radius: 8px; font-size: 11px; color: #fff; backdrop-filter: blur(5px);">
+                            <b style="color: #ff4d4d; font-size: 13px;">${safeType}</b><br>
+                            <span style="color: #fff; font-family: 'JetBrains Mono';">${safeIP}</span><br>
+                            <span style="color: #aaa;">${safeCity}, ${safeCountry}</span><br>
+                            <hr style="border: 0; border-top: 1px solid rgba(255,0,0,0.2); margin: 5px 0;">
+                            <i style="color: #888;">${safeReason}</i>
+                        </div>
+                    `;
+                })
                 .arcColor(() => '#ff4d4d')
                 .arcDashLength(0.4)
                 .arcDashGap(0.2)
@@ -712,7 +721,7 @@
             const content = document.getElementById('dd-content');
             const ipTitle = document.getElementById('dd-ip');
             
-            ipTitle.innerText = ip;
+            ipTitle.textContent = ip;
             panel.classList.add('open');
             content.innerHTML = '<div style="text-align: center; color: #888; padding: 20px;">Fetching intelligence...</div>';
 
@@ -723,27 +732,36 @@
                 
                 const current = details.current || {};
                 const geo = current.geolocation || {};
-                
+
+                const safeIP = (details.ip || ip).replace(/[<>]/g, '');
+                const safeCity = (geo.city || 'Unknown').replace(/[<>]/g, '');
+                const safeCountry = (geo.country || '??').replace(/[<>]/g, '');
+                const safeStatus = details.is_blocked ? 'BLOCKED' : 'CLEARED';
+                const safeReason = (current.reason || 'N/A').replace(/[<>]/g, '');
+                const safeAddedBy = (current.added_by || 'system').replace(/[<>]/g, '');
+                const safeTime = current.timestamp ? new Date(current.timestamp).toLocaleString() : 'N/A';
+
+                ipTitle.textContent = safeIP;
                 content.innerHTML = `
                     <div class="detail-row">
                         <div class="detail-label">Origin</div>
-                        <div class="detail-value">${geo.city || 'Unknown'}, ${geo.country || '??'}</div>
+                        <div class="detail-value">${safeCity}, ${safeCountry}</div>
                     </div>
                     <div class="detail-row">
                         <div class="detail-label">Status</div>
-                        <div class="detail-value" style="color: ${details.is_blocked ? '#ff4d4d' : '#4ade80'}">${details.is_blocked ? 'BLOCKED' : 'CLEARED'}</div>
+                        <div class="detail-value" style="color: ${details.is_blocked ? '#ff4d4d' : '#4ade80'}">${safeStatus}</div>
                     </div>
                     <div class="detail-row">
                         <div class="detail-label">Reason</div>
-                        <div class="detail-value">${current.reason || 'N/A'}</div>
+                        <div class="detail-value">${safeReason}</div>
                     </div>
                     <div class="detail-row">
                         <div class="detail-label">Added By</div>
-                        <div class="detail-value">${current.added_by || 'system'}</div>
+                        <div class="detail-value">${safeAddedBy}</div>
                     </div>
                     <div class="detail-row">
                         <div class="detail-label">First Seen</div>
-                        <div class="detail-value">${new Date(current.timestamp).toLocaleString()}</div>
+                        <div class="detail-value">${safeTime}</div>
                     </div>
                 `;
 
@@ -758,7 +776,8 @@
                 releaseBtn.style.display = details.is_blocked ? 'block' : 'none';
 
             } catch (e) {
-                content.innerHTML = `<div style="color: #ff4d4d;">Failed to load details for ${ip}</div>`;
+                content.textContent = 'Failed to load details for ' + ip;
+                content.style.color = '#ff4d4d';
             }
         }
 
@@ -768,16 +787,28 @@
 
         async function takeAction(action, ip) {
             try {
+                const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
                 const res = await fetch(`/${action}`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'X-CSRF-Token': csrfToken
+                    },
                     body: JSON.stringify({ ip, reason: 'Action from Threat Map' })
                 });
+                
                 if (res.ok) {
+                    alert(`Success: IP ${ip} has been ${action}ed.`);
                     showIPDetails(ip);
-                    fetchLatestData(); // Refresh globe
+                    fetchLatestData();
+                } else {
+                    const err = await res.json().catch(() => ({ error: 'Unknown server error' }));
+                    alert(`Action failed: ${err.error || res.statusText}`);
                 }
-            } catch (e) { console.error("Action failed", e); }
+            } catch (e) { 
+                console.error("Action failed", e);
+                alert("Critical failure: Could not reach backend intelligence service.");
+            }
         }
 
         // --- Temporal Analysis Logic ---
@@ -951,7 +982,7 @@
                 // Track hits
                 countryHits = {};
                 historicalItems.forEach(it => {
-                    const geo = it.data.geolocation;
+                    const geo = it.data ? it.data.geolocation : null;
                     if (geo && geo.country) {
                         const code = geo.country.length === 2 ? (isoAlpha2To3[geo.country] || geo.country) : geo.country;
                         countryHits[code] = (countryHits[code] || 0) + 1;
@@ -1053,11 +1084,30 @@
             historicalItems.slice(0, 20).forEach(it => {
                 const item = document.createElement('div');
                 item.className = 'ticker-item';
-                item.innerHTML = `
-                    <div class="ts">${new Date().toLocaleTimeString()}</div>
-                    <div class="msg"><span style="color: ${it.type === 'whitelist' ? '#00ffcc' : '#ff0000'}; font-weight: 800;">${it.type.toUpperCase()}</span> ${it.ip}</div>
-                    <div style="font-size: 0.65rem; color: #888;">${it.data.reason || 'Anomaly detected'}</div>
-                `;
+                
+                const ts = document.createElement('div');
+                ts.className = 'ts';
+                ts.textContent = new Date().toLocaleTimeString();
+                
+                const msg = document.createElement('div');
+                msg.className = 'msg';
+                
+                const typeSpan = document.createElement('span');
+                typeSpan.style.color = it.type === 'whitelist' ? '#00ffcc' : '#ff0000';
+                typeSpan.style.fontWeight = '800';
+                typeSpan.textContent = it.type.toUpperCase();
+                
+                msg.appendChild(typeSpan);
+                msg.appendChild(document.createTextNode(' ' + (it.ip || '?.?.?.?')));
+                
+                const reason = document.createElement('div');
+                reason.style.fontSize = '0.65rem';
+                reason.style.color = '#888';
+                reason.textContent = it.data?.reason || 'Anomaly detected';
+                
+                item.appendChild(ts);
+                item.appendChild(msg);
+                item.appendChild(reason);
                 ticker.appendChild(item);
             });
         }
@@ -1072,28 +1122,32 @@
             };
 
             socket.onmessage = (event) => {
-                const msg = JSON.parse(event.data);
-                if (msg.type === 'block' || msg.type === 'whitelist' || msg.action === 'block' || msg.action === 'whitelist') {
-                    const type = msg.type || msg.action;
-                    const it = {
-                        type: type,
-                        ip: msg.ip || (msg.data ? msg.data.ip : '?.?.?.?'),
-                        data: msg.data || {}
-                    };
-                    
-                    historicalItems.unshift(it);
-                    if (historicalItems.length > 500) historicalItems.pop();
-                    
-                    if (isLive) {
-                        renderPoints();
-                        updateTicker();
+                try {
+                    const msg = JSON.parse(event.data);
+                    if (msg.type === 'block' || msg.type === 'whitelist' || msg.action === 'block' || msg.action === 'whitelist') {
+                        const type = msg.type || msg.action;
+                        const it = {
+                            type: type,
+                            ip: msg.ip || (msg.data ? msg.data.ip : '?.?.?.?'),
+                            data: msg.data || {}
+                        };
+                        
+                        historicalItems.unshift(it);
+                        if (historicalItems.length > 500) historicalItems.pop();
+                        
+                        if (isLive) {
+                            renderPoints();
+                            updateTicker();
+                        }
+                        
+                        if (type === 'block' && it.data.geolocation) {
+                            const geo = it.data.geolocation;
+                            triggerPulse();
+                            addPing(geo.latitude, geo.longitude);
+                        }
                     }
-                    
-                    if (type === 'block' && it.data.geolocation) {
-                        const geo = it.data.geolocation;
-                        triggerPulse();
-                        addPing(geo.latitude, geo.longitude);
-                    }
+                } catch (e) {
+                    console.error("Failed to parse WebSocket message", e);
                 }
             };
 

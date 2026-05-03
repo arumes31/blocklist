@@ -10,20 +10,31 @@ import (
 	"blocklist/internal/models"
 
 	"github.com/gin-gonic/gin"
+	"github.com/gin-contrib/sessions"
+	"github.com/gin-contrib/sessions/cookie"
 	"github.com/stretchr/testify/mock"
 )
 
 func setupHTMLTest(w *httptest.ResponseRecorder) (*gin.Context, *gin.Engine) {
 	c, r := gin.CreateTestContext(w)
+	store := cookie.NewStore([]byte("secret"))
+	// Manually inject session into context for direct handler calls
+	session, _ := store.Get(httptest.NewRequest("GET", "/", nil), "mysession")
+	c.Set(sessions.DefaultKey, session)
+	
 	r.SetFuncMap(template.FuncMap{
 		"lower":    strings.ToLower,
 		"replace":  strings.ReplaceAll,
 		"split":    strings.Split,
 		"contains": strings.Contains,
-		"safeHTML": func(s string) template.HTML { return template.HTML(s) },
-		"safeURL":  func(s string) template.URL { return template.URL(s) },
-		"add":      func(a, b int) int { return a + b },
-		"sub":      func(a, b int) int { return a - b },
+		"safeURL": func(s string) template.URL {
+			if strings.HasPrefix(s, "data:image/png;base64,") {
+				return template.URL(s) // #nosec G203
+			}
+			return template.URL("#")
+		},
+		"add": func(a, b int) int { return a + b },
+		"sub": func(a, b int) int { return a - b },
 	})
 	r.LoadHTMLGlob("../../cmd/server/templates/*")
 	return c, r

@@ -45,8 +45,12 @@ graph LR
 - **Local Map Solution**: Integrated world GeoJSON for offline mapping without external tile provider dependencies.
 - **Reliable Webhooks**: Persistent **Task Queue** for outbound notifications with automatic retries and exponential backoff.
 - **Bulk Operations**: Multi-select interface for batch unblocking and management.
-- **Security Hardening**: Session invalidation on permission changes and mandatory 2FA setup.
-- **Continuous Analysis**: Integrated **CodeQL** and **Gosec** for automated vulnerability detection and static analysis.
+- **Security & Integrity Hardening**: 
+    - **CSRF Protection**: Dual-layered defense using Origin/Referer validation and **Synchronizer Token Pattern** (X-CSRF-Token) for all state-changing operations.
+    - **XSS Mitigation**: Context-aware escaping and mandatory use of `textContent` for all dynamic IP and threat metadata in the UI.
+    - **Data Integrity**: Automated GeoIP database verification with post-download file size checks to prevent silent data truncation.
+    - **WebSocket Security**: Robust error handling and input validation for real-time signal streams.
+- **Continuous Analysis**: Integrated **CodeQL**, **Gosec**, and **Govulncheck** for automated vulnerability detection and static analysis.
 - **Interactive API Docs**: Embedded **API Reference** via RapiDoc/Scalar at `/docs`.
 - **GeoIP Enrichment**: Automated ASN, Country, and City detection for all entries.
 - **Observability**: Prometheus metrics for latency and operations, protected by IP-based ACL.

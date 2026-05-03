@@ -5,6 +5,8 @@ import (
 	"blocklist/internal/metrics"
 	"blocklist/internal/models"
 	"blocklist/internal/service"
+	"crypto/rand"
+	"encoding/hex"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -59,6 +61,23 @@ func (h *APIHandler) renderHTML(c *gin.Context, status int, name string, data gi
 	if nonce, exists := c.Get("nonce"); exists {
 		data["nonce"] = nonce
 	}
+
+	// CSRF Protection (Improvement 1)
+	if s, exists := c.Get(sessions.DefaultKey); exists {
+		if session, ok := s.(sessions.Session); ok {
+			csrfToken := session.Get("csrf_token")
+			if csrfToken == nil {
+				b := make([]byte, 32)
+				if _, err := rand.Read(b); err == nil {
+					csrfToken = hex.EncodeToString(b)
+					session.Set("csrf_token", csrfToken)
+					_ = session.Save()
+				}
+			}
+			data["csrf_token"] = csrfToken
+		}
+	}
+
 	c.HTML(status, name, data)
 }
 
