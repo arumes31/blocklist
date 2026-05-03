@@ -109,6 +109,26 @@
         #threat-map {
             width: 100%;
             height: 100%;
+            position: relative;
+        }
+
+        #threat-map::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: radial-gradient(circle closest-side, transparent 0%, transparent 84%, rgba(255, 0, 0, 0.3) 84%, transparent 100%);
+            opacity: 0;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        #threat-map.pulse-active::after {
+            animation: map-glow-pulse 1.5s ease-out forwards;
+        }
+
+        @keyframes map-glow-pulse {
+            0%   { opacity: 1; }
+            100% { opacity: 0; }
         }
 
         .side-panel {
@@ -137,6 +157,120 @@
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 1rem;
+        }
+
+        /* Drill-down Sidebar */
+        .drilldown-panel {
+            position: absolute;
+            top: 20px;
+            right: -350px;
+            width: 320px;
+            bottom: 20px;
+            background: rgba(10, 10, 10, 0.85);
+            backdrop-filter: blur(15px);
+            border: 1px solid rgba(255, 0, 0, 0.3);
+            border-radius: 12px;
+            z-index: 1000;
+            transition: right 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            flex-direction: column;
+            box-shadow: -10px 0 30px rgba(0,0,0,0.5);
+            overflow: hidden;
+        }
+        .drilldown-panel.open { right: 20px; }
+        .drilldown-header {
+            padding: 1.5rem;
+            background: linear-gradient(to bottom, rgba(255,0,0,0.1), transparent);
+            border-bottom: 1px solid rgba(255,0,0,0.2);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .drilldown-content {
+            padding: 1.5rem;
+            flex: 1;
+            overflow-y: auto;
+        }
+        .drilldown-footer {
+            padding: 1rem;
+            border-top: 1px solid rgba(255,0,0,0.2);
+            display: flex;
+            gap: 10px;
+        }
+        .detail-row {
+            margin-bottom: 1rem;
+        }
+        .detail-label {
+            font-size: 0.7rem;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .detail-value {
+            font-size: 0.95rem;
+            color: #eee;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* Temporal Analysis Slider */
+        .temporal-bar {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 80%;
+            max-width: 800px;
+            background: rgba(10, 10, 10, 0.8);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 30px;
+            padding: 12px 25px;
+            z-index: 900;
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.5);
+        }
+        .temporal-slider {
+            flex: 1;
+            -webkit-appearance: none;
+            background: rgba(255, 255, 255, 0.1);
+            height: 4px;
+            border-radius: 2px;
+            outline: none;
+        }
+        .temporal-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 18px;
+            height: 18px;
+            background: var(--vibrant-red);
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 0 10px var(--vibrant-red);
+            transition: transform 0.2s;
+        }
+        .temporal-slider::-webkit-slider-thumb:hover { transform: scale(1.2); }
+        .time-display {
+            font-size: 0.8rem;
+            color: #fff;
+            min-width: 140px;
+            text-align: center;
+            font-family: 'JetBrains Mono';
+        }
+        .live-badge {
+            background: rgba(40, 167, 69, 0.2);
+            color: #4ade80;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 0.6rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            border: 1px solid rgba(74, 222, 128, 0.3);
+        }
+        .live-badge.offline {
+            background: rgba(255, 159, 67, 0.2);
+            color: #ff9f43;
+            border-color: rgba(255, 159, 67, 0.3);
         }
 
         .stat-item {
@@ -189,14 +323,74 @@
             border: 1px solid var(--border-red);
             z-index: 10;
             font-size: 0.8rem;
-            min-width: 200px;
+            min-width: 220px;
             box-shadow: 0 10px 40px rgba(0,0,0,0.6);
         }
 
         .control-group {
-            margin-bottom: 12px;
+            margin-bottom: 15px;
         }
         .control-group:last-child { margin-bottom: 0; }
+
+        .control-group label {
+            display: block;
+            font-size: 0.7rem;
+            color: #ff4d4d;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: bold;
+            margin-bottom: 8px;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 5px;
+            flex-wrap: wrap;
+        }
+
+        .btn-group button {
+            background: rgba(255, 0, 0, 0.1);
+            border: 1px solid rgba(255, 0, 0, 0.2);
+            color: #ccc;
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.7rem;
+            transition: all 0.2s;
+            flex: 1;
+            text-align: center;
+        }
+
+        .btn-group button.active {
+            background: var(--accent-red);
+            border-color: var(--accent-red);
+            color: #fff;
+            box-shadow: 0 0 8px var(--accent-red);
+        }
+
+        .btn-group button:hover:not(.active) {
+            background: rgba(255, 0, 0, 0.2);
+            border-color: rgba(255, 0, 0, 0.4);
+            color: #fff;
+        }
+
+        .toggle-switch {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            cursor: pointer;
+        }
+
+        .toggle-switch span {
+            color: #fff;
+        }
+
+        .toggle-switch input {
+            accent-color: var(--accent-red);
+            width: 16px;
+            height: 16px;
+        }
 
         .control-label {
             display: flex;
@@ -295,35 +489,65 @@
     </div>
 
     <div class="main-layout">
-        <div id="map-container">
+        <div id="map-container" style="flex: 1; position: relative;">
             <div id="threat-map"></div>
+
+            <!-- Drill-down Sidebar -->
+            <div id="drilldown-panel" class="drilldown-panel">
+                <div class="drilldown-header">
+                    <h3 id="dd-ip" style="margin: 0; color: #fff; font-size: 1.1rem;">IP Address</h3>
+                    <button class="btn" onclick="hideIPDetails()" style="padding: 5px 10px; font-size: 0.6rem;">Close</button>
+                </div>
+                <div class="drilldown-content" id="dd-content">
+                    <div style="text-align: center; color: #888; padding: 20px;">
+                        Fetching intelligence...
+                    </div>
+                </div>
+                <div class="drilldown-footer">
+                    <button id="dd-block-btn" class="btn" style="flex: 1; background: rgba(255,0,0,0.2);">Block</button>
+                    <button id="dd-release-btn" class="btn" style="flex: 1; border-color: #444; background: transparent;">Release</button>
+                </div>
+            </div>
+
+            <!-- Temporal Analysis Slider -->
+            <div class="temporal-bar">
+                <div id="live-badge" class="live-badge">Live Feed</div>
+                <input type="range" id="time-slider" class="temporal-slider" min="0" max="24" value="0" step="1">
+                <div id="time-display" class="time-display">Present Day</div>
+                <button class="btn" onclick="resetToLive()" style="padding: 5px 10px; font-size: 0.6rem;">Reset</button>
+            </div>
             
             <div class="map-overlay-controls">
-                <h3 style="border-bottom: 1px solid rgba(255,0,0,0.2); padding-bottom: 8px; margin-bottom: 12px;">Visual Layers</h3>
                 <div class="control-group">
-                    <label class="control-label">
-                        <input type="checkbox" id="toggleBlockIPs" onchange="fetchLatestData()" checked> 
-                        <span>Active Blocks</span>
-                    </label>
-                    <label class="control-label">
-                        <input type="checkbox" id="toggleWhitelistIPs" onchange="fetchLatestData()"> 
-                        <span>Trust Assets</span>
-                    </label>
+                    <label>Globe Style</label>
+                    <div class="btn-group" id="style-selector">
+                        <button class="active" onclick="setGlobeStyle('standard')">Standard</button>
+                        <button onclick="setGlobeStyle('matrix')">Matrix</button>
+                        <button onclick="setGlobeStyle('heatmap')">Heatmap</button>
+                        <button onclick="setGlobeStyle('cities')">Cities</button>
+                    </div>
                 </div>
-                <div style="height: 1px; background: rgba(255,0,0,0.1); margin: 10px 0;"></div>
-                <div class="control-group">
-                    <label class="control-label">
-                        <input type="checkbox" id="toggleHeatmap" onchange="toggleViewMode()"> 
-                        <span>Density Cloud</span>
-                    </label>
-                    <label class="control-label">
-                        <input type="checkbox" id="toggleServerLines" onchange="toggleViewMode()" checked> 
-                        <span>Attack Vectors</span>
-                    </label>
-                    <label class="control-label">
-                        <input type="checkbox" id="toggleAutoRotate" onchange="toggleRotation()" checked> 
-                        <span>Auto Orbital</span>
-                    </label>
+
+                <div class="control-group" style="margin-top: 15px;">
+                    <label>Visual Layers</label>
+                    <div class="control-list">
+                        <label class="toggle-switch" style="margin-bottom: 8px;">
+                            <span>Attack Vectors (Arcs)</span>
+                            <input type="checkbox" id="toggleArcs" checked onchange="updateGlobeLayers()">
+                        </label>
+                        <label class="toggle-switch" style="margin-bottom: 8px;">
+                            <span>Trust Assets (Whitelist)</span>
+                            <input type="checkbox" id="toggleWhitelist" checked onchange="updateGlobeLayers()">
+                        </label>
+                        <label class="toggle-switch">
+                            <span>Auto-Rotation</span>
+                            <input type="checkbox" id="toggleRotation" checked onchange="updateGlobeLayers()">
+                        </label>
+                    </div>
+                </div>
+
+                <div id="active-info" style="margin-top: 15px; padding-top: 15px; border-top: 1px solid rgba(255,0,0,0.2); font-size: 0.7rem; color: #888;">
+                    <div id="globe-status-text">System Monitoring...</div>
                 </div>
             </div>
         </div>
@@ -376,15 +600,31 @@
     </script>
 
     <script nonce="{{ .nonce }}">
+        // --- Configuration & Constants ---
+        const SERVER_LOC = { lat: 51.5074, lng: -0.1278 }; // London (Default)
+        const CITIES_DATA = [
+            { name: 'London', lat: 51.5074, lng: -0.1278 },
+            { name: 'New York', lat: 40.7128, lng: -74.0060 },
+            { name: 'Tokyo', lat: 35.6762, lng: 139.6503 },
+            { name: 'Paris', lat: 48.8566, lng: 2.3522 },
+            { name: 'Berlin', lat: 52.5200, lng: 13.4050 },
+            { name: 'Singapore', lat: 1.3521, lng: 103.8198 },
+            { name: 'Sydney', lat: -33.8688, lng: 151.2093 },
+            { name: 'Dubai', lat: 25.2048, lng: 55.2708 },
+            { name: 'Moscow', lat: 55.7558, lng: 37.6173 },
+            { name: 'Beijing', lat: 39.9042, lng: 116.4074 }
+        ];
+
         let countryChart = null;
         let trendChart = null;
         let worldGlobe = null;
         
         let historicalItems = [];
-        let liveArcs = [];
-        let livePoints = [];
         let countryHits = {};
+        let ringsData = [];
+        let currentStyle = 'standard';
 
+        // --- Utility Functions ---
         function escapeHTML(str) {
             if (!str) return '';
             const p = document.createElement('p');
@@ -392,6 +632,11 @@
             return p.innerHTML;
         }
 
+        const isoAlpha2To3 = {
+            'AF': 'AFG', 'AX': 'ALA', 'AL': 'ALB', 'DZ': 'DZA', 'AS': 'ASM', 'AD': 'AND', 'AO': 'AGO', 'AI': 'AIA', 'AQ': 'ATA', 'AG': 'ATG', 'AR': 'ARG', 'AM': 'ARM', 'AW': 'ABW', 'AU': 'AUS', 'AT': 'AUT', 'AZ': 'AZE', 'BS': 'BHS', 'BH': 'BHR', 'BD': 'BGD', 'BB': 'BRB', 'BY': 'BLR', 'BE': 'BEL', 'BZ': 'BLZ', 'BJ': 'BEN', 'BM': 'BMU', 'BT': 'BTN', 'BO': 'BOL', 'BA': 'BIH', 'BW': 'BWA', 'BV': 'BVT', 'BR': 'BRA', 'IO': 'IOT', 'BN': 'BRN', 'BG': 'BGR', 'BF': 'BFA', 'BI': 'BDI', 'KH': 'KHM', 'CM': 'CMR', 'CA': 'CAN', 'CV': 'CPV', 'KY': 'CYM', 'CF': 'CAF', 'TD': 'TCD', 'CL': 'CHL', 'CN': 'CHN', 'CX': 'CXR', 'CC': 'CCK', 'CO': 'COL', 'KM': 'COM', 'CG': 'COG', 'CD': 'COD', 'CK': 'COK', 'CR': 'CRI', 'CI': 'CIV', 'HR': 'HRV', 'CU': 'CUB', 'CY': 'CYP', 'CZ': 'CZE', 'DK': 'DNK', 'DJ': 'DJI', 'DM': 'DMA', 'DO': 'DOM', 'EC': 'ECU', 'EG': 'EGY', 'SV': 'SLV', 'GQ': 'GNQ', 'ER': 'ERI', 'EE': 'EST', 'ET': 'ETH', 'FK': 'FLK', 'FO': 'FRO', 'FJ': 'FJI', 'FI': 'FIN', 'FR': 'FRA', 'GF': 'GUF', 'PF': 'PYF', 'TF': 'ATF', 'GA': 'GAB', 'GM': 'GMB', 'GE': 'GEO', 'DE': 'DEU', 'GH': 'GHA', 'GI': 'GIB', 'GR': 'GRC', 'GL': 'GRL', 'GD': 'GRD', 'GP': 'GLP', 'GU': 'GUM', 'GT': 'GTM', 'GG': 'GGY', 'GN': 'GIN', 'GW': 'GNB', 'GY': 'GUY', 'HT': 'HTI', 'HM': 'HMD', 'VA': 'VAT', 'HN': 'HND', 'HK': 'HKG', 'HU': 'HUN', 'IS': 'ISL', 'IN': 'IND', 'ID': 'IDN', 'IR': 'IRN', 'IQ': 'IRQ', 'IE': 'IRL', 'IM': 'IMN', 'IL': 'ISR', 'IT': 'ITA', 'JM': 'JAM', 'JP': 'JPN', 'JE': 'JEY', 'JO': 'JOR', 'KZ': 'KAZ', 'KE': 'KEN', 'KI': 'KIR', 'KP': 'PRK', 'KR': 'KOR', 'KW': 'KWT', 'KG': 'KGZ', 'LA': 'LAO', 'LV': 'LVA', 'LB': 'LBN', 'LS': 'LSO', 'LR': 'LBR', 'LY': 'LBY', 'LI': 'LIE', 'LT': 'LTU', 'LU': 'LUX', 'MO': 'MAC', 'MK': 'MKD', 'MG': 'MDG', 'MW': 'MWI', 'MY': 'MYS', 'MV': 'MDV', 'ML': 'MLI', 'MT': 'MLT', 'MH': 'MHL', 'MQ': 'MTQ', 'MR': 'MRT', 'MU': 'MUS', 'YT': 'MYT', 'MX': 'MEX', 'FM': 'FSM', 'MD': 'MDA', 'MC': 'MCO', 'MN': 'MNG', 'ME': 'MNE', 'MS': 'MSR', 'MA': 'MAR', 'MZ': 'MOZ', 'MM': 'MMR', 'NA': 'NAM', 'NR': 'NRU', 'NP': 'NPL', 'NL': 'NLD', 'AN': 'ANT', 'NC': 'NCL', 'NZ': 'NZL', 'NI': 'NIC', 'NE': 'NER', 'NG': 'NGA', 'NU': 'NIU', 'NF': 'NFK', 'MP': 'MNP', 'NO': 'NOR', 'OM': 'OMN', 'PK': 'PAK', 'PW': 'PLW', 'PS': 'PSE', 'PA': 'PAN', 'PG': 'PNG', 'PY': 'PRY', 'PE': 'PER', 'PH': 'PHL', 'PN': 'PCN', 'PL': 'POL', 'PT': 'PRT', 'PR': 'PRI', 'QA': 'QAT', 'RE': 'REU', 'RO': 'ROU', 'RU': 'RUS', 'RW': 'RWA', 'BL': 'BLM', 'SH': 'SHN', 'KN': 'KNA', 'LC': 'LCA', 'MF': 'MAF', 'PM': 'SPM', 'VC': 'VCT', 'WS': 'WSM', 'SM': 'SMR', 'ST': 'STP', 'SA': 'SAU', 'SN': 'SEN', 'RS': 'SRB', 'SC': 'SYC', 'SL': 'SLE', 'SG': 'SGP', 'SK': 'SVK', 'SI': 'SVN', 'SB': 'SLB', 'SO': 'SOM', 'ZA': 'ZAF', 'GS': 'SGS', 'ES': 'ESP', 'LK': 'LKA', 'SD': 'SDN', 'SR': 'SUR', 'SJ': 'SJM', 'SZ': 'SWZ', 'SE': 'SWE', 'CH': 'CHE', 'SY': 'SYR', 'TW': 'TWN', 'TJ': 'TJK', 'TZ': 'TZA', 'TH': 'THA', 'TL': 'TLS', 'TG': 'TGO', 'TK': 'TKL', 'TO': 'TON', 'TT': 'TTO', 'TN': 'TUN', 'TR': 'TUR', 'TM': 'TKM', 'TC': 'TCA', 'TV': 'TUV', 'UG': 'UGA', 'UA': 'UKR', 'AE': 'ARE', 'GB': 'GBR', 'US': 'USA', 'UM': 'UMI', 'UY': 'URY', 'UZ': 'UZB', 'VU': 'VUT', 'VE': 'VEN', 'VN': 'VNM', 'VG': 'VGB', 'VI': 'VIR', 'WF': 'WLF', 'EH': 'ESH', 'YE': 'YEM', 'ZM': 'ZMB', 'ZW': 'ZWE'
+        };
+
+        // --- Globe Logic ---
         async function initGlobe() {
             const mapContainer = document.getElementById('threat-map');
             worldGlobe = Globe()
@@ -402,175 +647,329 @@
                 .backgroundColor('#000000')
                 .showAtmosphere(true)
                 .atmosphereColor('#ff0000')
-                .atmosphereAlpha(0.15)
+                .atmosphereAltitude(0.15)
+                .pointAltitude(0.01)
+                .pointColor('color')
+                .pointRadius(0.5)
+                .pointsTransitionDuration(500)
+                .pointLabel(d => `
+                    <div style="background: rgba(0,0,0,0.85); border: 1px solid #ff0000; padding: 12px; border-radius: 8px; font-size: 11px; color: #fff; backdrop-filter: blur(5px);">
+                        <b style="color: #ff4d4d; font-size: 13px;">${d.type.toUpperCase()}</b><br>
+                        <span style="color: #fff; font-family: 'JetBrains Mono';">${d.ip}</span><br>
+                        <span style="color: #aaa;">${d.city || 'Unknown City'}, ${d.country || 'Unknown Country'}</span><br>
+                        <hr style="border: 0; border-top: 1px solid rgba(255,0,0,0.2); margin: 5px 0;">
+                        <i style="color: #888;">${d.reason || 'Manual classification'}</i>
+                    </div>
+                `)
+                .arcColor(() => '#ff4d4d')
+                .arcDashLength(0.4)
+                .arcDashGap(0.2)
+                .arcDashAnimateTime(1500)
+                .arcStroke(0.5)
+                .arcAltitudeAutoScale(0.3)
+                .arcsTransitionDuration(1000)
+                .ringColor(() => t => `rgba(255,0,0,${1 - t})`)
+                .ringMaxRadius(6)
+                .ringPropagationSpeed(3)
+                .ringRepeatPeriod(1000)
                 .onPointClick(point => {
-                    // Show popup or zoom to point
-                    worldGlobe.pointOfView({ lat: point.lat, lng: point.lng, altitude: 0.5 }, 1000);
+                    worldGlobe.pointOfView({ lat: point.lat, lng: point.lng, altitude: 1.0 }, 1000);
+                    showIPDetails(point.ip);
                 });
 
-            // Set Initial POV
+            // Initial POV
             worldGlobe.pointOfView({ lat: 20, lng: 0, altitude: 2.5 });
 
-            // Styling Points
-            worldGlobe
-                .pointRadius(0.5)
-                .pointColor('color')
-                .pointAltitude(0.01)
-                .pointLabel(d => `
-                    <div style="background: rgba(0,0,0,0.8); border: 1px solid #ff0000; padding: 10px; border-radius: 8px; font-size: 12px; color: #fff;">
-                        <b style="color: #ff4d4d;">${d.type.toUpperCase()}: ${d.ip}</b><br>
-                        ${d.city}, ${d.country}<br>
-                        <i style="color: #aaa;">${d.reason}</i>
-                    </div>
-                `);
-
-            // Styling Arcs
-            worldGlobe
-                .arcColor('color')
-                .arcDashLength(0.4)
-                .arcDashGap(4)
-                .arcDashInitialGap(() => Math.random() * 5)
-                .arcDashAnimateTime(1000)
-                .arcStroke(0.3)
-                .arcCurve(0.5);
-
-            // Styling Polygons (Heatmap)
-            worldGlobe
-                .polygonSideColor(() => 'rgba(255, 0, 0, 0.05)')
-                .polygonStrokeColor(() => 'rgba(255, 0, 0, 0.2)')
-                .polygonCapColor(d => {
-                    const hits = countryHits[d.properties.ISO_A3] || 0;
-                    if (hits === 0) return 'rgba(255, 0, 0, 0.01)';
-                    const opacity = Math.min(0.8, 0.1 + (hits / 50));
-                    return `rgba(255, 0, 0, ${opacity})`;
-                })
-                .polygonLabel(d => {
-                    const hits = countryHits[d.properties.ISO_A3] || 0;
-                    return `<b>${d.properties.NAME}</b>: ${hits} detections`;
-                });
-
-            // Load geography data
+            // Load geography
             try {
-                const response = await fetch('/js/world.json');
-                const worldData = await response.json();
-                worldGlobe.polygonsData(worldData.features);
+                const res = await fetch('/js/world.json');
+                const countries = await res.json();
+                worldGlobe.polygonsData(countries.features);
+                worldGlobe.polygonAltitude(0.01);
+                worldGlobe.polygonCapColor(() => 'rgba(255, 0, 0, 0.05)');
+                worldGlobe.polygonSideColor(() => 'rgba(0, 0, 0, 0)');
+                worldGlobe.polygonStrokeColor(() => 'rgba(255, 0, 0, 0.2)');
             } catch (e) {
-                console.error("Failed to load map data", e);
+                console.error("Geography failed", e);
             }
 
-            if (document.getElementById('toggleAutoRotate').checked) {
-                worldGlobe.controls().autoRotate = true;
-                worldGlobe.controls().autoRotateSpeed = 0.5;
-            }
+            // Controls
+            worldGlobe.controls().autoRotate = true;
+            worldGlobe.controls().autoRotateSpeed = 0.5;
 
+            window.addEventListener('resize', () => {
+                worldGlobe.width(mapContainer.clientWidth);
+                worldGlobe.height(mapContainer.clientHeight);
+            });
+
+            setupSlider();
+            await fetchLatestData();
+        }
+
+        // --- Drill-down Sidebar Logic ---
+        async function showIPDetails(ip) {
+            const panel = document.getElementById('drilldown-panel');
+            const content = document.getElementById('dd-content');
+            const ipTitle = document.getElementById('dd-ip');
+            
+            ipTitle.innerText = ip;
+            panel.classList.add('open');
+            content.innerHTML = '<div style="text-align: center; color: #888; padding: 20px;">Fetching intelligence...</div>';
+
+            try {
+                const res = await fetch(`/api/v1/ips/${ip}/details`);
+                if (!res.ok) throw new Error('Not found');
+                const details = await res.json();
+                
+                const current = details.current || {};
+                const geo = current.geolocation || {};
+                
+                content.innerHTML = `
+                    <div class="detail-row">
+                        <div class="detail-label">Origin</div>
+                        <div class="detail-value">${geo.city || 'Unknown'}, ${geo.country || '??'}</div>
+                    </div>
+                    <div class="detail-row">
+                        <div class="detail-label">Status</div>
+                        <div class="detail-value" style="color: ${details.is_blocked ? '#ff4d4d' : '#4ade80'}">${details.is_blocked ? 'BLOCKED' : 'CLEARED'}</div>
+                    </div>
+                    <div class="detail-row">
+                        <div class="detail-label">Reason</div>
+                        <div class="detail-value">${current.reason || 'N/A'}</div>
+                    </div>
+                    <div class="detail-row">
+                        <div class="detail-label">Added By</div>
+                        <div class="detail-value">${current.added_by || 'system'}</div>
+                    </div>
+                    <div class="detail-row">
+                        <div class="detail-label">First Seen</div>
+                        <div class="detail-value">${new Date(current.timestamp).toLocaleString()}</div>
+                    </div>
+                `;
+
+                // Update buttons
+                const blockBtn = document.getElementById('dd-block-btn');
+                const releaseBtn = document.getElementById('dd-release-btn');
+
+                blockBtn.onclick = () => takeAction('block', ip);
+                releaseBtn.onclick = () => takeAction('unblock', ip);
+                
+                blockBtn.style.display = details.is_blocked ? 'none' : 'block';
+                releaseBtn.style.display = details.is_blocked ? 'block' : 'none';
+
+            } catch (e) {
+                content.innerHTML = `<div style="color: #ff4d4d;">Failed to load details for ${ip}</div>`;
+            }
+        }
+
+        function hideIPDetails() {
+            document.getElementById('drilldown-panel').classList.remove('open');
+        }
+
+        async function takeAction(action, ip) {
+            try {
+                const res = await fetch(`/${action}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ip, reason: 'Action from Threat Map' })
+                });
+                if (res.ok) {
+                    showIPDetails(ip);
+                    fetchLatestData(); // Refresh globe
+                }
+            } catch (e) { console.error("Action failed", e); }
+        }
+
+        // --- Temporal Analysis Logic ---
+        let isLive = true;
+        
+        function setupSlider() {
+            const slider = document.getElementById('time-slider');
+            const display = document.getElementById('time-display');
+            const badge = document.getElementById('live-badge');
+
+            slider.oninput = function() {
+                const hours = parseInt(this.value);
+                if (hours === 0) {
+                    resetToLive();
+                } else {
+                    isLive = false;
+                    badge.innerText = 'Historical';
+                    badge.classList.add('offline');
+                    display.innerText = `${hours}h ago`;
+                    loadHistoricalData(hours);
+                }
+            };
+        }
+
+        function resetToLive() {
+            isLive = true;
+            const slider = document.getElementById('time-slider');
+            const display = document.getElementById('time-display');
+            const badge = document.getElementById('live-badge');
+            
+            slider.value = 0;
+            display.innerText = 'Present Day';
+            badge.innerText = 'Live Feed';
+            badge.classList.remove('offline');
             fetchLatestData();
         }
 
-        function toggleRotation() {
-            if (!worldGlobe) return;
-            worldGlobe.controls().autoRotate = document.getElementById('toggleAutoRotate').checked;
-        }
-
-        function toggleViewMode() {
-            const isHeatmap = document.getElementById('toggleHeatmap').checked;
-            const showLines = document.getElementById('toggleServerLines').checked;
-
-            // Update globe visibility
-            if (isHeatmap) {
-                worldGlobe.polygonsTransitionDuration(500).polygonAltitude(d => {
-                    const hits = countryHits[d.properties.ISO_A3] || 0;
-                    return Math.min(0.2, hits / 200);
-                });
-            } else {
-                worldGlobe.polygonsTransitionDuration(500).polygonAltitude(0.001);
-            }
-
-            worldGlobe.arcsData(showLines ? liveArcs : []);
-        }
-
-        async function fetchLatestData() {
+        async function loadHistoricalData(hoursAgo) {
             try {
-                const showBlocks = document.getElementById('toggleBlockIPs').checked;
-                const showWhitelists = document.getElementById('toggleWhitelistIPs').checked;
+                const now = new Date();
+                const past = new Date(now.getTime() - (hoursAgo * 60 * 60 * 1000));
+                const from = past.toISOString();
+                const to = now.toISOString();
 
-                let allItems = [];
-                countryHits = {};
-
-                if (showBlocks) {
-                    const res = await fetch('/api/v1/ips?limit=500');
-                    if (res.ok) {
-                        const payload = await res.json();
-                        const blocks = payload.items || [];
-                        allItems = allItems.concat(blocks.map(it => ({ ...it, type: 'block' })));
-                    }
-                }
-
-                if (showWhitelists) {
-                    const wres = await fetch('/api/v1/whitelists');
-                    if (wres.ok) {
-                        const whitelists = await wres.json();
-                        allItems = allItems.concat(whitelists.map(it => ({ ...it, type: 'whitelist' })));
-                    }
-                }
-
-                historicalItems = allItems;
+                const res = await fetch(`/api/v1/ips?limit=1000&from=${from}&to=${to}`);
+                if (!res.ok) return;
+                const payload = await res.json();
+                
+                historicalItems = (payload.items || []).map(it => ({ ...it, type: 'block' }));
                 renderPoints();
-
-                const statsRes = await fetch('/api/v1/stats');
-                if (statsRes.ok) {
-                    const s = await statsRes.json();
-                    initChart(s.top_countries || []);
-                    updateStats(s);
-                }
-            } catch (e) {
-                console.error("Failed to fetch data", e);
-            }
+                updateTicker();
+            } catch (e) { console.error("History fetch failed", e); }
         }
 
-        const isoAlpha2To3 = {
-            'AF': 'AFG', 'AX': 'ALA', 'AL': 'ALB', 'DZ': 'DZA', 'AS': 'ASM', 'AD': 'AND', 'AO': 'AGO', 'AI': 'AIA', 'AQ': 'ATA', 'AG': 'ATG', 'AR': 'ARG', 'AM': 'ARM', 'AW': 'ABW', 'AU': 'AUS', 'AT': 'AUT', 'AZ': 'AZE', 'BS': 'BHS', 'BH': 'BHR', 'BD': 'BGD', 'BB': 'BRB', 'BY': 'BLR', 'BE': 'BEL', 'BZ': 'BLZ', 'BJ': 'BEN', 'BM': 'BMU', 'BT': 'BTN', 'BO': 'BOL', 'BA': 'BIH', 'BW': 'BWA', 'BV': 'BVT', 'BR': 'BRA', 'IO': 'IOT', 'BN': 'BRN', 'BG': 'BGR', 'BF': 'BFA', 'BI': 'BDI', 'KH': 'KHM', 'CM': 'CMR', 'CA': 'CAN', 'CV': 'CPV', 'KY': 'CYM', 'CF': 'CAF', 'TD': 'TCD', 'CL': 'CHL', 'CN': 'CHN', 'CX': 'CXR', 'CC': 'CCK', 'CO': 'COL', 'KM': 'COM', 'CG': 'COG', 'CD': 'COD', 'CK': 'COK', 'CR': 'CRI', 'CI': 'CIV', 'HR': 'HRV', 'CU': 'CUB', 'CY': 'CYP', 'CZ': 'CZE', 'DK': 'DNK', 'DJ': 'DJI', 'DM': 'DMA', 'DO': 'DOM', 'EC': 'ECU', 'EG': 'EGY', 'SV': 'SLV', 'GQ': 'GNQ', 'ER': 'ERI', 'EE': 'EST', 'ET': 'ETH', 'FK': 'FLK', 'FO': 'FRO', 'FJ': 'FJI', 'FI': 'FIN', 'FR': 'FRA', 'GF': 'GUF', 'PF': 'PYF', 'TF': 'ATF', 'GA': 'GAB', 'GM': 'GMB', 'GE': 'GEO', 'DE': 'DEU', 'GH': 'GHA', 'GI': 'GIB', 'GR': 'GRC', 'GL': 'GRL', 'GD': 'GRD', 'GP': 'GLP', 'GU': 'GUM', 'GT': 'GTM', 'GG': 'GGY', 'GN': 'GIN', 'GW': 'GNB', 'GY': 'GUY', 'HT': 'HTI', 'HM': 'HMD', 'VA': 'VAT', 'HN': 'HND', 'HK': 'HKG', 'HU': 'HUN', 'IS': 'ISL', 'IN': 'IND', 'ID': 'IDN', 'IR': 'IRN', 'IQ': 'IRQ', 'IE': 'IRL', 'IM': 'IMN', 'IL': 'ISR', 'IT': 'ITA', 'JM': 'JAM', 'JP': 'JPN', 'JE': 'JEY', 'JO': 'JOR', 'KZ': 'KAZ', 'KE': 'KEN', 'KI': 'KIR', 'KP': 'PRK', 'KR': 'KOR', 'KW': 'KWT', 'KG': 'KGZ', 'LA': 'LAO', 'LV': 'LVA', 'LB': 'LBN', 'LS': 'LSO', 'LR': 'LBR', 'LY': 'LBY', 'LI': 'LIE', 'LT': 'LTU', 'LU': 'LUX', 'MO': 'MAC', 'MK': 'MKD', 'MG': 'MDG', 'MW': 'MWI', 'MY': 'MYS', 'MV': 'MDV', 'ML': 'MLI', 'MT': 'MLT', 'MH': 'MHL', 'MQ': 'MTQ', 'MR': 'MRT', 'MU': 'MUS', 'YT': 'MYT', 'MX': 'MEX', 'FM': 'FSM', 'MD': 'MDA', 'MC': 'MCO', 'MN': 'MNG', 'ME': 'MNE', 'MS': 'MSR', 'MA': 'MAR', 'MZ': 'MOZ', 'MM': 'MMR', 'NA': 'NAM', 'NR': 'NRU', 'NP': 'NPL', 'NL': 'NLD', 'AN': 'ANT', 'NC': 'NCL', 'NZ': 'NZL', 'NI': 'NIC', 'NE': 'NER', 'NG': 'NGA', 'NU': 'NIU', 'NF': 'NFK', 'MP': 'MNP', 'NO': 'NOR', 'OM': 'OMN', 'PK': 'PAK', 'PW': 'PLW', 'PS': 'PSE', 'PA': 'PAN', 'PG': 'PNG', 'PY': 'PRY', 'PE': 'PER', 'PH': 'PHL', 'PN': 'PCN', 'PL': 'POL', 'PT': 'PRT', 'PR': 'PRI', 'QA': 'QAT', 'RE': 'REU', 'RO': 'ROU', 'RU': 'RUS', 'RW': 'RWA', 'BL': 'BLM', 'SH': 'SHN', 'KN': 'KNA', 'LC': 'LCA', 'MF': 'MAF', 'PM': 'SPM', 'VC': 'VCT', 'WS': 'WSM', 'SM': 'SMR', 'ST': 'STP', 'SA': 'SAU', 'SN': 'SEN', 'RS': 'SRB', 'SC': 'SYC', 'SL': 'SLE', 'SG': 'SGP', 'SK': 'SVK', 'SI': 'SVN', 'SB': 'SLB', 'SO': 'SOM', 'ZA': 'ZAF', 'GS': 'SGS', 'ES': 'ESP', 'LK': 'LKA', 'SD': 'SDN', 'SR': 'SUR', 'SJ': 'SJM', 'SZ': 'SWZ', 'SE': 'SWE', 'CH': 'CHE', 'SY': 'SYR', 'TW': 'TWN', 'TJ': 'TJK', 'TZ': 'TZA', 'TH': 'THA', 'TL': 'TLS', 'TG': 'TGO', 'TK': 'TKL', 'TO': 'TON', 'TT': 'TTO', 'TN': 'TUN', 'TR': 'TUR', 'TM': 'TKM', 'TC': 'TCA', 'TV': 'TUV', 'UG': 'UGA', 'UA': 'UKR', 'AE': 'ARE', 'GB': 'GBR', 'US': 'USA', 'UM': 'UMI', 'UY': 'URY', 'UZ': 'UZB', 'VU': 'VUT', 'VE': 'VEN', 'VN': 'VNM', 'VG': 'VGB', 'VI': 'VIR', 'WF': 'WLF', 'EH': 'ESH', 'YE': 'YEM', 'ZM': 'ZMB', 'ZW': 'ZWE'
-        };
+        function setGlobeStyle(style) {
+            currentStyle = style;
+            document.querySelectorAll('#style-selector button').forEach(btn => {
+                btn.classList.toggle('active', btn.innerText.toLowerCase() === style);
+            });
+
+            if (!worldGlobe) return;
+
+            // Clear extra layers
+            worldGlobe.hexPolygonsData([]);
+            worldGlobe.labelsData([]);
+            worldGlobe.polygonAltitude(0.01);
+            worldGlobe.polygonCapColor(() => 'rgba(255, 0, 0, 0.05)');
+            worldGlobe.polygonSideColor(() => 'rgba(0, 0, 0, 0)');
+
+            if (style === 'matrix') {
+                worldGlobe.hexPolygonsData(worldGlobe.polygonsData());
+                worldGlobe.hexPolygonResolution(3);
+                worldGlobe.hexPolygonMargin(0.3);
+                worldGlobe.hexPolygonColor(() => `rgba(255, 0, 0, ${0.4 + Math.random() * 0.4})`);
+                worldGlobe.polygonCapColor(() => 'rgba(0,0,0,0)');
+            } else if (style === 'heatmap') {
+                worldGlobe.polygonAltitude(d => Math.min(0.2, (countryHits[d.id || d.properties.ISO_A3] || 0) / 100));
+                worldGlobe.polygonCapColor(d => {
+                    const hits = countryHits[d.id || d.properties.ISO_A3] || 0;
+                    return hits > 0 ? `rgba(255, 0, 0, ${0.2 + (hits / 500)})` : 'rgba(255, 0, 0, 0.05)';
+                });
+                worldGlobe.polygonSideColor(d => {
+                    const hits = countryHits[d.id || d.properties.ISO_A3] || 0;
+                    return hits > 0 ? `rgba(255, 0, 0, 0.5)` : 'rgba(0,0,0,0)';
+                });
+            } else if (style === 'cities') {
+                worldGlobe.labelsData(CITIES_DATA)
+                    .labelLat(d => d.lat)
+                    .labelLng(d => d.lng)
+                    .labelText(d => d.name)
+                    .labelSize(0.5)
+                    .labelDotRadius(0.2)
+                    .labelColor(() => '#ff4d4d')
+                    .labelResolution(2);
+            }
+            
+            document.getElementById('globe-status-text').innerText = `Visual Mode: ${style.charAt(0).toUpperCase() + style.slice(1)}`;
+        }
+
+        function updateGlobeLayers() {
+            if (!worldGlobe) return;
+            const showRotation = document.getElementById('toggleRotation').checked;
+            worldGlobe.controls().autoRotate = showRotation;
+            renderPoints();
+        }
 
         function renderPoints() {
             if (!worldGlobe) return;
+            const showWhitelist = document.getElementById('toggleWhitelist').checked;
+            const showArcs = document.getElementById('toggleArcs').checked;
 
             const points = historicalItems
                 .filter(it => it.data && it.data.geolocation && it.data.geolocation.latitude)
-                .map(it => {
-                    const geo = it.data.geolocation;
-                    
-                    // Track country hits for heatmap
-                    if (it.type === 'block') {
-                        let code = geo.country; // This is alpha-2 from Go service
-                        if (code && code.length === 2) {
-                            code = isoAlpha2To3[code] || code;
-                        }
-                        if (code) countryHits[code] = (countryHits[code] || 0) + 1;
-                    }
-
-                    return {
-                        lat: geo.latitude,
-                        lng: geo.longitude,
-                        ip: it.ip,
-                        city: geo.city,
-                        country: geo.country,
-                        reason: it.data.reason,
-                        type: it.type,
-                        color: it.type === 'whitelist' ? '#00ffcc' : '#ff0000'
-                    };
-                });
+                .filter(it => it.type !== 'whitelist' || showWhitelist)
+                .map(it => ({
+                    lat: it.data.geolocation.latitude,
+                    lng: it.data.geolocation.longitude,
+                    ip: it.ip,
+                    city: it.data.geolocation.city,
+                    country: it.data.geolocation.country,
+                    reason: it.data.reason,
+                    type: it.type,
+                    color: it.type === 'whitelist' ? '#00ffcc' : '#ff0000'
+                }));
 
             worldGlobe.pointsData(points);
-            
-            // Refresh heatmap if active
-            if (document.getElementById('toggleHeatmap').checked) {
-                worldGlobe.polygonAltitude(d => Math.min(0.2, (countryHits[d.id] || 0) / 200));
+
+            if (showArcs) {
+                const arcs = historicalItems
+                    .filter(it => it.type === 'block' && it.data.geolocation)
+                    .map(it => ({
+                        startLat: it.data.geolocation.latitude,
+                        startLng: it.data.geolocation.longitude,
+                        endLat: SERVER_LOC.lat,
+                        endLng: SERVER_LOC.lng
+                    }));
+                worldGlobe.arcsData(arcs);
+            } else {
+                worldGlobe.arcsData([]);
             }
+
+            if (currentStyle === 'heatmap') setGlobeStyle('heatmap');
         }
 
+        function triggerPulse() {
+            const el = document.getElementById('threat-map');
+            el.classList.remove('pulse-active');
+            void el.offsetWidth;
+            el.classList.add('pulse-active');
+        }
+
+        function addPing(lat, lng) {
+            const ping = { lat, lng };
+            ringsData.push(ping);
+            worldGlobe.ringsData(ringsData);
+            setTimeout(() => {
+                ringsData = ringsData.filter(r => r !== ping);
+                worldGlobe.ringsData(ringsData);
+            }, 2000);
+        }
+
+        // --- Data & API ---
+        async function fetchLatestData() {
+            try {
+                const res = await fetch('/api/v1/ips?limit=500');
+                if (!res.ok) return;
+                const payload = await res.json();
+                
+                historicalItems = (payload.items || []).map(it => ({ ...it, type: 'block' }));
+                
+                // Track hits
+                countryHits = {};
+                historicalItems.forEach(it => {
+                    const geo = it.data.geolocation;
+                    if (geo && geo.country) {
+                        const code = geo.country.length === 2 ? (isoAlpha2To3[geo.country] || geo.country) : geo.country;
+                        countryHits[code] = (countryHits[code] || 0) + 1;
+                    }
+                });
+
+                renderPoints();
+                updateTicker();
+                initChart(Object.entries(countryHits).map(([k,v]) => ({ country: k, count: v })).sort((a,b) => b.count - a.count).slice(0, 10));
+                
+                if (payload.stats) updateStats(payload.stats);
+            } catch (e) { console.error("Fetch failed", e); }
+        }
+
+        // --- Charts & UI ---
         function initChart(data) {
             const ctx = document.getElementById('countryChart').getContext('2d');
-            const labels = data.map(c => c.country || 'Unknown');
+            const labels = data.map(c => c.country);
             const values = data.map(c => c.count);
 
             if (countryChart) {
@@ -611,12 +1010,6 @@
                 if (raw) trendData = JSON.parse(raw.textContent);
             } catch (e) {}
 
-            if (trendChart) {
-                trendChart.data.datasets[0].data = trendData;
-                trendChart.update();
-                return;
-            }
-
             trendChart = new Chart(ctx, {
                 type: 'line',
                 data: {
@@ -654,103 +1047,69 @@
             if (typeof s.blocks_minute === 'number') document.getElementById('bpm-display').innerHTML = s.blocks_minute.toFixed(1) + ' <span style="font-size: 0.6rem;">BPM</span>';
         }
 
-        // WebSocket for real-time updates
-        let socket;
+        function updateTicker() {
+            const ticker = document.getElementById('eventTicker');
+            ticker.innerHTML = '';
+            historicalItems.slice(0, 20).forEach(it => {
+                const item = document.createElement('div');
+                item.className = 'ticker-item';
+                item.innerHTML = `
+                    <div class="ts">${new Date().toLocaleTimeString()}</div>
+                    <div class="msg"><span style="color: ${it.type === 'whitelist' ? '#00ffcc' : '#ff0000'}; font-weight: 800;">${it.type.toUpperCase()}</span> ${it.ip}</div>
+                    <div style="font-size: 0.65rem; color: #888;">${it.data.reason || 'Anomaly detected'}</div>
+                `;
+                ticker.appendChild(item);
+            });
+        }
+
+        // --- WebSocket ---
         function connectWS() {
-            socket = new WebSocket((window.location.protocol === 'https:' ? 'wss://' : 'ws://') + window.location.host + '/ws');
-
+            const socket = new WebSocket((window.location.protocol === 'https:' ? 'wss://' : 'ws://') + window.location.host + '/ws');
+            
             socket.onopen = () => {
-                document.getElementById('live-status').textContent = 'LIVE FEED';
-                document.getElementById('live-status').style.background = 'rgba(40, 167, 69, 0.15)';
-            };
-
-            socket.onclose = () => {
-                document.getElementById('live-status').textContent = 'SIGNAL LOST';
-                document.getElementById('live-status').style.background = 'rgba(255, 0, 0, 0.15)';
-                setTimeout(connectWS, 3000);
+                document.getElementById('live-status').innerText = 'LIVE MONITOR ACTIVE';
+                document.getElementById('live-status').style.color = '#4ade80';
             };
 
             socket.onmessage = (event) => {
-                let msg;
-                try { msg = JSON.parse(event.data); } catch (e) { return; }
-
-                if (msg.action === 'block' || msg.action === 'whitelist') {
-                    handleLiveEvent(msg);
-                } else if (msg.action === 'unblock') {
-                    addTickerEvent('unblock', msg.data.ip, "Manual Release", "#00ffcc");
+                const msg = JSON.parse(event.data);
+                if (msg.type === 'block' || msg.type === 'whitelist' || msg.action === 'block' || msg.action === 'whitelist') {
+                    const type = msg.type || msg.action;
+                    const it = {
+                        type: type,
+                        ip: msg.ip || (msg.data ? msg.data.ip : '?.?.?.?'),
+                        data: msg.data || {}
+                    };
+                    
+                    historicalItems.unshift(it);
+                    if (historicalItems.length > 500) historicalItems.pop();
+                    
+                    if (isLive) {
+                        renderPoints();
+                        updateTicker();
+                    }
+                    
+                    if (type === 'block' && it.data.geolocation) {
+                        const geo = it.data.geolocation;
+                        triggerPulse();
+                        addPing(geo.latitude, geo.longitude);
+                    }
                 }
+            };
+
+            socket.onclose = () => {
+                document.getElementById('live-status').innerText = 'RECONNECTING...';
+                document.getElementById('live-status').style.color = '#ff9f43';
+                setTimeout(connectWS, 3000);
             };
         }
 
-        function handleLiveEvent(msg) {
-            const it = msg.data;
-            const type = msg.action;
-            const geo = it.data ? it.data.geolocation : null;
-
-            if (geo && geo.latitude) {
-                const color = type === 'whitelist' ? '#00ffcc' : '#ff0000';
-                
-                // Add to Ticker
-                addTickerEvent(type, it.ip, it.data.reason, color);
-
-                // Live Point
-                const livePt = {
-                    lat: geo.latitude,
-                    lng: geo.longitude,
-                    color: color,
-                    size: 1.0
-                };
-                livePoints.push(livePt);
-                
-                // Live Arc if source exists
-                if (msg.data.source_geo && msg.data.source_geo.latitude) {
-                    const src = msg.data.source_geo;
-                    const arc = {
-                        startLat: src.latitude,
-                        startLng: src.longitude,
-                        endLat: geo.latitude,
-                        endLng: geo.longitude,
-                        color: ['rgba(255,255,255,0.8)', color]
-                    };
-                    liveArcs.push(arc);
-                    worldGlobe.arcsData(document.getElementById('toggleServerLines').checked ? liveArcs : []);
-                    
-                    setTimeout(() => {
-                        liveArcs = liveArcs.filter(a => a !== arc);
-                        worldGlobe.arcsData(document.getElementById('toggleServerLines').checked ? liveArcs : []);
-                    }, 6000);
-                }
-
-                // Temporary live points display could be handled by a separate layer or merging
-                // For now, let's just trigger a full fetch refresh to keep it simple and sync
-                fetchLatestData();
-            }
-        }
-
-        function addTickerEvent(type, ip, reason, color) {
-            const ticker = document.getElementById('eventTicker');
-            const empty = ticker.querySelector('div[style*="italic"]');
-            if (empty) empty.remove();
-
-            const item = document.createElement('div');
-            item.className = 'ticker-item';
-            
-            item.innerHTML = `
-                <div class="ts">${new Date().toLocaleTimeString()}</div>
-                <div class="msg"><span style="color: ${color}; font-weight: 800;">${type.toUpperCase()}</span> ${ip}</div>
-                <div style="font-size: 0.65rem; color: #888; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                    ${reason || 'Anomaly detected'}
-                </div>
-            `;
-
-            ticker.insertBefore(item, ticker.firstChild);
-            if (ticker.children.length > 30) ticker.lastChild.remove();
-        }
-
+        // --- Bootstrap ---
         window.onload = async () => {
             await initGlobe();
             initTrendChart();
             connectWS();
+            setGlobeStyle('standard');
         };
     </script>
 </body>
