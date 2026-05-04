@@ -686,8 +686,9 @@
             worldGlobe = Globe()
                 (mapContainer);
 
-            // Access bundled THREE instance to avoid duplication
-            const THREE = worldGlobe.THREE || window.THREE;
+            // Access bundled THREE instance to avoid duplication and expose globally
+            window.THREE = worldGlobe.THREE;
+            const T = window.THREE;
 
             worldGlobe
                 .globeImageUrl('/js/earth-night.jpg')
@@ -773,9 +774,11 @@
             // Add Target HQ marker
             worldGlobe.customLayerData([{ lat: SERVER_LOC.lat, lng: SERVER_LOC.lng }])
                 .customThreeObject(d => {
-                    const g = new THREE.CylinderGeometry(0.2, 0.4, 4, 32);
-                    const m = new THREE.MeshPhongMaterial({ color: '#ff0000', emissive: '#ff0000', emissiveIntensity: 2, transparent: true, opacity: 0.8 });
-                    return new THREE.Mesh(g, m);
+                    const T = worldGlobe.THREE;
+                    if (!T) return new THREE.Mesh(); // Fallback
+                    const g = new T.CylinderGeometry(0.2, 0.4, 4, 32);
+                    const m = new T.MeshPhongMaterial({ color: '#ff0000', emissive: '#ff0000', emissiveIntensity: 2, transparent: true, opacity: 0.8 });
+                    return new T.Mesh(g, m);
                 })
                 .customThreeObjectUpdate((obj, d) => {
                     Object.assign(obj.position, worldGlobe.getCoords(d.lat, d.lng, 0.05));
