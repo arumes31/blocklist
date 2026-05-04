@@ -235,6 +235,7 @@
         .temporal-slider {
             flex: 1;
             -webkit-appearance: none;
+            appearance: none;
             background: rgba(255, 255, 255, 0.1);
             height: 4px;
             border-radius: 2px;
@@ -242,6 +243,7 @@
         }
         .temporal-slider::-webkit-slider-thumb {
             -webkit-appearance: none;
+            appearance: none;
             width: 18px;
             height: 18px;
             background: var(--vibrant-red);
@@ -466,6 +468,31 @@
             #map-container { min-height: 500px; }
             body { overflow-y: auto; height: auto; }
         }
+
+        /* Holographic Scan-lines */
+        .scan-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(to bottom, transparent 50%, rgba(255, 0, 0, 0.03) 50%);
+            background-size: 100% 4px;
+            pointer-events: none;
+            z-index: 5;
+            opacity: 0;
+            transition: opacity 0.5s;
+        }
+        .scan-overlay::after {
+            content: "";
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(to bottom, rgba(255,0,0,0) 0%, rgba(255,0,0,0.1) 50%, rgba(255,0,0,0) 100%);
+            background-size: 100% 200%;
+            animation: holographicScan 4s linear infinite;
+        }
+        @keyframes holographicScan {
+            0% { background-position: 0 -100%; }
+            100% { background-position: 0 100%; }
+        }
+        .scan-overlay.active { opacity: 1; }
     </style>
 </head>
 
@@ -492,6 +519,7 @@
     <div class="main-layout">
         <div id="map-container" style="flex: 1; position: relative;">
             <div id="threat-map"></div>
+            <div id="scan-layer" class="scan-overlay"></div>
 
             <!-- Drill-down Sidebar -->
             <div id="drilldown-panel" class="drilldown-panel">
@@ -513,6 +541,7 @@
             <!-- Temporal Analysis Slider -->
             <div class="temporal-bar">
                 <div id="live-badge" class="live-badge">Live Feed</div>
+                <button id="play-btn" onclick="togglePlay()" style="background: none; border: 1px solid rgba(255,0,0,0.3); color: #ff0000; cursor: pointer; padding: 2px 8px; border-radius: 4px; margin-right: 10px;">▶</button>
                 <input type="range" id="time-slider" class="temporal-slider" min="0" max="24" value="0" step="1">
                 <div id="time-display" class="time-display">Present Day</div>
                 <button class="btn" onclick="resetToLive()" style="padding: 5px 10px; font-size: 0.6rem;">Reset</button>
@@ -544,9 +573,17 @@
                             <span>Auto-Rotation</span>
                             <input type="checkbox" id="toggleRotation" checked onchange="updateGlobeLayers()">
                         </label>
-                        <label class="toggle-switch">
+                        <label class="toggle-switch" style="margin-bottom: 8px;">
                             <span>Performance Mode</span>
                             <input type="checkbox" id="togglePerformance" checked onchange="updateGlobeLayers()">
+                        </label>
+                        <label class="toggle-switch" style="margin-bottom: 8px;">
+                            <span>Director Mode (Focus)</span>
+                            <input type="checkbox" id="toggleDirector" onchange="updateGlobeLayers()">
+                        </label>
+                        <label class="toggle-switch">
+                            <span>Scan Overlay</span>
+                            <input type="checkbox" id="toggleScan" onchange="updateGlobeLayers()">
                         </label>
                     </div>
                 </div>
@@ -665,10 +702,13 @@
                     const safeCountry = (d.country || 'Unknown Country').replace(/[<>]/g, '');
                     const safeReason = (d.reason || 'Manual classification').replace(/[<>]/g, '');
                     const safeType = (d.type || 'unknown').toUpperCase().replace(/[<>]/g, '');
+                    
+                    const isoCode = (d.countryCode || '').toLowerCase();
+                    const flagImg = isoCode ? `<img src="/flags/4x3/${isoCode}.svg" style="width: 16px; height: 12px; margin-right: 5px; vertical-align: middle; border: 1px solid rgba(255,255,255,0.1);">` : '';
 
                     return `
                         <div style="background: rgba(0,0,0,0.85); border: 1px solid #ff0000; padding: 12px; border-radius: 8px; font-size: 11px; color: #fff; backdrop-filter: blur(5px);">
-                            <b style="color: #ff4d4d; font-size: 13px;">${safeType}</b><br>
+                            <b style="color: #ff4d4d; font-size: 13px;">${flagImg} ${safeType}</b><br>
                             <span style="color: #fff; font-family: 'JetBrains Mono';">${safeIP}</span><br>
                             <span style="color: #aaa;">${safeCity}, ${safeCountry}</span><br>
                             <hr style="border: 0; border-top: 1px solid rgba(255,0,0,0.2); margin: 5px 0;">
@@ -716,6 +756,21 @@
                 worldGlobe.width(mapContainer.clientWidth);
                 worldGlobe.height(mapContainer.clientHeight);
             });
+
+            worldGlobe.onPointClick(d => {
+                showIPDetails(d.ip);
+            });
+
+            // Add Target HQ marker
+            worldGlobe.customLayerData([{ lat: SERVER_LOC.lat, lng: SERVER_LOC.lng }])
+                .customThreeObject(d => {
+                    const g = new THREE.CylinderGeometry(0.2, 0.4, 4, 32);
+                    const m = new THREE.MeshPhongMaterial({ color: '#ff0000', emissive: '#ff0000', emissiveIntensity: 2, transparent: true, opacity: 0.8 });
+                    return new THREE.Mesh(g, m);
+                })
+                .customThreeObjectUpdate((obj, d) => {
+                    Object.assign(obj.position, worldGlobe.getCoords(d.lat, d.lng, 0.05));
+                });
 
             setupSlider();
             await fetchLatestData();
@@ -820,6 +875,28 @@
         // --- Temporal Analysis Logic ---
         let isLive = true;
         
+        let isPlaying = false;
+        let playInterval = null;
+
+        function togglePlay() {
+            const btn = document.getElementById('play-btn');
+            isPlaying = !isPlaying;
+            if (isPlaying) {
+                btn.innerText = '⏸';
+                playInterval = setInterval(() => {
+                    const slider = document.getElementById('time-slider');
+                    let val = parseInt(slider.value);
+                    val += 1;
+                    if (val > 24) val = 0;
+                    slider.value = val;
+                    updateHistory(val);
+                }, 1000);
+            } else {
+                btn.innerText = '▶';
+                clearInterval(playInterval);
+            }
+        }
+
         function setupSlider() {
             const slider = document.getElementById('time-slider');
             const display = document.getElementById('time-display');
@@ -919,11 +996,14 @@
             if (!worldGlobe) return;
             const showRotation = document.getElementById('toggleRotation').checked;
             const isPerf = document.getElementById('togglePerformance').checked;
+            const showScan = document.getElementById('toggleScan').checked;
 
             worldGlobe.controls().autoRotate = showRotation;
             worldGlobe.showAtmosphere(!isPerf);
             worldGlobe.backgroundImageUrl(isPerf ? null : '/js/night-sky.png');
             
+            document.getElementById('scan-layer').classList.toggle('active', showScan);
+
             if (isPerf) {
                 worldGlobe.atmosphereColor('#000000');
             } else {
@@ -950,22 +1030,67 @@
             const showWhitelist = document.getElementById('toggleWhitelist').checked;
             const showArcs = document.getElementById('toggleArcs').checked;
 
-            const points = historicalItems
+            // Aggregate counts for 3D bars
+            const counts = {};
+            const items = historicalItems
                 .filter(it => it.data && it.data.geolocation && it.data.geolocation.latitude)
-                .filter(it => it.type !== 'whitelist' || showWhitelist)
-                .map(it => ({
-                    lat: it.data.geolocation.latitude,
-                    lng: it.data.geolocation.longitude,
-                    ip: it.ip,
-                    city: it.data.geolocation.city,
-                    country: it.data.geolocation.country,
-                    reason: it.data.reason,
-                    type: it.type,
-                    color: it.type === 'whitelist' ? '#4ade80' : '#ff0000'
-                }));
+                .filter(it => it.type !== 'whitelist' || showWhitelist);
 
-            worldGlobe.pointsData(points);
+            items.forEach(it => {
+                const key = `${it.data.geolocation.latitude},${it.data.geolocation.longitude}`;
+                if (!counts[key]) {
+                    counts[key] = { ...it, count: 0 };
+                }
+                counts[key].count++;
+            });
+
+            const points = Object.values(counts).map(it => ({
+                lat: it.data.geolocation.latitude,
+                lng: it.data.geolocation.longitude,
+                ip: it.ip,
+                city: it.data.geolocation.city,
+                country: it.data.geolocation.country,
+                countryCode: it.data.geolocation.country, // Added code mapping
+                reason: it.data.reason,
+                type: it.type,
+                color: it.type === 'whitelist' ? '#4ade80' : '#ff0000',
+                // Altitude grows with attack volume (max 0.4)
+                alt: Math.min(0.4, 0.01 + (it.count - 1) * 0.05)
+            }));
+
+            worldGlobe.pointsData(points)
+                .pointAltitude('alt');
+
             worldGlobe.ringsData([...ringsData]);
+
+            // Live Icons for active attacks
+            if (!document.getElementById('togglePerformance').checked) {
+                const iconData = activeArcs.map(a => ({
+                    lat: a.startLat,
+                    lng: a.startLng,
+                    type: a.reasonType || 'radar'
+                }));
+                worldGlobe.htmlElementsData(iconData)
+                    .htmlElement(d => {
+                        const el = document.createElement('div');
+                        el.style.color = '#ff4d4d';
+                        el.style.fontSize = '1.2rem';
+                        el.style.pointerEvents = 'none';
+                        el.style.textShadow = '0 0 10px #ff0000';
+                        
+                        // Icon mapping
+                        const icons = {
+                            'brute': '🛡️',
+                            'sqli': '💉',
+                            'scraper': '🤖',
+                            'radar': '📡'
+                        };
+                        el.innerText = icons[d.type] || icons.radar;
+                        return el;
+                    });
+            } else {
+                worldGlobe.htmlElementsData([]);
+            }
 
             if (showArcs) {
                 if (isLive) {
@@ -1006,18 +1131,27 @@
             }, 2000);
         }
 
-        function addArc(startLat, startLng) {
+        function addArc(startLat, startLng, reason) {
+            // Simple reason mapping
+            let reasonType = 'radar';
+            const r = (reason || '').toLowerCase();
+            if (r.includes('brute')) reasonType = 'brute';
+            else if (r.includes('sql')) reasonType = 'sqli';
+            else if (r.includes('scraper') || r.includes('crawler')) reasonType = 'scraper';
+
             const arc = {
                 startLat,
                 startLng,
                 endLat: SERVER_LOC.lat,
-                endLng: SERVER_LOC.lng
+                endLng: SERVER_LOC.lng,
+                reasonType
             };
             activeArcs.push(arc);
             
-            // We update arcs immediately or via throttle? 
-            // Better via throttle if high volume, but arcs are events.
-            // Let's use throttle for all data updates.
+            if (document.getElementById('toggleDirector').checked && isLive) {
+                worldGlobe.pointOfView({ lat: startLat, lng: startLng, altitude: 1.5 }, 1000);
+            }
+
             throttledUpdate();
 
             setTimeout(() => {
@@ -1150,7 +1284,16 @@
             if (typeof s.total === 'number') document.getElementById('stat-total').textContent = s.total;
             if (typeof s.day === 'number') document.getElementById('stat-day').textContent = s.day;
             if (typeof s.hour === 'number') document.getElementById('stat-hour').textContent = s.hour;
-            if (typeof s.blocks_minute === 'number') document.getElementById('bpm-display').innerHTML = s.blocks_minute.toFixed(1) + ' <span style="font-size: 0.6rem;">BPM</span>';
+            
+            if (typeof s.blocks_minute === 'number') {
+                document.getElementById('bpm-display').innerHTML = s.blocks_minute.toFixed(1) + ' <span style="font-size: 0.6rem;">BPM</span>';
+                
+                // Update globe pulse based on intensity
+                if (worldGlobe && !document.getElementById('togglePerformance').checked) {
+                    const intensity = Math.min(0.3, s.blocks_minute / 200);
+                    worldGlobe.atmosphereAltitude(0.15 + intensity);
+                }
+            }
         }
 
         function updateTicker() {
@@ -1167,6 +1310,17 @@
                 const msg = document.createElement('div');
                 msg.className = 'msg';
                 
+                if (it.data && it.data.geolocation && it.data.geolocation.country) {
+                    const flag = document.createElement('img');
+                    const iso = it.data.geolocation.country.toLowerCase();
+                    flag.src = `/flags/4x3/${iso}.svg`;
+                    flag.style.width = '16px';
+                    flag.style.height = '12px';
+                    flag.style.marginRight = '8px';
+                    flag.style.verticalAlign = 'middle';
+                    msg.appendChild(flag);
+                }
+
                 const typeSpan = document.createElement('span');
                 typeSpan.style.color = it.type === 'whitelist' ? '#4ade80' : '#ff0000';
                 typeSpan.style.fontWeight = '800';
@@ -1218,7 +1372,7 @@
                             const geo = it.data.geolocation;
                             triggerPulse();
                             addPing(geo.latitude, geo.longitude);
-                            addArc(geo.latitude, geo.longitude);
+                            addArc(geo.latitude, geo.longitude, it.data.reason);
                         }
                     }
                 } catch (e) {
