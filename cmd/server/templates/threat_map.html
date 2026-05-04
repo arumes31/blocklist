@@ -667,6 +667,7 @@
         let activeArcs = [];
         let currentStyle = 'standard';
         let updateTimer = null;
+        const pointCache = new Map();
 
         // --- Utility Functions ---
         function escapeHTML(str) {
@@ -701,7 +702,7 @@
                 .pointAltitude(0.01)
                 .pointColor('color')
                 .pointRadius(0.5)
-                .pointsTransitionDuration(500)
+                .pointsTransitionDuration(1000)
                 .pointLabel(d => {
                     const safeIP = (d.ip || '?.?.?.?').replace(/[<>]/g, '');
                     const safeCity = (d.city || 'Unknown City').replace(/[<>]/g, '');
@@ -1054,19 +1055,32 @@
                 counts[key].count++;
             });
 
-            const points = Object.values(counts).map(it => ({
-                lat: it.data.geolocation.latitude,
-                lng: it.data.geolocation.longitude,
-                ip: it.ip,
-                city: it.data.geolocation.city,
-                country: it.data.geolocation.country,
-                countryCode: it.data.geolocation.country, // Added code mapping
-                reason: it.data.reason,
-                type: it.type,
-                color: it.type === 'whitelist' ? '#4ade80' : '#ff0000',
-                // Altitude grows with attack volume (max 0.4)
-                alt: Math.min(0.4, 0.01 + (it.count - 1) * 0.05)
-            }));
+            const points = Object.values(counts).map(it => {
+                const geo = it.data.geolocation;
+                const key = `${geo.latitude},${geo.longitude}`;
+                
+                let p = pointCache.get(key);
+                if (!p) {
+                    p = {
+                        lat: geo.latitude,
+                        lng: geo.longitude,
+                        ip: it.ip,
+                        city: geo.city,
+                        country: geo.country,
+                        countryCode: geo.country,
+                        type: it.type,
+                        color: it.type === 'whitelist' ? '#4ade80' : '#ff0000'
+                    };
+                    pointCache.set(key, p);
+                }
+                
+                // Update dynamic properties on the cached object
+                p.reason = it.data.reason;
+                p.alt = Math.min(0.4, 0.01 + (it.count - 1) * 0.05);
+                p.count = it.count;
+                
+                return p;
+            });
 
             worldGlobe.pointsData(points)
                 .pointAltitude('alt');
