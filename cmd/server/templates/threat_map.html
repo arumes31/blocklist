@@ -623,6 +623,7 @@
         let historicalItems = [];
         let countryHits = {};
         let ringsData = [];
+        let activeArcs = [];
         let currentStyle = 'standard';
 
         // --- Utility Functions ---
@@ -937,15 +938,20 @@
             worldGlobe.pointsData(points);
 
             if (showArcs) {
-                const arcs = historicalItems
-                    .filter(it => it.type === 'block' && it.data.geolocation)
-                    .map(it => ({
-                        startLat: it.data.geolocation.latitude,
-                        startLng: it.data.geolocation.longitude,
-                        endLat: SERVER_LOC.lat,
-                        endLng: SERVER_LOC.lng
-                    }));
-                worldGlobe.arcsData(arcs);
+                if (isLive) {
+                    worldGlobe.arcsData(activeArcs);
+                } else {
+                    const arcs = historicalItems
+                        .filter(it => it.type === 'block' && it.data.geolocation)
+                        .slice(0, 50) // Limit historical arcs to prevent clutter
+                        .map(it => ({
+                            startLat: it.data.geolocation.latitude,
+                            startLng: it.data.geolocation.longitude,
+                            endLat: SERVER_LOC.lat,
+                            endLng: SERVER_LOC.lng
+                        }));
+                    worldGlobe.arcsData(arcs);
+                }
             } else {
                 worldGlobe.arcsData([]);
             }
@@ -968,6 +974,25 @@
                 ringsData = ringsData.filter(r => r !== ping);
                 worldGlobe.ringsData(ringsData);
             }, 2000);
+        }
+
+        function addArc(startLat, startLng) {
+            const arc = {
+                startLat,
+                startLng,
+                endLat: SERVER_LOC.lat,
+                endLng: SERVER_LOC.lng
+            };
+            activeArcs.push(arc);
+            if (isLive && document.getElementById('toggleArcs').checked) {
+                worldGlobe.arcsData([...activeArcs]);
+            }
+            setTimeout(() => {
+                activeArcs = activeArcs.filter(a => a !== arc);
+                if (isLive && document.getElementById('toggleArcs').checked) {
+                    worldGlobe.arcsData([...activeArcs]);
+                }
+            }, 4000); // Display for 4 seconds
         }
 
         // --- Data & API ---
@@ -1144,6 +1169,7 @@
                             const geo = it.data.geolocation;
                             triggerPulse();
                             addPing(geo.latitude, geo.longitude);
+                            addArc(geo.latitude, geo.longitude);
                         }
                     }
                 } catch (e) {
