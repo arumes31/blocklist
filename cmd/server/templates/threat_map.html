@@ -721,16 +721,16 @@
                         </div>
                     `;
                 })
-                .arcStartLat('startLat')
-                .arcStartLng('startLng')
-                .arcEndLat('endLat')
-                .arcEndLng('endLng')
-                .arcColor('color')
-                .arcDashLength(0.5)
-                .arcDashGap(0.1)
-                .arcDashAnimateTime(1200)
-                .arcStroke(2.0)
+                .arcStartLat(d => d.startLat)
+                .arcStartLng(d => d.startLng)
+                .arcEndLat(d => d.endLat)
+                .arcEndLng(d => d.endLng)
+                .arcColor(() => '#ff0000')
+                .arcStroke(3.0)
                 .arcAltitude(0.4)
+                .arcDashLength(0)
+                .arcDashGap(0)
+                .arcDashAnimateTime(0)
                 .arcsTransitionDuration(0)
                 .ringColor(() => t => `rgba(255,0,0,${1 - t})`)
                 .ringMaxRadius(6)
@@ -1100,25 +1100,24 @@
             }
 
             if (showArcs) {
-                if (isLive) {
-                    worldGlobe.arcsData([...activeArcs]);
-                } else {
-                    const arcs = historicalItems
-                        .filter(it => it.type === 'block' && it.data && it.data.geolocation)
-                        .slice(0, 100)
-                        .map(it => {
-                            const geo = it.data.geolocation;
-                            return {
-                                startLat: geo.latitude || geo.lat,
-                                startLng: geo.longitude || geo.lng,
-                                endLat: SERVER_LOC.lat,
-                                endLng: SERVER_LOC.lng,
-                                color: '#ff0000'
-                            };
-                        })
-                        .filter(a => a.startLat !== undefined);
-                    worldGlobe.arcsData(arcs);
-                }
+                const data = isLive ? [...activeArcs] : historicalItems
+                    .filter(it => it.type === 'block' && it.data && it.data.geolocation)
+                    .slice(0, 100)
+                    .map(it => {
+                        const geo = it.data.geolocation;
+                        return {
+                            startLat: geo.latitude || geo.lat,
+                            startLng: geo.longitude || geo.lng,
+                            endLat: SERVER_LOC.lat,
+                            endLng: SERVER_LOC.lng
+                        };
+                    });
+                
+                worldGlobe.arcsData(data);
+                
+                // Debug status
+                document.getElementById('globe-status-text').innerText = 
+                    `Monitoring: ${points.length} nodes | Arcs: ${data.length}`;
             } else {
                 worldGlobe.arcsData([]);
             }
