@@ -540,9 +540,13 @@
                             <span>Trust Assets (Whitelist)</span>
                             <input type="checkbox" id="toggleWhitelist" checked onchange="updateGlobeLayers()">
                         </label>
-                        <label class="toggle-switch">
+                        <label class="toggle-switch" style="margin-bottom: 8px;">
                             <span>Auto-Rotation</span>
                             <input type="checkbox" id="toggleRotation" checked onchange="updateGlobeLayers()">
+                        </label>
+                        <label class="toggle-switch">
+                            <span>Performance Mode</span>
+                            <input type="checkbox" id="togglePerformance" checked onchange="updateGlobeLayers()">
                         </label>
                     </div>
                 </div>
@@ -645,10 +649,10 @@
                 (mapContainer)
                 .globeImageUrl('/js/earth-night.jpg')
                 .bumpImageUrl('/js/earth-topology.png')
-                .backgroundImageUrl('/js/night-sky.png')
+                .backgroundImageUrl(null)
                 .backgroundColor('#000000')
-                .showAtmosphere(true)
-                .atmosphereColor('#ff0000')
+                .showAtmosphere(false)
+                .atmosphereColor('#000000')
                 .atmosphereAltitude(0.15)
                 .pointAltitude(0.01)
                 .pointColor('color')
@@ -880,9 +884,10 @@
             worldGlobe.polygonSideColor(() => 'rgba(0, 0, 0, 0)');
 
             if (style === 'matrix') {
+                const isPerf = document.getElementById('togglePerformance').checked;
                 worldGlobe.hexPolygonsData(worldGlobe.polygonsData());
-                worldGlobe.hexPolygonResolution(3);
-                worldGlobe.hexPolygonMargin(0.3);
+                worldGlobe.hexPolygonResolution(isPerf ? 2 : 3);
+                worldGlobe.hexPolygonMargin(isPerf ? 0.1 : 0.3);
                 worldGlobe.hexPolygonColor(() => `rgba(255, 0, 0, ${0.4 + Math.random() * 0.4})`);
                 worldGlobe.polygonCapColor(() => 'rgba(0,0,0,0)');
             } else if (style === 'heatmap') {
@@ -912,8 +917,20 @@
         function updateGlobeLayers() {
             if (!worldGlobe) return;
             const showRotation = document.getElementById('toggleRotation').checked;
+            const isPerf = document.getElementById('togglePerformance').checked;
+
             worldGlobe.controls().autoRotate = showRotation;
+            worldGlobe.showAtmosphere(!isPerf);
+            worldGlobe.backgroundImageUrl(isPerf ? null : '/js/night-sky.png');
+            
+            if (isPerf) {
+                worldGlobe.atmosphereColor('#000000');
+            } else {
+                worldGlobe.atmosphereColor('#ff0000');
+            }
+
             renderPoints();
+            if (currentStyle === 'matrix') setGlobeStyle('matrix');
         }
 
         function renderPoints() {
