@@ -932,7 +932,7 @@
                     country: it.data.geolocation.country,
                     reason: it.data.reason,
                     type: it.type,
-                    color: it.type === 'whitelist' ? '#00ffcc' : '#ff0000'
+                    color: it.type === 'whitelist' ? '#4ade80' : '#ff0000'
                 }));
 
             worldGlobe.pointsData(points);
@@ -998,19 +998,38 @@
         // --- Data & API ---
         async function fetchLatestData() {
             try {
-                const res = await fetch('/api/v1/ips?limit=500');
-                if (!res.ok) return;
-                const payload = await res.json();
+                const [ipsRes, whiteRes] = await Promise.all([
+                    fetch('/api/v1/ips?limit=500'),
+                    fetch('/api/v1/whitelists')
+                ]);
+
+                if (!ipsRes.ok) return;
+                const ipsPayload = await ipsRes.json();
                 
-                historicalItems = (payload.items || []).map(it => ({ ...it, type: 'block' }));
+                let items = (ipsPayload.items || []).map(it => ({ ...it, type: 'block' }));
+
+                if (whiteRes.ok) {
+                    const whitePayload = await whiteRes.json();
+                    const whiteItems = (whitePayload || []).map(it => ({
+                        ...it,
+                        type: 'whitelist',
+                        ip: it.ip,
+                        data: it.data
+                    }));
+                    items = [...items, ...whiteItems];
+                }
+
+                historicalItems = items;
                 
                 // Track hits
                 countryHits = {};
                 historicalItems.forEach(it => {
-                    const geo = it.data ? it.data.geolocation : null;
-                    if (geo && geo.country) {
-                        const code = geo.country.length === 2 ? (isoAlpha2To3[geo.country] || geo.country) : geo.country;
-                        countryHits[code] = (countryHits[code] || 0) + 1;
+                    if (it.type === 'block') {
+                        const geo = it.data ? it.data.geolocation : null;
+                        if (geo && geo.country) {
+                            const code = geo.country.length === 2 ? (isoAlpha2To3[geo.country] || geo.country) : geo.country;
+                            countryHits[code] = (countryHits[code] || 0) + 1;
+                        }
                     }
                 });
 
@@ -1018,7 +1037,7 @@
                 updateTicker();
                 initChart(Object.entries(countryHits).map(([k,v]) => ({ country: k, count: v })).sort((a,b) => b.count - a.count).slice(0, 10));
                 
-                if (payload.stats) updateStats(payload.stats);
+                if (ipsPayload.stats) updateStats(ipsPayload.stats);
             } catch (e) { console.error("Fetch failed", e); }
         }
 
@@ -1118,7 +1137,7 @@
                 msg.className = 'msg';
                 
                 const typeSpan = document.createElement('span');
-                typeSpan.style.color = it.type === 'whitelist' ? '#00ffcc' : '#ff0000';
+                typeSpan.style.color = it.type === 'whitelist' ? '#4ade80' : '#ff0000';
                 typeSpan.style.fontWeight = '800';
                 typeSpan.textContent = it.type.toUpperCase();
                 
