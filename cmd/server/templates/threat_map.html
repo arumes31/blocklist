@@ -1094,18 +1094,26 @@
 
             if (showArcs) {
                 if (isLive) {
-                    worldGlobe.arcsData(activeArcs);
+                    worldGlobe.arcsData([...activeArcs])
+                        .arcStartLat('startLat')
+                        .arcStartLng('startLng')
+                        .arcEndLat('endLat')
+                        .arcEndLng('endLng');
                 } else {
                     const arcs = historicalItems
                         .filter(it => it.type === 'block' && it.data.geolocation)
-                        .slice(0, 50) // Limit historical arcs to prevent clutter
+                        .slice(0, 50)
                         .map(it => ({
                             startLat: it.data.geolocation.latitude,
                             startLng: it.data.geolocation.longitude,
                             endLat: SERVER_LOC.lat,
                             endLng: SERVER_LOC.lng
                         }));
-                    worldGlobe.arcsData(arcs);
+                    worldGlobe.arcsData(arcs)
+                        .arcStartLat('startLat')
+                        .arcStartLng('startLng')
+                        .arcEndLat('endLat')
+                        .arcEndLng('endLng');
                 }
             } else {
                 worldGlobe.arcsData([]);
