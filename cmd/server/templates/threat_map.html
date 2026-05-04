@@ -629,6 +629,7 @@
         let ringsData = [];
         let activeArcs = [];
         let currentStyle = 'standard';
+        let updateTimer = null;
 
         // --- Utility Functions ---
         function escapeHTML(str) {
@@ -929,8 +930,19 @@
                 worldGlobe.atmosphereColor('#ff0000');
             }
 
-            renderPoints();
+            throttledUpdate();
             if (currentStyle === 'matrix') setGlobeStyle('matrix');
+        }
+
+        function throttledUpdate() {
+            if (updateTimer) return;
+            updateTimer = setTimeout(() => {
+                if (isLive) {
+                    renderPoints();
+                    updateTicker();
+                }
+                updateTimer = null;
+            }, 250); // 4 FPS max update rate for stability
         }
 
         function renderPoints() {
@@ -953,6 +965,7 @@
                 }));
 
             worldGlobe.pointsData(points);
+            worldGlobe.ringsData([...ringsData]);
 
             if (showArcs) {
                 if (isLive) {
@@ -986,10 +999,10 @@
         function addPing(lat, lng) {
             const ping = { lat, lng };
             ringsData.push(ping);
-            worldGlobe.ringsData(ringsData);
+            throttledUpdate();
             setTimeout(() => {
                 ringsData = ringsData.filter(r => r !== ping);
-                worldGlobe.ringsData(ringsData);
+                throttledUpdate();
             }, 2000);
         }
 
@@ -1001,14 +1014,15 @@
                 endLng: SERVER_LOC.lng
             };
             activeArcs.push(arc);
-            if (isLive && document.getElementById('toggleArcs').checked) {
-                worldGlobe.arcsData([...activeArcs]);
-            }
+            
+            // We update arcs immediately or via throttle? 
+            // Better via throttle if high volume, but arcs are events.
+            // Let's use throttle for all data updates.
+            throttledUpdate();
+
             setTimeout(() => {
                 activeArcs = activeArcs.filter(a => a !== arc);
-                if (isLive && document.getElementById('toggleArcs').checked) {
-                    worldGlobe.arcsData([...activeArcs]);
-                }
+                throttledUpdate();
             }, 4000); // Display for 4 seconds
         }
 
@@ -1197,8 +1211,7 @@
                         if (historicalItems.length > 500) historicalItems.pop();
                         
                         if (isLive) {
-                            renderPoints();
-                            updateTicker();
+                            throttledUpdate();
                         }
                         
                         if (type === 'block' && it.data.geolocation) {
