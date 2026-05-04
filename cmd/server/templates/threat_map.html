@@ -13,7 +13,6 @@
     <script src="/js/htmx.min.js"></script>
     <script src="/js/json-enc.js"></script>
     <script src="/js/chart.js"></script>
-    <script src="/js/three.min.js"></script>
     <script src="/js/globe.gl.min.js"></script>
     <script src="/js/topojson-client.min.js"></script>
 
@@ -685,7 +684,12 @@
         async function initGlobe() {
             const mapContainer = document.getElementById('threat-map');
             worldGlobe = Globe()
-                (mapContainer)
+                (mapContainer);
+
+            // Access bundled THREE instance to avoid duplication
+            const THREE = worldGlobe.THREE || window.THREE;
+
+            worldGlobe
                 .globeImageUrl('/js/earth-night.jpg')
                 .bumpImageUrl('/js/earth-topology.png')
                 .backgroundImageUrl(null)
