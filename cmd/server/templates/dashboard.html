@@ -1403,10 +1403,11 @@
             const ts = data && data.timestamp ? escapeHTML(data.timestamp) : '';
             const expires = data && data.expires_at ? escapeHTML(data.expires_at) : 'Never';
             const expiresHTML = expires === 'Never' ? 'Never' : `<span class="utc-timestamp">${expires}</span>`;
+            const escapedCountry = data && data.geolocation && data.geolocation.country ? escapeHTML(data.geolocation.country) : '';
             return `<tr id="row-${escapedIp.toLowerCase().replace(/\./g, '-').replace(/:/g, '-')}">
-            <td><input type="checkbox" class="ip-checkbox" value="${escapedIp}" onclick="updateBulkUI()"></td>
+            <td><input type="checkbox" class="ip-checkbox" value="${escapedIp}" data-ip="${escapedIp}"></td>
                             <td class="col-ip">
-                                <a href="#" onclick="event.preventDefault(); showIPDetails('${escapedIp}')" style="color: var(--vibrant-red); text-decoration: none; border-bottom: 1px dashed rgba(255,0,0,0.3);">${escapedIp}</a>
+                                <a href="#" class="ip-details-link" data-ip="${escapedIp}" data-country="${escapedCountry}" data-timestamp="${ts}" style="color: var(--vibrant-red); text-decoration: none; border-bottom: 1px dashed rgba(255,0,0,0.3);">${escapedIp}</a>
                             </td>
             <td class="col-ts"><span class="utc-timestamp">${ts}</span></td>
             <td class="col-exp">${expiresHTML}</td>
@@ -1459,7 +1460,19 @@
             document.getElementById('blockReason').value = r;
         }
 
-        async function showIPDetails(ip) {
+        async function showIPDetails(eventOrIp) {
+            let ip = '';
+            if (eventOrIp && typeof eventOrIp === 'object') {
+                if (eventOrIp.target) {
+                    const target = eventOrIp.target.closest('[data-ip]');
+                    if (target) ip = target.dataset.ip;
+                } else if (eventOrIp.dataset) {
+                    ip = eventOrIp.dataset.ip;
+                }
+            } else if (typeof eventOrIp === 'string') {
+                ip = eventOrIp;
+            }
+            if (!ip) return;
             const panel = document.getElementById('sidePanel');
             const content = document.getElementById('sidePanelContent');
             panel.classList.add('active');
@@ -1704,27 +1717,41 @@
 
                 if (Array.isArray(s.top_countries)) {
                     const wrap = document.getElementById('stat-countries');
-                    wrap.innerHTML = s.top_countries.slice(0, 3).map(c => `
-                    <span title="${c.country}" style="display:inline-flex; align-items:center; gap:6px;">
-                        <span class="flag-icon flag-icon-${(c.country || '').toLowerCase()}"></span><span style="color:#fff; font-weight:600;">${c.count || 0}</span>
-                    </span>
-                `).join('');
+                    wrap.innerHTML = s.top_countries.slice(0, 3).map(c => {
+                        const escapedCountry = escapeHTML(c.country || '');
+                        const escapedClass = escapeHTML((c.country || '').toLowerCase());
+                        const escapedCount = escapeHTML(c.count || 0);
+                        return `
+                        <span title="${escapedCountry}" style="display:inline-flex; align-items:center; gap:6px;">
+                            <span class="flag-icon flag-icon-${escapedClass}"></span><span style="color:#fff; font-weight:600;">${escapedCount}</span>
+                        </span>
+                        `;
+                    }).join('');
                 }
                 if (Array.isArray(s.top_asns)) {
                     const wrap = document.getElementById('stat-asns');
-                    wrap.innerHTML = s.top_asns.slice(0, 3).map(a => `
-                    <div style="font-size:0.85rem; color:#fff; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${a.asn_org || ''}">
-                        <span style="color:var(--secondary-color);">${a.asn}:</span> ${a.count}
-                    </div>
-                `).join('');
+                    wrap.innerHTML = s.top_asns.slice(0, 3).map(a => {
+                        const escapedAsnOrg = escapeHTML(a.asn_org || '');
+                        const escapedAsn = escapeHTML(a.asn || '');
+                        const escapedCount = escapeHTML(a.count || 0);
+                        return `
+                        <div style="font-size:0.85rem; color:#fff; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapedAsnOrg}">
+                            <span style="color:var(--secondary-color);">${escapedAsn}:</span> ${escapedCount}
+                        </div>
+                        `;
+                    }).join('');
                 }
                 if (Array.isArray(s.top_reasons)) {
                     const wrap = document.getElementById('stat-reasons');
-                    wrap.innerHTML = s.top_reasons.slice(0, 3).map(r => `
-                    <div style="font-size:0.85rem; color:#fff; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${r.reason}">
-                        <span style="color:var(--secondary-color);">${r.reason}:</span> ${r.count}
-                    </div>
-                `).join('');
+                    wrap.innerHTML = s.top_reasons.slice(0, 3).map(r => {
+                        const escapedReason = escapeHTML(r.reason || '');
+                        const escapedCount = escapeHTML(r.count || 0);
+                        return `
+                        <div style="font-size:0.85rem; color:#fff; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapedReason}">
+                            <span style="color:var(--secondary-color);">${escapedReason}:</span> ${escapedCount}
+                        </div>
+                        `;
+                    }).join('');
                 }
             } catch (err) {
                 console.error("refreshStats error:", err);
@@ -2093,6 +2120,20 @@
         }
 
         // Wire controls
+        document.getElementById('ipTable')?.addEventListener('click', function (event) {
+            const link = event.target.closest('.ip-details-link');
+            if (link) {
+                event.preventDefault();
+                showIPDetails(event);
+                return;
+            }
+
+            const checkbox = event.target.closest('.ip-checkbox');
+            if (checkbox) {
+                updateBulkUI();
+            }
+        });
+
         document.getElementById('togglePause').addEventListener('click', function () {
             paused = !paused;
             const btn = this;

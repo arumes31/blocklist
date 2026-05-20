@@ -133,4 +133,4 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace github.com/docker/docker => github.com/docker/docker v28.5.2+incompatible
+replace github.com/docker/docker => github.com/docker/docker v27.5.1+incompatible
