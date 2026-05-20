@@ -316,11 +316,7 @@ func (s *IPService) ListIPsPaginated(ctx context.Context, limit int, cursor stri
 	if zerr == nil && len(zs) > 0 {
 		// total via GetTotalCount
 		tot := s.GetTotalCount(ctx)
-		allocSize := limit
-		if allocSize < 0 || allocSize > MaxPageSize {
-			allocSize = MaxPageSize
-		}
-		items := make([]map[string]interface{}, 0, allocSize)
+		items := make([]map[string]interface{}, 0, min(limit, MaxPageSize))
 
 		var currentCursor string
 		for {
@@ -768,11 +764,7 @@ func (s *IPService) ListIPsPaginatedAdvanced(ctx context.Context, limit int, cur
 	zs, next, zerr := s.redisRepo.ZPageByScoreDesc(fetchLimit, cursor)
 	if zerr == nil && len(zs) > 0 {
 		tot := s.GetTotalCount(ctx)
-		allocSize := limit
-		if allocSize < 0 || allocSize > MaxPageSize {
-			allocSize = MaxPageSize
-		}
-		items := make([]map[string]interface{}, 0, allocSize)
+		items := make([]map[string]interface{}, 0, min(limit, MaxPageSize))
 		q := strings.ToLower(strings.TrimSpace(query))
 		countryList := []string{}
 		if country != "" {
