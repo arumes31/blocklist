@@ -1355,6 +1355,22 @@
         const PAGE_SIZE = 500;
         let items = [];
 
+        // Helper to escape HTML characters to prevent XSS
+        function escapeHTML(str) {
+            if (str === null || str === undefined) return '';
+            if (typeof str !== 'string') str = String(str);
+            return str.replace(/[&<>"']/g, function (m) {
+                switch (m) {
+                    case '&': return '&amp;';
+                    case '<': return '&lt;';
+                    case '>': return '&gt;';
+                    case '"': return '&quot;';
+                    case "'": return '&#039;';
+                    default: return m;
+                }
+            });
+        }
+
         // UI Event Listeners
         document.getElementById('closePanelBtn')?.addEventListener('click', closeSidePanel);
 
@@ -1374,22 +1390,23 @@
         const tbody = document.getElementById('ipTableBody');
 
         function rowHTML(ip, data) {
-            const geo = data && data.geolocation && data.geolocation.country ? `<span class="flag-icon flag-icon-${data.geolocation.country.toLowerCase()}"></span> ${data.geolocation.city || ''} (${data.geolocation.country})` : '<span style="color: #888;">N/A</span>';
-            const reason = data && data.reason ? data.reason : 'N/A';
+            const escapedIp = escapeHTML(ip);
+            const geo = data && data.geolocation && data.geolocation.country ? `<span class="flag-icon flag-icon-${escapeHTML(data.geolocation.country.toLowerCase())}"></span> ${escapeHTML(data.geolocation.city || '')} (${escapeHTML(data.geolocation.country)})` : '<span style="color: #888;">N/A</span>';
+            const reason = data && data.reason ? escapeHTML(data.reason) : 'N/A';
             const score = data && data.threat_score ? data.threat_score : 0;
             let scoreColor = '#888';
             if (score >= 75) scoreColor = '#ff0000';
             else if (score >= 50) scoreColor = '#ff8c00';
             else if (score >= 25) scoreColor = '#ffd700';
 
-            const addedBy = data && data.added_by ? data.added_by : 'Unknown';
-            const ts = data && data.timestamp ? data.timestamp : '';
-            const expires = data && data.expires_at ? data.expires_at : 'Never';
+            const addedBy = data && data.added_by ? escapeHTML(data.added_by) : 'Unknown';
+            const ts = data && data.timestamp ? escapeHTML(data.timestamp) : '';
+            const expires = data && data.expires_at ? escapeHTML(data.expires_at) : 'Never';
             const expiresHTML = expires === 'Never' ? 'Never' : `<span class="utc-timestamp">${expires}</span>`;
-            return `<tr id="row-${ip.toLowerCase().replace(/\./g, '-').replace(/:/g, '-')}">
-            <td><input type="checkbox" class="ip-checkbox" value="${ip}" onclick="updateBulkUI()"></td>
+            return `<tr id="row-${escapedIp.toLowerCase().replace(/\./g, '-').replace(/:/g, '-')}">
+            <td><input type="checkbox" class="ip-checkbox" value="${escapedIp}" onclick="updateBulkUI()"></td>
                             <td class="col-ip">
-                                <a href="#" onclick="event.preventDefault(); showIPDetails('${ip}')" style="color: var(--vibrant-red); text-decoration: none; border-bottom: 1px dashed rgba(255,0,0,0.3);">${ip}</a>
+                                <a href="#" onclick="event.preventDefault(); showIPDetails('${escapedIp}')" style="color: var(--vibrant-red); text-decoration: none; border-bottom: 1px dashed rgba(255,0,0,0.3);">${escapedIp}</a>
                             </td>
             <td class="col-ts"><span class="utc-timestamp">${ts}</span></td>
             <td class="col-exp">${expiresHTML}</td>
@@ -1399,7 +1416,7 @@
             <td class="col-geo">${geo}</td>
             <td>
                 <button class="btn btn-success" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;"
-                        hx-post="/unblock" hx-ext="json-enc" hx-vals='{"ip": "${ip}"}'
+                        hx-post="/unblock" hx-ext="json-enc" hx-vals='{"ip": "${escapedIp}"}'
                         hx-swap="none" title="Unblock this IP">Unblock</button>
             </td>
         </tr>`;
@@ -1455,9 +1472,9 @@
                 const history = Array.isArray(data.history) ? data.history : [];
                 let historyHTML = history.map(h => `
                 <div class="history-item">
-                    <div class="ts">${new Date(h.timestamp).toLocaleString()}</div>
-                    <div class="actor">Action: <span style="color:var(--vibrant-red)">${h.action || 'Unknown'}</span> by ${h.actor || 'System'}</div>
-                    <div style="font-size:0.8rem; color:#ccc;">${h.reason || 'No reason provided'}</div>
+                    <div class="ts">${escapeHTML(new Date(h.timestamp).toLocaleString())}</div>
+                    <div class="actor">Action: <span style="color:var(--vibrant-red)">${escapeHTML(h.action || 'Unknown')}</span> by ${escapeHTML(h.actor || 'System')}</div>
+                    <div style="font-size:0.8rem; color:#ccc;">${escapeHTML(h.reason || 'No reason provided')}</div>
                 </div>
             `).join('');
 
@@ -1467,26 +1484,26 @@
                 let geo = '';
                 if (current && current.geolocation) {
                     const g = current.geolocation;
-                    const countryClass = g.country ? g.country.toLowerCase() : 'unknown';
+                    const countryClass = g.country ? escapeHTML(g.country.toLowerCase()) : 'unknown';
                     geo = `
                     <div style="margin-top:1rem; padding:1rem; background:rgba(255,255,255,0.05); border-radius:8px;">
                         <div style="font-weight:bold; margin-bottom:5px;">Geolocation</div>
-                        <div class="flag-icon flag-icon-${countryClass}"></div> ${g.city || 'Unknown City'} (${g.country || 'Unknown'})
-                        <div style="font-size:0.8rem; color:var(--secondary-color); margin-top:5px;">ASN: ${g.asn || 'N/A'} - ${g.asn_org || 'N/A'}</div>
+                        <div class="flag-icon flag-icon-${countryClass}"></div> ${escapeHTML(g.city || 'Unknown City')} (${escapeHTML(g.country || 'Unknown')})
+                        <div style="font-size:0.8rem; color:var(--secondary-color); margin-top:5px;">ASN: ${escapeHTML(g.asn || 'N/A')} - ${escapeHTML(g.asn_org || 'N/A')}</div>
                     </div>
                 `;
                 }
 
                 content.innerHTML = `
-                <div style="font-size: 1.2rem; font-family: monospace; color: var(--vibrant-red); margin-bottom: 1.5rem;">${ip}</div>
+                <div style="font-size: 1.2rem; font-family: monospace; color: var(--vibrant-red); margin-bottom: 1.5rem;">${escapeHTML(ip)}</div>
                 <div style="margin-bottom: 2rem;">
                     <h4 style="margin-bottom:10px; color:var(--secondary-color); text-transform:uppercase; font-size:0.8rem;">Current Status</h4>
                     ${current ? `
                         <div class="status-chip live" style="display:inline-block">BLOCKED</div>
                         <div style="margin-top:10px; font-size:0.9rem;">
-                            <div>Reason: ${current.reason}</div>
-                            <div>Added By: ${current.added_by}</div>
-                            <div>Expires: ${current.expires_at || 'Never'}</div>
+                            <div>Reason: ${escapeHTML(current.reason)}</div>
+                            <div>Added By: ${escapeHTML(current.added_by)}</div>
+                            <div>Expires: ${escapeHTML(current.expires_at || 'Never')}</div>
                         </div>
                         ${geo}
                     ` : '<div class="status-chip offline" style="display:inline-block">NOT BLOCKED</div>'}
@@ -1926,7 +1943,7 @@
                             chip.style.alignItems = 'center';
                             chip.style.gap = '5px';
                             chip.style.cursor = 'default';
-                            chip.innerHTML = `<span>Country: ${c}</span> <span style="cursor:pointer; font-weight:bold;" onclick="removeCountry('${c}')">×</span>`;
+                            chip.innerHTML = `<span>Country: ${escapeHTML(c)}</span> <span style="cursor:pointer; font-weight:bold;" onclick="removeCountry('${escapeHTML(c)}')">×</span>`;
                             container.appendChild(chip);
                         });
                     } else {
@@ -1941,7 +1958,7 @@
                         if (key === 'from') label = 'From: ' + new Date(val).toLocaleDateString();
                         if (key === 'to') label = 'To: ' + new Date(val).toLocaleDateString();
 
-                        chip.innerHTML = `<span>${key}: ${label}</span> <span style="cursor:pointer; font-weight:bold;" onclick="removeFilter('${key}')">×</span>`;
+                        chip.innerHTML = `<span>${escapeHTML(key)}: ${escapeHTML(label)}</span> <span style="cursor:pointer; font-weight:bold;" onclick="removeFilter('${escapeHTML(key)}')">×</span>`;
                         container.appendChild(chip);
                     }
                 }
@@ -2008,7 +2025,9 @@
             const container = document.getElementById('toast-container');
             const toast = document.createElement('div');
             toast.className = `toast ${type}`;
-            toast.innerHTML = `<span>${message}</span>`;
+            const span = document.createElement('span');
+            span.textContent = message;
+            toast.appendChild(span);
             container.appendChild(toast);
             setTimeout(() => {
                 toast.style.opacity = '0';

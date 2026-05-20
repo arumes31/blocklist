@@ -45,7 +45,7 @@ graph LR
 - **Local Map Solution**: Integrated world GeoJSON for offline mapping without external tile provider dependencies.
 - **Reliable Webhooks**: Persistent **Task Queue** for outbound notifications with automatic retries and exponential backoff.
 - **Bulk Operations**: Multi-select interface for batch unblocking and management.
-- **Security Hardening**: Session invalidation on permission changes and mandatory 2FA setup.
+- **Security Hardening**: DOM-based XSS mitigation with robust HTML escaping, safe toast notifications using textContent, restricted slice memory allocation size validation, session invalidation on permission changes, and mandatory 2FA setup.
 - **Continuous Analysis**: Integrated **CodeQL** and **Gosec** for automated vulnerability detection and static analysis.
 - **Interactive API Docs**: Embedded **API Reference** via RapiDoc/Scalar at `/docs`.
 - **GeoIP Enrichment**: Automated ASN, Country, and City detection for all entries.
