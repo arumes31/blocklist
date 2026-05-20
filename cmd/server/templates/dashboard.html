@@ -1970,7 +1970,7 @@
                             chip.style.alignItems = 'center';
                             chip.style.gap = '5px';
                             chip.style.cursor = 'default';
-                            chip.innerHTML = `<span>Country: ${escapeHTML(c)}</span> <span style="cursor:pointer; font-weight:bold;" onclick="removeCountry('${escapeHTML(c)}')">×</span>`;
+                            chip.innerHTML = `<span>Country: ${escapeHTML(c)}</span> <span class="remove-country-chip" data-country="${escapeHTML(c)}" style="cursor:pointer; font-weight:bold;">×</span>`;
                             container.appendChild(chip);
                         });
                     } else {
@@ -1985,7 +1985,7 @@
                         if (key === 'from') label = 'From: ' + new Date(val).toLocaleDateString();
                         if (key === 'to') label = 'To: ' + new Date(val).toLocaleDateString();
 
-                        chip.innerHTML = `<span>${escapeHTML(key)}: ${escapeHTML(label)}</span> <span style="cursor:pointer; font-weight:bold;" onclick="removeFilter('${escapeHTML(key)}')">×</span>`;
+                        chip.innerHTML = `<span>${escapeHTML(key)}: ${escapeHTML(label)}</span> <span class="remove-filter-chip" data-filter-key="${escapeHTML(key)}" style="cursor:pointer; font-weight:bold;">×</span>`;
                         container.appendChild(chip);
                     }
                 }
@@ -2147,6 +2147,19 @@
                 setStatus('paused');
                 btn.textContent = 'Resume';
                 btn.classList.add('btn-danger');
+            }
+        });
+
+        document.getElementById('filter-chips')?.addEventListener('click', function (event) {
+            const countryChip = event.target.closest('.remove-country-chip');
+            if (countryChip) {
+                removeCountry(countryChip.dataset.country);
+                return;
+            }
+
+            const filterChip = event.target.closest('.remove-filter-chip');
+            if (filterChip) {
+                removeFilter(filterChip.dataset.filterKey);
             }
         });
 
