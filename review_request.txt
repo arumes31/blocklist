@@ -1,0 +1,7 @@
+I have implemented a fix for the Incomplete Cross-Site WebSocket Hijacking Protection.
+Key changes:
+1. Added 'trustedProxies' and 'upgrader' fields to 'APIHandler'.
+2. Moved 'CheckOrigin' logic into the 'upgrader' field within 'NewAPIHandler'.
+3. Updated 'CheckOrigin' to only trust 'X-Forwarded-Proto' if the request comes from a trusted proxy (configured via 'TRUSTED_PROXIES' or using default private ranges).
+4. Updated the 'WS' handler to use the handler's 'upgrader'.
+5. Updated 'websocket_security_test.go' to cover the new logic, including spoofing attempts.

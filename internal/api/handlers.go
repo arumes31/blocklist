@@ -5,7 +5,9 @@ import (
 	"blocklist/internal/metrics"
 	"blocklist/internal/models"
 	"blocklist/internal/service"
+	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"strconv"
 	"strings"
@@ -28,12 +30,33 @@ type APIHandler struct {
 	webhookService *service.WebhookService
 	mainLimiter    gin.HandlerFunc
 	loginLimiter   gin.HandlerFunc
+	trustedProxies []netip.Prefix
+	upgrader       websocket.Upgrader
 	webhookLimiter gin.HandlerFunc
 }
 
 // NewAPIHandler creates a new instance of APIHandler with the necessary dependencies.
 func NewAPIHandler(cfg *config.Config, r RedisRepositoryProvider, pg PostgresRepositoryProvider, auth AuthServiceProvider, ip IPServiceProvider, hub *Hub, wh *service.WebhookService) *APIHandler {
-	return &APIHandler{
+	trusted := []string{"127.0.0.1/32", "172.16.0.0/12", "100.64.0.0/10", "10.0.0.0/8", "192.168.0.0/16"}
+	if cfg.TrustedProxies != "" {
+		p := strings.Split(cfg.TrustedProxies, ",")
+		for i := range p {
+			val := strings.TrimSpace(p[i])
+			if !strings.Contains(val, "/") {
+				val += "/32"
+			}
+			trusted = append(trusted, val)
+		}
+	}
+
+	var prefixes []netip.Prefix
+	for _, s := range trusted {
+		if p, err := netip.ParsePrefix(s); err == nil {
+			prefixes = append(prefixes, p)
+		}
+	}
+
+	h := &APIHandler{
 		cfg:            cfg,
 		redisRepo:      r,
 		pgRepo:         pg,
@@ -41,8 +64,47 @@ func NewAPIHandler(cfg *config.Config, r RedisRepositoryProvider, pg PostgresRep
 		ipService:      ip,
 		hub:            hub,
 		webhookService: wh,
-		mainLimiter:    nil, // Initialized in SetLimiters
+		mainLimiter:    nil,
+		trustedProxies: prefixes,
 	}
+
+	h.upgrader = websocket.Upgrader{
+		ReadBufferSize:    1024,
+		WriteBufferSize:   1024,
+		EnableCompression: true,
+		CheckOrigin: func(r *http.Request) bool {
+			origin := r.Header.Get("Origin")
+			if origin == "" {
+				return true
+			}
+			u, err := url.Parse(origin)
+			if err != nil {
+				return false
+			}
+
+			requestScheme := "http"
+			isTrusted := false
+			remoteIPStr, _, _ := net.SplitHostPort(r.RemoteAddr)
+			if remoteIPStr == "" {
+				remoteIPStr = r.RemoteAddr
+			}
+			if remoteIP, err := netip.ParseAddr(remoteIPStr); err == nil {
+				for _, p := range h.trustedProxies {
+					if p.Contains(remoteIP) {
+						isTrusted = true
+						break
+					}
+				}
+			}
+
+			if r.TLS != nil || (isTrusted && r.Header.Get("X-Forwarded-Proto") == "https") {
+				requestScheme = "https"
+			}
+			return u.Scheme == requestScheme && strings.EqualFold(u.Host, r.Host)
+		},
+	}
+
+	return h
 }
 
 func (h *APIHandler) SetLimiters(main, login, webhook gin.HandlerFunc) {
@@ -62,32 +124,6 @@ func (h *APIHandler) renderHTML(c *gin.Context, status int, name string, data gi
 	c.HTML(status, name, data)
 }
 
-var upgrader = websocket.Upgrader{
-	ReadBufferSize:    1024,
-	WriteBufferSize:   1024,
-	EnableCompression: true,
-	CheckOrigin: func(r *http.Request) bool {
-		// Protect against Cross-Site WebSocket Hijacking (CSWSH)
-		// by verifying that the Origin header matches the Host header.
-		origin := r.Header.Get("Origin")
-		if origin == "" {
-			return true
-		}
-		u, err := url.Parse(origin)
-		if err != nil {
-			return false
-		}
-		// Derive the request's effective scheme.
-		requestScheme := "http"
-		if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
-			requestScheme = "https"
-		}
-		// The Origin header scheme (e.g. "http", "https") should match the request's.
-		// Use case-insensitive comparison for the host portion.
-		return u.Scheme == requestScheme && strings.EqualFold(u.Host, r.Host)
-	},
-}
-
 func (h *APIHandler) WS(c *gin.Context) {
 	// Require authenticated session
 	session := sessions.Default(c)
@@ -95,7 +131,7 @@ func (h *APIHandler) WS(c *gin.Context) {
 		c.AbortWithStatus(http.StatusUnauthorized)
 		return
 	}
-	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
+	conn, err := h.upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		zlog.Error().Err(err).
 			Str("host", c.Request.Host).

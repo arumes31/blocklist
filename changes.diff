@@ -1,0 +1,336 @@
+diff --git a/internal/api/handlers.go b/internal/api/handlers.go
+index 01b7e66..3c1b991 100644
+--- a/internal/api/handlers.go
++++ b/internal/api/handlers.go
+@@ -5,7 +5,9 @@ import (
+	"blocklist/internal/metrics"
+	"blocklist/internal/models"
+	"blocklist/internal/service"
++	"net"
+	"net/http"
++	"net/netip"
+	"net/url"
+	"strconv"
+	"strings"
+@@ -28,12 +30,33 @@ type APIHandler struct {
+	webhookService *service.WebhookService
+	mainLimiter    gin.HandlerFunc
+	loginLimiter   gin.HandlerFunc
++	trustedProxies []netip.Prefix
++	upgrader       websocket.Upgrader
+	webhookLimiter gin.HandlerFunc
+ }
+
+ // NewAPIHandler creates a new instance of APIHandler with the necessary dependencies.
+ func NewAPIHandler(cfg *config.Config, r RedisRepositoryProvider, pg PostgresRepositoryProvider, auth AuthServiceProvider, ip IPServiceProvider, hub *Hub, wh *service.WebhookService) *APIHandler {
+-	return &APIHandler{
++	trusted := []string{"127.0.0.1/32", "172.16.0.0/12", "100.64.0.0/10", "10.0.0.0/8", "192.168.0.0/16"}
++	if cfg.TrustedProxies != "" {
++		p := strings.Split(cfg.TrustedProxies, ",")
++		for i := range p {
++			val := strings.TrimSpace(p[i])
++			if !strings.Contains(val, "/") {
++				val += "/32"
++			}
++			trusted = append(trusted, val)
++		}
++	}
++
++	var prefixes []netip.Prefix
++	for _, s := range trusted {
++		if p, err := netip.ParsePrefix(s); err == nil {
++			prefixes = append(prefixes, p)
++		}
++	}
++
++	h := &APIHandler{
+		cfg:            cfg,
+		redisRepo:      r,
+		pgRepo:         pg,
+@@ -41,8 +64,47 @@ func NewAPIHandler(cfg *config.Config, r RedisRepositoryProvider, pg PostgresRep
+		ipService:      ip,
+		hub:            hub,
+		webhookService: wh,
+-		mainLimiter:    nil, // Initialized in SetLimiters
++		mainLimiter:    nil,
++		trustedProxies: prefixes,
+	}
++
++	h.upgrader = websocket.Upgrader{
++		ReadBufferSize:    1024,
++		WriteBufferSize:   1024,
++		EnableCompression: true,
++		CheckOrigin: func(r *http.Request) bool {
++			origin := r.Header.Get("Origin")
++			if origin == "" {
++				return true
++			}
++			u, err := url.Parse(origin)
++			if err != nil {
++				return false
++			}
++
++			requestScheme := "http"
++			isTrusted := false
++			remoteIPStr, _, _ := net.SplitHostPort(r.RemoteAddr)
++			if remoteIPStr == "" {
++				remoteIPStr = r.RemoteAddr
++			}
++			if remoteIP, err := netip.ParseAddr(remoteIPStr); err == nil {
++				for _, p := range h.trustedProxies {
++					if p.Contains(remoteIP) {
++						isTrusted = true
++						break
++					}
++				}
++			}
++
++			if r.TLS != nil || (isTrusted && r.Header.Get("X-Forwarded-Proto") == "https") {
++				requestScheme = "https"
++			}
++			return u.Scheme == requestScheme && strings.EqualFold(u.Host, r.Host)
++		},
++	}
++
++	return h
+ }
+
+ func (h *APIHandler) SetLimiters(main, login, webhook gin.HandlerFunc) {
+@@ -62,32 +124,6 @@ func (h *APIHandler) renderHTML(c *gin.Context, status int, name string, data gi
+	c.HTML(status, name, data)
+ }
+
+-var upgrader = websocket.Upgrader{
+-	ReadBufferSize:    1024,
+-	WriteBufferSize:   1024,
+-	EnableCompression: true,
+-	CheckOrigin: func(r *http.Request) bool {
+-		// Protect against Cross-Site WebSocket Hijacking (CSWSH)
+-		// by verifying that the Origin header matches the Host header.
+-		origin := r.Header.Get("Origin")
+-		if origin == "" {
+-			return true
+-		}
+-		u, err := url.Parse(origin)
+-		if err != nil {
+-			return false
+-		}
+-		// Derive the request's effective scheme.
+-		requestScheme := "http"
+-		if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
+-			requestScheme = "https"
+-		}
+-		// The Origin header scheme (e.g. "http", "https") should match the request's.
+-		// Use case-insensitive comparison for the host portion.
+-		return u.Scheme == requestScheme && strings.EqualFold(u.Host, r.Host)
+-	},
+-}
+-
+ func (h *APIHandler) WS(c *gin.Context) {
+	// Require authenticated session
+	session := sessions.Default(c)
+@@ -95,7 +131,7 @@ func (h *APIHandler) WS(c *gin.Context) {
+		c.AbortWithStatus(http.StatusUnauthorized)
+		return
+	}
+-	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
++	conn, err := h.upgrader.Upgrade(c.Writer, c.Request, nil)
+	if err != nil {
+		zlog.Error().Err(err).
+			Str("host", c.Request.Host).
+diff --git a/internal/api/websocket_security_test.go b/internal/api/websocket_security_test.go
+index 816bd74..7420684 100644
+--- a/internal/api/websocket_security_test.go
++++ b/internal/api/websocket_security_test.go
+@@ -1,6 +1,7 @@
+ package api
+
+ import (
++	"blocklist/internal/config"
+	"crypto/tls"
+	"net/http"
+	"testing"
+@@ -9,76 +10,116 @@ import (
+ )
+
+ func TestWebSocket_CheckOrigin(t *testing.T) {
++	cfg := &config.Config{
++		TrustedProxies: "1.1.1.1,2.2.2.0/24",
++	}
++	h := NewAPIHandler(cfg, nil, nil, nil, nil, nil, nil)
++
+	tests := []struct {
+-		name          string
+-		origin        string
+-		host          string
+-		tls           bool
++		name         string
++		origin       string
++		host         string
++		remoteAddr   string
++		tls          bool
+		forwardProto string
+-		expected      bool
++		expected     bool
+	}{
+		{
+-			name:     "Matching Origin and Host (HTTP)",
+-			origin:   "http://localhost:5000",
+-			host:     "localhost:5000",
+-			expected: true,
++			name:       "Matching Origin and Host (HTTP)",
++			origin:     "http://localhost:5000",
++			host:       "localhost:5000",
++			remoteAddr: "127.0.0.1:1234",
++			expected:   true,
++		},
++		{
++			name:       "Mismatching Origin",
++			origin:     "http://evil.com",
++			host:       "localhost:5000",
++			remoteAddr: "127.0.0.1:1234",
++			expected:   false,
+		},
+		{
+-			name:     "Mismatching Origin",
+-			origin:   "http://evil.com",
+-			host:     "localhost:5000",
+-			expected: false,
++			name:       "No Origin Header",
++			origin:     "",
++			host:       "localhost:5000",
++			remoteAddr: "127.0.0.1:1234",
++			expected:   true,
+		},
+		{
+-			name:     "No Origin Header",
+-			origin:   "",
+-			host:     "localhost:5000",
+-			expected: true,
++			name:       "Mismatching port",
++			origin:     "http://localhost:8080",
++			host:       "localhost:5000",
++			remoteAddr: "127.0.0.1:1234",
++			expected:   false,
+		},
+		{
+-			name:     "Mismatching port",
+-			origin:   "http://localhost:8080",
+-			host:     "localhost:5000",
+-			expected: false,
++			name:       "Malformed Origin",
++			origin:     "://invalid",
++			host:       "localhost:5000",
++			remoteAddr: "127.0.0.1:1234",
++			expected:   false,
+		},
+		{
+-			name:     "Malformed Origin",
+-			origin:   "://invalid",
+-			host:     "localhost:5000",
+-			expected: false,
++			name:       "Case-insensitive host match",
++			origin:     "http://LocalHost:5000",
++			host:       "localhost:5000",
++			remoteAddr: "127.0.0.1:1234",
++			expected:   true,
+		},
+		{
+-			name:     "Case-insensitive host match",
+-			origin:   "http://LocalHost:5000",
+-			host:     "localhost:5000",
+-			expected: true,
++			name:       "Matching Origin and Host (HTTPS via TLS)",
++			origin:     "https://localhost:5000",
++			host:       "localhost:5000",
++			remoteAddr: "127.0.0.1:1234",
++			tls:        true,
++			expected:   true,
+		},
+		{
+-			name:     "Matching Origin and Host (HTTPS via TLS)",
+-			origin:   "https://localhost:5000",
+-			host:     "localhost:5000",
+-			tls:      true,
+-			expected: true,
++			name:         "Matching Origin and Host (HTTPS via Forwarded-Proto from Trusted IP)",
++			origin:       "https://localhost:5000",
++			host:         "localhost:5000",
++			remoteAddr:   "1.1.1.1:1234",
++			forwardProto: "https",
++			expected:     true,
++		},
++		{
++			name:         "Matching Origin and Host (HTTPS via Forwarded-Proto from Default Trusted Local IP)",
++			origin:       "https://localhost:5000",
++			host:         "localhost:5000",
++			remoteAddr:   "127.0.0.1:1234",
++			forwardProto: "https",
++			expected:     true,
++		},
++		{
++			name:         "Spoofed Forwarded-Proto from Untrusted IP",
++			origin:       "https://localhost:5000",
++			host:         "localhost:5000",
++			remoteAddr:   "8.8.8.8:1234",
++			forwardProto: "https",
++			expected:     false,
+		},
+		{
+-			name:          "Matching Origin and Host (HTTPS via Forwarded-Proto)",
+-			origin:        "https://localhost:5000",
+-			host:          "localhost:5000",
++			name:         "HTTPS via Forwarded-Proto from Trusted Subnet",
++			origin:       "https://localhost:5000",
++			host:         "localhost:5000",
++			remoteAddr:   "2.2.2.50:1234",
+			forwardProto: "https",
+-			expected:      true,
++			expected:     true,
+		},
+		{
+-			name:     "Scheme Mismatch (Origin HTTP, Request HTTPS)",
+-			origin:   "http://localhost:5000",
+-			host:     "localhost:5000",
+-			tls:      true,
+-			expected: false,
++			name:       "Scheme Mismatch (Origin HTTP, Request HTTPS)",
++			origin:     "http://localhost:5000",
++			host:       "localhost:5000",
++			remoteAddr: "127.0.0.1:1234",
++			tls:        true,
++			expected:   false,
+		},
+		{
+-			name:     "Scheme Mismatch (Origin HTTPS, Request HTTP)",
+-			origin:   "https://localhost:5000",
+-			host:     "localhost:5000",
+-			expected: false,
++			name:       "Scheme Mismatch (Origin HTTPS, Request HTTP)",
++			origin:     "https://localhost:5000",
++			host:       "localhost:5000",
++			remoteAddr: "127.0.0.1:1234",
++			expected:   false,
+		},
+	}
+
+@@ -86,6 +127,7 @@ func TestWebSocket_CheckOrigin(t *testing.T) {
+		t.Run(tt.name, func(t *testing.T) {
+			req, _ := http.NewRequest("GET", "/ws", nil)
+			req.Host = tt.host
++			req.RemoteAddr = tt.remoteAddr
+			if tt.origin != "" {
+				req.Header.Set("Origin", tt.origin)
+			}
+@@ -96,9 +138,8 @@ func TestWebSocket_CheckOrigin(t *testing.T) {
+				req.Header.Set("X-Forwarded-Proto", tt.forwardProto)
+			}
+
+-			// We access the global upgrader variable from handlers.go
+-			result := upgrader.CheckOrigin(req)
+-			assert.Equal(t, tt.expected, result, "CheckOrigin result for origin %s and host %s (tls: %v, proto: %s)", tt.origin, tt.host, tt.tls, tt.forwardProto)
++			result := h.upgrader.CheckOrigin(req)
++			assert.Equal(t, tt.expected, result, "CheckOrigin result for origin %s and host %s (tls: %v, proto: %s, remote: %s)", tt.origin, tt.host, tt.tls, tt.forwardProto, tt.remoteAddr)
+		})
+	}
+ }
