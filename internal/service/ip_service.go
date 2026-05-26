@@ -2,7 +2,7 @@ package service
 
 import (
 	"context"
-	"encoding/json"
+	"github.com/bytedance/sonic"
 	"fmt"
 	"net"
 	"net/netip"
@@ -383,8 +383,13 @@ func (s *IPService) ListIPsPaginated(ctx context.Context, limit int, cursor stri
 	}
 	list := make([]pair, 0, total)
 	for ip, raw := range all {
+		if q != "" {
+			if !strings.Contains(strings.ToLower(ip), q) && !strings.Contains(strings.ToLower(raw), q) {
+				continue
+			}
+		}
 		var e models.IPEntry
-		if err := json.Unmarshal([]byte(raw), &e); err != nil {
+		if err := sonic.UnmarshalString(raw, &e); err != nil {
 			continue
 		}
 		if q != "" {
@@ -914,8 +919,13 @@ func (s *IPService) exportFallback(ctx context.Context, query string, country st
 	}
 
 	for ip, raw := range all {
+		if q != "" {
+			if !strings.Contains(strings.ToLower(ip), q) && !strings.Contains(strings.ToLower(raw), q) {
+				continue
+			}
+		}
 		var entry models.IPEntry
-		if err := json.Unmarshal([]byte(raw), &entry); err != nil {
+		if err := sonic.UnmarshalString(raw, &entry); err != nil {
 			continue
 		}
 
