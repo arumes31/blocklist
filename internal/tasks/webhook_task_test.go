@@ -63,8 +63,6 @@ func TestWebhookTaskHandler_ProcessTask_InvalidPayload(t *testing.T) {
 
 func TestWebhookTaskHandler_ProcessTask_Success(t *testing.T) {
 	repo := new(mockWebhookRepository)
-	handler := NewWebhookTaskHandlerWithClient(repo, &http.Client{})
-
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "POST", r.Method)
 		assert.Equal(t, "ip.blocked", r.Header.Get("X-Blocklist-Event"))
@@ -74,10 +72,12 @@ func TestWebhookTaskHandler_ProcessTask_Success(t *testing.T) {
 	}))
 	defer server.Close()
 
+	handler := NewWebhookTaskHandlerWithClient(repo, newTestClient(server))
+
 	webhooks := []models.OutboundWebhook{
 		{
 			ID:     123,
-			URL:    server.URL,
+			URL:    "http://example.com/webhook",
 			Active: true,
 		},
 	}
@@ -113,17 +113,17 @@ func TestWebhookTaskHandler_ProcessTask_DeletedWebhook(t *testing.T) {
 
 func TestWebhookTaskHandler_ProcessTask_HTTPError(t *testing.T) {
 	repo := new(mockWebhookRepository)
-	handler := NewWebhookTaskHandlerWithClient(repo, &http.Client{})
-
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer server.Close()
 
+	handler := NewWebhookTaskHandlerWithClient(repo, newTestClient(server))
+
 	webhooks := []models.OutboundWebhook{
 		{
 			ID:     123,
-			URL:    server.URL,
+			URL:    "http://example.com/webhook",
 			Active: true,
 		},
 	}
@@ -144,9 +144,7 @@ func TestWebhookTaskHandler_ProcessTask_HTTPError(t *testing.T) {
 
 func TestWebhookTaskHandler_ProcessTask_WithSecret(t *testing.T) {
 	repo := new(mockWebhookRepository)
-	handler := NewWebhookTaskHandlerWithClient(repo, &http.Client{})
 	secret := "test-secret"
-
 	data := []byte(`{"ip":"1.2.3.4"}`)
 	mac := hmac.New(sha256.New, []byte(secret))
 	mac.Write(data)
@@ -158,10 +156,12 @@ func TestWebhookTaskHandler_ProcessTask_WithSecret(t *testing.T) {
 	}))
 	defer server.Close()
 
+	handler := NewWebhookTaskHandlerWithClient(repo, newTestClient(server))
+
 	webhooks := []models.OutboundWebhook{
 		{
 			ID:     123,
-			URL:    server.URL,
+			URL:    "http://example.com/webhook",
 			Secret: secret,
 			Active: true,
 		},
@@ -202,4 +202,29 @@ func TestWebhookTaskHandler_NewHandler(t *testing.T) {
 	handler := NewWebhookTaskHandler(nil)
 	assert.NotNil(t, handler)
 	assert.NotNil(t, handler.client)
+}
+
+func TestWebhookTaskHandler_ProcessTask_SSRFBlocked(t *testing.T) {
+	repo := new(mockWebhookRepository)
+	handler := NewWebhookTaskHandlerWithClient(repo, &http.Client{})
+
+	webhooks := []models.OutboundWebhook{
+		{
+			ID:     123,
+			URL:    "http://127.0.0.1/sensitive",
+			Active: true,
+		},
+	}
+
+	repo.On("GetActiveWebhooks").Return(webhooks, nil)
+	repo.On("LogWebhookDelivery", mock.Anything).Return(nil).Maybe()
+
+	data := []byte(`{"ip":"1.2.3.4"}`)
+	task, err := NewWebhookDeliveryTask(123, "ip.blocked", data)
+	require.NoError(t, err)
+
+	err = handler.ProcessTask(context.Background(), task)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unsafe webhook URL")
+	assert.ErrorIs(t, err, asynq.SkipRetry)
 }
