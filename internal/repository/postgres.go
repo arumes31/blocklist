@@ -406,7 +406,7 @@ func (p *PostgresRepository) BulkCreatePersistentBlocks(ips []string, entries []
 	if err != nil {
 		return err
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	return conn.Raw(func(driverConn interface{}) error {
 		stdConn, ok := driverConn.(*stdlib.Conn)
@@ -419,7 +419,7 @@ func (p *PostgresRepository) BulkCreatePersistentBlocks(ips []string, entries []
 		if err != nil {
 			return err
 		}
-		defer tx.Rollback(context.Background())
+		defer func() { _ = tx.Rollback(context.Background()) }()
 
 		batch := &pgx.Batch{}
 		query := "INSERT INTO persistent_blocks (ip, timestamp, reason, added_by, geo_json) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (ip) DO UPDATE SET timestamp = $2, reason = $3, added_by = $4, geo_json = $5"
@@ -436,7 +436,7 @@ func (p *PostgresRepository) BulkCreatePersistentBlocks(ips []string, entries []
 		for i := 0; i < len(ips); i++ {
 			_, err := br.Exec()
 			if err != nil {
-				br.Close()
+				_ = br.Close()
 				return err
 			}
 		}
@@ -469,7 +469,7 @@ func (p *PostgresRepository) BulkLogAction(actor, action string, ips []string, r
 	if err != nil {
 		return err
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	return conn.Raw(func(driverConn interface{}) error {
 		stdConn, ok := driverConn.(*stdlib.Conn)
@@ -482,7 +482,7 @@ func (p *PostgresRepository) BulkLogAction(actor, action string, ips []string, r
 		if err != nil {
 			return err
 		}
-		defer tx.Rollback(context.Background())
+		defer func() { _ = tx.Rollback(context.Background()) }()
 
 		batch := &pgx.Batch{}
 		for _, ip := range ips {
@@ -506,7 +506,7 @@ func (p *PostgresRepository) BulkLogAction(actor, action string, ips []string, r
 		for i := 0; i < batch.Len(); i++ {
 			_, err := br.Exec()
 			if err != nil {
-				br.Close()
+				_ = br.Close()
 				return err
 			}
 		}
