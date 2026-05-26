@@ -57,6 +57,7 @@ func (p *PostgresRepository) GetAdmin(username string) (*models.AdminAccount, er
 func (p *PostgresRepository) EnsurePartitions(retentionMonths int) error {
 	// 1. Create partitions for current month and next 2 months
 	now := time.Now().UTC()
+	allowedTables := map[string]bool{"audit_logs": true, "webhook_logs": true}
 	for i := 0; i <= 2; i++ {
 		target := now.AddDate(0, i, 0)
 		year := target.Year()
@@ -71,8 +72,12 @@ func (p *PostgresRepository) EnsurePartitions(retentionMonths int) error {
 
 		tables := []string{"audit_logs", "webhook_logs"}
 		for _, table := range tables {
+			if !allowedTables[table] {
+				continue
+			}
 			fullName := fmt.Sprintf("%s_%s", table, partitionName)
-			query := fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s PARTITION OF %s FOR VALUES FROM ('%s') TO ('%s')",
+			// Use double quotes for identifiers to prevent potential injection
+			query := fmt.Sprintf("CREATE TABLE IF NOT EXISTS \"%s\" PARTITION OF \"%s\" FOR VALUES FROM ('%s') TO ('%s')",
 				fullName, table, start.Format("2006-01-01"), end.Format("2006-01-01"))
 			_, err := p.db.Exec(query)
 			if err != nil {
@@ -94,10 +99,14 @@ func (p *PostgresRepository) EnsurePartitions(retentionMonths int) error {
 
 			tables := []string{"audit_logs", "webhook_logs"}
 			for _, table := range tables {
+				if !allowedTables[table] {
+					continue
+				}
 				fullName := fmt.Sprintf("%s_%s", table, partitionName)
 				// Check if partition exists before trying to drop (optional but cleaner)
 				// For Postgres, we can just use DROP TABLE IF EXISTS
-				query := fmt.Sprintf("DROP TABLE IF EXISTS %s", fullName)
+				// Use double quotes for identifiers
+				query := fmt.Sprintf("DROP TABLE IF EXISTS \"%s\"", fullName)
 				_, err := p.db.Exec(query)
 				if err != nil {
 					// Log error but continue
