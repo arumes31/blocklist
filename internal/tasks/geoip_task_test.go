@@ -1,10 +1,15 @@
 package tasks
 
 import (
+	"archive/tar"
+	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"blocklist/internal/config"
@@ -37,6 +42,9 @@ func (m *mockIPService) ReloadReaders() {
 }
 
 func TestGeoIPTaskHandler_ProcessTask_Success(t *testing.T) {
+	tempDir := t.TempDir()
+	mockTarGz := createMockTarGz(t, "GeoLite2-City_20230101/GeoLite2-City.mmdb", "fake-mmdb-content")
+
 	// Create a mock HTTP server that returns a valid tar.gz
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Check basic auth
@@ -46,12 +54,8 @@ func TestGeoIPTaskHandler_ProcessTask_Success(t *testing.T) {
 			return
 		}
 
-		// Return a minimal valid tar.gz with a .mmdb file
-		// For simplicity, we'll just return an error in this test
-		// A full implementation would create a proper tar.gz
 		w.WriteHeader(http.StatusOK)
-		// Write minimal tar.gz content (this is a simplified mock)
-		_, _ = w.Write([]byte("mock-tar-gz-content"))
+		_, _ = w.Write(mockTarGz)
 	}))
 	defer server.Close()
 
@@ -62,15 +66,27 @@ func TestGeoIPTaskHandler_ProcessTask_Success(t *testing.T) {
 
 	mockIP := &mockIPService{}
 	handler := NewGeoIPTaskHandler(cfg, mockIP)
+	handler.downloadURL = server.URL + "/%s"
+	handler.dbPathFunc = func(edition string) string {
+		return filepath.Join(tempDir, edition+".mmdb")
+	}
 
 	task, err := NewGeoIPUpdateTask("GeoLite2-City")
 	require.NoError(t, err)
 
-	// Note: This will fail because we're not returning a valid tar.gz
-	// In a real test, you'd use a proper mock or test fixture
 	err = handler.ProcessTask(context.Background(), task)
-	// We expect an error because our mock doesn't return valid tar.gz
-	assert.Error(t, err)
+	assert.NoError(t, err)
+
+	assert.True(t, mockIP.reloadCalled)
+
+	// Verify file was created
+	dbPath := handler.getDBPath("GeoLite2-City")
+	_, err = os.Stat(dbPath)
+	assert.NoError(t, err)
+
+	content, err := os.ReadFile(dbPath)
+	assert.NoError(t, err)
+	assert.Equal(t, "fake-mmdb-content", string(content))
 }
 
 func TestGeoIPTaskHandler_ProcessTask_InvalidPayload(t *testing.T) {
@@ -131,9 +147,53 @@ func TestGeoIPTaskHandler_Download_HTTPError(t *testing.T) {
 }
 
 func TestGeoIPTaskHandler_Download_ValidResponse(t *testing.T) {
-	t.Skip("Skipping - requires refactoring Download method to accept custom HTTP client")
+	tempDir := t.TempDir()
+	mockTarGz := createMockTarGz(t, "GeoLite2-City.mmdb", "fake-mmdb-content-2")
 
-	// This test would require refactoring the Download method to inject
-	// a custom HTTP client or URL for testing purposes.
-	// Current implementation hardcodes the MaxMind URL.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(mockTarGz)
+	}))
+	defer server.Close()
+
+	cfg := &config.Config{
+		GeoIPAccountID:  "test-account",
+		GeoIPLicenseKey: "test-key",
+	}
+
+	handler := NewGeoIPTaskHandler(cfg, nil)
+	handler.downloadURL = server.URL + "/%s"
+	handler.dbPathFunc = func(edition string) string {
+		return filepath.Join(tempDir, edition+".mmdb")
+	}
+
+	err := handler.Download("GeoLite2-City")
+	assert.NoError(t, err)
+
+	dbPath := handler.getDBPath("GeoLite2-City")
+	content, err := os.ReadFile(dbPath)
+	assert.NoError(t, err)
+	assert.Equal(t, "fake-mmdb-content-2", string(content))
+}
+
+func createMockTarGz(t *testing.T, filename string, content string) []byte {
+	var buf bytes.Buffer
+	gzw := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gzw)
+
+	header := &tar.Header{
+		Name: filename,
+		Size: int64(len(content)),
+		Mode: 0600,
+	}
+	err := tw.WriteHeader(header)
+	require.NoError(t, err)
+
+	_, err = tw.Write([]byte(content))
+	require.NoError(t, err)
+
+	require.NoError(t, tw.Close())
+	require.NoError(t, gzw.Close())
+
+	return buf.Bytes()
 }

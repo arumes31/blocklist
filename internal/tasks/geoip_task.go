@@ -39,12 +39,18 @@ type IPService interface {
 }
 
 type GeoIPTaskHandler struct {
+	downloadURL string
+	dbPathFunc  func(string) string
 	cfg       *config.Config
 	ipService IPService
 }
 
 func NewGeoIPTaskHandler(cfg *config.Config, ipService IPService) *GeoIPTaskHandler {
-	return &GeoIPTaskHandler{cfg: cfg, ipService: ipService}
+	return &GeoIPTaskHandler{
+		cfg:         cfg,
+		ipService:   ipService,
+		downloadURL: "https://download.maxmind.com/geoip/databases/%s/download?suffix=tar.gz",
+	}
 }
 
 func (h *GeoIPTaskHandler) ProcessTask(ctx context.Context, t *asynq.Task) error {
@@ -71,6 +77,9 @@ func (h *GeoIPTaskHandler) ProcessTask(ctx context.Context, t *asynq.Task) error
 }
 
 func (h *GeoIPTaskHandler) getDBPath(edition string) string {
+	if h.dbPathFunc != nil {
+		return h.dbPathFunc(edition)
+	}
 	filename := edition + ".mmdb"
 	// Prefer env-defined path or standard local path
 	primaryPath := filepath.Join("/home/blocklist/geoip", filename)
@@ -92,7 +101,7 @@ func (h *GeoIPTaskHandler) Download(edition string) error {
 		return fmt.Errorf("MaxMind credentials missing")
 	}
 
-	url := fmt.Sprintf("https://download.maxmind.com/geoip/databases/%s/download?suffix=tar.gz", edition)
+	url := fmt.Sprintf(h.downloadURL, edition)
 	log.Printf("Asynq: Downloading GeoIP %s", edition)
 
 	client := &http.Client{}
