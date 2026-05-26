@@ -1,0 +1,406 @@
+{
+  "components": {
+    "schemas": {
+      "IPEntry": {
+        "properties": {
+          "added_by": {
+            "type": "string"
+          },
+          "geolocation": {
+            "properties": {
+              "city": {
+                "type": "string"
+              },
+              "country": {
+                "type": "string"
+              },
+              "latitude": {
+                "type": "number"
+              },
+              "longitude": {
+                "type": "number"
+              }
+            },
+            "type": "object"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "IPListItem": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/IPEntry"
+          },
+          "ip": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "Stats": {
+        "properties": {
+          "active_blocks": {
+            "description": "Currently active blocks in system",
+            "type": "integer"
+          },
+          "day": {
+            "type": "integer"
+          },
+          "hour": {
+            "type": "integer"
+          },
+          "top_countries": {
+            "items": {
+              "properties": {
+                "count": {
+                  "type": "integer"
+                },
+                "country": {
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "total": {
+            "description": "Persistent total bans ever recorded",
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "BearerAuth": {
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "description": "API for managing and monitoring blocked IP addresses with GeoIP enrichment and real-time updates.",
+    "title": "Blocklist API",
+    "version": "1.0.0"
+  },
+  "openapi": "3.0.1",
+  "paths": {
+    "/api/v1/ips": {
+      "get": {
+        "parameters": [
+          {
+            "description": "Number of records to return",
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 500,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Pagination cursor (timestamp score)",
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Text search across IP, reason, etc.",
+            "in": "query",
+            "name": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter by ISO country code",
+            "in": "query",
+            "name": "country",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter by who added the block",
+            "in": "query",
+            "name": "added_by",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter by start date (ISO8601)",
+            "in": "query",
+            "name": "from",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter by end date (ISO8601)",
+            "in": "query",
+            "name": "to",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "items": {
+                      "items": {
+                        "$ref": "#/components/schemas/IPListItem"
+                      },
+                      "type": "array"
+                    },
+                    "next": {
+                      "type": "string"
+                    },
+                    "total": {
+                      "type": "integer"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "A list of blocked IPs"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "List blocked IPs with advanced filtering",
+        "tags": [
+          "Data Retrieval"
+        ]
+      }
+    },
+    "/api/v1/ips_list": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Simple list of IPs"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Get simple JSON array of all blocked IPs",
+        "tags": [
+          "Data Retrieval"
+        ]
+      }
+    },
+    "/api/v1/raw": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Newline-separated list of IPs"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Get plain-text list of blocked IPs",
+        "tags": [
+          "Data Retrieval"
+        ]
+      }
+    },
+    "/api/v1/stats": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Stats"
+                }
+              }
+            },
+            "description": "Statistics object"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Get aggregate blocking statistics",
+        "tags": [
+          "Monitoring"
+        ]
+      }
+    },
+    "/api/v1/webhook": {
+      "post": {
+        "description": "Unified endpoint for all automated actions. Requires a Bearer Token.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "properties": {
+                      "act": {
+                        "description": "Whitelists the caller's source IP.",
+                        "enum": [
+                          "selfwhitelist"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "act"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "properties": {
+                      "act": {
+                        "description": "Enforcement action",
+                        "enum": [
+                          "ban",
+                          "unban",
+                          "whitelist",
+                          "ban-ip",
+                          "unban-ip"
+                        ],
+                        "type": "string"
+                      },
+                      "ip": {
+                        "description": "IPv4 or IPv6 address. Required for these actions.",
+                        "example": "1.2.3.4",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "act",
+                      "ip"
+                    ],
+                    "type": "object"
+                  }
+                ],
+                "properties": {
+                  "persist": {
+                    "default": false,
+                    "description": "If true, IP is stored in the database indefinitely",
+                    "type": "boolean"
+                  },
+                  "reason": {
+                    "description": "Reason for the action",
+                    "example": "Brute force attack",
+                    "type": "string"
+                  },
+                  "ttl": {
+                    "description": "Time-to-live in seconds (ephemeral blocks only). Defaults to 86400 (24h) for bans if persist is false.",
+                    "example": 86400,
+                    "type": "integer"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Action successfully performed"
+          },
+          "400": {
+            "description": "Invalid IP format or missing parameters"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden - Insufficient permissions"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Perform Enforcement Action (Ban/Unban/Whitelist)",
+        "tags": [
+          "Enforcement"
+        ]
+      }
+    },
+    "/api/v1/whitelists-raw": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Newline-separated list of whitelisted IPs"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Get plain-text list of whitelisted IPs",
+        "tags": [
+          "Data Retrieval"
+        ]
+      }
+    }
+  },
+  "security": [
+    {
+      "BearerAuth": []
+    }
+  ],
+  "servers": [
+    {
+      "url": "/"
+    }
+  ]
+}
