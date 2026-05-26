@@ -16,6 +16,8 @@ import (
 	"blocklist/internal/config"
 	"blocklist/internal/models"
 	"blocklist/internal/repository"
+
+	"github.com/bytedance/sonic"
 	"sync"
 	"sync/atomic"
 
@@ -383,11 +385,20 @@ func (s *IPService) ListIPsPaginated(ctx context.Context, limit int, cursor stri
 	}
 	list := make([]pair, 0, total)
 	for ip, raw := range all {
+		if q != "" {
+			// Efficient pre-filter before unmarshaling: check if q matches IP or raw JSON string
+			if !strings.Contains(strings.ToLower(ip), q) && !strings.Contains(strings.ToLower(raw), q) {
+				continue
+			}
+		}
+
 		var e models.IPEntry
-		if err := json.Unmarshal([]byte(raw), &e); err != nil {
+		if err := sonic.Unmarshal([]byte(raw), &e); err != nil {
 			continue
 		}
+
 		if q != "" {
+			// Double check with proper field-level filtering
 			if !strings.Contains(strings.ToLower(ip), q) &&
 				!strings.Contains(strings.ToLower(e.Reason), q) &&
 				!strings.Contains(strings.ToLower(e.AddedBy), q) &&
