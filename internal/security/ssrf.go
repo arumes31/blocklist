@@ -41,15 +41,7 @@ func IsSafeURL(rawURL string) error {
 	}
 
 	// Try resolving the host
-	ips, err := net.LookupIP(host)
-	if err != nil {
-		// If we can't resolve it now, it might be an internal name or a real failure.
-		// Let the socket control catch it later, but we log or we can fail hard.
-		// Usually we allow unresolved names through here if we have socket level protection,
-		// but let's be strict and require resolvability if possible.
-		// To be safe against offline tests or dynamic DNS, we just verify the string itself
-		// if it's an IP.
-	} else {
+	if ips, err := net.LookupIP(host); err == nil {
 		for _, ip := range ips {
 			if IsInternalIP(ip) {
 				return fmt.Errorf("URL resolves to internal IP: %s", ip.String())
