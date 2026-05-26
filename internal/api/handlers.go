@@ -11,12 +11,16 @@ import (
 	"strings"
 	"time"
 
+	_ "embed"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	zlog "github.com/rs/zerolog/log"
 )
+
+//go:embed openapi.json
+var openapiSpec []byte
 
 type APIHandler struct {
 	cfg            *config.Config
@@ -321,211 +325,5 @@ func (h *APIHandler) Ready(c *gin.Context) {
 
 // Minimal OpenAPI spec
 func (h *APIHandler) OpenAPI(c *gin.Context) {
-	spec := gin.H{
-		"openapi": "3.0.1",
-		"info": gin.H{
-			"title":       "Blocklist API",
-			"description": "API for managing and monitoring blocked IP addresses with GeoIP enrichment and real-time updates.",
-			"version":     "1.0.0",
-		},
-		"servers": []gin.H{
-			{"url": "/"},
-		},
-		"components": gin.H{
-			"securitySchemes": gin.H{
-				"BearerAuth": gin.H{
-					"type":   "http",
-					"scheme": "bearer",
-				},
-			},
-			"schemas": gin.H{
-				"IPEntry": gin.H{
-					"type": "object",
-					"properties": gin.H{
-						"timestamp": gin.H{"type": "string", "format": "date-time"},
-						"reason":    gin.H{"type": "string"},
-						"added_by":  gin.H{"type": "string"},
-						"geolocation": gin.H{
-							"type": "object",
-							"properties": gin.H{
-								"country":   gin.H{"type": "string"},
-								"city":      gin.H{"type": "string"},
-								"latitude":  gin.H{"type": "number"},
-								"longitude": gin.H{"type": "number"},
-							},
-						},
-					},
-				},
-				"IPListItem": gin.H{
-					"type": "object",
-					"properties": gin.H{
-						"ip":   gin.H{"type": "string"},
-						"data": gin.H{"$ref": "#/components/schemas/IPEntry"},
-					},
-				},
-				"Stats": gin.H{
-					"type": "object",
-					"properties": gin.H{
-						"hour":          gin.H{"type": "integer"},
-						"day":           gin.H{"type": "integer"},
-						"total":         gin.H{"type": "integer", "description": "Persistent total bans ever recorded"},
-						"active_blocks": gin.H{"type": "integer", "description": "Currently active blocks in system"},
-						"top_countries": gin.H{
-							"type": "array",
-							"items": gin.H{
-								"type": "object",
-								"properties": gin.H{
-									"country": gin.H{"type": "string"},
-									"count":   gin.H{"type": "integer"},
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-		"security": []gin.H{
-			{"BearerAuth": []string{}},
-		},
-		"paths": gin.H{
-			"/api/v1/ips": gin.H{
-				"get": gin.H{
-					"summary":  "List blocked IPs with advanced filtering",
-					"tags":     []string{"Data Retrieval"},
-					"security": []gin.H{{"BearerAuth": []string{}}},
-					"parameters": []gin.H{
-						{"name": "limit", "in": "query", "description": "Number of records to return", "schema": gin.H{"type": "integer", "default": 500}},
-						{"name": "cursor", "in": "query", "description": "Pagination cursor (timestamp score)", "schema": gin.H{"type": "string"}},
-						{"name": "query", "in": "query", "description": "Text search across IP, reason, etc.", "schema": gin.H{"type": "string"}},
-						{"name": "country", "in": "query", "description": "Filter by ISO country code", "schema": gin.H{"type": "string"}},
-						{"name": "added_by", "in": "query", "description": "Filter by who added the block", "schema": gin.H{"type": "string"}},
-						{"name": "from", "in": "query", "description": "Filter by start date (ISO8601)", "schema": gin.H{"type": "string", "format": "date-time"}},
-						{"name": "to", "in": "query", "description": "Filter by end date (ISO8601)", "schema": gin.H{"type": "string", "format": "date-time"}},
-					},
-					"responses": gin.H{
-						"200": gin.H{
-							"description": "A list of blocked IPs",
-							"content": gin.H{
-								"application/json": gin.H{
-									"schema": gin.H{
-										"type": "object",
-										"properties": gin.H{
-											"items": gin.H{"type": "array", "items": gin.H{"$ref": "#/components/schemas/IPListItem"}},
-											"next":  gin.H{"type": "string"},
-											"total": gin.H{"type": "integer"},
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			"/api/v1/ips_list": gin.H{
-				"get": gin.H{
-					"summary":  "Get simple JSON array of all blocked IPs",
-					"tags":     []string{"Data Retrieval"},
-					"security": []gin.H{{"BearerAuth": []string{}}},
-					"responses": gin.H{
-						"200": gin.H{
-							"description": "Simple list of IPs",
-							"content": gin.H{
-								"application/json": gin.H{
-									"schema": gin.H{"type": "array", "items": gin.H{"type": "string"}},
-								},
-							},
-						},
-					},
-				},
-			},
-			"/api/v1/raw": gin.H{
-				"get": gin.H{
-					"summary":  "Get plain-text list of blocked IPs",
-					"tags":     []string{"Data Retrieval"},
-					"security": []gin.H{{"BearerAuth": []string{}}},
-					"responses": gin.H{
-						"200": gin.H{
-							"description": "Newline-separated list of IPs",
-							"content":     gin.H{"text/plain": gin.H{"schema": gin.H{"type": "string"}}},
-						},
-					},
-				},
-			},
-			"/api/v1/whitelists-raw": gin.H{
-				"get": gin.H{
-					"summary":  "Get plain-text list of whitelisted IPs",
-					"tags":     []string{"Data Retrieval"},
-					"security": []gin.H{{"BearerAuth": []string{}}},
-					"responses": gin.H{
-						"200": gin.H{
-							"description": "Newline-separated list of whitelisted IPs",
-							"content":     gin.H{"text/plain": gin.H{"schema": gin.H{"type": "string"}}},
-						},
-					},
-				},
-			},
-			"/api/v1/stats": gin.H{
-				"get": gin.H{
-					"summary":  "Get aggregate blocking statistics",
-					"tags":     []string{"Monitoring"},
-					"security": []gin.H{{"BearerAuth": []string{}}},
-					"responses": gin.H{
-						"200": gin.H{
-							"description": "Statistics object",
-							"content": gin.H{
-								"application/json": gin.H{"schema": gin.H{"$ref": "#/components/schemas/Stats"}},
-							},
-						},
-					},
-				},
-			},
-			"/api/v1/webhook": gin.H{
-				"post": gin.H{
-					"summary":     "Perform Enforcement Action (Ban/Unban/Whitelist)",
-					"description": "Unified endpoint for all automated actions. Requires a Bearer Token.",
-					"tags":        []string{"Enforcement"},
-					"security":    []gin.H{{"BearerAuth": []string{}}},
-					"requestBody": gin.H{
-						"required": true,
-						"content": gin.H{
-							"application/json": gin.H{
-								"schema": gin.H{
-									"type": "object",
-									"properties": gin.H{
-										"reason":  gin.H{"type": "string", "example": "Brute force attack", "description": "Reason for the action"},
-										"ttl":     gin.H{"type": "integer", "example": 86400, "description": "Time-to-live in seconds (ephemeral blocks only). Defaults to 86400 (24h) for bans if persist is false."},
-										"persist": gin.H{"type": "boolean", "default": false, "description": "If true, IP is stored in the database indefinitely"},
-									},
-									"oneOf": []gin.H{
-										{
-											"type": "object",
-											"properties": gin.H{
-												"act": gin.H{"type": "string", "enum": []string{"selfwhitelist"}, "description": "Whitelists the caller's source IP."},
-											},
-											"required": []string{"act"},
-										},
-										{
-											"type": "object",
-											"properties": gin.H{
-												"act": gin.H{"type": "string", "enum": []string{"ban", "unban", "whitelist", "ban-ip", "unban-ip"}, "description": "Enforcement action"},
-												"ip":  gin.H{"type": "string", "example": "1.2.3.4", "description": "IPv4 or IPv6 address. Required for these actions."},
-											},
-											"required": []string{"act", "ip"},
-										},
-									},
-								},
-							},
-						},
-					},
-					"responses": gin.H{
-						"200": gin.H{"description": "Action successfully performed"},
-						"400": gin.H{"description": "Invalid IP format or missing parameters"},
-						"401": gin.H{"description": "Unauthorized"},
-						"403": gin.H{"description": "Forbidden - Insufficient permissions"},
-					},
-				},
-			},
-		},
-	}
-	c.JSON(http.StatusOK, spec)
+	c.Data(http.StatusOK, "application/json", openapiSpec)
 }
