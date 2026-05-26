@@ -399,29 +399,41 @@ func (p *PostgresRepository) BulkCreatePersistentBlocks(ips []string, entries []
 	if len(ips) != len(entries) {
 		return fmt.Errorf("length mismatch: ips (%d) != entries (%d)", len(ips), len(entries))
 	}
-	tx, err := p.db.Beginx()
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
 
-	stmt, err := tx.Preparex("INSERT INTO persistent_blocks (ip, timestamp, reason, added_by, geo_json) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (ip) DO UPDATE SET timestamp = $2, reason = $3, added_by = $4, geo_json = $5")
-	if err != nil {
-		return err
-	}
-	defer func() { _ = stmt.Close() }()
+	var queryBuilder strings.Builder
+	queryBuilder.Grow(len(ips) * 100)
+	queryBuilder.WriteString("INSERT INTO persistent_blocks (ip, timestamp, reason, added_by, geo_json) VALUES ")
 
+	params := make([]interface{}, 0, len(ips)*5)
 	for i, ip := range ips {
+		if i > 0 {
+			queryBuilder.WriteString(",")
+		}
 		geoJSON, err := json.Marshal(entries[i].Geolocation)
 		if err != nil {
 			return err
 		}
-		_, err = stmt.Exec(ip, entries[i].Timestamp, entries[i].Reason, entries[i].AddedBy, geoJSON)
-		if err != nil {
-			return err
-		}
+
+		pIdx := i*5 + 1
+		queryBuilder.WriteString("($")
+		queryBuilder.WriteString(strconv.Itoa(pIdx))
+		queryBuilder.WriteString(",$")
+		queryBuilder.WriteString(strconv.Itoa(pIdx + 1))
+		queryBuilder.WriteString(",$")
+		queryBuilder.WriteString(strconv.Itoa(pIdx + 2))
+		queryBuilder.WriteString(",$")
+		queryBuilder.WriteString(strconv.Itoa(pIdx + 3))
+		queryBuilder.WriteString(",$")
+		queryBuilder.WriteString(strconv.Itoa(pIdx + 4))
+		queryBuilder.WriteString(")")
+
+		params = append(params, ip, entries[i].Timestamp, entries[i].Reason, entries[i].AddedBy, geoJSON)
 	}
-	return tx.Commit()
+
+	queryBuilder.WriteString(" ON CONFLICT (ip) DO UPDATE SET timestamp = EXCLUDED.timestamp, reason = EXCLUDED.reason, added_by = EXCLUDED.added_by, geo_json = EXCLUDED.geo_json")
+
+	_, err := p.db.Exec(queryBuilder.String(), params...)
+	return err
 }
 
 func (p *PostgresRepository) BulkDeletePersistentBlocks(ips []string) error {
@@ -441,46 +453,68 @@ func (p *PostgresRepository) BulkLogAction(actor, action string, ips []string, r
 	if len(ips) == 0 {
 		return nil
 	}
+
 	tx, err := p.db.Beginx()
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	insertStmt, err := tx.Preparex("INSERT INTO audit_logs (actor, action, target, reason) VALUES ($1, $2, $3, $4)")
+	var queryBuilder strings.Builder
+	queryBuilder.Grow(len(ips) * 60)
+	queryBuilder.WriteString("INSERT INTO audit_logs (actor, action, target, reason) VALUES ")
+
+	params := make([]interface{}, 0, len(ips)*4)
+	for i, ip := range ips {
+		if i > 0 {
+			queryBuilder.WriteString(",")
+		}
+		pIdx := i*4 + 1
+		queryBuilder.WriteString("($")
+		queryBuilder.WriteString(strconv.Itoa(pIdx))
+		queryBuilder.WriteString(",$")
+		queryBuilder.WriteString(strconv.Itoa(pIdx + 1))
+		queryBuilder.WriteString(",$")
+		queryBuilder.WriteString(strconv.Itoa(pIdx + 2))
+		queryBuilder.WriteString(",$")
+		queryBuilder.WriteString(strconv.Itoa(pIdx + 3))
+		queryBuilder.WriteString(")")
+		params = append(params, actor, action, ip, reason)
+	}
+
+	_, err = tx.Exec(queryBuilder.String(), params...)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = insertStmt.Close() }()
 
-	var deleteStmt *sqlx.Stmt
 	if p.auditLogLimitPerIP > 0 {
-		query := `
-			DELETE FROM audit_logs 
-			WHERE target = $1 
-			  AND id <= (
-				  SELECT id FROM audit_logs 
-				  WHERE target = $1 
-				  ORDER BY timestamp DESC, id DESC 
-				  OFFSET $2 LIMIT 1
-			  )`
-		stmt, err := tx.Preparex(query)
-		if err == nil {
-			deleteStmt = stmt
-			defer func() { _ = deleteStmt.Close() }()
-		} else {
-			zlog.Error().Err(err).Msg("failed to prepare audit delete statement")
+		// Unique IPs for more efficient pruning
+		uniqueIPs := make([]string, 0, len(ips))
+		seen := make(map[string]struct{})
+		for _, ip := range ips {
+			if _, ok := seen[ip]; !ok {
+				seen[ip] = struct{}{}
+				uniqueIPs = append(uniqueIPs, ip)
+			}
 		}
-	}
 
-	for _, ip := range ips {
-		_, err = insertStmt.Exec(actor, action, ip, reason)
+		// Prune logs for all affected IPs in a single query using window function
+		pruneQuery := `
+			DELETE FROM audit_logs
+			WHERE target = ANY($1)
+			  AND id IN (
+				  SELECT id FROM (
+					  SELECT id, ROW_NUMBER() OVER (PARTITION BY target ORDER BY timestamp DESC, id DESC) as rn
+					  FROM audit_logs
+					  WHERE target = ANY($1)
+				  ) s
+				  WHERE s.rn > $2
+			  )`
+		_, err = tx.Exec(pruneQuery, uniqueIPs, p.auditLogLimitPerIP)
 		if err != nil {
 			return err
 		}
-		if deleteStmt != nil {
-			_, _ = deleteStmt.Exec(ip, p.auditLogLimitPerIP)
-		}
 	}
+
 	return tx.Commit()
 }
