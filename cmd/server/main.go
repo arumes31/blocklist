@@ -321,7 +321,7 @@ func main() {
 		"split":    strings.Split,
 		"contains": strings.Contains,
 		"safeHTML": func(s string) template.HTML { return template.HTML(s) }, // #nosec G203
-		"safeURL":  func(s string) template.URL { return template.URL(s) },  // #nosec G203
+		"safeURL":  func(s string) template.URL { return template.URL(s) },   // #nosec G203
 		"add":      func(a, b int) int { return a + b },
 		"sub":      func(a, b int) int { return a - b },
 	}
@@ -450,8 +450,18 @@ func main() {
 	})
 
 	// 6. Initialize API Handler
-	handler := api.NewAPIHandler(cfg, a.RedisRepo, a.PgRepo, a.AuthService, a.IPService, hub, a.WebhookService)
-	handler.SetLimiters(mainLimiter, loginLimiter, webhookLimiter)
+	handler := api.NewAPIHandler(api.HandlerOptions{
+		Config:         cfg,
+		RedisRepo:      a.RedisRepo,
+		PgRepo:         a.PgRepo,
+		AuthService:    a.AuthService,
+		IPService:      a.IPService,
+		Hub:            hub,
+		WebhookService: a.WebhookService,
+		MainLimiter:    mainLimiter,
+		LoginLimiter:   loginLimiter,
+		WebhookLimiter: webhookLimiter,
+	})
 	handler.RegisterRoutes(r)
 
 	// 7. Run Server with Graceful Shutdown

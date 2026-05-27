@@ -31,20 +31,34 @@ type APIHandler struct {
 	webhookLimiter gin.HandlerFunc
 }
 
-// NewAPIHandler creates a new instance of APIHandler with the necessary dependencies.
-func NewAPIHandler(cfg *config.Config, r RedisRepositoryProvider, pg PostgresRepositoryProvider, auth AuthServiceProvider, ip IPServiceProvider, hub *Hub, wh *service.WebhookService) *APIHandler {
-	return &APIHandler{
-		cfg:            cfg,
-		redisRepo:      r,
-		pgRepo:         pg,
-		authService:    auth,
-		ipService:      ip,
-		hub:            hub,
-		webhookService: wh,
-		mainLimiter:    nil, // Initialized in SetLimiters
-	}
+type HandlerOptions struct {
+	Config         *config.Config
+	RedisRepo      RedisRepositoryProvider
+	PgRepo         PostgresRepositoryProvider
+	AuthService    AuthServiceProvider
+	IPService      IPServiceProvider
+	Hub            *Hub
+	WebhookService *service.WebhookService
+	MainLimiter    gin.HandlerFunc
+	LoginLimiter   gin.HandlerFunc
+	WebhookLimiter gin.HandlerFunc
 }
 
+// NewAPIHandler creates a new instance of APIHandler with the necessary dependencies.
+func NewAPIHandler(opts HandlerOptions) *APIHandler {
+	return &APIHandler{
+		cfg:            opts.Config,
+		redisRepo:      opts.RedisRepo,
+		pgRepo:         opts.PgRepo,
+		authService:    opts.AuthService,
+		ipService:      opts.IPService,
+		hub:            opts.Hub,
+		webhookService: opts.WebhookService,
+		mainLimiter:    opts.MainLimiter,
+		loginLimiter:   opts.LoginLimiter,
+		webhookLimiter: opts.WebhookLimiter,
+	}
+}
 func (h *APIHandler) SetLimiters(main, login, webhook gin.HandlerFunc) {
 	h.mainLimiter = main
 	h.loginLimiter = login
