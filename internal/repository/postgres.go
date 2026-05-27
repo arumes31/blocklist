@@ -514,3 +514,21 @@ func (p *PostgresRepository) BulkLogAction(actor, action string, ips []string, r
 
 	return err
 }
+
+func (p *PostgresRepository) Close() error {
+	var errs []error
+	if p.db != nil {
+		if err := p.db.Close(); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if p.readDb != nil && p.readDb != p.db {
+		if err := p.readDb.Close(); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if len(errs) > 0 {
+		return fmt.Errorf("errors closing postgres repositories: %v", errs)
+	}
+	return nil
+}

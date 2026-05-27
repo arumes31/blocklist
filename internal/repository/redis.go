@@ -514,3 +514,7 @@ func (r *RedisRepository) GetIPBanCounts(ips []string) (map[string]int64, error)
 	}
 	return counts, nil
 }
+
+func (r *RedisRepository) Close() error {
+	return r.client.Close()
+}

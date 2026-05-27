@@ -13,42 +13,58 @@ type SchedulerService struct {
 	redisRepo *repository.RedisRepository
 	pgRepo    *repository.PostgresRepository
 	cfg       *config.Config
+	stop      chan struct{}
 }
 
 func NewSchedulerService(r *repository.RedisRepository, p *repository.PostgresRepository, cfg *config.Config) *SchedulerService {
-	return &SchedulerService{redisRepo: r, pgRepo: p, cfg: cfg}
+	return &SchedulerService{
+		redisRepo: r,
+		pgRepo:    p,
+		cfg:       cfg,
+		stop:      make(chan struct{}),
+	}
 }
 
 func (s *SchedulerService) Start() {
 	ticker := time.NewTicker(15 * time.Minute)
 	go func() {
-		for range ticker.C {
-			token, acquired, err := s.redisRepo.AcquireLock("lock_cleanup", 10*time.Minute)
-			if err != nil {
-				zlog.Error().Err(err).Msg("Error acquiring cleanup lock")
-				continue
-			}
-			if acquired {
-				s.CleanOldIPs("ips")
-				s.CleanOldIPs("ips_webhook2_whitelist")
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				token, acquired, err := s.redisRepo.AcquireLock("lock_cleanup", 10*time.Minute)
+				if err != nil {
+					zlog.Error().Err(err).Msg("Error acquiring cleanup lock")
+					continue
+				}
+				if acquired {
+					s.CleanOldIPs("ips")
+					s.CleanOldIPs("ips_webhook2_whitelist")
 
-				if s.pgRepo != nil {
-					zlog.Info().Msg("Managing database partitions")
-					retention := 6
-					if s.cfg != nil && s.cfg.LogRetentionMonths > 0 {
-						retention = s.cfg.LogRetentionMonths
+					if s.pgRepo != nil {
+						zlog.Info().Msg("Managing database partitions")
+						retention := 6
+						if s.cfg != nil && s.cfg.LogRetentionMonths > 0 {
+							retention = s.cfg.LogRetentionMonths
+						}
+						if err := s.pgRepo.EnsurePartitions(retention); err != nil {
+							zlog.Error().Err(err).Msg("Error ensuring partitions")
+						}
 					}
-					if err := s.pgRepo.EnsurePartitions(retention); err != nil {
-						zlog.Error().Err(err).Msg("Error ensuring partitions")
+
+					if err := s.redisRepo.ReleaseLock("lock_cleanup", token); err != nil {
+						zlog.Error().Err(err).Str("token", token).Msg("Error releasing cleanup lock")
 					}
 				}
-
-				if err := s.redisRepo.ReleaseLock("lock_cleanup", token); err != nil {
-					zlog.Error().Err(err).Str("token", token).Msg("Error releasing cleanup lock")
-				}
+			case <-s.stop:
+				return
 			}
 		}
 	}()
+}
+
+func (s *SchedulerService) Stop() {
+	close(s.stop)
 }
 
 func (s *SchedulerService) CleanOldIPs(hashKey string) {
