@@ -40,16 +40,10 @@ func IsSafeURL(rawURL string) error {
 		return errors.New("invalid URL host")
 	}
 
-	// Try resolving the host
-	ips, err := net.LookupIP(host)
-	if err != nil {
-		// If we can't resolve it now, it might be an internal name or a real failure.
-		// Let the socket control catch it later, but we log or we can fail hard.
-		// Usually we allow unresolved names through here if we have socket level protection,
-		// but let's be strict and require resolvability if possible.
-		// To be safe against offline tests or dynamic DNS, we just verify the string itself
-		// if it's an IP.
-	} else {
+	// Try resolving the host.
+	// If it fails to resolve, we allow it through here and let downstream socket-level
+	// protection (SafeSocketControl) handle it during the actual dial.
+	if ips, err := net.LookupIP(host); err == nil {
 		for _, ip := range ips {
 			if IsInternalIP(ip) {
 				return fmt.Errorf("URL resolves to internal IP: %s", ip.String())
