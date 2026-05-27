@@ -23,7 +23,7 @@ const (
 )
 
 type GeoIPPayload struct {
-	Edition string `json:"edition"`
+	Edition string
 }
 
 func NewGeoIPUpdateTask(edition string) (*asynq.Task, error) {
@@ -54,9 +54,21 @@ func (h *GeoIPTaskHandler) ProcessTask(ctx context.Context, t *asynq.Task) error
 	}
 
 	// Clean edition string to prevent directory traversal
+	// MaxMind edition IDs are alphanumeric and dashes, e.g., GeoLite2-City
+	if strings.ContainsAny(p.Edition, "/\\") || strings.Contains(p.Edition, "..") {
+		return fmt.Errorf("invalid edition: %s", p.Edition)
+	}
+
 	p.Edition = filepath.Base(filepath.Clean(p.Edition))
 	if p.Edition == "." || p.Edition == "/" {
 		return fmt.Errorf("invalid edition: %s", p.Edition)
+	}
+
+	// Stricter validation: only allow alphanumeric characters and dashes
+	for _, r := range p.Edition {
+		if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-') {
+			return fmt.Errorf("invalid edition format: %s", p.Edition)
+		}
 	}
 
 	if err := h.Download(p.Edition); err != nil {
