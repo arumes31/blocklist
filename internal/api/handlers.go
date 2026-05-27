@@ -5,6 +5,7 @@ import (
 	"blocklist/internal/metrics"
 	"blocklist/internal/models"
 	"blocklist/internal/service"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -528,4 +529,22 @@ func (h *APIHandler) OpenAPI(c *gin.Context) {
 		},
 	}
 	c.JSON(http.StatusOK, spec)
+}
+
+// bindJSON is a helper to bind JSON body and handle errors.
+func (h *APIHandler) bindJSON(c *gin.Context, obj interface{}) bool {
+	if err := c.ShouldBindJSON(obj); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+		return false
+	}
+	return true
+}
+
+// validateIP is a helper to validate IP address and handle errors.
+func (h *APIHandler) validateIP(c *gin.Context, ip string) bool {
+	if net.ParseIP(ip) == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid IP address"})
+		return false
+	}
+	return true
 }

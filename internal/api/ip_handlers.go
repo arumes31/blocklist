@@ -79,16 +79,13 @@ func (h *APIHandler) BlockIP(c *gin.Context) {
 		Reason  string `json:"reason"`
 		TTL     int    `json:"ttl"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+	if !h.bindJSON(c, &req) {
 		return
 	}
-
+	if !h.validateIP(c, req.IP) {
+		return
+	}
 	ip := req.IP
-	if net.ParseIP(ip) == nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid IP address"})
-		return
-	}
 
 	duration := time.Duration(0)
 	if req.TTL > 0 {
@@ -124,16 +121,13 @@ func (h *APIHandler) UnblockIP(c *gin.Context) {
 	var req struct {
 		IP string `json:"ip"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+	if !h.bindJSON(c, &req) {
 		return
 	}
-
+	if !h.validateIP(c, req.IP) {
+		return
+	}
 	ip := req.IP
-	if net.ParseIP(ip) == nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid IP address"})
-		return
-	}
 
 	err := h.ipService.UnblockIP(c.Request.Context(), ip, username.(string))
 	if err != nil {
@@ -157,7 +151,10 @@ func (h *APIHandler) BulkBlock(c *gin.Context) {
 		Persist bool     `json:"persist"`
 		TTL     int      `json:"ttl"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil || len(req.IPs) == 0 {
+	if !h.bindJSON(c, &req) {
+		return
+	}
+	if len(req.IPs) == 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
 		return
 	}
@@ -203,7 +200,10 @@ func (h *APIHandler) BulkUnblock(c *gin.Context) {
 	var req struct {
 		IPs []string `json:"ips"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil || len(req.IPs) == 0 {
+	if !h.bindJSON(c, &req) {
+		return
+	}
+	if len(req.IPs) == 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
 		return
 	}
