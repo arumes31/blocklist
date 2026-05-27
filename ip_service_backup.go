@@ -319,6 +319,7 @@ func (s *IPService) ListIPsPaginated(ctx context.Context, limit int, cursor stri
 		items := make([]map[string]interface{}, 0, limit)
 
 		var currentCursor string
+		var currentCursor string
 		for {
 			ips := make([]string, len(zs))
 			for i, z := range zs {
@@ -348,6 +349,9 @@ func (s *IPService) ListIPsPaginated(ctx context.Context, limit int, cursor stri
 				}
 				items = append(items, map[string]interface{}{"ip": ip, "data": entry})
 			}
+				items = append(items, map[string]interface{}{"ip": ip, "data": entry})
+			}
+
 			currentCursor = next
 			if len(items) >= limit {
 				// We reached the limit, use the specific item's cursor from the last appended z
@@ -794,23 +798,14 @@ func (s *IPService) ListIPsPaginatedAdvanced(ctx context.Context, limit int, cur
 
 		var currentCursor string
 		for {
-			ips := make([]string, len(zs))
-			for i, z := range zs {
-				ips[i] = z.Member.(string)
-			}
-			entries, err := s.redisRepo.GetIPEntries(ips)
-			if err != nil {
-				return nil, "", 0, err
-			}
-
-			for i, z := range zs {
+			for _, z := range zs {
 				if len(items) >= limit {
 					break
 				}
 
 				ip := z.Member.(string)
-				entry := entries[i]
-				if entry == nil {
+				entry, err := s.redisRepo.GetIPEntry(ip)
+				if err != nil || entry == nil {
 					continue
 				}
 
