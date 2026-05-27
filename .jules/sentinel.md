@@ -1,4 +1,7 @@
 ## 2024-05-24 - [Unconstrained Resource Consumption]
 **Vulnerability:** Unconstrained Resource Consumption (CWE-400)
 **Learning:** `io.ReadAll(resp.Body)` without bounds allowed for the application to try and read responses of any size. If a malicious user controlled the endpoint, they could send gigabytes of data causing memory exhaustion.
-**Prevention:** Using `io.LimitReader(resp.Body, max_size)` instead of `resp.Body` restricts the maximum size read, protecting the memory from unbounded allocation from untrusted webhook responses.
+**Prevention:** Using `io.LimitReader(resp.Body, max_size)` instead of `resp.Body` restricts the maximum size read, protecting the memory from unbounded allocation from untrusted webhook responses.## 2025-05-27 - [SQL Injection via Dynamic Identifiers in EnsurePartitions]
+**Vulnerability:** SQL Injection (CWE-89) via dynamic DDL identifiers
+**Learning:** `EnsurePartitions` used `fmt.Sprintf` to insert dynamic variables (`fullName`, `table`) directly into PostgreSQL DDL queries (`CREATE TABLE IF NOT EXISTS %s PARTITION OF %s` and `DROP TABLE IF EXISTS %s`). Even when using strictly generated inputs (like date partitions), not quoting the identifiers poses a risk. Unquoted identifiers might overlap with SQL reserved keywords, and if these inputs ever become user-controlled in the future, it creates a vector for SQL injection.
+**Prevention:** For PostgreSQL DDL statements where identifiers (like table or partition names) cannot be parameterized, use strict whitelisting against allowed names and wrap them in double quotes (e.g., `"%s"`) in the `fmt.Sprintf` format string to prevent SQL injection and ensure robustness.
