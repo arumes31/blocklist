@@ -10,6 +10,21 @@ import (
 	"github.com/hibiken/asynq"
 )
 
+// Interfaces for App dependencies to allow mocking in tests
+type WebhookServiceI interface {
+	Close()
+}
+
+type GeoUpdaterI interface {
+	Start()
+	Close()
+}
+
+type SchedulerI interface {
+	Start()
+	Stop()
+}
+
 type App struct {
 	Config         *config.Config
 	RedisRepo      *repository.RedisRepository
@@ -17,8 +32,8 @@ type App struct {
 	AuthService    *service.AuthService
 	IPService      *service.IPService
 	WebhookService *service.WebhookService
-	GeoUpdater     *service.GeoIPService
-	Scheduler      *service.SchedulerService
+	GeoUpdater     GeoUpdaterI
+	Scheduler      SchedulerI
 	RedisOpts      asynq.RedisClientOpt
 }
 
@@ -62,10 +77,19 @@ func Bootstrap(cfg *config.Config) (*App, error) {
 }
 
 func (a *App) Close() {
+	if a.Scheduler != nil {
+		a.Scheduler.Stop()
+	}
 	if a.WebhookService != nil {
 		a.WebhookService.Close()
 	}
 	if a.GeoUpdater != nil {
 		a.GeoUpdater.Close()
+	}
+	if a.PgRepo != nil {
+		_ = a.PgRepo.Close()
+	}
+	if a.RedisRepo != nil {
+		_ = a.RedisRepo.Close()
 	}
 }

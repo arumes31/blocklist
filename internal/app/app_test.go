@@ -176,3 +176,22 @@ func TestClose_NilServices(t *testing.T) {
 		app.Close()
 	})
 }
+
+func TestApp_Close_Mocked(t *testing.T) {
+	mockGeo := new(MockGeoUpdater)
+	mockSched := new(MockScheduler)
+
+	mockGeo.On("Close").Return()
+	mockSched.On("Stop").Return()
+
+	app := &App{
+		WebhookService: nil, // Real struct is used but we can pass nil for logic check if it wasn't required for NewAPIHandler
+		GeoUpdater:     mockGeo,
+		Scheduler:      mockSched,
+	}
+
+	app.Close()
+
+	mockGeo.AssertExpectations(t)
+	mockSched.AssertExpectations(t)
+}
