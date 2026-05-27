@@ -10,12 +10,12 @@ import (
 
 func TestWebSocket_CheckOrigin(t *testing.T) {
 	tests := []struct {
-		name          string
-		origin        string
-		host          string
-		tls           bool
+		name         string
+		origin       string
+		host         string
+		tls          bool
 		forwardProto string
-		expected      bool
+		expected     bool
 	}{
 		{
 			name:     "Matching Origin and Host (HTTP)",
@@ -61,11 +61,11 @@ func TestWebSocket_CheckOrigin(t *testing.T) {
 			expected: true,
 		},
 		{
-			name:          "Matching Origin and Host (HTTPS via Forwarded-Proto)",
-			origin:        "https://localhost:5000",
-			host:          "localhost:5000",
+			name:         "Matching Origin and Host (HTTPS via Forwarded-Proto)",
+			origin:       "https://localhost:5000",
+			host:         "localhost:5000",
 			forwardProto: "https",
-			expected:      true,
+			expected:     true,
 		},
 		{
 			name:     "Scheme Mismatch (Origin HTTP, Request HTTPS)",
