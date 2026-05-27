@@ -2,6 +2,7 @@ package repository
 
 import (
 	"blocklist/internal/models"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,7 +10,8 @@ import (
 	"strings"
 	"time"
 
-	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/jmoiron/sqlx"
 	zlog "github.com/rs/zerolog/log"
 )
@@ -399,29 +401,53 @@ func (p *PostgresRepository) BulkCreatePersistentBlocks(ips []string, entries []
 	if len(ips) != len(entries) {
 		return fmt.Errorf("length mismatch: ips (%d) != entries (%d)", len(ips), len(entries))
 	}
-	tx, err := p.db.Beginx()
+
+	ctx := context.Background()
+	conn, err := p.db.Conn(ctx)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = tx.Rollback() }()
+	defer func() { _ = conn.Close() }()
 
-	stmt, err := tx.Preparex("INSERT INTO persistent_blocks (ip, timestamp, reason, added_by, geo_json) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (ip) DO UPDATE SET timestamp = $2, reason = $3, added_by = $4, geo_json = $5")
-	if err != nil {
-		return err
-	}
-	defer func() { _ = stmt.Close() }()
+	return conn.Raw(func(driverConn any) error {
+		stdlibConn, ok := driverConn.(*stdlib.Conn)
+		if !ok {
+			return errors.New("failed to cast to stdlib.Conn")
+		}
+		pgxConn := stdlibConn.Conn()
 
-	for i, ip := range ips {
-		geoJSON, err := json.Marshal(entries[i].Geolocation)
+		batch := &pgx.Batch{}
+		query := "INSERT INTO persistent_blocks (ip, timestamp, reason, added_by, geo_json) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (ip) DO UPDATE SET timestamp = $2, reason = $3, added_by = $4, geo_json = $5"
+
+		for i, ip := range ips {
+			geoJSON, err := json.Marshal(entries[i].Geolocation)
+			if err != nil {
+				return err
+			}
+			batch.Queue(query, ip, entries[i].Timestamp, entries[i].Reason, entries[i].AddedBy, geoJSON)
+		}
+
+		tx, err := pgxConn.Begin(ctx)
 		if err != nil {
 			return err
 		}
-		_, err = stmt.Exec(ip, entries[i].Timestamp, entries[i].Reason, entries[i].AddedBy, geoJSON)
-		if err != nil {
+		defer func() { _ = tx.Rollback(ctx) }()
+
+		br := tx.SendBatch(ctx, batch)
+		for range ips {
+			_, err := br.Exec()
+			if err != nil {
+				_ = br.Close()
+				return err
+			}
+		}
+
+		if err := br.Close(); err != nil {
 			return err
 		}
-	}
-	return tx.Commit()
+
+		return tx.Commit(ctx)
+	})
 }
 
 func (p *PostgresRepository) BulkDeletePersistentBlocks(ips []string) error {
