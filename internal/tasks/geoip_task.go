@@ -66,7 +66,7 @@ func (h *GeoIPTaskHandler) ProcessTask(ctx context.Context, t *asynq.Task) error
 
 	// Stricter validation: only allow alphanumeric characters and dashes
 	for _, r := range p.Edition {
-		if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-') {
+		if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9') && r != '-' {
 			return fmt.Errorf("invalid edition format: %s", p.Edition)
 		}
 	}
