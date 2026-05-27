@@ -485,3 +485,32 @@ func (r *RedisRepository) GetIPBanCount(ip string) (int64, error) {
 	}
 	return v, err
 }
+
+func (r *RedisRepository) GetIPBanCounts(ips []string) (map[string]int64, error) {
+	if len(ips) == 0 {
+		return nil, nil
+	}
+	defer r.trackDuration("GetIPBanCounts", time.Now())
+	vals, err := r.client.HMGet(r.ctx, "ips_ban_counts", ips...).Result()
+	if err != nil {
+		return nil, err
+	}
+
+	counts := make(map[string]int64)
+	for i, val := range vals {
+		if val == nil {
+			counts[ips[i]] = 0
+			continue
+		}
+		if strVal, ok := val.(string); ok {
+			if v, err := strconv.ParseInt(strVal, 10, 64); err == nil {
+				counts[ips[i]] = v
+			} else {
+				counts[ips[i]] = 0
+			}
+		} else {
+			counts[ips[i]] = 0
+		}
+	}
+	return counts, nil
+}
