@@ -1,4 +1,8 @@
-## 2024-05-24 - [Unconstrained Resource Consumption]
-**Vulnerability:** Unconstrained Resource Consumption (CWE-400)
-**Learning:** `io.ReadAll(resp.Body)` without bounds allowed for the application to try and read responses of any size. If a malicious user controlled the endpoint, they could send gigabytes of data causing memory exhaustion.
-**Prevention:** Using `io.LimitReader(resp.Body, max_size)` instead of `resp.Body` restricts the maximum size read, protecting the memory from unbounded allocation from untrusted webhook responses.
+
+## 2025-05-27 - [Testing QR Code Generation]
+
+**Vulnerability:** N/A (Testing Task)
+
+**Learning:** Testing QR code generation using \`github.com/skip2/go-qrcode\` and the standard \`image/png\` package can be effectively achieved by verifying the resulting byte slice and decoding it to check image dimensions and validity.
+
+**Prevention:** Ensure that helper functions involved in image processing are covered by unit tests that validate both success cases (correct dimensions, valid encoding) and failure cases (e.g., empty input).
