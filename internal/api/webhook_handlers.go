@@ -42,17 +42,6 @@ func (h *APIHandler) Webhook(c *gin.Context) {
 	// Gin's c.ClientIP() already respects TrustedProxies for X-Forwarded-For and X-Real-IP.
 	clientIP := c.ClientIP()
 
-	// Only trust CF-Connecting-IP if the request is confirmed to be from a trusted proxy
-	if cfIP := c.GetHeader("CF-Connecting-IP"); cfIP != "" {
-		remoteIP, _, _ := net.SplitHostPort(c.Request.RemoteAddr)
-		if remoteIP != clientIP {
-			// Gin has verified the proxy, so we can trust the CF header
-			if net.ParseIP(cfIP) != nil {
-				clientIP = cfIP
-			}
-		}
-	}
-
 	// Double check syntactic validity of clientIP
 	if net.ParseIP(clientIP) == nil {
 		zlog.Error().Str("ip", clientIP).Msg("Webhook: detected invalid client IP")
