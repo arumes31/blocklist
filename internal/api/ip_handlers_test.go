@@ -249,3 +249,38 @@ func TestAPIHandler_JSONIPs(t *testing.T) {
 	assert.Equal(t, http.StatusInternalServerError, w2.Code)
 	assert.JSONEq(t, `{"error":"Error fetching IPs"}`, w2.Body.String())
 }
+
+func TestAPIHandler_isIPInCIDRs(t *testing.T) {
+	h, _, _, _, _ := setupTest()
+
+	tests := []struct {
+		name     string
+		ip       string
+		cidrs    string
+		expected bool
+	}{
+		{"Empty CIDRs", "1.2.3.4", "", true},
+		{"Invalid IP", "invalid", "1.2.3.0/24", false},
+		{"Single CIDR Match", "1.2.3.4", "1.2.3.0/24", true},
+		{"Single CIDR No Match", "1.2.3.4", "1.2.4.0/24", false},
+		{"Multiple CIDRs Match First", "1.2.3.4", "1.2.3.0/24, 10.0.0.0/8", true},
+		{"Multiple CIDRs Match Second", "10.1.2.3", "1.2.3.0/24, 10.0.0.0/8", true},
+		{"Multiple CIDRs No Match", "192.168.1.1", "1.2.3.0/24, 10.0.0.0/8", false},
+		{"Plain IP Match", "1.1.1.1", "1.1.1.1", true},
+		{"Plain IP No Match", "1.1.1.1", "2.2.2.2", false},
+		{"Mixed CIDR and IP Match", "1.1.1.1", "1.2.3.0/24, 1.1.1.1", true},
+		{"Mixed CIDR and IP Match CIDR", "1.2.3.4", "1.2.3.0/24, 1.1.1.1", true},
+		{"With Spaces", "1.2.3.4", " 1.2.3.0/24 , 10.0.0.0/8 ", true},
+		{"With Empty Entries", "1.2.3.4", "1.2.3.0/24,,10.0.0.0/8", true},
+		{"IPv6 CIDR Match", "2001:db8::1", "2001:db8::/32", true},
+		{"IPv6 CIDR No Match", "2001:db8::1", "2001:db9::/32", false},
+		{"IPv6 Plain IP Match", "2001:db8::1", "2001:db8::1", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := h.isIPInCIDRs(tt.ip, tt.cidrs)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
