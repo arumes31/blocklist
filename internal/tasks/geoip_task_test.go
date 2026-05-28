@@ -137,3 +137,35 @@ func TestGeoIPTaskHandler_Download_ValidResponse(t *testing.T) {
 	// a custom HTTP client or URL for testing purposes.
 	// Current implementation hardcodes the MaxMind URL.
 }
+
+func TestGeoIPTaskHandler_ProcessTask_Traversal(t *testing.T) {
+	cfg := &config.Config{
+		GeoIPAccountID:  "test",
+		GeoIPLicenseKey: "test",
+	}
+	handler := NewGeoIPTaskHandler(cfg, nil)
+
+	tests := []struct {
+		name    string
+		edition string
+	}{
+		{"path traversal linux", "../../etc/passwd"},
+		{"path traversal windows", "..\\..\\etc\\passwd"},
+		{"mixed traversal", "GeoLite2-City/../../etc/passwd"},
+		{"empty", ""},
+		{"dot", "."},
+		{"slash", "/"},
+		{"invalid chars", "GeoLite2-City!"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			task, err := NewGeoIPUpdateTask(tt.edition)
+			require.NoError(t, err)
+
+			err = handler.ProcessTask(context.Background(), task)
+			assert.Error(t, err)
+			assert.Contains(t, err.Error(), "invalid edition")
+		})
+	}
+}

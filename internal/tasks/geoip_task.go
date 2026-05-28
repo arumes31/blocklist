@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"regexp"
 
 	"archive/tar"
 	"blocklist/internal/config"
@@ -47,15 +48,16 @@ func NewGeoIPTaskHandler(cfg *config.Config, ipService IPService) *GeoIPTaskHand
 	return &GeoIPTaskHandler{cfg: cfg, ipService: ipService}
 }
 
+var editionRegex = regexp.MustCompile(`^[a-zA-Z0-9-]+$`)
+
 func (h *GeoIPTaskHandler) ProcessTask(ctx context.Context, t *asynq.Task) error {
 	var p GeoIPPayload
 	if err := json.Unmarshal(t.Payload(), &p); err != nil {
 		return fmt.Errorf("json.Unmarshal failed: %v: %w", err, asynq.SkipRetry)
 	}
 
-	// Clean edition string to prevent directory traversal
-	p.Edition = filepath.Base(filepath.Clean(p.Edition))
-	if p.Edition == "." || p.Edition == "/" {
+	// Strict validation of edition string to prevent directory traversal and arbitrary downloads
+	if !editionRegex.MatchString(p.Edition) {
 		return fmt.Errorf("invalid edition: %s", p.Edition)
 	}
 
@@ -71,7 +73,8 @@ func (h *GeoIPTaskHandler) ProcessTask(ctx context.Context, t *asynq.Task) error
 }
 
 func (h *GeoIPTaskHandler) getDBPath(edition string) string {
-	filename := edition + ".mmdb"
+	// Securely construct the filename to prevent path traversal
+	filename := filepath.Base(edition) + ".mmdb"
 	// Prefer env-defined path or standard local path
 	primaryPath := filepath.Join("/home/blocklist/geoip", filename)
 
