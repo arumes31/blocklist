@@ -237,18 +237,6 @@ func main() {
 		zlog.Error().Err(err).Msg("Failed to set trusted proxies")
 	}
 
-	// Optional Cloudflare Support
-	if cfg.UseCloudflare {
-		r.ForwardedByClientIP = true
-		r.Use(func(c *gin.Context) {
-			if cfIP := c.GetHeader("CF-Connecting-IP"); cfIP != "" {
-				// Override RemoteAddr so c.ClientIP() returns the Cloudflare IP
-				c.Request.Header.Set("X-Forwarded-For", cfIP)
-			}
-			c.Next()
-		})
-	}
-
 	// Force HTTPS (Improvement)
 	if cfg.ForceHTTPS {
 		r.Use(func(c *gin.Context) {
