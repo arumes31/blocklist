@@ -2,9 +2,11 @@ package api
 
 import (
 	"bytes"
+	"image/png"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"testing"
 
 	"blocklist/internal/models"
@@ -162,4 +164,42 @@ func TestAPIHandler_RevokeAPIToken(t *testing.T) {
 	h.AdminRevokeAPIToken(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestGenerateQRWithLogo(t *testing.T) {
+	h, _, _ := setupAuthTest()
+	testURL := "https://example.com/otp"
+
+	// Save original working directory
+	oldWD, err := os.Getwd()
+	assert.NoError(t, err)
+
+	t.Run("LogoNotFound_FallbackToPlain", func(t *testing.T) {
+		// Working directory is internal/api, cmd/server/... won't be found
+		data, err := h.generateQRWithLogo(testURL)
+		assert.NoError(t, err)
+		assert.NotEmpty(t, data)
+
+		// Verify it is a valid PNG
+		_, err = png.Decode(bytes.NewReader(data))
+		assert.NoError(t, err)
+	})
+
+	t.Run("LogoFound_Overlay", func(t *testing.T) {
+		// Change to root directory so logo is found
+		err := os.Chdir("../..")
+		assert.NoError(t, err)
+		defer func() { _ = os.Chdir(oldWD) }()
+
+		data, err := h.generateQRWithLogo(testURL)
+		assert.NoError(t, err)
+		assert.NotEmpty(t, data)
+
+		// Verify it is a valid PNG
+		img, err := png.Decode(bytes.NewReader(data))
+		assert.NoError(t, err)
+		assert.NotNil(t, img)
+		assert.Equal(t, 256, img.Bounds().Dx())
+		assert.Equal(t, 256, img.Bounds().Dy())
+	})
 }
