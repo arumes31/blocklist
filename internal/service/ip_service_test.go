@@ -113,6 +113,27 @@ func TestIPService_Enhanced(t *testing.T) {
 		if score4 != 100 {
 			t.Errorf("expected score 100 (capped), got %d", score4)
 		}
+
+		// Case 5: scanner/bot bonus
+		mr.HSet("ips_ban_counts", "5.5.5.5", "1") // 10 base
+		score5 := svc.CalculateThreatScore("5.5.5.5", "Network scanner")
+		if score5 != 20 { // 10 + 10
+			t.Errorf("expected score 20 for scanner, got %d", score5)
+		}
+
+		// Case 6: Negative score cap
+		mr.HSet("ips_ban_counts", "6.6.6.6", "-5")
+		score6 := svc.CalculateThreatScore("6.6.6.6", "generic")
+		if score6 != 0 {
+			t.Errorf("expected score 0 (capped from negative), got %d", score6)
+		}
+
+		// Case 7: nil redisRepo
+		svcNil := NewIPService(cfg, nil, nil)
+		score7 := svcNil.CalculateThreatScore("7.7.7.7", "SQL injection")
+		if score7 != 0 {
+			t.Errorf("expected score 0 for nil redisRepo, got %d", score7)
+		}
 	})
 
 	t.Run("ListIPsPaginatedAdvanced_CIDRMatching", func(t *testing.T) {
