@@ -67,7 +67,7 @@ func main() {
 	// 0. Setup Structured Logging
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
 
-	censorRE := regexp.MustCompile(`(?i)(password|secret|token)(["':\s]+)([^"'\s,{}]+)`)
+	censorRE := regexp.MustCompile(`(?i)(password|secret|token)(["':=\s]+)([^"'\s,{}	]+)`)
 	cw := &CensorWriter{
 		Writer: zerolog.ConsoleWriter{Out: os.Stderr},
 		re:     censorRE,
@@ -321,7 +321,7 @@ func main() {
 		"split":    strings.Split,
 		"contains": strings.Contains,
 		"safeHTML": func(s string) template.HTML { return template.HTML(s) }, // #nosec G203
-		"safeURL":  func(s string) template.URL { return template.URL(s) },  // #nosec G203
+		"safeURL":  func(s string) template.URL { return template.URL(s) },   // #nosec G203
 		"add":      func(a, b int) int { return a + b },
 		"sub":      func(a, b int) int { return a - b },
 	}
