@@ -72,7 +72,7 @@ func (p *PostgresRepository) EnsurePartitions(retentionMonths int) error {
 		tables := []string{"audit_logs", "webhook_logs"}
 		for _, table := range tables {
 			fullName := fmt.Sprintf("%s_%s", table, partitionName)
-			query := fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s PARTITION OF %s FOR VALUES FROM ('%s') TO ('%s')",
+			query := fmt.Sprintf("CREATE TABLE IF NOT EXISTS \"%s\" PARTITION OF \"%s\" FOR VALUES FROM ('%s') TO ('%s')",
 				fullName, table, start.Format("2006-01-01"), end.Format("2006-01-01"))
 			_, err := p.db.Exec(query)
 			if err != nil {
@@ -97,7 +97,7 @@ func (p *PostgresRepository) EnsurePartitions(retentionMonths int) error {
 				fullName := fmt.Sprintf("%s_%s", table, partitionName)
 				// Check if partition exists before trying to drop (optional but cleaner)
 				// For Postgres, we can just use DROP TABLE IF EXISTS
-				query := fmt.Sprintf("DROP TABLE IF EXISTS %s", fullName)
+				query := fmt.Sprintf("DROP TABLE IF EXISTS \"%s\"", fullName)
 				_, err := p.db.Exec(query)
 				if err != nil {
 					// Log error but continue
