@@ -42,6 +42,7 @@ type IPService interface {
 type GeoIPTaskHandler struct {
 	cfg       *config.Config
 	ipService IPService
+	testURL   string
 }
 
 func NewGeoIPTaskHandler(cfg *config.Config, ipService IPService) *GeoIPTaskHandler {
@@ -95,7 +96,10 @@ func (h *GeoIPTaskHandler) Download(edition string) error {
 		return fmt.Errorf("MaxMind credentials missing")
 	}
 
-	url := fmt.Sprintf("https://download.maxmind.com/geoip/databases/%s/download?suffix=tar.gz", edition)
+	url := h.testURL
+	if url == "" {
+		url = fmt.Sprintf("https://download.maxmind.com/geoip/databases/%s/download?suffix=tar.gz", edition)
+	}
 	log.Printf("Asynq: Downloading GeoIP %s", edition)
 
 	client := &http.Client{}
