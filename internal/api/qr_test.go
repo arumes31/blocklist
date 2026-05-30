@@ -36,7 +36,7 @@ func TestAPIHandler_GenerateQRWithLogo(t *testing.T) {
 		logoPath := filepath.Join("cmd", "server", "static", "cd", "favicon-color.png")
 		err := os.MkdirAll(filepath.Dir(logoPath), 0755)
 		require.NoError(t, err)
-		defer os.RemoveAll("cmd") // Cleanup
+		defer func() { _ = os.RemoveAll("cmd") }() // Cleanup
 
 		// Create a small dummy PNG logo
 		img := image.NewRGBA(image.Rect(0, 0, 32, 32))
@@ -50,7 +50,7 @@ func TestAPIHandler_GenerateQRWithLogo(t *testing.T) {
 		require.NoError(t, err)
 		err = png.Encode(f, img)
 		require.NoError(t, err)
-		f.Close()
+		_ = f.Close()
 
 		pngData, err := h.generateQRWithLogo("https://example.com")
 		assert.NoError(t, err)
@@ -67,7 +67,7 @@ func TestAPIHandler_GenerateQRWithLogo(t *testing.T) {
 		logoPath := filepath.Join("cmd", "server", "static", "cd", "favicon-color.png")
 		err := os.MkdirAll(filepath.Dir(logoPath), 0755)
 		require.NoError(t, err)
-		defer os.RemoveAll("cmd")
+		defer func() { _ = os.RemoveAll("cmd") }()
 
 		err = os.WriteFile(logoPath, []byte("not a png"), 0644)
 		require.NoError(t, err)
