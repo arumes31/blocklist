@@ -2,6 +2,7 @@ package repository
 
 import (
 	"blocklist/internal/models"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,7 +10,8 @@ import (
 	"strings"
 	"time"
 
-	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/jmoiron/sqlx"
 	zlog "github.com/rs/zerolog/log"
 )
@@ -401,29 +403,45 @@ func (p *PostgresRepository) BulkCreatePersistentBlocks(ips []string, entries []
 	if len(ips) != len(entries) {
 		return fmt.Errorf("length mismatch: ips (%d) != entries (%d)", len(ips), len(entries))
 	}
-	tx, err := p.db.Beginx()
+
+	ctx := context.Background()
+	conn, err := p.db.Conn(ctx)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = tx.Rollback() }()
+	defer func() { _ = conn.Close() }()
 
-	stmt, err := tx.Preparex("INSERT INTO persistent_blocks (ip, timestamp, reason, added_by, geo_json) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (ip) DO UPDATE SET timestamp = $2, reason = $3, added_by = $4, geo_json = $5")
-	if err != nil {
-		return err
-	}
-	defer func() { _ = stmt.Close() }()
+	err = conn.Raw(func(driverConn any) error {
+		stdlibConn, ok := driverConn.(*stdlib.Conn)
+		if !ok {
+			return errors.New("failed to get pgx connection")
+		}
+		pgxConn := stdlibConn.Conn()
 
-	for i, ip := range ips {
-		geoJSON, err := json.Marshal(entries[i].Geolocation)
-		if err != nil {
-			return err
+		batch := &pgx.Batch{}
+		query := "INSERT INTO persistent_blocks (ip, timestamp, reason, added_by, geo_json) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (ip) DO UPDATE SET timestamp = $2, reason = $3, added_by = $4, geo_json = $5"
+
+		for i, ip := range ips {
+			geoJSON, err := json.Marshal(entries[i].Geolocation)
+			if err != nil {
+				return err
+			}
+			batch.Queue(query, ip, entries[i].Timestamp, entries[i].Reason, entries[i].AddedBy, geoJSON)
 		}
-		_, err = stmt.Exec(ip, entries[i].Timestamp, entries[i].Reason, entries[i].AddedBy, geoJSON)
-		if err != nil {
-			return err
+
+		br := pgxConn.SendBatch(ctx, batch)
+		defer func() { _ = br.Close() }()
+
+		for range ips {
+			_, err := br.Exec()
+			if err != nil {
+				return err
+			}
 		}
-	}
-	return tx.Commit()
+		return nil
+	})
+
+	return err
 }
 
 func (p *PostgresRepository) BulkDeletePersistentBlocks(ips []string) error {
@@ -443,21 +461,24 @@ func (p *PostgresRepository) BulkLogAction(actor, action string, ips []string, r
 	if len(ips) == 0 {
 		return nil
 	}
-	tx, err := p.db.Beginx()
+
+	ctx := context.Background()
+	conn, err := p.db.Conn(ctx)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = tx.Rollback() }()
+	defer func() { _ = conn.Close() }()
 
-	insertStmt, err := tx.Preparex("INSERT INTO audit_logs (actor, action, target, reason) VALUES ($1, $2, $3, $4)")
-	if err != nil {
-		return err
-	}
-	defer func() { _ = insertStmt.Close() }()
+	err = conn.Raw(func(driverConn any) error {
+		stdlibConn, ok := driverConn.(*stdlib.Conn)
+		if !ok {
+			return errors.New("failed to get pgx connection")
+		}
+		pgxConn := stdlibConn.Conn()
 
-	var deleteStmt *sqlx.Stmt
-	if p.auditLogLimitPerIP > 0 {
-		query := `
+		batch := &pgx.Batch{}
+		insertQuery := "INSERT INTO audit_logs (actor, action, target, reason) VALUES ($1, $2, $3, $4)"
+		deleteQuery := `
 			DELETE FROM audit_logs 
 			WHERE target = $1 
 			  AND id <= (
@@ -466,23 +487,30 @@ func (p *PostgresRepository) BulkLogAction(actor, action string, ips []string, r
 				  ORDER BY timestamp DESC, id DESC 
 				  OFFSET $2 LIMIT 1
 			  )`
-		stmt, err := tx.Preparex(query)
-		if err == nil {
-			deleteStmt = stmt
-			defer func() { _ = deleteStmt.Close() }()
-		} else {
-			zlog.Error().Err(err).Msg("failed to prepare audit delete statement")
-		}
-	}
 
-	for _, ip := range ips {
-		_, err = insertStmt.Exec(actor, action, ip, reason)
-		if err != nil {
-			return err
+		for _, ip := range ips {
+			batch.Queue(insertQuery, actor, action, ip, reason)
+			if p.auditLogLimitPerIP > 0 {
+				batch.Queue(deleteQuery, ip, p.auditLogLimitPerIP)
+			}
 		}
-		if deleteStmt != nil {
-			_, _ = deleteStmt.Exec(ip, p.auditLogLimitPerIP)
+
+		br := pgxConn.SendBatch(ctx, batch)
+		defer func() { _ = br.Close() }()
+
+		expectedExecs := len(ips)
+		if p.auditLogLimitPerIP > 0 {
+			expectedExecs *= 2
 		}
-	}
-	return tx.Commit()
+
+		for i := 0; i < expectedExecs; i++ {
+			_, err := br.Exec()
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+
+	return err
 }
