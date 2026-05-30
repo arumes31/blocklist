@@ -54,9 +54,8 @@ func (h *APIHandler) Webhook(c *gin.Context) {
 	}
 
 	// Double check syntactic validity of clientIP
-	if net.ParseIP(clientIP) == nil {
+	if !h.validateIP(c, clientIP) {
 		zlog.Error().Str("ip", clientIP).Msg("Webhook: detected invalid client IP")
-		c.JSON(http.StatusBadRequest, gin.H{"status": "invalid client IP"})
 		return
 	}
 
@@ -66,8 +65,7 @@ func (h *APIHandler) Webhook(c *gin.Context) {
 	}
 
 	// Syntactic validation of target IP
-	if data.IP == "" || net.ParseIP(data.IP) == nil {
-		c.JSON(http.StatusBadRequest, gin.H{"status": "invalid target IP"})
+	if !h.validateIP(c, data.IP) {
 		return
 	}
 
