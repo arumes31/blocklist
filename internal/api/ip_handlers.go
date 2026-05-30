@@ -85,8 +85,7 @@ func (h *APIHandler) BlockIP(c *gin.Context) {
 	}
 
 	ip := req.IP
-	if net.ParseIP(ip) == nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid IP address"})
+	if !h.validateIP(c, ip) {
 		return
 	}
 
@@ -130,8 +129,7 @@ func (h *APIHandler) UnblockIP(c *gin.Context) {
 	}
 
 	ip := req.IP
-	if net.ParseIP(ip) == nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid IP address"})
+	if !h.validateIP(c, ip) {
 		return
 	}
 
@@ -318,12 +316,8 @@ func (h *APIHandler) AddWhitelist(c *gin.Context) {
 	}
 
 	// Validate IP or CIDR
-	if net.ParseIP(req.IP) == nil {
-		_, _, err := net.ParseCIDR(req.IP)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid IP or CIDR"})
-			return
-		}
+	if !h.validateIPOrCIDR(c, req.IP) {
+		return
 	}
 
 	// Validate expires_at if provided

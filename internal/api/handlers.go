@@ -5,6 +5,7 @@ import (
 	"blocklist/internal/metrics"
 	"blocklist/internal/models"
 	"blocklist/internal/service"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -167,6 +168,26 @@ func (h *APIHandler) isValidRedirect(target string) bool {
 	// Disallow // which some browsers interpret as protocol-relative (e.g. //evil.com)
 	// Disallow /\ which can be used to trick some parsers
 	return strings.HasPrefix(target, "/") && !strings.HasPrefix(target, "//") && !strings.HasPrefix(target, "/\\")
+}
+
+func (h *APIHandler) validateIP(c *gin.Context, ip string) bool {
+	if net.ParseIP(ip) == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid IP address"})
+		return false
+	}
+	return true
+}
+
+func (h *APIHandler) validateIPOrCIDR(c *gin.Context, input string) bool {
+	if net.ParseIP(input) != nil {
+		return true
+	}
+	_, _, err := net.ParseCIDR(input)
+	if err == nil {
+		return true
+	}
+	c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid IP or CIDR"})
+	return false
 }
 
 // RegisterRoutes sets up all the API and UI routes for the application.
