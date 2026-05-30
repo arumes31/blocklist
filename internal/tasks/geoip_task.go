@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/hibiken/asynq"
@@ -53,9 +54,10 @@ func (h *GeoIPTaskHandler) ProcessTask(ctx context.Context, t *asynq.Task) error
 		return fmt.Errorf("json.Unmarshal failed: %v: %w", err, asynq.SkipRetry)
 	}
 
-	// Clean edition string to prevent directory traversal
-	p.Edition = filepath.Base(filepath.Clean(p.Edition))
-	if p.Edition == "." || p.Edition == "/" {
+	// Validate edition string to prevent directory traversal
+	// Editions are expected to be alphanumeric strings like "GeoLite2-City"
+	validEdition := regexp.MustCompile("^[a-zA-Z0-9-]+$")
+	if !validEdition.MatchString(p.Edition) {
 		return fmt.Errorf("invalid edition: %s", p.Edition)
 	}
 
@@ -71,7 +73,8 @@ func (h *GeoIPTaskHandler) ProcessTask(ctx context.Context, t *asynq.Task) error
 }
 
 func (h *GeoIPTaskHandler) getDBPath(edition string) string {
-	filename := edition + ".mmdb"
+	// Defense in depth: ensure filename is just the base
+	filename := filepath.Base(edition) + ".mmdb"
 	// Prefer env-defined path or standard local path
 	primaryPath := filepath.Join("/home/blocklist/geoip", filename)
 
