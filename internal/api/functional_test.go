@@ -38,7 +38,14 @@ func setupTestRouter(rRepo *repository.RedisRepository) *gin.Engine {
 	webhookSvc := service.NewWebhookService(nil, cfg, asynq.RedisClientOpt{})
 	hub := NewHub(rRepo.GetClient())
 
-	h := NewAPIHandler(cfg, rRepo, nil, authSvc, ipSvc, hub, webhookSvc)
+	h := NewAPIHandler(HandlerOptions{
+		Config:         cfg,
+		RedisRepo:      rRepo,
+		AuthService:    authSvc,
+		IPService:      ipSvc,
+		Hub:            hub,
+		WebhookService: webhookSvc,
+	})
 
 	// Register routes with AuthMiddleware
 	router.POST("/block", h.AuthMiddleware(), h.BlockIP)
