@@ -96,7 +96,7 @@ func TestGeoIPTaskHandler_ProcessTask_Success(t *testing.T) {
 
 	// Ensure cleanup of the downloaded file
 	dbPath := handler.getDBPath(edition)
-	defer os.Remove(dbPath)
+	defer func() { _ = os.Remove(dbPath) }()
 
 	task, err := NewGeoIPUpdateTask(edition)
 	require.NoError(t, err)
@@ -187,7 +187,7 @@ func TestGeoIPTaskHandler_Download_ValidResponse(t *testing.T) {
 	handler.testURL = server.URL
 
 	dbPath := handler.getDBPath(edition)
-	defer os.Remove(dbPath)
+	defer func() { _ = os.Remove(dbPath) }()
 
 	err := handler.Download(edition)
 	assert.NoError(t, err)
