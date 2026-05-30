@@ -2,9 +2,7 @@ package api
 
 import (
 	"context"
-	"html/template"
 	"net/http/httptest"
-	"strings"
 	"time"
 
 	"blocklist/internal/models"
@@ -15,16 +13,7 @@ import (
 
 func setupHTMLTest(w *httptest.ResponseRecorder) (*gin.Context, *gin.Engine) {
 	c, r := gin.CreateTestContext(w)
-	r.SetFuncMap(template.FuncMap{
-		"lower":    strings.ToLower,
-		"replace":  strings.ReplaceAll,
-		"split":    strings.Split,
-		"contains": strings.Contains,
-		"safeHTML": func(s string) template.HTML { return template.HTML(s) },
-		"safeURL":  func(s string) template.URL { return template.URL(s) },
-		"add":      func(a, b int) int { return a + b },
-		"sub":      func(a, b int) int { return a - b },
-	})
+	r.SetFuncMap(GetFuncMap())
 	r.LoadHTMLGlob("../../cmd/server/templates/*")
 	return c, r
 }
