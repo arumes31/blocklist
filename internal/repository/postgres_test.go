@@ -186,4 +186,50 @@ func TestPostgresRepository_Integration(t *testing.T) {
 		}
 	})
 
+	t.Run("BulkOperations", func(t *testing.T) {
+		ips := []string{"1.2.3.4", "5.6.7.8"}
+		entries := []models.IPEntry{
+			{Timestamp: time.Now().Format(time.RFC3339), Reason: "bulk1", AddedBy: "test", Geolocation: &models.GeoData{Country: "US"}},
+			{Timestamp: time.Now().Format(time.RFC3339), Reason: "bulk2", AddedBy: "test", Geolocation: &models.GeoData{Country: "UK"}},
+		}
+
+		err := repo.BulkCreatePersistentBlocks(ips, entries)
+		if err != nil {
+			t.Fatalf("BulkCreatePersistentBlocks failed: %v", err)
+		}
+
+		blocks, err := repo.GetPersistentBlocks()
+		if err != nil {
+			t.Fatalf("GetPersistentBlocks failed: %v", err)
+		}
+
+		for _, ip := range ips {
+			if _, ok := blocks[ip]; !ok {
+				t.Errorf("expected IP %s in persistent blocks", ip)
+			}
+		}
+
+		err = repo.BulkLogAction("test-actor", "BULK_TEST", ips, "bulk-reason")
+		if err != nil {
+			t.Fatalf("BulkLogAction failed: %v", err)
+		}
+
+		for _, ip := range ips {
+			logs, err := repo.GetIPHistory(ip)
+			if err != nil {
+				t.Errorf("GetIPHistory failed for %s: %v", ip, err)
+				continue
+			}
+			found := false
+			for _, log := range logs {
+				if log.Action == "BULK_TEST" {
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Errorf("BULK_TEST log not found for IP %s", ip)
+			}
+		}
+	})
 }
