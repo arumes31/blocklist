@@ -182,14 +182,5 @@ Hardened Go-based IP Blocklist manager with GeoIP (ASN/Country), real-time WebSo
 **Topics:**
 `golang` `security` `blocklist` `firewall-automation` `geoip` `prometheus` `websockets` `rbac` `docker-hardened`
 
-You can use the provided Python script to automatically sync these settings directly with your GitHub repository:
-```bash
-# Preview the settings to be applied
-python update_github.py --dry-run
-
-# Sync settings to GitHub (requires GITHUB_TOKEN or GH_TOKEN env variable)
-python update_github.py
-```
-
 ## License
 MIT
