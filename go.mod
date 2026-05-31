@@ -132,5 +132,3 @@ require (
 	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-replace github.com/docker/docker => github.com/docker/docker v27.5.1+incompatible
