@@ -1,0 +1,13 @@
+<<<<<<< SEARCH
+    - name: Run Gosec Security Scan
+      uses: securego/gosec@master
+      with:
+        args: ./...
+=======
+    - name: Run Gosec Security Scan
+      uses: securego/gosec@master
+      with:
+        args: ./...
+      env:
+        GOTOOLCHAIN: auto
+>>>>>>> REPLACE
