@@ -225,6 +225,16 @@ func (h *APIHandler) AddOutboundWebhook(c *gin.Context) {
 	wh.GeoFilter = c.PostForm("geo_filter")
 	wh.Active = true
 
+	// Security: Input length validation to prevent unconstrained resource consumption
+	if len(wh.URL) > 2048 {
+		c.String(http.StatusBadRequest, "URL exceeds maximum length of 2048 characters")
+		return
+	}
+	if len(wh.Secret) > 255 || len(wh.Events) > 255 || len(wh.GeoFilter) > 255 {
+		c.String(http.StatusBadRequest, "Input fields exceed maximum length of 255 characters")
+		return
+	}
+
 	if err := security.IsSafeURL(wh.URL); err != nil {
 		zlog.Warn().Err(err).Str("url", wh.URL).Msg("Attempted to add unsafe webhook URL")
 		c.String(http.StatusBadRequest, "Invalid or unsafe webhook URL")
