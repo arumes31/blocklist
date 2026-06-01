@@ -325,7 +325,14 @@ func (h *APIHandler) ShowLogin(c *gin.Context) {
 	h.renderHTML(c, http.StatusOK, "login.html", nil)
 }
 
+// defaultQRLogoPath is the location of the logo overlaid on generated QR codes.
+const defaultQRLogoPath = "cmd/server/static/cd/favicon-color.png"
+
 func (h *APIHandler) generateQRWithLogo(url string) ([]byte, error) {
+	return h.generateQRWithLogoFromPath(url, defaultQRLogoPath)
+}
+
+func (h *APIHandler) generateQRWithLogoFromPath(url, logoPath string) ([]byte, error) {
 	// Generate QR code with High error correction
 	qr, err := qrcode.New(url, qrcode.High)
 	if err != nil {
@@ -336,7 +343,7 @@ func (h *APIHandler) generateQRWithLogo(url string) ([]byte, error) {
 	img := qr.Image(256)
 
 	// Try to load logo
-	logoFile, err := os.Open("cmd/server/static/cd/favicon-color.png")
+	logoFile, err := os.Open(logoPath)
 	if err != nil {
 		// Fallback to plain QR if logo not found
 		return qr.PNG(256)

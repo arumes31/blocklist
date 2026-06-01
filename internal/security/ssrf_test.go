@@ -41,7 +41,7 @@ func TestIsSafeURL(t *testing.T) {
 		{"https://google.com", false},
 		{"http://example.com", false},
 		{"http://127.0.0.1", true},
-		{"http://localhost", true},
+		{"http://[::1]", true},
 		{"http://10.0.0.1", true},
 		{"ftp://example.com", true},
 		{"javascript:alert(1)", true},

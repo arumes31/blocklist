@@ -60,7 +60,12 @@ func (w *CensorWriter) Write(p []byte) (n int, err error) {
 	// Simple regex to mask common sensitive keys in JSON/Text logs
 	// matches: "password":"...", "secret":"...", etc.
 	censored := w.re.ReplaceAll(p, []byte(`${1}${2}[CENSORED]`))
-	return w.Writer.Write(censored)
+	// Honor the io.Writer contract: report bytes consumed from the caller
+	// (len(p)), not the post-censoring length, which is typically shorter.
+	if _, err := w.Writer.Write(censored); err != nil {
+		return 0, err
+	}
+	return len(p), nil
 }
 
 func main() {

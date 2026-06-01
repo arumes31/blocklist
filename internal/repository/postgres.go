@@ -72,8 +72,8 @@ func (p *PostgresRepository) EnsurePartitions(retentionMonths int) error {
 		partitionName := fmt.Sprintf("y%dm%02d", year, month)
 
 		tables := []string{"audit_logs", "webhook_logs"}
-		startStr := start.Format("2006-01-01")
-		endStr := end.Format("2006-01-01")
+		startStr := start.Format("2006-01-02")
+		endStr := end.Format("2006-01-02")
 		for _, table := range tables {
 			fullName := fmt.Sprintf("%s_%s", table, partitionName)
 			query := fmt.Sprintf("CREATE TABLE IF NOT EXISTS \"%s\" PARTITION OF \"%s\" FOR VALUES FROM ('%s') TO ('%s')",

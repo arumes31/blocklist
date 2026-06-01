@@ -73,7 +73,8 @@ func TestCensorWriter_Write(t *testing.T) {
 
 			n, err := w.Write([]byte(tt.input))
 			assert.NoError(t, err)
-			assert.Equal(t, len(tt.expected), n)
+			// io.Writer contract: n reports bytes consumed from the caller.
+			assert.Equal(t, len(tt.input), n)
 			assert.Equal(t, tt.expected, buf.String())
 		})
 	}

@@ -27,16 +27,9 @@ func TestAPIHandler_GenerateQRWithLogo(t *testing.T) {
 	})
 
 	t.Run("Success with logo", func(t *testing.T) {
-		// The code expects the logo at "cmd/server/static/cd/favicon-color.png"
-		// Since we are in /app/internal/api, we need to go up to /app/ and then down.
-		// However, the code uses os.Open("cmd/server/static/cd/favicon-color.png")
-		// which is relative to the working directory.
-
-		// Create the directory structure relative to /app/internal/api
-		logoPath := filepath.Join("cmd", "server", "static", "cd", "favicon-color.png")
-		err := os.MkdirAll(filepath.Dir(logoPath), 0755)
-		require.NoError(t, err)
-		defer func() { _ = os.RemoveAll("cmd") }() // Cleanup
+		// Write the dummy logo into an isolated temp dir so the test never
+		// touches the real source tree. t.TempDir() is auto-cleaned.
+		logoPath := filepath.Join(t.TempDir(), "favicon-color.png")
 
 		// Create a small dummy PNG logo
 		img := image.NewRGBA(image.Rect(0, 0, 32, 32))
@@ -48,11 +41,11 @@ func TestAPIHandler_GenerateQRWithLogo(t *testing.T) {
 
 		f, err := os.Create(logoPath)
 		require.NoError(t, err)
+		defer func() { _ = f.Close() }()
 		err = png.Encode(f, img)
 		require.NoError(t, err)
-		_ = f.Close()
 
-		pngData, err := h.generateQRWithLogo("https://example.com")
+		pngData, err := h.generateQRWithLogoFromPath("https://example.com", logoPath)
 		assert.NoError(t, err)
 		assert.NotEmpty(t, pngData)
 
@@ -64,15 +57,11 @@ func TestAPIHandler_GenerateQRWithLogo(t *testing.T) {
 	})
 
 	t.Run("Fallback when logo is invalid image", func(t *testing.T) {
-		logoPath := filepath.Join("cmd", "server", "static", "cd", "favicon-color.png")
-		err := os.MkdirAll(filepath.Dir(logoPath), 0755)
-		require.NoError(t, err)
-		defer func() { _ = os.RemoveAll("cmd") }()
-
-		err = os.WriteFile(logoPath, []byte("not a png"), 0644)
+		logoPath := filepath.Join(t.TempDir(), "favicon-color.png")
+		err := os.WriteFile(logoPath, []byte("not a png"), 0644)
 		require.NoError(t, err)
 
-		pngData, err := h.generateQRWithLogo("https://example.com")
+		pngData, err := h.generateQRWithLogoFromPath("https://example.com", logoPath)
 		assert.NoError(t, err)
 		assert.NotEmpty(t, pngData)
 
