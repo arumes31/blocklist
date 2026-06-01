@@ -342,8 +342,9 @@ func (h *APIHandler) generateQRWithLogoFromPath(url, logoPath string) ([]byte, e
 	// Create image from QR code
 	img := qr.Image(256)
 
-	// Try to load logo
-	logoFile, err := os.Open(logoPath)
+	// Try to load logo. logoPath is not attacker-controlled: production callers
+	// pass the defaultQRLogoPath constant; only tests supply an alternate path.
+	logoFile, err := os.Open(logoPath) // #nosec G304
 	if err != nil {
 		// Fallback to plain QR if logo not found
 		return qr.PNG(256)

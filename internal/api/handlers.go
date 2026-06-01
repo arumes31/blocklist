@@ -153,13 +153,17 @@ func (h *APIHandler) WS(c *gin.Context) {
 		return
 	}
 
-	h.hub.register <- conn
+	// Wrap the connection so all writes (broadcasts from the Hub and the
+	// keep-alive pings below) serialize on a single per-connection mutex;
+	// gorilla/websocket does not allow concurrent writers.
+	client := &wsClient{conn: conn}
+	h.hub.register <- client
 
 	// Keep-alive setup
 	pingTicker := time.NewTicker(30 * time.Second)
 	defer func() {
 		pingTicker.Stop()
-		h.hub.unregister <- conn
+		h.hub.unregister <- client
 	}()
 
 	_ = conn.SetReadDeadline(time.Now().Add(70 * time.Second))
@@ -184,7 +188,7 @@ func (h *APIHandler) WS(c *gin.Context) {
 	for {
 		select {
 		case <-pingTicker.C:
-			if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+			if err := client.writeMessage(websocket.PingMessage, nil); err != nil {
 				return
 			}
 		case <-done:

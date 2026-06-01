@@ -10,10 +10,26 @@ import (
 	zlog "github.com/rs/zerolog/log"
 )
 
+// wsClient wraps a websocket connection with a write mutex. gorilla/websocket
+// does not support concurrent writers, and a single connection is written to
+// from two goroutines: the Hub broadcast loop (event messages) and the per-
+// connection handler (keep-alive pings). All writes must go through writeMessage
+// so they serialize on writeMu.
+type wsClient struct {
+	conn    *websocket.Conn
+	writeMu sync.Mutex
+}
+
+func (c *wsClient) writeMessage(messageType int, data []byte) error {
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+	return c.conn.WriteMessage(messageType, data)
+}
+
 type Hub struct {
-	clients    map[*websocket.Conn]bool
-	register   chan *websocket.Conn
-	unregister chan *websocket.Conn
+	clients    map[*wsClient]bool
+	register   chan *wsClient
+	unregister chan *wsClient
 	stop       chan struct{}
 	mu         sync.Mutex
 	redis      *redis.Client
@@ -22,9 +38,9 @@ type Hub struct {
 
 func NewHub(rdb *redis.Client) *Hub {
 	return &Hub{
-		clients:    make(map[*websocket.Conn]bool),
-		register:   make(chan *websocket.Conn),
-		unregister: make(chan *websocket.Conn),
+		clients:    make(map[*wsClient]bool),
+		register:   make(chan *wsClient),
+		unregister: make(chan *wsClient),
 		stop:       make(chan struct{}),
 		redis:      rdb,
 		channel:    "blocklist_events",
@@ -50,15 +66,15 @@ func (h *Hub) Run() {
 			h.mu.Lock()
 			if _, ok := h.clients[client]; ok {
 				delete(h.clients, client)
-				_ = client.Close()
+				_ = client.conn.Close()
 			}
 			h.mu.Unlock()
 		case msg := <-ch:
 			h.mu.Lock()
 			for client := range h.clients {
-				err := client.WriteMessage(websocket.TextMessage, []byte(msg.Payload))
+				err := client.writeMessage(websocket.TextMessage, []byte(msg.Payload))
 				if err != nil {
-					_ = client.Close()
+					_ = client.conn.Close()
 					delete(h.clients, client)
 				}
 			}
