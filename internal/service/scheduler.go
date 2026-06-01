@@ -4,6 +4,7 @@ import (
 	"blocklist/internal/config"
 	"blocklist/internal/repository"
 	"encoding/json"
+	"sync"
 	"time"
 
 	zlog "github.com/rs/zerolog/log"
@@ -14,6 +15,7 @@ type SchedulerService struct {
 	pgRepo    *repository.PostgresRepository
 	cfg       *config.Config
 	stop      chan struct{}
+	stopOnce  sync.Once
 }
 
 func NewSchedulerService(r *repository.RedisRepository, p *repository.PostgresRepository, cfg *config.Config) *SchedulerService {
@@ -64,7 +66,9 @@ func (s *SchedulerService) Start() {
 }
 
 func (s *SchedulerService) Stop() {
-	close(s.stop)
+	s.stopOnce.Do(func() {
+		close(s.stop)
+	})
 }
 
 func (s *SchedulerService) CleanOldIPs(hashKey string) {
