@@ -34,3 +34,5 @@ jobs:
       uses: securego/gosec@master
       with:
         args: ./...
+      env:
+        GOTOOLCHAIN: auto
