@@ -36,6 +36,8 @@ type IPServiceProvider interface {
 	GetGeoIP(ipStr string) *models.GeoData
 	IsValidIP(ipStr string) bool
 	CalculateThreatScore(ip string, reason string) int
+	GetExcludedCount(ctx context.Context) int
+	ExclusionConflicts(ctx context.Context, value string) []string
 }
 
 // AuthServiceProvider defines the interface for Auth operations

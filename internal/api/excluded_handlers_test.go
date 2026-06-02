@@ -38,6 +38,7 @@ func TestAPIHandler_AddExcluded(t *testing.T) {
 	h, _, _, _, ipService := setupTest()
 
 	// 1. Valid FQDN via JSON
+	ipService.On("ExclusionConflicts", mock.Anything, "api.example.com").Return([]string(nil))
 	ipService.On("AddExcluded", mock.Anything, "api.example.com", "trusted upstream", "admin", "").Return(nil)
 
 	w := httptest.NewRecorder()

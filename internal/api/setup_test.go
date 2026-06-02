@@ -139,6 +139,19 @@ func (m *MockIPService) CalculateThreatScore(ip string, reason string) int {
 	return args.Int(0)
 }
 
+func (m *MockIPService) GetExcludedCount(ctx context.Context) int {
+	args := m.Called(ctx)
+	return args.Int(0)
+}
+
+func (m *MockIPService) ExclusionConflicts(ctx context.Context, value string) []string {
+	args := m.Called(ctx, value)
+	if args.Get(0) == nil {
+		return nil
+	}
+	return args.Get(0).([]string)
+}
+
 // MockRedisRepo implements RedisRepositoryProvider
 type MockRedisRepo struct {
 	mock.Mock

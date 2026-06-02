@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/netip"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -13,10 +14,11 @@ import (
 )
 
 // fqdnPattern is a conservative hostname/FQDN matcher (labels of letters,
-// digits and hyphens separated by dots; at least one dot).
-var fqdnPattern = regexp.MustCompile(`^(?i)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$`)
+// digits and hyphens separated by dots; at least one dot). Supports optional
+// leading wildcard "*.".
+var fqdnPattern = regexp.MustCompile(`^(?i)(\*\.)?([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$`)
 
-// isValidExclusionValue reports whether input is a usable IP, CIDR, or FQDN.
+// isValidExclusionValue reports whether input is a usable IP, CIDR, or FQDN (including wildcards).
 func isValidExclusionValue(input string) bool {
 	input = strings.TrimSpace(input)
 	if input == "" {
@@ -64,6 +66,9 @@ func (h *APIHandler) Excluded(c *gin.Context) {
 		d := displayEntry{ExcludedEntry: entry}
 		if entry.ExpiresAt != "" {
 			exp, perr := time.Parse(time.RFC3339, entry.ExpiresAt)
+			if perr != nil {
+				exp, perr = time.Parse("2006-01-02 15:04:05 UTC", entry.ExpiresAt)
+			}
 			switch {
 			case perr != nil:
 				d.ExpiresIn = "ERR"
@@ -108,6 +113,7 @@ func (h *APIHandler) AddExcluded(c *gin.Context) {
 		Reason    string `json:"reason"`
 		Note      string `json:"note"`
 		ExpiresAt string `json:"expires_at"`
+		Confirm   bool   `json:"confirm"` // If true, ignore conflict warnings
 	}
 
 	if c.ContentType() == "application/json" {
@@ -121,6 +127,7 @@ func (h *APIHandler) AddExcluded(c *gin.Context) {
 		req.Reason = c.PostForm("reason")
 		req.Note = c.PostForm("note")
 		req.ExpiresAt = c.PostForm("expires_at")
+		req.Confirm, _ = strconv.ParseBool(c.PostForm("confirm"))
 	}
 
 	value := strings.TrimSpace(req.Value)
@@ -137,7 +144,7 @@ func (h *APIHandler) AddExcluded(c *gin.Context) {
 		return
 	}
 	if !isValidExclusionValue(value) {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid value: expected an IP, CIDR subnet, or FQDN"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid value: expected an IP, CIDR subnet, or FQDN (wildcards like *.example.com supported)"})
 		return
 	}
 	if strings.TrimSpace(reason) == "" {
@@ -148,6 +155,18 @@ func (h *APIHandler) AddExcluded(c *gin.Context) {
 	if req.ExpiresAt != "" {
 		if _, err := time.Parse(time.RFC3339, req.ExpiresAt); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid expires_at format (expected RFC3339)"})
+			return
+		}
+	}
+
+	// Conflict detection
+	if !req.Confirm {
+		warns := h.ipService.ExclusionConflicts(c.Request.Context(), value)
+		if len(warns) > 0 {
+			c.JSON(http.StatusConflict, gin.H{
+				"status":   "conflict",
+				"warnings": warns,
+			})
 			return
 		}
 	}
@@ -214,6 +233,9 @@ func (h *APIHandler) JSONExcluded(c *gin.Context) {
 		expIn := "NEVER"
 		if v.ExpiresAt != "" {
 			exp, perr := time.Parse(time.RFC3339, v.ExpiresAt)
+			if perr != nil {
+				exp, perr = time.Parse("2006-01-02 15:04:05 UTC", v.ExpiresAt)
+			}
 			switch {
 			case perr != nil:
 				expIn = "ERR"

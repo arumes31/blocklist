@@ -436,37 +436,57 @@ func (s *IPService) ExclusionConflicts(ctx context.Context, value string) []stri
 		warns = append(warns, fmt.Sprintf("%s is already on the excluded list; it will be updated.", value))
 	}
 
-	if typ == "ip" {
+	switch typ {
+	case "ip":
 		if addr, err := netip.ParseAddr(value); err == nil {
 			addr = addr.Unmap()
-
-			// Currently blocked? Excluding does not unblock — surface it.
+			// Currently blocked?
 			if entry, err := s.redisRepo.GetIPEntry(value); err == nil && entry != nil {
 				warns = append(warns, fmt.Sprintf("%s is currently blocked; excluding it does not remove the existing block — unblock it separately.", value))
 			}
-
-			// Covered by an existing excluded subnet?
-			for ev, ee := range existing {
-				if ev == value {
-					continue
-				}
-				t := ee.Type
-				if t == "" {
-					t = classifyExclusionType(ev)
-				}
-				if t == "cidr" {
-					if p, perr := netip.ParsePrefix(ev); perr == nil && p.Contains(addr) {
-						warns = append(warns, fmt.Sprintf("%s is already covered by excluded subnet %s.", value, ev))
-					}
-				}
-			}
-
-			// Inside a configured blocked range?
+			// Inside configured blocked range?
 			for _, prefix := range s.blockedRanges {
 				if prefix.Contains(addr) {
 					warns = append(warns, fmt.Sprintf("%s falls within configured blocked range %s.", value, prefix.String()))
 				}
 			}
+			// Covered by existing excluded subnet?
+			for ev, ee := range existing {
+				if (ee.Type == "cidr" || (ee.Type == "" && classifyExclusionType(ev) == "cidr")) && ev != value {
+					if p, perr := netip.ParsePrefix(ev); perr == nil && p.Contains(addr) {
+						warns = append(warns, fmt.Sprintf("%s is already covered by excluded subnet %s.", value, ev))
+					}
+				}
+			}
+		}
+	case "cidr":
+		if prefix, err := netip.ParsePrefix(value); err == nil {
+			prefix = prefix.Masked()
+			// Check if any blocked IPs are inside this subnet
+			blocked, _ := s.redisRepo.GetBlockedIPs()
+			count := 0
+			for ipStr := range blocked {
+				if ip, ierr := netip.ParseAddr(ipStr); ierr == nil && prefix.Contains(ip.Unmap()) {
+					count++
+				}
+			}
+			if count > 0 {
+				warns = append(warns, fmt.Sprintf("%s covers %d currently blocked IPs; they will NOT be automatically unblocked.", value, count))
+			}
+		}
+	case "fqdn":
+		// Resolve now to see if it's currently blocked
+		addrs, _ := s.resolveAndCache(value)
+		blockedCount := 0
+		blockedIPs := []string{}
+		for a := range addrs {
+			if s.IsBlocked(a.String()) {
+				blockedCount++
+				blockedIPs = append(blockedIPs, a.String())
+			}
+		}
+		if blockedCount > 0 {
+			warns = append(warns, fmt.Sprintf("%s currently resolves to blocked IPs: %s. Exclusion will not remove these existing blocks.", value, strings.Join(blockedIPs, ", ")))
 		}
 	}
 
@@ -498,6 +518,10 @@ func (s *IPService) RefreshExcludedFQDNs(ctx context.Context) {
 		if entry.ExpiresAt != "" {
 			if exp, perr := time.Parse(time.RFC3339, entry.ExpiresAt); perr == nil && now.After(exp) {
 				continue // expired; the scheduler cleanup will remove it
+			} else if perr != nil {
+				if exp, perr = time.Parse("2006-01-02 15:04:05 UTC", entry.ExpiresAt); perr == nil && now.After(exp) {
+					continue
+				}
 			}
 		}
 
@@ -509,7 +533,8 @@ func (s *IPService) RefreshExcludedFQDNs(ctx context.Context) {
 				msg = rerr.Error()
 			}
 			entry.ResolveError = msg
-			entry.ResolvedIPs = nil
+			// Do NOT clear ResolvedIPs on failure; keep the last known good set
+			// to provide best-effort protection during DNS outages.
 			zlog.Warn().Str("fqdn", value).Str("error", msg).Msg("excluded: FQDN resolution failed")
 		} else {
 			entry.ResolveError = ""
@@ -1515,7 +1540,10 @@ func (s *IPService) RemoveExcluded(ctx context.Context, value string, username s
 // GetIPDetails retrieves current and historical details for an IP.
 func (s *IPService) GetIPDetails(ctx context.Context, ip string) (map[string]interface{}, error) {
 	entry, err := s.redisRepo.GetIPEntry(ip)
-	history, _ := s.pgRepo.GetIPHistory(ip)
+	var history []models.AuditLog
+	if s.pgRepo != nil {
+		history, _ = s.pgRepo.GetIPHistory(ip)
+	}
 	if history == nil {
 		history = []models.AuditLog{}
 	}

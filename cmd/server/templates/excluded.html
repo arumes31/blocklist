@@ -115,6 +115,51 @@
         .type-ip { background: rgba(52, 152, 219, 0.2); color: #5dade2; }
         .type-cidr { background: rgba(155, 89, 182, 0.2); color: #bb8fce; }
         .type-fqdn { background: rgba(241, 196, 15, 0.18); color: #f1c40f; }
+        .type-wildcard { background: rgba(230, 126, 34, 0.2); color: #e67e22; }
+
+        .resolved-ips {
+            font-size: 0.75rem;
+            color: #888;
+            margin-top: 0.3rem;
+            display: block;
+            max-width: 300px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .resolve-err { color: var(--vibrant-red); font-size: 0.7rem; }
+
+        /* Modal / Dialog for conflicts */
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.85);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 3000;
+            backdrop-filter: blur(4px);
+        }
+        .modal-card {
+            background: #1a1a1a;
+            border: 1px solid var(--border-red);
+            border-radius: 12px;
+            padding: 2rem;
+            max-width: 500px;
+            width: 90%;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+        }
+        .modal-card h3 { margin-top: 0; color: var(--vibrant-red); }
+        .warning-list {
+            background: rgba(255,0,0,0.05);
+            border-radius: 6px;
+            padding: 1rem;
+            margin: 1rem 0;
+            font-size: 0.9rem;
+            color: #ccc;
+        }
+        .warning-item { margin-bottom: 0.5rem; display: flex; gap: 10px; }
+        .warning-item:before { content: "⚠️"; }
 
         /* Toast Notifications */
         #toast-container {
@@ -146,6 +191,19 @@
 </head>
 <body>
     <div id="toast-container"></div>
+
+    <div id="conflictModal" class="modal-overlay">
+        <div class="modal-card">
+            <h3>Potential Conflict Detected</h3>
+            <div id="conflictWarnings" class="warning-list"></div>
+            <p style="font-size: 0.9rem; color: #888;">Do you want to proceed and add this exclusion anyway?</p>
+            <div style="display: flex; gap: 10px; margin-top: 1.5rem;">
+                <button class="btn btn-danger" style="flex: 1;" onclick="addExcluded(true)">Proceed</button>
+                <button class="btn btn-dark" style="flex: 1;" onclick="closeModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
     <div class="header-container">
         <div style="display: flex; align-items: center; gap: 2rem;">
             <a href="/dashboard"><img src="/cd/logo.png" alt="Logo"></a>
@@ -168,8 +226,8 @@
         <p style="color: var(--secondary-color); max-width: 900px;">
             Entries on the excluded list can <strong>never be blocked</strong> &mdash; not via the GUI, bulk actions, or webhooks.
             Add a single <strong>IP</strong>, a <strong>CIDR subnet</strong> (e.g. <code>10.0.0.0/8</code>), or an
-            <strong>FQDN</strong> (e.g. <code>api.example.com</code>). FQDNs are resolved automatically and follow CNAME
-            chains and multiple A/AAAA records; resolutions are refreshed periodically. Expiry defaults to <strong>Never</strong>.
+            <strong>FQDN</strong> (e.g. <code>api.example.com</code>). FQDNs are resolved automatically; wildcards like <code>*.google.com</code>
+            are supported using forward-confirmed reverse DNS. Resolutions are refreshed periodically. Expiry defaults to <strong>Never</strong>.
         </p>
 
         <div class="table-card" style="padding: 1.5rem; margin-bottom: 2rem; display: flex; gap: 10px; align-items: center; justify-content: center; flex-wrap: wrap;">
@@ -202,7 +260,22 @@
                 <tbody>
                     {{ range $value, $data := .excluded_items }}
                         <tr>
-                            <td style="font-family: monospace; font-weight: 600;">{{ $value }}</td>
+                            <td>
+                                <div style="font-family: monospace; font-weight: 600;">{{ $value }}</div>
+                                {{ if eq $data.Type "fqdn" }}
+                                    {{ if $data.ResolvedIPs }}
+                                        <span class="resolved-ips" title="{{ range $idx, $ip := $data.ResolvedIPs }}{{ if $idx }}, {{ end }}{{ $ip }}{{ end }}">
+                                            Resolves: {{ range $idx, $ip := $data.ResolvedIPs }}{{ if $idx }}, {{ end }}{{ $ip }}{{ end }}
+                                        </span>
+                                    {{ end }}
+                                    {{ if $data.ResolveError }}
+                                        <div class="resolve-err">⚠️ {{ $data.ResolveError }}</div>
+                                    {{ end }}
+                                    {{ if $data.ResolvedAt }}
+                                        <div style="font-size: 0.65rem; color: #555;">Refreshed: {{ $data.ResolvedAt }}</div>
+                                    {{ end }}
+                                {{ end }}
+                            </td>
                             <td><span class="type-badge type-{{ if $data.Type }}{{ $data.Type }}{{ else }}ip{{ end }}">{{ if $data.Type }}{{ $data.Type }}{{ else }}ip{{ end }}</span></td>
                             <td>{{ if $data.AddedBy }}{{ $data.AddedBy }}{{ else }}Unknown{{ end }}</td>
                             <td><span style="font-size: 0.9rem; color: var(--secondary-color);">{{ if $data.Reason }}{{ $data.Reason }}{{ else }}No description{{ end }}</span></td>
@@ -226,6 +299,8 @@
     </div>
 
     <script nonce="{{ .nonce }}">
+        let pendingExclusion = null;
+
         function showToast(message, type = 'success') {
             const container = document.getElementById('toast-container');
             const toast = document.createElement('div');
@@ -243,7 +318,12 @@
             document.getElementById('expiryDate').style.display = type === 'custom' ? '' : 'none';
         }
 
-        function addExcluded() {
+        function closeModal() {
+            document.getElementById('conflictModal').style.display = 'none';
+            pendingExclusion = null;
+        }
+
+        function addExcluded(confirmed = false) {
             var value = document.getElementById('excludedValue').value.trim();
             var reason = document.getElementById('excludedReason').value.trim();
             if (!value) {
@@ -269,18 +349,39 @@
             fetch('/add_excluded', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 'value': value, 'reason': reason, 'expires_at': expiresAt })
+                body: JSON.stringify({ 'value': value, 'reason': reason, 'expires_at': expiresAt, 'confirm': confirmed })
             })
-            .then(response => response.json())
+            .then(response => {
+                if (response.status === 409) { // Conflict
+                    return response.json().then(data => {
+                        const list = document.getElementById('conflictWarnings');
+                        list.innerHTML = '';
+                        data.warnings.forEach(w => {
+                            const item = document.createElement('div');
+                            item.className = 'warning-item';
+                            item.innerText = w;
+                            list.appendChild(item);
+                        });
+                        document.getElementById('conflictModal').style.display = 'flex';
+                        throw new Error('conflict');
+                    });
+                }
+                return response.json();
+            })
             .then(data => {
                 if (data.status === 'success') {
                     showToast('Added to excluded list!', 'success');
+                    closeModal();
                     setTimeout(() => location.reload(), 1000);
-                } else {
-                    showToast(data.error || 'Failed to add entry!', 'danger');
+                } else if (data.error) {
+                    showToast(data.error, 'danger');
                 }
             })
-            .catch(() => showToast('Failed to add entry!', 'danger'));
+            .catch(err => {
+                if (err.message !== 'conflict') {
+                    showToast('Failed to add entry!', 'danger');
+                }
+            });
         }
 
         function removeExcluded(value) {

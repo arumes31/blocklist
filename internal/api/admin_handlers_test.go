@@ -121,6 +121,7 @@ func TestAPIHandler_Stats(t *testing.T) {
 			Count  int
 		}{},
 		5, int64(0), 1, 0, nil)
+	ipService.On("GetExcludedCount", mock.Anything).Return(5)
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
