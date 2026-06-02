@@ -318,7 +318,11 @@ func (s *IPService) ListIPsPaginated(ctx context.Context, limit int, cursor stri
 	if zerr == nil && len(zs) > 0 {
 		// total via GetTotalCount
 		tot := s.GetTotalCount(ctx)
-		items := make([]map[string]interface{}, 0, min(limit, MaxPageSize))
+		// Use the fixed MaxPageSize constant for capacity instead of the
+		// user-derived limit (already clamped to <= MaxPageSize above). This keeps
+		// any untrusted value out of make()'s size argument so CodeQL's allocation
+		// taint analysis (CWE-770) is satisfied; capacity is only a growth hint.
+		items := make([]map[string]interface{}, 0, MaxPageSize)
 
 		var currentCursor string
 		for {
@@ -415,9 +419,14 @@ func (s *IPService) ListIPsPaginated(ctx context.Context, limit int, cursor stri
 	sort.Slice(list, func(i, j int) bool { return list[i].ts > list[j].ts })
 	offset := 0
 	if cursor != "" {
-		if n, err := strconv.Atoi(cursor); err == nil {
+		if n, err := strconv.Atoi(cursor); err == nil && n > 0 {
 			offset = n
 		}
+	}
+	// Clamp offset into range so a crafted cursor cannot produce a negative
+	// slice bound or a negative make() capacity (both panic -> DoS).
+	if offset > len(list) {
+		offset = len(list)
 	}
 	end := offset + limit
 	if end > len(list) {
@@ -796,7 +805,11 @@ func (s *IPService) ListIPsPaginatedAdvanced(ctx context.Context, limit int, cur
 	zs, next, zerr := s.redisRepo.ZPageByScoreDesc(fetchLimit, cursor)
 	if zerr == nil && len(zs) > 0 {
 		tot := s.GetTotalCount(ctx)
-		items := make([]map[string]interface{}, 0, min(limit, MaxPageSize))
+		// Use the fixed MaxPageSize constant for capacity instead of the
+		// user-derived limit (already clamped to <= MaxPageSize above). This keeps
+		// any untrusted value out of make()'s size argument so CodeQL's allocation
+		// taint analysis (CWE-770) is satisfied; capacity is only a growth hint.
+		items := make([]map[string]interface{}, 0, MaxPageSize)
 		q := strings.ToLower(strings.TrimSpace(query))
 		countryList := []string{}
 		if country != "" {
