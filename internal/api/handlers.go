@@ -126,7 +126,6 @@ func NewAPIHandler(opts HandlerOptions) *APIHandler {
 	return h
 }
 
-
 // renderHTML is a helper to render templates with common data like the CSP nonce.
 func (h *APIHandler) renderHTML(c *gin.Context, status int, name string, data gin.H) {
 	if data == nil {

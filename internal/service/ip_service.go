@@ -224,8 +224,12 @@ func (s *IPService) calculateThreatScoreInternal(banCount int64, normalizedReaso
 		score += 10
 	}
 
-	if score > 100 { score = 100 }
-	if score < 0 { score = 0 }
+	if score > 100 {
+		score = 100
+	}
+	if score < 0 {
+		score = 0
+	}
 	return score
 }
 
