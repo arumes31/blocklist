@@ -338,6 +338,12 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 		auth.POST("/add_whitelist", h.PermissionMiddleware("manage_whitelist", "whitelist_ips"), h.AddWhitelist)
 		auth.POST("/remove_whitelist", h.PermissionMiddleware("manage_whitelist"), h.RemoveWhitelist)
 
+		// Excluded list management (IPs, subnets, or FQDNs that can never be blocked)
+		auth.GET("/excluded", h.PermissionMiddleware("manage_excluded"), h.Excluded)
+		auth.GET("/api/v1/excluded", h.PermissionMiddleware("manage_excluded"), h.JSONExcluded)
+		auth.POST("/add_excluded", h.PermissionMiddleware("manage_excluded"), h.AddExcluded)
+		auth.POST("/remove_excluded", h.PermissionMiddleware("manage_excluded"), h.RemoveExcluded)
+
 		// Admin management
 		admin := auth.Group("/admin_management")
 		admin.Use(h.PermissionMiddleware("manage_admins"))

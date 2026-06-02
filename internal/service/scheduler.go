@@ -3,6 +3,7 @@ package service
 import (
 	"blocklist/internal/config"
 	"blocklist/internal/repository"
+	"context"
 	"encoding/json"
 	"sync"
 	"time"
@@ -14,8 +15,15 @@ type SchedulerService struct {
 	redisRepo *repository.RedisRepository
 	pgRepo    *repository.PostgresRepository
 	cfg       *config.Config
+	ipService *IPService
 	stop      chan struct{}
 	stopOnce  sync.Once
+}
+
+// SetIPService attaches an IPService so the scheduler can run excluded-list FQDN
+// pre-resolution. Optional; resolution is skipped when nil.
+func (s *SchedulerService) SetIPService(svc *IPService) {
+	s.ipService = svc
 }
 
 func NewSchedulerService(r *repository.RedisRepository, p *repository.PostgresRepository, cfg *config.Config) *SchedulerService {
@@ -28,6 +36,12 @@ func NewSchedulerService(r *repository.RedisRepository, p *repository.PostgresRe
 }
 
 func (s *SchedulerService) Start() {
+	// Warm the local FQDN-exclusion cache once at startup so the first block
+	// check after boot does not pay a DNS round-trip.
+	if s.ipService != nil {
+		go s.ipService.RefreshExcludedFQDNs(context.Background())
+	}
+
 	ticker := time.NewTicker(15 * time.Minute)
 	go func() {
 		defer ticker.Stop()
@@ -42,6 +56,12 @@ func (s *SchedulerService) Start() {
 				if acquired {
 					s.CleanOldIPs("ips")
 					s.CleanOldIPs("ips_webhook2_whitelist")
+					s.CleanOldIPs("ips_webhook2_excluded")
+
+					// Refresh excluded FQDN resolutions (and surface failures).
+					if s.ipService != nil {
+						s.ipService.RefreshExcludedFQDNs(context.Background())
+					}
 
 					if s.pgRepo != nil {
 						zlog.Info().Msg("Managing database partitions")

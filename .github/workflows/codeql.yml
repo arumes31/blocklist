@@ -36,7 +36,7 @@ jobs:
 
     # Initialize CodeQL. If this fails with ECONNRESET locally, consider using --toolcache in act.
     - name: Initialize CodeQL
-      uses: github/codeql-action/init@v4
+      uses: github/codeql-action/init@v3
       with:
         languages: ${{ matrix.language }}
         # Setting tools: latest explicitly helps ensure we get the latest compatible bundle
@@ -44,9 +44,9 @@ jobs:
 
     # Go analysis usually works best with 'autobuild' for standard layouts.
     - name: Autobuild
-      uses: github/codeql-action/autobuild@v4
+      uses: github/codeql-action/autobuild@v3
 
     - name: Perform CodeQL Analysis
-      uses: github/codeql-action/analyze@v4
+      uses: github/codeql-action/analyze@v3
       with:
         category: "/language:${{matrix.language}}"

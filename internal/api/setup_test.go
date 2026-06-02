@@ -61,6 +61,21 @@ func (m *MockIPService) RemoveWhitelist(ctx context.Context, ip string, username
 	return args.Error(0)
 }
 
+func (m *MockIPService) IsExcluded(ipStr string) bool {
+	args := m.Called(ipStr)
+	return args.Bool(0)
+}
+
+func (m *MockIPService) AddExcluded(ctx context.Context, value string, reason string, username string, expiresAt string) error {
+	args := m.Called(ctx, value, reason, username, expiresAt)
+	return args.Error(0)
+}
+
+func (m *MockIPService) RemoveExcluded(ctx context.Context, value string, username string) error {
+	args := m.Called(ctx, value, username)
+	return args.Error(0)
+}
+
 func (m *MockIPService) GetIPDetails(ctx context.Context, ip string) (map[string]interface{}, error) {
 	args := m.Called(ctx, ip)
 	return args.Get(0).(map[string]interface{}), args.Error(1)
@@ -166,6 +181,21 @@ func (m *MockRedisRepo) WhitelistIP(ip string, entry models.WhitelistEntry) erro
 
 func (m *MockRedisRepo) RemoveFromWhitelist(ip string) error {
 	args := m.Called(ip)
+	return args.Error(0)
+}
+
+func (m *MockRedisRepo) GetExcludedEntries() (map[string]models.ExcludedEntry, error) {
+	args := m.Called()
+	return args.Get(0).(map[string]models.ExcludedEntry), args.Error(1)
+}
+
+func (m *MockRedisRepo) AddExcluded(value string, entry models.ExcludedEntry) error {
+	args := m.Called(value, entry)
+	return args.Error(0)
+}
+
+func (m *MockRedisRepo) RemoveExcluded(value string) error {
+	args := m.Called(value)
 	return args.Error(0)
 }
 

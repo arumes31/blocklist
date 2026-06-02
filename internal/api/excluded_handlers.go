@@ -1,0 +1,230 @@
+package api
+
+import (
+	"net/http"
+	"net/netip"
+	"regexp"
+	"strings"
+	"time"
+
+	"blocklist/internal/models"
+
+	"github.com/gin-gonic/gin"
+)
+
+// fqdnPattern is a conservative hostname/FQDN matcher (labels of letters,
+// digits and hyphens separated by dots; at least one dot).
+var fqdnPattern = regexp.MustCompile(`^(?i)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$`)
+
+// isValidExclusionValue reports whether input is a usable IP, CIDR, or FQDN.
+func isValidExclusionValue(input string) bool {
+	input = strings.TrimSpace(input)
+	if input == "" {
+		return false
+	}
+	if _, err := netip.ParseAddr(input); err == nil {
+		return true
+	}
+	if _, err := netip.ParsePrefix(input); err == nil {
+		return true
+	}
+	host := strings.TrimSuffix(input, ".")
+	if len(host) > 253 {
+		return false
+	}
+	return fqdnPattern.MatchString(host)
+}
+
+// Excluded renders the excluded-list management page.
+func (h *APIHandler) Excluded(c *gin.Context) {
+	username, _ := c.Get("username")
+	if username == "" {
+		c.Redirect(http.StatusFound, "/login")
+		return
+	}
+
+	items, err := h.redisRepo.GetExcludedEntries()
+	if err != nil {
+		h.renderHTML(c, http.StatusInternalServerError, "error.html", gin.H{"error": "Failed to fetch excluded list"})
+		return
+	}
+
+	permissions, _ := c.Get("permissions")
+	if permissions == nil {
+		permissions = ""
+	}
+
+	type displayEntry struct {
+		models.ExcludedEntry
+		ExpiresIn string `json:"expires_in"`
+	}
+
+	displayItems := make(map[string]displayEntry)
+	for value, entry := range items {
+		d := displayEntry{ExcludedEntry: entry}
+		if entry.ExpiresAt != "" {
+			exp, perr := time.Parse(time.RFC3339, entry.ExpiresAt)
+			switch {
+			case perr != nil:
+				d.ExpiresIn = "ERR"
+			case time.Now().After(exp):
+				d.ExpiresIn = "EXPIRED"
+			default:
+				d.ExpiresIn = time.Until(exp).Round(time.Minute).String()
+			}
+		} else {
+			d.ExpiresIn = "NEVER"
+		}
+		displayItems[value] = d
+	}
+
+	// Blocked subnets from configuration are implicitly protected as well.
+	var blockedSubnets []string
+	if h.cfg != nil && h.cfg.BlockedRanges != "" {
+		for _, r := range strings.Split(h.cfg.BlockedRanges, ",") {
+			if r = strings.TrimSpace(r); r != "" {
+				blockedSubnets = append(blockedSubnets, r)
+			}
+		}
+	}
+
+	h.renderHTML(c, http.StatusOK, "excluded.html", gin.H{
+		"excluded_items":  displayItems,
+		"blocked_subnets": blockedSubnets,
+		"username":        username,
+		"page":            "excluded",
+		"permissions":     permissions,
+		"admin_username":  h.cfg.GUIAdmin,
+	})
+}
+
+// AddExcluded adds an IP, CIDR, or FQDN to the excluded list.
+func (h *APIHandler) AddExcluded(c *gin.Context) {
+	username, _ := c.Get("username")
+
+	var req struct {
+		Value     string `json:"value"`
+		IP        string `json:"ip"` // accepted as an alias for value
+		Reason    string `json:"reason"`
+		Note      string `json:"note"`
+		ExpiresAt string `json:"expires_at"`
+	}
+
+	if c.ContentType() == "application/json" {
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON"})
+			return
+		}
+	} else {
+		req.Value = c.PostForm("value")
+		req.IP = c.PostForm("ip")
+		req.Reason = c.PostForm("reason")
+		req.Note = c.PostForm("note")
+		req.ExpiresAt = c.PostForm("expires_at")
+	}
+
+	value := strings.TrimSpace(req.Value)
+	if value == "" {
+		value = strings.TrimSpace(req.IP)
+	}
+	reason := req.Reason
+	if reason == "" {
+		reason = req.Note
+	}
+
+	if value == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Value required (IP, subnet, or FQDN)"})
+		return
+	}
+	if !isValidExclusionValue(value) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid value: expected an IP, CIDR subnet, or FQDN"})
+		return
+	}
+	if strings.TrimSpace(reason) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Reason required"})
+		return
+	}
+
+	if req.ExpiresAt != "" {
+		if _, err := time.Parse(time.RFC3339, req.ExpiresAt); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid expires_at format (expected RFC3339)"})
+			return
+		}
+	}
+
+	if err := h.ipService.AddExcluded(c.Request.Context(), value, reason, username.(string), req.ExpiresAt); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to add to excluded list"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "success"})
+}
+
+// RemoveExcluded removes a value from the excluded list.
+func (h *APIHandler) RemoveExcluded(c *gin.Context) {
+	username, _ := c.Get("username")
+
+	var req struct {
+		Value string `json:"value"`
+		IP    string `json:"ip"`
+	}
+	if err := c.ShouldBindJSON(&req); err == nil {
+		value := req.Value
+		if value == "" {
+			value = req.IP
+		}
+		if value != "" {
+			if err := h.ipService.RemoveExcluded(c.Request.Context(), value, username.(string)); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to remove from excluded list"})
+				return
+			}
+			c.JSON(http.StatusOK, gin.H{"status": "success"})
+			return
+		}
+	}
+
+	value := c.Param("value")
+	if value == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Value required"})
+		return
+	}
+	if err := h.ipService.RemoveExcluded(c.Request.Context(), value, username.(string)); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to remove from excluded list"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "success"})
+}
+
+// JSONExcluded returns the excluded list as JSON for API consumers.
+func (h *APIHandler) JSONExcluded(c *gin.Context) {
+	items, err := h.redisRepo.GetExcludedEntries()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch excluded list"})
+		return
+	}
+
+	type item struct {
+		Value     string               `json:"value"`
+		Data      models.ExcludedEntry `json:"data"`
+		ExpiresIn string               `json:"expires_in"`
+	}
+
+	results := make([]item, 0, len(items))
+	for k, v := range items {
+		expIn := "NEVER"
+		if v.ExpiresAt != "" {
+			exp, perr := time.Parse(time.RFC3339, v.ExpiresAt)
+			switch {
+			case perr != nil:
+				expIn = "ERR"
+			case time.Now().After(exp):
+				expIn = "EXPIRED"
+			default:
+				expIn = time.Until(exp).Round(time.Minute).String()
+			}
+		}
+		results = append(results, item{Value: k, Data: v, ExpiresIn: expIn})
+	}
+
+	c.JSON(http.StatusOK, results)
+}

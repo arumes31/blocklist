@@ -16,6 +16,9 @@ type IPServiceProvider interface {
 	BulkUnblock(ctx context.Context, ips []string, actor string) error
 	WhitelistIP(ctx context.Context, ip string, reason string, username string, expiresAt string) error
 	RemoveWhitelist(ctx context.Context, ip string, username string) error
+	IsExcluded(ipStr string) bool
+	AddExcluded(ctx context.Context, value string, reason string, username string, expiresAt string) error
+	RemoveExcluded(ctx context.Context, value string, username string) error
 	GetIPDetails(ctx context.Context, ip string) (map[string]interface{}, error)
 	ListIPsPaginatedAdvanced(ctx context.Context, limit int, cursor string, query string, country string, addedBy string, from string, to string) ([]map[string]interface{}, string, int, error)
 	ExportIPs(ctx context.Context, query string, country string, addedBy string, from string, to string) ([]map[string]interface{}, error)
@@ -53,6 +56,9 @@ type RedisRepositoryProvider interface {
 	ExecUnblockAtomic(ip string) error
 	WhitelistIP(ip string, entry models.WhitelistEntry) error
 	RemoveFromWhitelist(ip string) error
+	GetExcludedEntries() (map[string]models.ExcludedEntry, error)
+	AddExcluded(value string, entry models.ExcludedEntry) error
+	RemoveExcluded(value string) error
 	GetIPEntry(ip string) (*models.IPEntry, error)
 	GetCache(key string, target interface{}) error
 	SetCache(key string, val interface{}, expiration time.Duration) error
