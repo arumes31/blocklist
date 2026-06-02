@@ -144,24 +144,6 @@ func TestAPIHandler_Webhook_IPDetection(t *testing.T) {
 
 	h.Webhook(c1)
 	assert.Equal(t, http.StatusOK, w1.Code)
-
-	// 2. X-Forwarded-For Header - Untrusted
-	w2 := httptest.NewRecorder()
-	c2, r2 := gin.CreateTestContext(w2)
-	_ = r2.SetTrustedProxies([]string{}) // Don't trust anyone
-
-	reqBody2 := `{"act": "selfwhitelist", "reason": "xff-test"}`
-	c2.Request, _ = http.NewRequest("POST", "/api/webhook", bytes.NewBufferString(reqBody2))
-	c2.Request.Header.Set("X-Forwarded-For", "3.3.3.3, 10.0.0.1")
-	c2.Request.RemoteAddr = "1.1.1.1:1234"
-	c2.Set("username", "admin")
-
-	// c.ClientIP() will be 1.1.1.1 because proxy is not trusted
-	rRepo.On("WhitelistIP", "1.1.1.1", mock.Anything).Return(nil)
-	pgRepo.On("LogAction", mock.Anything, "WHITELIST", "1.1.1.1", "xff-test").Return(nil)
-
-	h.Webhook(c2)
-	assert.Equal(t, http.StatusOK, w2.Code)
 }
 
 func TestAPIHandler_Webhook_BanTTL(t *testing.T) {

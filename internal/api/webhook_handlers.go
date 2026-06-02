@@ -42,21 +42,11 @@ func (h *APIHandler) Webhook(c *gin.Context) {
 	// Gin's c.ClientIP() already respects TrustedProxies for X-Forwarded-For and X-Real-IP.
 	clientIP := c.ClientIP()
 
-	// Only trust CF-Connecting-IP if the request is confirmed to be from a trusted proxy
-	if cfIP := c.GetHeader("CF-Connecting-IP"); cfIP != "" {
-		remoteIP, _, _ := net.SplitHostPort(c.Request.RemoteAddr)
-		if remoteIP != clientIP {
-			// Gin has verified the proxy, so we can trust the CF header
-			if net.ParseIP(cfIP) != nil {
-				clientIP = cfIP
-			}
-		}
-	}
-
-	// Double check syntactic validity of clientIP
+	// Double check syntactic validity of clientIP. Log the rejection reason
+	// before writing the 400 so the ordering matches intent.
 	if net.ParseIP(clientIP) == nil {
 		zlog.Error().Str("ip", clientIP).Msg("Webhook: detected invalid client IP")
-		c.JSON(http.StatusBadRequest, gin.H{"status": "invalid client IP"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid IP address"})
 		return
 	}
 
@@ -66,8 +56,7 @@ func (h *APIHandler) Webhook(c *gin.Context) {
 	}
 
 	// Syntactic validation of target IP
-	if data.IP == "" || net.ParseIP(data.IP) == nil {
-		c.JSON(http.StatusBadRequest, gin.H{"status": "invalid target IP"})
+	if !h.validateIP(c, data.IP) {
 		return
 	}
 
@@ -224,6 +213,16 @@ func (h *APIHandler) AddOutboundWebhook(c *gin.Context) {
 	wh.Events = c.PostForm("events")
 	wh.GeoFilter = c.PostForm("geo_filter")
 	wh.Active = true
+
+	// Security: Input length validation to prevent unconstrained resource consumption
+	if len(wh.URL) > 2048 {
+		c.String(http.StatusBadRequest, "URL exceeds maximum length of 2048 characters")
+		return
+	}
+	if len(wh.Secret) > 255 || len(wh.Events) > 255 || len(wh.GeoFilter) > 255 {
+		c.String(http.StatusBadRequest, "Input fields exceed maximum length of 255 characters")
+		return
+	}
 
 	if err := security.IsSafeURL(wh.URL); err != nil {
 		zlog.Warn().Err(err).Str("url", wh.URL).Msg("Attempted to add unsafe webhook URL")

@@ -1,10 +1,14 @@
 package tasks
 
 import (
+	"archive/tar"
+	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	"blocklist/internal/config"
@@ -13,6 +17,33 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func createTestTarGz(t *testing.T, filename string) []byte {
+	var buf bytes.Buffer
+	gw := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gw)
+
+	content := []byte("mock mmdb content")
+	header := &tar.Header{
+		Name: filename,
+		Size: int64(len(content)),
+		Mode: 0600,
+	}
+
+	err := tw.WriteHeader(header)
+	require.NoError(t, err)
+
+	_, err = tw.Write(content)
+	require.NoError(t, err)
+
+	err = tw.Close()
+	require.NoError(t, err)
+
+	err = gw.Close()
+	require.NoError(t, err)
+
+	return buf.Bytes()
+}
 
 func TestNewGeoIPUpdateTask(t *testing.T) {
 	task, err := NewGeoIPUpdateTask("GeoLite2-City")
@@ -37,6 +68,9 @@ func (m *mockIPService) ReloadReaders() {
 }
 
 func TestGeoIPTaskHandler_ProcessTask_Success(t *testing.T) {
+	edition := "GeoLite2-City"
+	tarData := createTestTarGz(t, edition+".mmdb")
+
 	// Create a mock HTTP server that returns a valid tar.gz
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Check basic auth
@@ -46,12 +80,8 @@ func TestGeoIPTaskHandler_ProcessTask_Success(t *testing.T) {
 			return
 		}
 
-		// Return a minimal valid tar.gz with a .mmdb file
-		// For simplicity, we'll just return an error in this test
-		// A full implementation would create a proper tar.gz
 		w.WriteHeader(http.StatusOK)
-		// Write minimal tar.gz content (this is a simplified mock)
-		_, _ = w.Write([]byte("mock-tar-gz-content"))
+		_, _ = w.Write(tarData)
 	}))
 	defer server.Close()
 
@@ -62,15 +92,22 @@ func TestGeoIPTaskHandler_ProcessTask_Success(t *testing.T) {
 
 	mockIP := &mockIPService{}
 	handler := NewGeoIPTaskHandler(cfg, mockIP)
+	handler.testURL = server.URL
 
-	task, err := NewGeoIPUpdateTask("GeoLite2-City")
+	// Ensure cleanup of the downloaded file
+	dbPath := handler.getDBPath(edition)
+	defer func() { _ = os.Remove(dbPath) }()
+
+	task, err := NewGeoIPUpdateTask(edition)
 	require.NoError(t, err)
 
-	// Note: This will fail because we're not returning a valid tar.gz
-	// In a real test, you'd use a proper mock or test fixture
 	err = handler.ProcessTask(context.Background(), task)
-	// We expect an error because our mock doesn't return valid tar.gz
-	assert.Error(t, err)
+	assert.NoError(t, err)
+	assert.True(t, mockIP.reloadCalled)
+
+	// Verify file exists
+	_, err = os.Stat(dbPath)
+	assert.NoError(t, err)
 }
 
 func TestGeoIPTaskHandler_ProcessTask_InvalidPayload(t *testing.T) {
@@ -123,6 +160,7 @@ func TestGeoIPTaskHandler_Download_HTTPError(t *testing.T) {
 	}
 
 	handler := NewGeoIPTaskHandler(cfg, nil)
+	handler.testURL = server.URL
 
 	// This will fail because the mock server returns 403
 	err := handler.Download("GeoLite2-City")
@@ -131,9 +169,53 @@ func TestGeoIPTaskHandler_Download_HTTPError(t *testing.T) {
 }
 
 func TestGeoIPTaskHandler_Download_ValidResponse(t *testing.T) {
-	t.Skip("Skipping - requires refactoring Download method to accept custom HTTP client")
+	edition := "GeoLite2-City"
+	tarData := createTestTarGz(t, edition+".mmdb")
 
-	// This test would require refactoring the Download method to inject
-	// a custom HTTP client or URL for testing purposes.
-	// Current implementation hardcodes the MaxMind URL.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(tarData)
+	}))
+	defer server.Close()
+
+	cfg := &config.Config{
+		GeoIPAccountID:  "test-account",
+		GeoIPLicenseKey: "test-key",
+	}
+
+	handler := NewGeoIPTaskHandler(cfg, nil)
+	handler.testURL = server.URL
+
+	dbPath := handler.getDBPath(edition)
+	defer func() { _ = os.Remove(dbPath) }()
+
+	err := handler.Download(edition)
+	assert.NoError(t, err)
+
+	_, err = os.Stat(dbPath)
+	assert.NoError(t, err)
+}
+
+func TestGeoIPTaskHandler_ProcessTask_Traversal(t *testing.T) {
+	cfg := &config.Config{
+		GeoIPAccountID:  "test",
+		GeoIPLicenseKey: "test",
+	}
+	handler := NewGeoIPTaskHandler(cfg, nil)
+
+	traversalInputs := []string{
+		"../../etc/passwd",
+		"..\\..\\etc\\passwd",
+		"GeoLite2-City/../../etc/passwd",
+		"C:\\Windows\\System32\\drivers\\etc\\hosts",
+	}
+
+	for _, input := range traversalInputs {
+		t.Run(input, func(t *testing.T) {
+			task, _ := NewGeoIPUpdateTask(input)
+			err := handler.ProcessTask(context.Background(), task)
+			assert.Error(t, err, "Should fail for input: %s", input)
+			assert.Contains(t, err.Error(), "invalid edition", "Should return invalid edition error for: %s", input)
+		})
+	}
 }

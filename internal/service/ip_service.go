@@ -171,33 +171,22 @@ func (s *IPService) ReloadReaders() {
 	}
 }
 
-func (s *IPService) IsValidIP(ipStr string) bool {
-	ip, err := netip.ParseAddr(ipStr)
-	if err != nil {
-		return false
-	}
-
-	// Check whitelist first
-	if s.redisRepo != nil {
-		whitelist, _ := s.redisRepo.GetWhitelistedIPs()
-		if whitelist != nil {
-			if entry, ok := whitelist[ipStr]; ok {
-				if entry.ExpiresAt != "" {
-					exp, err := time.Parse(time.RFC3339, entry.ExpiresAt)
-					if err == nil && time.Now().After(exp) {
-						// Entry expired, remove it and treat as not whitelisted
-						_ = s.redisRepo.RemoveFromWhitelist(ipStr)
-					} else {
-						return false // IP is whitelisted (and not expired), so it's NOT "valid to block"
-					}
+func (s *IPService) isValidIPInternal(ipStr string, ip netip.Addr, whitelist map[string]models.WhitelistEntry) bool {
+	if whitelist != nil {
+		if entry, ok := whitelist[ipStr]; ok {
+			if entry.ExpiresAt != "" {
+				exp, err := time.Parse(time.RFC3339, entry.ExpiresAt)
+				if err == nil && time.Now().After(exp) {
+					_ = s.redisRepo.RemoveFromWhitelist(ipStr)
 				} else {
-					return false // IP is whitelisted (no expiration), so it's NOT "valid to block"
+					return false
 				}
+			} else {
+				return false
 			}
 		}
 	}
 
-	// Check blocked ranges
 	for _, prefix := range s.blockedRanges {
 		if prefix.Contains(ip) {
 			return false
@@ -207,26 +196,31 @@ func (s *IPService) IsValidIP(ipStr string) bool {
 	return true
 }
 
-// CalculateThreatScore computes a risk score (0-100) for an IP based on its history and current reason.
-func (s *IPService) CalculateThreatScore(ip string, reason string) int {
-	if s.redisRepo == nil {
-		return 0
+func (s *IPService) IsValidIP(ipStr string) bool {
+	ip, err := netip.ParseAddr(ipStr)
+	if err != nil {
+		return false
 	}
-	count, _ := s.redisRepo.GetIPBanCount(ip)
 
-	// Base score: 10 points per previous ban (including this one if already incremented,
-	// but usually we call this before ExecBlockAtomic or we account for it)
-	score := int(count * 10)
+	var whitelist map[string]models.WhitelistEntry
+	if s.redisRepo != nil {
+		whitelist, _ = s.redisRepo.GetWhitelistedIPs()
+	}
 
-	// Bonus points for reason severity
-	reason = strings.ToLower(reason)
-	if strings.Contains(reason, "brute") || strings.Contains(reason, "ssh") || strings.Contains(reason, "login") {
+	return s.isValidIPInternal(ipStr, ip, whitelist)
+}
+
+// CalculateThreatScore computes a risk score (0-100) for an IP based on its history and current reason.
+func (s *IPService) calculateThreatScoreInternal(banCount int64, normalizedReason string) int {
+	score := int(banCount * 10)
+
+	if strings.Contains(normalizedReason, "brute") || strings.Contains(normalizedReason, "ssh") || strings.Contains(normalizedReason, "login") {
 		score += 20
-	} else if strings.Contains(reason, "sql") || strings.Contains(reason, "inject") || strings.Contains(reason, "rce") {
+	} else if strings.Contains(normalizedReason, "sql") || strings.Contains(normalizedReason, "inject") || strings.Contains(normalizedReason, "rce") {
 		score += 40
-	} else if strings.Contains(reason, "spam") {
+	} else if strings.Contains(normalizedReason, "spam") {
 		score += 15
-	} else if strings.Contains(reason, "scanner") || strings.Contains(reason, "bot") {
+	} else if strings.Contains(normalizedReason, "scanner") || strings.Contains(normalizedReason, "bot") {
 		score += 10
 	}
 
@@ -237,6 +231,14 @@ func (s *IPService) CalculateThreatScore(ip string, reason string) int {
 		score = 0
 	}
 	return score
+}
+
+func (s *IPService) CalculateThreatScore(ip string, reason string) int {
+	if s.redisRepo == nil {
+		return 0
+	}
+	count, _ := s.redisRepo.GetIPBanCount(ip)
+	return s.calculateThreatScoreInternal(count, strings.ToLower(reason))
 }
 
 func (s *IPService) GetGeoIP(ipStr string) *models.GeoData {
@@ -316,17 +318,30 @@ func (s *IPService) ListIPsPaginated(ctx context.Context, limit int, cursor stri
 	if zerr == nil && len(zs) > 0 {
 		// total via GetTotalCount
 		tot := s.GetTotalCount(ctx)
-		items := make([]map[string]interface{}, 0, limit)
+		// Use the fixed MaxPageSize constant for capacity instead of the
+		// user-derived limit (already clamped to <= MaxPageSize above). This keeps
+		// any untrusted value out of make()'s size argument so CodeQL's allocation
+		// taint analysis (CWE-770) is satisfied; capacity is only a growth hint.
+		items := make([]map[string]interface{}, 0, MaxPageSize)
 
 		var currentCursor string
 		for {
-			for _, z := range zs {
+			ips := make([]string, len(zs))
+			for i, z := range zs {
+				ips[i] = z.Member.(string)
+			}
+			entries, err := s.redisRepo.GetIPEntries(ips)
+			if err != nil {
+				return items, currentCursor, tot, err
+			}
+
+			for i := range zs {
 				if len(items) >= limit {
 					break
 				}
-				ip := z.Member.(string)
-				entry, err := s.redisRepo.GetIPEntry(ip)
-				if err != nil || entry == nil {
+				ip := ips[i]
+				entry := entries[i]
+				if entry == nil {
 					continue
 				}
 				if q != "" {
@@ -404,9 +419,14 @@ func (s *IPService) ListIPsPaginated(ctx context.Context, limit int, cursor stri
 	sort.Slice(list, func(i, j int) bool { return list[i].ts > list[j].ts })
 	offset := 0
 	if cursor != "" {
-		if n, err := strconv.Atoi(cursor); err == nil {
+		if n, err := strconv.Atoi(cursor); err == nil && n > 0 {
 			offset = n
 		}
+	}
+	// Clamp offset into range so a crafted cursor cannot produce a negative
+	// slice bound or a negative make() capacity (both panic -> DoS).
+	if offset > len(list) {
+		offset = len(list)
 	}
 	end := offset + limit
 	if end > len(list) {
@@ -666,14 +686,39 @@ func (s *IPService) BulkBlock(ctx context.Context, ips []string, reason string, 
 		expiresAt = now.Add(time.Duration(tVal) * time.Second).Format("2006-01-02 15:04:05 UTC")
 	}
 
-	validIPs := make([]string, 0, len(ips))
-	validEntries := make([]models.IPEntry, 0, len(ips))
-
+	// Deduplicate input IPs
+	uniqueIPs := make([]string, 0, len(ips))
+	seen := make(map[string]struct{})
 	for _, ip := range ips {
-		if !s.IsValidIP(ip) {
+		if _, ok := seen[ip]; !ok {
+			seen[ip] = struct{}{}
+			uniqueIPs = append(uniqueIPs, ip)
+		}
+	}
+
+	// Batch fetch data
+	whitelist, _ := s.redisRepo.GetWhitelistedIPs()
+	banCounts, _ := s.redisRepo.GetIPBanCounts(uniqueIPs)
+	normalizedReason := strings.ToLower(reason)
+
+	validIPs := make([]string, 0, len(uniqueIPs))
+	validEntries := make([]models.IPEntry, 0, len(uniqueIPs))
+
+	for _, ipStr := range uniqueIPs {
+		addr, err := netip.ParseAddr(ipStr)
+		if err != nil {
 			continue
 		}
-		geo := s.GetGeoIP(ip)
+		if !s.isValidIPInternal(ipStr, addr, whitelist) {
+			continue
+		}
+
+		geo := s.GetGeoIP(ipStr)
+		banCount := int64(0)
+		if banCounts != nil {
+			banCount = banCounts[ipStr]
+		}
+
 		entry := models.IPEntry{
 			Timestamp:   timestamp,
 			Geolocation: geo,
@@ -681,9 +726,9 @@ func (s *IPService) BulkBlock(ctx context.Context, ips []string, reason string, 
 			AddedBy:     fmt.Sprintf("%s (%s)", addedBy, actorIP),
 			TTL:         ttl,
 			ExpiresAt:   expiresAt,
-			ThreatScore: s.CalculateThreatScore(ip, reason),
+			ThreatScore: s.calculateThreatScoreInternal(banCount, normalizedReason),
 		}
-		validIPs = append(validIPs, ip)
+		validIPs = append(validIPs, ipStr)
 		validEntries = append(validEntries, entry)
 	}
 
@@ -698,20 +743,16 @@ func (s *IPService) BulkBlock(ctx context.Context, ips []string, reason string, 
 		_ = s.pgRepo.BulkLogAction(addedBy, "BLOCK_EPHEMERAL", validIPs, reason)
 	}
 	err := s.redisRepo.ExecBulkBlockAtomic(validIPs, validEntries, now)
-	if err != nil {
-		zlog.Error().Err(err).Msg("ExecBulkBlockAtomic failed")
-		return err
-	}
-
-	s.bloomMu.Lock()
-	if s.bloomFilter != nil {
-		for _, ip := range validIPs {
-			s.bloomFilter.AddString(ip)
+	if err == nil {
+		s.bloomMu.Lock()
+		if s.bloomFilter != nil {
+			for _, ip := range validIPs {
+				s.bloomFilter.AddString(ip)
+			}
 		}
+		s.bloomMu.Unlock()
 	}
-	s.bloomMu.Unlock()
-
-	return nil
+	return err
 }
 
 // BulkUnblock unblocks multiple IPs at once.
@@ -764,7 +805,11 @@ func (s *IPService) ListIPsPaginatedAdvanced(ctx context.Context, limit int, cur
 	zs, next, zerr := s.redisRepo.ZPageByScoreDesc(fetchLimit, cursor)
 	if zerr == nil && len(zs) > 0 {
 		tot := s.GetTotalCount(ctx)
-		items := make([]map[string]interface{}, 0, limit)
+		// Use the fixed MaxPageSize constant for capacity instead of the
+		// user-derived limit (already clamped to <= MaxPageSize above). This keeps
+		// any untrusted value out of make()'s size argument so CodeQL's allocation
+		// taint analysis (CWE-770) is satisfied; capacity is only a growth hint.
+		items := make([]map[string]interface{}, 0, MaxPageSize)
 		q := strings.ToLower(strings.TrimSpace(query))
 		countryList := []string{}
 		if country != "" {
@@ -786,14 +831,22 @@ func (s *IPService) ListIPsPaginatedAdvanced(ctx context.Context, limit int, cur
 
 		var currentCursor string
 		for {
-			for _, z := range zs {
+			ips := make([]string, len(zs))
+			for i, z := range zs {
+				ips[i] = z.Member.(string)
+			}
+			entries, err := s.redisRepo.GetIPEntries(ips)
+			if err != nil {
+				return items, currentCursor, tot, err
+			}
+
+			for i := range zs {
 				if len(items) >= limit {
 					break
 				}
-
-				ip := z.Member.(string)
-				entry, err := s.redisRepo.GetIPEntry(ip)
-				if err != nil || entry == nil {
+				ip := ips[i]
+				entry := entries[i]
+				if entry == nil {
 					continue
 				}
 

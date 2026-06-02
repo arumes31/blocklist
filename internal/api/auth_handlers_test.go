@@ -6,12 +6,14 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"testing"
+	"time"
 
 	"blocklist/internal/models"
 
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
+	"github.com/pquerna/otp/totp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -76,6 +78,49 @@ func TestAPIHandler_Login_Failure(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w.Code) // Renders login page with error
 	assert.Contains(t, w.Body.String(), "Invalid credentials")
+}
+
+// TestAPIHandler_VerifySudo_RejectsEmptyTOTPSecret is a regression test for the
+// TOTP empty-secret bypass: an account that has not enrolled TOTP (Token == "")
+// must not be able to elevate to sudo, because totp.Validate against an empty
+// secret accepts the attacker-computable empty-key code.
+func TestAPIHandler_VerifySudo_RejectsEmptyTOTPSecret(t *testing.T) {
+	h, _, pg := setupAuthTest()
+
+	// Admin exists but has NOT enrolled a TOTP secret.
+	pg.On("GetAdmin", "admin").Return(&models.AdminAccount{
+		Username: "admin",
+		Role:     "admin",
+		Token:    "",
+	}, nil)
+
+	// The empty secret is public, so an attacker can compute the current code.
+	code, err := totp.GenerateCode("", time.Now())
+	assert.NoError(t, err)
+
+	r := gin.New()
+	r.SetFuncMap(GetFuncMap())
+	r.LoadHTMLGlob("../../cmd/server/templates/*")
+	store := cookie.NewStore([]byte("secret"))
+	r.Use(sessions.Sessions("mysession", store))
+	r.POST("/sudo", func(c *gin.Context) {
+		session := sessions.Default(c)
+		session.Set("username", "admin")
+		_ = session.Save()
+		c.Set("username", "admin")
+		h.VerifySudo(c)
+	})
+
+	form := url.Values{}
+	form.Add("totp", code)
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("POST", "/sudo", bytes.NewBufferString(form.Encode()))
+	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
+	r.ServeHTTP(w, req)
+
+	// Must NOT grant sudo (no redirect); should re-render the TOTP page with error.
+	assert.NotEqual(t, http.StatusFound, w.Code, "empty-secret TOTP must not grant sudo elevation")
+	assert.Contains(t, w.Body.String(), "Invalid TOTP code")
 }
 
 func TestAPIHandler_Logout(t *testing.T) {

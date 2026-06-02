@@ -118,6 +118,10 @@ func (h *WebhookTaskHandler) ProcessTask(ctx context.Context, t *asynq.Task) err
 		return nil // Do not retry
 	}
 
+	if err := security.IsSafeURL(webhook.URL); err != nil {
+		return fmt.Errorf("unsafe webhook URL: %v: %w", err, asynq.SkipRetry)
+	}
+
 	req, err := http.NewRequest("POST", webhook.URL, bytes.NewBuffer(p.Data))
 	if err != nil {
 		return fmt.Errorf("failed to create request: %v", err)

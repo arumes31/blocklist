@@ -60,7 +60,12 @@ func (w *CensorWriter) Write(p []byte) (n int, err error) {
 	// Simple regex to mask common sensitive keys in JSON/Text logs
 	// matches: "password":"...", "secret":"...", etc.
 	censored := w.re.ReplaceAll(p, []byte(`${1}${2}[CENSORED]`))
-	return w.Writer.Write(censored)
+	// Honor the io.Writer contract: report bytes consumed from the caller
+	// (len(p)), not the post-censoring length, which is typically shorter.
+	if _, err := w.Writer.Write(censored); err != nil {
+		return 0, err
+	}
+	return len(p), nil
 }
 
 func main() {
@@ -75,6 +80,17 @@ func main() {
 	zlog.Logger = zerolog.New(cw).With().Timestamp().Logger()
 
 	cfg := config.Load()
+
+	// Refuse to start with a default or weak SECRET_KEY. The session
+	// authentication/encryption keys are HKDF-derived from it, so a known or
+	// low-entropy secret allows an attacker to forge valid session cookies
+	// (full authentication bypass). Fail closed instead of booting insecurely.
+	if cfg.SecretKey == "" || cfg.SecretKey == "change-me" {
+		zlog.Fatal().Msg("SECRET_KEY is unset or using the insecure default 'change-me'. Set a strong, random SECRET_KEY (32+ characters) before starting.")
+	}
+	if len(cfg.SecretKey) < 16 {
+		zlog.Fatal().Msg("SECRET_KEY is too short. Use at least 16 characters (32+ recommended) of high-entropy randomness.")
+	}
 
 	// Ensure SECRET_KEY is stable and correctly sized for AES-256 (32 bytes)
 	// We use HKDF to derive two distinct keys from the single input secret.
@@ -237,18 +253,6 @@ func main() {
 		zlog.Error().Err(err).Msg("Failed to set trusted proxies")
 	}
 
-	// Optional Cloudflare Support
-	if cfg.UseCloudflare {
-		r.ForwardedByClientIP = true
-		r.Use(func(c *gin.Context) {
-			if cfIP := c.GetHeader("CF-Connecting-IP"); cfIP != "" {
-				// Override RemoteAddr so c.ClientIP() returns the Cloudflare IP
-				c.Request.Header.Set("X-Forwarded-For", cfIP)
-			}
-			c.Next()
-		})
-	}
-
 	// Force HTTPS (Improvement)
 	if cfg.ForceHTTPS {
 		r.Use(func(c *gin.Context) {
@@ -315,16 +319,7 @@ func main() {
 	webhookLimiter := createLimiter(cfg.RateLimitWebhook, cfg.RatePeriod, "limiter_webhook")
 
 	// Load Templates: Prefer filesystem for development/runtime updates, fallback to embed.FS
-	funcMap := template.FuncMap{
-		"lower":    strings.ToLower,
-		"replace":  strings.ReplaceAll,
-		"split":    strings.Split,
-		"contains": strings.Contains,
-		"safeHTML": func(s string) template.HTML { return template.HTML(s) }, // #nosec G203
-		"safeURL":  func(s string) template.URL { return template.URL(s) },  // #nosec G203
-		"add":      func(a, b int) int { return a + b },
-		"sub":      func(a, b int) int { return a - b },
-	}
+	funcMap := api.GetFuncMap()
 
 	var templ *template.Template
 	if _, err := os.Stat("cmd/server/templates"); err == nil {
@@ -450,8 +445,18 @@ func main() {
 	})
 
 	// 6. Initialize API Handler
-	handler := api.NewAPIHandler(cfg, a.RedisRepo, a.PgRepo, a.AuthService, a.IPService, hub, a.WebhookService)
-	handler.SetLimiters(mainLimiter, loginLimiter, webhookLimiter)
+	handler := api.NewAPIHandler(api.HandlerOptions{
+		Config:         cfg,
+		RedisRepo:      a.RedisRepo,
+		PgRepo:         a.PgRepo,
+		AuthService:    a.AuthService,
+		IPService:      a.IPService,
+		Hub:            hub,
+		WebhookService: a.WebhookService,
+		MainLimiter:    mainLimiter,
+		LoginLimiter:   loginLimiter,
+		WebhookLimiter: webhookLimiter,
+	})
 	handler.RegisterRoutes(r)
 
 	// 7. Run Server with Graceful Shutdown
@@ -490,5 +495,6 @@ func main() {
 		zlog.Fatal().Err(err).Msg("Server forced to shutdown")
 	}
 
+	a.Close()
 	zlog.Info().Msg("Server exiting")
 }

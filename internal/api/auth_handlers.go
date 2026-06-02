@@ -325,7 +325,14 @@ func (h *APIHandler) ShowLogin(c *gin.Context) {
 	h.renderHTML(c, http.StatusOK, "login.html", nil)
 }
 
+// defaultQRLogoPath is the location of the logo overlaid on generated QR codes.
+const defaultQRLogoPath = "cmd/server/static/cd/favicon-color.png"
+
 func (h *APIHandler) generateQRWithLogo(url string) ([]byte, error) {
+	return h.generateQRWithLogoFromPath(url, defaultQRLogoPath)
+}
+
+func (h *APIHandler) generateQRWithLogoFromPath(url, logoPath string) ([]byte, error) {
 	// Generate QR code with High error correction
 	qr, err := qrcode.New(url, qrcode.High)
 	if err != nil {
@@ -335,8 +342,9 @@ func (h *APIHandler) generateQRWithLogo(url string) ([]byte, error) {
 	// Create image from QR code
 	img := qr.Image(256)
 
-	// Try to load logo
-	logoFile, err := os.Open("cmd/server/static/cd/favicon-color.png")
+	// Try to load logo. logoPath is not attacker-controlled: production callers
+	// pass the defaultQRLogoPath constant; only tests supply an alternate path.
+	logoFile, err := os.Open(logoPath) // #nosec G304
 	if err != nil {
 		// Fallback to plain QR if logo not found
 		return qr.PNG(256)
@@ -370,6 +378,11 @@ func (h *APIHandler) generateQRWithLogo(url string) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// dummyBcryptHash is a valid cost-14 bcrypt hash of a fixed throwaway string.
+// It is compared against during failed logins for unknown usernames so the
+// timing matches a real (wrong-password) comparison, mitigating user enumeration.
+const dummyBcryptHash = "$2a$14$8SoUqALkURy/rkPRGnG8e.yDiNLVzjktsOA/SnEv7041dyo3nhaT6"
+
 func (h *APIHandler) VerifyFirstFactor(c *gin.Context) {
 	username := c.PostForm("username")
 	password := c.PostForm("password")
@@ -381,6 +394,10 @@ func (h *APIHandler) VerifyFirstFactor(c *gin.Context) {
 
 	admin, err := h.pgRepo.GetAdmin(username)
 	if err != nil {
+		// Run a dummy bcrypt comparison (same cost as real hashes) so the
+		// response time for unknown usernames matches that of a wrong password,
+		// preventing username enumeration via timing.
+		_ = bcrypt.CompareHashAndPassword([]byte(dummyBcryptHash), []byte(password))
 		_ = h.pgRepo.LogAction("system", "LOGIN_FAILURE", "REDACTED", "Invalid Operator ID (Enumeration Protection)")
 		h.renderHTML(c, http.StatusOK, "login_error.html", gin.H{"error": "Invalid credentials"})
 		return
@@ -523,9 +540,16 @@ func (h *APIHandler) Login(c *gin.Context) {
 	}
 
 	authenticated := false
-	if isMultiStep {
+	switch {
+	case setupSecret != "":
+		// Reaching here with setupSecret set means the setup block above already
+		// validated totpCode against setupSecret and persisted the token, so the
+		// user is authenticated. Avoid re-validating via VerifyTOTP, which reads
+		// the (possibly lagging) replica and now fails-closed on an empty token.
+		authenticated = true
+	case isMultiStep:
 		authenticated = h.authService.VerifyTOTP(username, totpCode)
-	} else {
+	default:
 		authenticated = h.authService.CheckAuth(username, password, totpCode)
 	}
 
@@ -612,7 +636,9 @@ func (h *APIHandler) VerifySudo(c *gin.Context) {
 	}
 
 	admin, _ := h.pgRepo.GetAdmin(username)
-	if admin != nil && totp.Validate(totpCode, admin.Token) {
+	// admin.Token must be non-empty: an empty secret would accept the
+	// attacker-computable empty-key code, allowing sudo elevation without 2FA.
+	if admin != nil && admin.Token != "" && totp.Validate(totpCode, admin.Token) {
 		session.Set("sudo_time", time.Now().Unix())
 		_ = session.Save()
 

@@ -186,4 +186,72 @@ func TestPostgresRepository_Integration(t *testing.T) {
 		}
 	})
 
+	t.Run("BulkOperations", func(t *testing.T) {
+		ips := []string{"1.2.3.4", "5.6.7.8"}
+		entries := []models.IPEntry{
+			{Timestamp: time.Now().Format("2006-01-02 15:04:05"), Reason: "bulk-test-1", AddedBy: "system"},
+			{Timestamp: time.Now().Format("2006-01-02 15:04:05"), Reason: "bulk-test-2", AddedBy: "system"},
+		}
+
+		// Test BulkCreatePersistentBlocks
+		err := repo.BulkCreatePersistentBlocks(ips, entries)
+		if err != nil {
+			t.Errorf("BulkCreatePersistentBlocks failed: %v", err)
+		}
+
+		blocks, _ := repo.GetPersistentBlocks()
+		for _, ip := range ips {
+			if _, ok := blocks[ip]; !ok {
+				t.Errorf("expected IP %s in persistent blocks", ip)
+			}
+		}
+
+		// Test BulkLogAction
+		err = repo.BulkLogAction("admin", "BULK_BLOCK", ips, "bulk action test")
+		if err != nil {
+			t.Errorf("BulkLogAction failed: %v", err)
+		}
+
+		for _, ip := range ips {
+			history, _ := repo.GetIPHistory(ip)
+			found := false
+			for _, log := range history {
+				if log.Action == "BULK_BLOCK" {
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Errorf("expected BULK_BLOCK log for IP %s", ip)
+			}
+		}
+
+		// Test BulkLogAction with pruning
+		limit := 2
+		repoLimit, _ := NewPostgresRepository(connStr, connStr, limit)
+		pruneIP := "9.9.9.9"
+		pruneIPs := []string{pruneIP}
+		for i := 0; i < 5; i++ {
+			_ = repoLimit.BulkLogAction("admin", "TEST", pruneIPs, fmt.Sprintf("bulk prune %d", i))
+		}
+
+		history, _ := repoLimit.GetIPHistory(pruneIP)
+		if len(history) != limit {
+			t.Errorf("expected %d logs after bulk pruning, got %d", limit, len(history))
+		}
+
+		// Test BulkDeletePersistentBlocks
+		err = repo.BulkDeletePersistentBlocks(ips)
+		if err != nil {
+			t.Errorf("BulkDeletePersistentBlocks failed: %v", err)
+		}
+
+		blocks2, _ := repo.GetPersistentBlocks()
+		for _, ip := range ips {
+			if _, ok := blocks2[ip]; ok {
+				t.Errorf("IP %s still exists after bulk deletion", ip)
+			}
+		}
+	})
+
 }

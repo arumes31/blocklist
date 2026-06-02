@@ -210,6 +210,30 @@ func TestIPService_LimitCapping(t *testing.T) {
 	}
 }
 
+// TestIPService_PaginationCursorOutOfRange_NoPanic is a regression test for a
+// DoS bug on the hash-fallback pagination path: a crafted cursor (offset) larger
+// than the result set, or negative, used to produce a negative make() capacity
+// and an out-of-range slice expression, both of which panic.
+func TestIPService_PaginationCursorOutOfRange_NoPanic(t *testing.T) {
+	mr, _ := miniredis.Run()
+	defer mr.Close()
+	port, _ := strconv.Atoi(mr.Port())
+	svc := NewIPService(&config.Config{}, repository.NewRedisRepository(mr.Host(), port, "", 0), nil)
+	ctx := context.Background()
+
+	// Empty dataset forces the hash-fallback path; each crafted cursor must
+	// return an empty page without panicking.
+	for _, cursor := range []string{"5", "100000", "-1"} {
+		items, _, _, err := svc.ListIPsPaginated(ctx, 50, cursor, "")
+		if err != nil {
+			t.Fatalf("cursor %q: unexpected error: %v", cursor, err)
+		}
+		if len(items) != 0 {
+			t.Errorf("cursor %q: expected 0 items on empty set, got %d", cursor, len(items))
+		}
+	}
+}
+
 func TestIPService_IsBlocked_LazyCleanup(t *testing.T) {
 	mr, _ := miniredis.Run()
 	defer mr.Close()

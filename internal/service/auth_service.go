@@ -34,7 +34,13 @@ func (s *AuthService) CheckAuth(username, password, token string) bool {
 		return false
 	}
 
-	// Verify TOTP
+	// Verify TOTP. An empty stored secret means the account has not completed
+	// 2FA enrollment; it must go through the enrollment flow, not authenticate.
+	// totp.Validate against an empty secret accepts the attacker-computable
+	// empty-key code, so we must reject it explicitly (2FA bypass otherwise).
+	if admin.Token == "" {
+		return false
+	}
 	return totp.Validate(token, admin.Token)
 }
 
@@ -44,6 +50,11 @@ func (s *AuthService) VerifyTOTP(username, token string) bool {
 	}
 	admin, err := s.pgRepo.GetAdmin(username)
 	if err != nil {
+		return false
+	}
+	// Reject accounts with no enrolled TOTP secret: validating against an empty
+	// secret would accept the attacker-computable empty-key code (2FA bypass).
+	if admin.Token == "" {
 		return false
 	}
 	return totp.Validate(token, admin.Token)
