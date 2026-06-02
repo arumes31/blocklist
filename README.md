@@ -47,10 +47,32 @@ graph LR
 - **Bulk Operations**: Multi-select interface for batch unblocking and management.
 - **Security Hardening**: DOM-based XSS mitigation with robust HTML escaping, safe toast notifications using textContent, restricted slice memory allocation size validation, session invalidation on permission changes, and mandatory 2FA setup.
 - **Continuous Analysis**: Integrated **CodeQL** and **Gosec** for automated vulnerability detection and static analysis.
+- **Excluded List & Wildcard FQDNs**: Automated protection for critical targets (IPs, subnets, or FQDNs) to prevent accidental blocking. Supports background resolution, wildcard patterns (e.g., `*.google.com`), and Forward-Confirmed Reverse DNS (FCrDNS).
 - **Interactive API Docs**: Embedded **API Reference** via RapiDoc/Scalar at `/docs`.
 - **GeoIP Enrichment**: Automated ASN, Country, and City detection for all entries.
 - **Observability**: Prometheus metrics for latency and operations, protected by IP-based ACL.
 - **Hardened Deployment**: Non-root Docker images based on Alpine 3.21 with conditional `:latest` tagging.
+
+## 🛡️ Whitelist vs. Excluded List
+
+While both lists prevent an IP from being listed in the active blocklist, they serve distinct architectural purposes:
+
+### **Whitelist (Access Control)**
+*   **Purpose**: To explicitly grant access to the application itself and other **internal/protected resources**.
+*   **Scope**: Whitelisted IPs are considered "Trusted".
+*   **Behavior**: Prevents an IP from being blocked **AND** provides an identity/access signal for integration with other systems.
+*   **Usage**: Use this for your own office IPs, VPN gateways, or known safe customer IPs that need consistent access.
+
+### **Excluded List (Target Protection)**
+*   **Purpose**: To prevent **accidental blocking** of critical infrastructure or targets, regardless of their reputation.
+*   **Scope**: Excluded entities are "untouchable".
+*   **Behavior**: Only prevents the target from being blocked. It does **not** grant any special access or trust status.
+*   **Advanced Features**:
+    *   **FQDN Support**: Add `api.service.com` to prevent blocking any IP it currently resolves to.
+    *   **Wildcard FQDNs**: Support for `*.google.com` using Forward-Confirmed Reverse DNS (FCrDNS) to prevent IP spoofing.
+    *   **Background Resolution**: Automatically refreshes DNS records in the background every 15 minutes.
+    *   **Conflict Detection**: Alerts you if you try to exclude an IP that is already blocked or falls within a restricted range.
+*   **Usage**: Use this for critical third-party APIs (e.g., Stripe, AWS), search engine crawlers, or large CDN subnets where you want to ensure connectivity is never severed.
 
 ## Project Structure
 - `cmd/server`: Go web server entry point, migrations, and static/template assets.
