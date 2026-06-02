@@ -73,6 +73,7 @@ type PostgresRepositoryProvider interface {
 	CreateOutboundWebhook(wh models.OutboundWebhook) error
 	DeleteOutboundWebhook(id int) error
 	GetActiveWebhooks() ([]models.OutboundWebhook, error)
+	GetWebhookByID(id int) (*models.OutboundWebhook, error)
 	GetAuditLogs(limit int) ([]models.AuditLog, error)
 	GetAuditLogsPaginated(limit int, offset int, actor string, action string, query string) ([]models.AuditLog, int, error)
 

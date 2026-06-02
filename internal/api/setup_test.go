@@ -268,6 +268,14 @@ func (m *MockPostgresRepo) GetActiveWebhooks() ([]models.OutboundWebhook, error)
 	return args.Get(0).([]models.OutboundWebhook), args.Error(1)
 }
 
+func (m *MockPostgresRepo) GetWebhookByID(id int) (*models.OutboundWebhook, error) {
+	args := m.Called(id)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.OutboundWebhook), args.Error(1)
+}
+
 func (m *MockPostgresRepo) GetAuditLogs(limit int) ([]models.AuditLog, error) {
 	args := m.Called(limit)
 	return args.Get(0).([]models.AuditLog), args.Error(1)
