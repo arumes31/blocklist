@@ -335,7 +335,8 @@ func (s *IPService) ListIPsPaginated(ctx context.Context, limit int, cursor stri
 				return items, currentCursor, tot, err
 			}
 
-			for i := range zs {
+			var lastAddedCursor string
+			for i, z := range zs {
 				if len(items) >= limit {
 					break
 				}
@@ -353,23 +354,18 @@ func (s *IPService) ListIPsPaginated(ctx context.Context, limit int, cursor stri
 					}
 				}
 				items = append(items, map[string]interface{}{"ip": ip, "data": entry})
+				lastAddedCursor = fmt.Sprintf("%v:%s", z.Score, z.Member.(string))
 			}
 
-			currentCursor = next
 			if len(items) >= limit {
-				// We reached the limit, use the specific item's cursor from the last appended z
-				// Because zs is preserved inside the loop chunk, we find the last item we added
-				if len(items) > 0 {
-					lastItemIP := items[len(items)-1]["ip"].(string)
-					for _, z := range zs {
-						if z.Member.(string) == lastItemIP {
-							currentCursor = fmt.Sprintf("%v:%s", z.Score, z.Member.(string))
-							break
-						}
-					}
+				if lastAddedCursor != "" {
+					currentCursor = lastAddedCursor
+				} else {
+					currentCursor = next
 				}
 				break
 			}
+			currentCursor = next
 			if currentCursor == "" {
 				break
 			}
@@ -840,7 +836,8 @@ func (s *IPService) ListIPsPaginatedAdvanced(ctx context.Context, limit int, cur
 				return items, currentCursor, tot, err
 			}
 
-			for i := range zs {
+			var lastAddedCursor string
+			for i, z := range zs {
 				if len(items) >= limit {
 					break
 				}
@@ -905,22 +902,18 @@ func (s *IPService) ListIPsPaginatedAdvanced(ctx context.Context, limit int, cur
 				}
 
 				items = append(items, map[string]interface{}{"ip": ip, "data": entry})
+				lastAddedCursor = fmt.Sprintf("%v:%s", z.Score, z.Member.(string))
 			}
 
-			currentCursor = next
 			if len(items) >= limit {
-				// We reached the limit, use the specific item's cursor from the last appended z
-				if len(items) > 0 {
-					lastItemIP := items[len(items)-1]["ip"].(string)
-					for _, z := range zs {
-						if z.Member.(string) == lastItemIP {
-							currentCursor = fmt.Sprintf("%v:%s", z.Score, z.Member.(string))
-							break
-						}
-					}
+				if lastAddedCursor != "" {
+					currentCursor = lastAddedCursor
+				} else {
+					currentCursor = next
 				}
 				break
 			}
+			currentCursor = next
 			if currentCursor == "" {
 				break
 			}
