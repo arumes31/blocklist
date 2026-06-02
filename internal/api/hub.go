@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/redis/go-redis/v9"
@@ -23,6 +24,11 @@ type wsClient struct {
 func (c *wsClient) writeMessage(messageType int, data []byte) error {
 	c.writeMu.Lock()
 	defer c.writeMu.Unlock()
+	// Bound the write so a stalled client cannot block the Hub broadcast loop
+	// (which holds h.mu) or the keep-alive goroutine indefinitely.
+	if err := c.conn.SetWriteDeadline(time.Now().Add(10 * time.Second)); err != nil {
+		return err
+	}
 	return c.conn.WriteMessage(messageType, data)
 }
 

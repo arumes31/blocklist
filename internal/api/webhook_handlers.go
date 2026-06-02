@@ -2,6 +2,7 @@ package api
 
 import (
 	"fmt"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -41,9 +42,11 @@ func (h *APIHandler) Webhook(c *gin.Context) {
 	// Gin's c.ClientIP() already respects TrustedProxies for X-Forwarded-For and X-Real-IP.
 	clientIP := c.ClientIP()
 
-	// Double check syntactic validity of clientIP
-	if !h.validateIP(c, clientIP) {
+	// Double check syntactic validity of clientIP. Log the rejection reason
+	// before writing the 400 so the ordering matches intent.
+	if net.ParseIP(clientIP) == nil {
 		zlog.Error().Str("ip", clientIP).Msg("Webhook: detected invalid client IP")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid IP address"})
 		return
 	}
 

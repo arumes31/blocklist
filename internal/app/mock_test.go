@@ -4,14 +4,6 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-type MockWebhookService struct {
-	mock.Mock
-}
-
-func (m *MockWebhookService) Close() {
-	m.Called()
-}
-
 type MockGeoUpdater struct {
 	mock.Mock
 }

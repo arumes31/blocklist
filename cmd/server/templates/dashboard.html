@@ -1416,8 +1416,9 @@
             <td class="col-by">${addedBy}</td>
             <td class="col-geo">${geo}</td>
             <td>
+                <input type="hidden" name="ip" value="${escapedIp}">
                 <button class="btn btn-success" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;"
-                        hx-post="/unblock" hx-ext="json-enc" hx-vals='{"ip": "${escapedIp}"}'
+                        hx-post="/unblock" hx-ext="json-enc" hx-include="closest td"
                         hx-swap="none" title="Unblock this IP">Unblock</button>
             </td>
         </tr>`;

@@ -185,7 +185,7 @@ func TestApp_Close_Mocked(t *testing.T) {
 	mockSched.On("Stop").Return()
 
 	app := &App{
-		WebhookService: nil, // Real struct is used but we can pass nil for logic check if it wasn't required for NewAPIHandler
+		WebhookService: nil, // nil webhook is skipped via the nil check in Close()
 		GeoUpdater:     mockGeo,
 		Scheduler:      mockSched,
 	}
