@@ -228,6 +228,10 @@
             Add a single <strong>IP</strong>, a <strong>CIDR subnet</strong> (e.g. <code>10.0.0.0/8</code>), or an
             <strong>FQDN</strong> (e.g. <code>api.example.com</code>). FQDNs are resolved automatically; wildcards like <code>*.google.com</code>
             are supported using forward-confirmed reverse DNS. Resolutions are refreshed periodically. Expiry defaults to <strong>Never</strong>.
+            <br><br>
+            <span style="color: var(--vibrant-red); font-weight: 600;">Pro-tip:</span> Enable <strong>Alert on attempt</strong> to receive notifications
+            via <a href="/settings" style="color: var(--vibrant-red);">Outbound Webhooks</a> (using the <code>excluded_block_attempt</code> event)
+            whenever a system or user tries to block an excluded target.
         </p>
 
         <div class="table-card" style="padding: 1.5rem; margin-bottom: 2rem; display: flex; gap: 10px; align-items: center; justify-content: center; flex-wrap: wrap;">
@@ -238,6 +242,12 @@
                 <option value="custom">Custom</option>
             </select>
             <input type="datetime-local" id="expiryDate" class="filter-input" style="max-width: 220px; display: none;">
+            
+            <label style="display: flex; align-items: center; gap: 8px; font-size: 0.9rem; cursor: pointer; color: var(--secondary-color); user-select: none;">
+                <input type="checkbox" id="alertEnabled" style="width: 18px; height: 18px; accent-color: var(--primary-red);">
+                Alert on attempt
+            </label>
+
             <button class="btn btn-danger" onclick="addExcluded()">Add to Excluded</button>
         </div>
 
@@ -253,6 +263,7 @@
                         <th>Type</th>
                         <th>Added By</th>
                         <th>Description</th>
+                        <th>Alerts</th>
                         <th>Expires In</th>
                         <th>Action</th>
                     </tr>
@@ -279,6 +290,13 @@
                             <td><span class="type-badge type-{{ if $data.Type }}{{ $data.Type }}{{ else }}ip{{ end }}">{{ if $data.Type }}{{ $data.Type }}{{ else }}ip{{ end }}</span></td>
                             <td>{{ if $data.AddedBy }}{{ $data.AddedBy }}{{ else }}Unknown{{ end }}</td>
                             <td><span style="font-size: 0.9rem; color: var(--secondary-color);">{{ if $data.Reason }}{{ $data.Reason }}{{ else }}No description{{ end }}</span></td>
+                            <td>
+                                {{ if $data.AlertEnabled }}
+                                    <span style="color: var(--primary-red); font-weight: bold; font-size: 0.75rem;">ENABLED</span>
+                                {{ else }}
+                                    <span style="color: #444; font-size: 0.75rem;">OFF</span>
+                                {{ end }}
+                            </td>
                             <td>{{ $data.ExpiresIn }}</td>
                             <td><button class="btn btn-success" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;" onclick="removeExcluded('{{ $value }}')">Delete</button></td>
                         </tr>
@@ -326,6 +344,8 @@
         function addExcluded(confirmed = false) {
             var value = document.getElementById('excludedValue').value.trim();
             var reason = document.getElementById('excludedReason').value.trim();
+            var alertEnabled = document.getElementById('alertEnabled').checked;
+
             if (!value) {
                 showToast('Please enter an IP, subnet, or FQDN.', 'danger');
                 return;
@@ -349,7 +369,13 @@
             fetch('/add_excluded', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 'value': value, 'reason': reason, 'expires_at': expiresAt, 'confirm': confirmed })
+                body: JSON.stringify({
+                    'value': value,
+                    'reason': reason,
+                    'expires_at': expiresAt,
+                    'confirm': confirmed,
+                    'alert_enabled': alertEnabled
+                })
             })
             .then(response => {
                 if (response.status === 409) { // Conflict

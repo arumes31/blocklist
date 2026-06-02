@@ -118,41 +118,16 @@ func (h *APIHandler) Webhook(c *gin.Context) {
 
 	switch data.Act {
 	case "ban", "ban-ip":
-		// Only check IsValidIP for ban actions
-		if !h.ipService.IsValidIP(data.IP) {
-			c.JSON(http.StatusBadRequest, gin.H{"status": "IP cannot be banned (protected or already whitelisted)"})
+		duration := 24 * time.Hour
+		if data.TTL > 0 {
+			duration = time.Duration(data.TTL) * time.Second
+		}
+
+		entry, err := h.ipService.BlockIP(c.Request.Context(), data.IP, data.Reason, username.(string), sourceIP, data.Persist, duration)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"status": fmt.Sprintf("Block failed: %v", err)})
 			return
 		}
-
-		expiresAt := ""
-		if !data.Persist {
-			tVal := 86400 // Default 24h
-			if data.TTL > 0 {
-				tVal = data.TTL
-			}
-			expiresAt = now.Add(time.Duration(tVal) * time.Second).Format("2006-01-02 15:04:05 UTC")
-		}
-
-		entry := models.IPEntry{
-			Timestamp:   timestamp,
-			Geolocation: geo,
-			Reason:      data.Reason,
-			AddedBy:     addedBy,
-			TTL:         data.TTL,
-			ExpiresAt:   expiresAt,
-			ThreatScore: h.ipService.CalculateThreatScore(data.IP, data.Reason),
-		}
-		if h.pgRepo != nil {
-			actName := "BLOCK_EPHEMERAL"
-			if data.Persist {
-				actName = "BLOCK_PERSISTENT"
-				_ = h.pgRepo.CreatePersistentBlock(data.IP, entry)
-			}
-			_ = h.pgRepo.LogAction(addedBy, actName, data.IP, data.Reason)
-		}
-
-		// Atomic operation updates hash, ZSET index, and persistent counters
-		_ = h.redisRepo.ExecBlockAtomic(data.IP, entry, now)
 
 		metrics.MetricBlocksTotal.WithLabelValues("webhook").Inc()
 		if h.hub != nil {

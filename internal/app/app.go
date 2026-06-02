@@ -63,6 +63,9 @@ func Bootstrap(cfg *config.Config) (*App, error) {
 	geoUpdater := service.NewGeoIPService(cfg, redisOpts)
 	scheduler := service.NewSchedulerService(redisRepo, pgRepo, cfg)
 
+	// Link WebhookService to IPService for alerts
+	ipService.SetWebhookService(webhookService)
+
 	return &App{
 		Config:         cfg,
 		RedisRepo:      redisRepo,

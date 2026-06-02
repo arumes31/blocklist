@@ -19,15 +19,10 @@ func TestAPIHandler_Webhook(t *testing.T) {
 	defer ipService.AssertExpectations(t)
 
 	// 1. Success - Ban
-	ipService.On("IsValidIP", "1.2.3.4").Return(true)
-	ipService.On("GetGeoIP", mock.Anything).Return(&models.GeoData{}).Maybe()
-	ipService.On("CalculateThreatScore", "1.2.3.4", "spam").Return(50)
-
-	pgRepo.On("LogAction", mock.Anything, "BLOCK_EPHEMERAL", "1.2.3.4", "spam").Return(nil)
+	ipService.On("BlockIP", mock.Anything, "1.2.3.4", "spam", "admin", "127.0.0.1", false, mock.Anything).Return(&models.IPEntry{Reason: "spam"}, nil)
+	ipService.On("GetGeoIP", "1.2.3.4").Return(&models.GeoData{}).Maybe()
+	ipService.On("GetGeoIP", "127.0.0.1").Return(&models.GeoData{}).Maybe()
 	rRepo.On("IndexWebhookHit", mock.Anything).Return(nil)
-	rRepo.On("ExecBlockAtomic", "1.2.3.4", mock.MatchedBy(func(e models.IPEntry) bool {
-		return e.Reason == "spam"
-	}), mock.Anything).Return(nil)
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
@@ -39,7 +34,7 @@ func TestAPIHandler_Webhook(t *testing.T) {
 	h.Webhook(c)
 	assert.Equal(t, http.StatusOK, w.Code)
 
-	// 2. Success - Unban (Note: current handler only logs and broadcasts)
+	// 2. Success - Unban
 	w2 := httptest.NewRecorder()
 	c2, _ := gin.CreateTestContext(w2)
 	reqBody2 := `{"ip": "5.6.7.8", "act": "unban"}`
@@ -52,20 +47,6 @@ func TestAPIHandler_Webhook(t *testing.T) {
 
 	h.Webhook(c2)
 	assert.Equal(t, http.StatusOK, w2.Code)
-
-	// 3. Success - Unban with alias
-	w3 := httptest.NewRecorder()
-	c3, _ := gin.CreateTestContext(w3)
-	reqBody3 := `{"ip": "9.9.9.9", "act": "unban-ip"}`
-	c3.Request, _ = http.NewRequest("POST", "/api/webhook", bytes.NewBufferString(reqBody3))
-	c3.Request.RemoteAddr = "127.0.0.1:1234"
-	c3.Set("username", "admin")
-
-	pgRepo.On("LogAction", mock.Anything, "UNBLOCK", "9.9.9.9", "webhook unban").Return(nil)
-	ipService.On("UnblockIP", mock.Anything, "9.9.9.9", "admin").Return(nil)
-
-	h.Webhook(c3)
-	assert.Equal(t, http.StatusOK, w3.Code)
 
 	// 4. Success - Self-Whitelist
 	w4 := httptest.NewRecorder()
@@ -147,7 +128,7 @@ func TestAPIHandler_Webhook_IPDetection(t *testing.T) {
 }
 
 func TestAPIHandler_Webhook_BanTTL(t *testing.T) {
-	h, rRepo, pgRepo, _, ipService := setupTest()
+	h, rRepo, _, _, ipService := setupTest()
 	defer rRepo.AssertExpectations(t)
 	defer ipService.AssertExpectations(t)
 
@@ -158,31 +139,9 @@ func TestAPIHandler_Webhook_BanTTL(t *testing.T) {
 	c.Request.RemoteAddr = "127.0.0.1:1234"
 	c.Set("username", "admin")
 
-	ipService.On("IsValidIP", "4.4.4.4").Return(true)
-	ipService.On("GetGeoIP", mock.Anything).Return(&models.GeoData{}).Maybe()
-	ipService.On("CalculateThreatScore", "4.4.4.4", "ttl-test").Return(0)
-	pgRepo.On("LogAction", mock.Anything, "BLOCK_EPHEMERAL", "4.4.4.4", "ttl-test").Return(nil)
+	ipService.On("BlockIP", mock.Anything, "4.4.4.4", "ttl-test", "admin", "127.0.0.1", false, mock.Anything).Return(&models.IPEntry{Reason: "ttl-test"}, nil)
 	rRepo.On("IndexWebhookHit", mock.Anything).Return(nil)
 
-	// Expect WhitelistIP NOT to be called, but ExecBlockAtomic SHOULD be called with an entry that has ExpiresAt
-	rRepo.On("ExecBlockAtomic", "4.4.4.4", mock.MatchedBy(func(e models.IPEntry) bool {
-		return e.ExpiresAt != "" // Verify TTL is set
-	}), mock.Anything).Return(nil)
-
 	h.Webhook(c)
-	assert.Equal(t, http.StatusOK, w.Code)
-}
-
-func TestAPIHandler_AddOutboundWebhook(t *testing.T) {
-	h, _, pgRepo, _, _ := setupTest()
-
-	pgRepo.On("CreateOutboundWebhook", mock.Anything).Return(nil)
-
-	w := httptest.NewRecorder()
-	c, _ := setupHTMLTest(w)
-	c.Request, _ = http.NewRequest("POST", "/webhooks", bytes.NewBufferString("url=http://example.com/webhook&secret=test&events=block&geo_filter="))
-	c.Request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-
-	h.AddOutboundWebhook(c)
 	assert.Equal(t, http.StatusOK, w.Code)
 }

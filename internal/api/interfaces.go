@@ -17,7 +17,7 @@ type IPServiceProvider interface {
 	WhitelistIP(ctx context.Context, ip string, reason string, username string, expiresAt string) error
 	RemoveWhitelist(ctx context.Context, ip string, username string) error
 	IsExcluded(ipStr string) bool
-	AddExcluded(ctx context.Context, value string, reason string, username string, expiresAt string) error
+	AddExcluded(ctx context.Context, value string, reason string, username string, expiresAt string, alertEnabled bool) error
 	RemoveExcluded(ctx context.Context, value string, username string) error
 	GetIPDetails(ctx context.Context, ip string) (map[string]interface{}, error)
 	ListIPsPaginatedAdvanced(ctx context.Context, limit int, cursor string, query string, country string, addedBy string, from string, to string) ([]map[string]interface{}, string, int, error)

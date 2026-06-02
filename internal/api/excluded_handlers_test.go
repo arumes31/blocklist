@@ -39,7 +39,7 @@ func TestAPIHandler_AddExcluded(t *testing.T) {
 
 	// 1. Valid FQDN via JSON
 	ipService.On("ExclusionConflicts", mock.Anything, "api.example.com").Return([]string(nil))
-	ipService.On("AddExcluded", mock.Anything, "api.example.com", "trusted upstream", "admin", "").Return(nil)
+	ipService.On("AddExcluded", mock.Anything, "api.example.com", "trusted upstream", "admin", "", false).Return(nil)
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)

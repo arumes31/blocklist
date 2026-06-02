@@ -108,12 +108,13 @@ func (h *APIHandler) AddExcluded(c *gin.Context) {
 	username, _ := c.Get("username")
 
 	var req struct {
-		Value     string `json:"value"`
-		IP        string `json:"ip"` // accepted as an alias for value
-		Reason    string `json:"reason"`
-		Note      string `json:"note"`
-		ExpiresAt string `json:"expires_at"`
-		Confirm   bool   `json:"confirm"` // If true, ignore conflict warnings
+		Value        string `json:"value"`
+		IP           string `json:"ip"` // accepted as an alias for value
+		Reason       string `json:"reason"`
+		Note         string `json:"note"`
+		ExpiresAt    string `json:"expires_at"`
+		Confirm      bool   `json:"confirm"` // If true, ignore conflict warnings
+		AlertEnabled bool   `json:"alert_enabled"`
 	}
 
 	if c.ContentType() == "application/json" {
@@ -128,6 +129,7 @@ func (h *APIHandler) AddExcluded(c *gin.Context) {
 		req.Note = c.PostForm("note")
 		req.ExpiresAt = c.PostForm("expires_at")
 		req.Confirm, _ = strconv.ParseBool(c.PostForm("confirm"))
+		req.AlertEnabled, _ = strconv.ParseBool(c.PostForm("alert_enabled"))
 	}
 
 	value := strings.TrimSpace(req.Value)
@@ -171,7 +173,7 @@ func (h *APIHandler) AddExcluded(c *gin.Context) {
 		}
 	}
 
-	if err := h.ipService.AddExcluded(c.Request.Context(), value, reason, username.(string), req.ExpiresAt); err != nil {
+	if err := h.ipService.AddExcluded(c.Request.Context(), value, reason, username.(string), req.ExpiresAt, req.AlertEnabled); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to add to excluded list"})
 		return
 	}

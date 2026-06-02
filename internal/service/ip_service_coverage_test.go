@@ -71,7 +71,7 @@ func TestIPService_CoverageAdditional(t *testing.T) {
 		count := svc.GetExcludedCount(ctx)
 		assert.Equal(t, 0, count)
 
-		err := svc.AddExcluded(ctx, "192.168.4.0/24", "exempt", "admin", "")
+		err := svc.AddExcluded(ctx, "192.168.4.0/24", "exempt", "admin", "", false)
 		assert.NoError(t, err)
 
 		count = svc.GetExcludedCount(ctx)
@@ -84,7 +84,7 @@ func TestIPService_CoverageAdditional(t *testing.T) {
 		assert.Contains(t, warns1[0], "falls within configured blocked range")
 
 		// Conflict: covered by existing excluded subnet
-		_ = svc.AddExcluded(ctx, "192.168.10.0/24", "subnet", "admin", "")
+		_ = svc.AddExcluded(ctx, "192.168.10.0/24", "subnet", "admin", "", false)
 		warns2 := svc.ExclusionConflicts(ctx, "192.168.10.5")
 		assert.Contains(t, warns2[0], "is already covered by excluded subnet")
 
@@ -112,7 +112,7 @@ func TestIPService_CoverageAdditional(t *testing.T) {
 		assert.Empty(t, res)
 
 		// RefreshExcludedFQDNs
-		_ = svc.AddExcluded(ctx, "nonexistent-domain-fake-123.com", "fake domain", "admin", "")
+		_ = svc.AddExcluded(ctx, "nonexistent-domain-fake-123.com", "fake domain", "admin", "", false)
 		svc.RefreshExcludedFQDNs(ctx)
 		// Should not crash and should work normally
 	})

@@ -262,7 +262,7 @@ func TestIPService_ExcludedList(t *testing.T) {
 	})
 
 	t.Run("ExactIP_CannotBeBlocked", func(t *testing.T) {
-		if err := svc.AddExcluded(ctx, "8.8.8.8", "trusted DNS", "admin", ""); err != nil {
+		if err := svc.AddExcluded(ctx, "8.8.8.8", "trusted DNS", "admin", "", false); err != nil {
 			t.Fatalf("AddExcluded failed: %v", err)
 		}
 		if !svc.IsExcluded("8.8.8.8") {
@@ -277,7 +277,7 @@ func TestIPService_ExcludedList(t *testing.T) {
 	})
 
 	t.Run("CIDR_CoversContainedIP", func(t *testing.T) {
-		if err := svc.AddExcluded(ctx, "192.168.0.0/16", "internal", "admin", ""); err != nil {
+		if err := svc.AddExcluded(ctx, "192.168.0.0/16", "internal", "admin", "", false); err != nil {
 			t.Fatalf("AddExcluded CIDR failed: %v", err)
 		}
 		if !svc.IsExcluded("192.168.42.7") {
@@ -290,7 +290,7 @@ func TestIPService_ExcludedList(t *testing.T) {
 
 	t.Run("ExpiredEntry_IsIgnoredAndRemoved", func(t *testing.T) {
 		past := time.Now().Add(-1 * time.Hour).Format(time.RFC3339)
-		if err := svc.AddExcluded(ctx, "9.9.9.9", "temp", "admin", past); err != nil {
+		if err := svc.AddExcluded(ctx, "9.9.9.9", "temp", "admin", past, false); err != nil {
 			t.Fatalf("AddExcluded with expiry failed: %v", err)
 		}
 		if svc.IsExcluded("9.9.9.9") {
@@ -316,7 +316,7 @@ func TestIPService_ExcludedList(t *testing.T) {
 		// without substantial refactoring. We verify that classifyExclusionType and AddExcluded
 		// handle the pattern correctly.
 		val := "*.google.com"
-		if err := svc.AddExcluded(ctx, val, "google", "admin", ""); err != nil {
+		if err := svc.AddExcluded(ctx, val, "google", "admin", "", false); err != nil {
 			t.Fatalf("AddExcluded failed for wildcard: %v", err)
 		}
 
@@ -342,7 +342,7 @@ func TestIPService_ExcludedList(t *testing.T) {
 			t.Error("expected conflict warning for blocked IP")
 		}
 
-		_ = svc.AddExcluded(ctx, "10.0.0.0/8", "internal", "admin", "")
+		_ = svc.AddExcluded(ctx, "10.0.0.0/8", "internal", "admin", "", false)
 		warns = svc.ExclusionConflicts(ctx, "10.1.2.3")
 		found = false
 		for _, w := range warns {

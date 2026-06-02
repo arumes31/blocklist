@@ -41,6 +41,7 @@ type ExcludedEntry struct {
 	ResolvedIPs  []string `json:"resolved_ips,omitempty"`  // last background FQDN resolution
 	ResolvedAt   string   `json:"resolved_at,omitempty"`   // when ResolvedIPs/ResolveError were set
 	ResolveError string   `json:"resolve_error,omitempty"` // last resolution failure, if any
+	AlertEnabled bool     `json:"alert_enabled,omitempty"` // Trigger webhook/mail on block attempt
 }
 
 type AuditLog struct {

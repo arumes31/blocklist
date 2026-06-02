@@ -66,8 +66,8 @@ func (m *MockIPService) IsExcluded(ipStr string) bool {
 	return args.Bool(0)
 }
 
-func (m *MockIPService) AddExcluded(ctx context.Context, value string, reason string, username string, expiresAt string) error {
-	args := m.Called(ctx, value, reason, username, expiresAt)
+func (m *MockIPService) AddExcluded(ctx context.Context, value string, reason string, username string, expiresAt string, alertEnabled bool) error {
+	args := m.Called(ctx, value, reason, username, expiresAt, alertEnabled)
 	return args.Error(0)
 }
 

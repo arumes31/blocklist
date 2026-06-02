@@ -30,6 +30,7 @@ const MaxPageSize = 1000
 type IPService struct {
 	redisRepo      *repository.RedisRepository
 	pgRepo         *repository.PostgresRepository
+	webhookService *WebhookService
 	blockedRanges  []netip.Prefix
 	geoipReader    *geoip2.Reader
 	asnReader      *geoip2.Reader
@@ -122,6 +123,30 @@ func NewIPService(cfg *config.Config, rRepo *repository.RedisRepository, pgRepo 
 	return svc
 }
 
+func (s *IPService) SetWebhookService(wh *WebhookService) {
+	s.webhookService = wh
+}
+
+func (s *IPService) triggerExcludedAlert(ctx context.Context, ip string, reason string, addedBy string, actorIP string, entry models.ExcludedEntry) {
+	if s.webhookService == nil {
+		return
+	}
+
+	payload := map[string]interface{}{
+		"event":          "excluded_block_attempt",
+		"target_ip":      ip,
+		"attempted_by":   addedBy,
+		"actor_ip":       actorIP,
+		"attempt_reason": reason,
+		"excluded_rule":  entry.Value,
+		"rule_type":      entry.Type,
+		"rule_reason":    entry.Reason,
+		"timestamp":      time.Now().UTC().Format(time.RFC3339),
+	}
+
+	data, _ := json.Marshal(payload)
+	s.webhookService.Notify(ctx, "excluded_block_attempt", string(data))
+}
 func (s *IPService) syncBloomFilter() {
 	if !s.syncInProgress.CompareAndSwap(false, true) {
 		return // A sync is already concurrently running
@@ -199,7 +224,7 @@ func (s *IPService) ReloadReaders() {
 	}
 }
 
-func (s *IPService) isValidIPInternal(ipStr string, ip netip.Addr, whitelist map[string]models.WhitelistEntry, excluded map[string]models.ExcludedEntry) bool {
+func (s *IPService) isValidIPInternal(ipStr string, ip netip.Addr, whitelist map[string]models.WhitelistEntry, excluded map[string]models.ExcludedEntry) (bool, *models.ExcludedEntry) {
 	if whitelist != nil {
 		if entry, ok := whitelist[ipStr]; ok {
 			if entry.ExpiresAt != "" {
@@ -207,26 +232,26 @@ func (s *IPService) isValidIPInternal(ipStr string, ip netip.Addr, whitelist map
 				if err == nil && time.Now().After(exp) {
 					_ = s.redisRepo.RemoveFromWhitelist(ipStr)
 				} else {
-					return false
+					return false, nil
 				}
 			} else {
-				return false
+				return false, nil
 			}
 		}
 	}
 
 	// Excluded list: IPs, subnets, or FQDNs that must never be blocked.
-	if s.isExcludedMatch(ip, excluded) {
-		return false
+	if entry := s.isExcludedMatch(ip, excluded); entry != nil {
+		return false, entry
 	}
 
 	for _, prefix := range s.blockedRanges {
 		if prefix.Contains(ip) {
-			return false
+			return false, nil
 		}
 	}
 
-	return true
+	return true, nil
 }
 
 func (s *IPService) IsValidIP(ipStr string) bool {
@@ -242,7 +267,8 @@ func (s *IPService) IsValidIP(ipStr string) bool {
 		excluded, _ = s.redisRepo.GetExcludedEntries()
 	}
 
-	return s.isValidIPInternal(ipStr, ip, whitelist, excluded)
+	valid, _ := s.isValidIPInternal(ipStr, ip, whitelist, excluded)
+	return valid
 }
 
 // classifyExclusionType infers whether an excluded value is a wildcard FQDN, a
@@ -260,11 +286,11 @@ func classifyExclusionType(value string) string {
 	return "fqdn"
 }
 
-// isExcludedMatch reports whether ip matches any non-expired entry on the
-// excluded list. Expired entries are lazily removed as they are encountered.
-func (s *IPService) isExcludedMatch(ip netip.Addr, excluded map[string]models.ExcludedEntry) bool {
+// isExcludedMatch reports which entry on the excluded list matched the given
+// IP, if any. Expired entries are lazily removed as they are encountered.
+func (s *IPService) isExcludedMatch(ip netip.Addr, excluded map[string]models.ExcludedEntry) *models.ExcludedEntry {
 	if len(excluded) == 0 {
-		return false
+		return nil
 	}
 	ip = ip.Unmap()
 	now := time.Now()
@@ -283,26 +309,32 @@ func (s *IPService) isExcludedMatch(ip netip.Addr, excluded map[string]models.Ex
 			typ = classifyExclusionType(value)
 		}
 
+		matched := false
 		switch typ {
 		case "fqdn":
 			if _, ok := s.resolveFQDN(value)[ip]; ok {
-				return true
+				matched = true
 			}
 		case "wildcard":
 			if s.matchWildcard(value, ip) {
-				return true
+				matched = true
 			}
 		case "cidr":
 			if prefix, err := netip.ParsePrefix(value); err == nil && prefix.Contains(ip) {
-				return true
+				matched = true
 			}
 		default: // "ip"
 			if addr, err := netip.ParseAddr(value); err == nil && addr.Unmap() == ip {
-				return true
+				matched = true
 			}
 		}
+
+		if matched {
+			e := entry // copy
+			return &e
+		}
 	}
-	return false
+	return nil
 }
 
 // matchWildcard reports whether ip belongs to a wildcard FQDN exclusion such as
@@ -405,7 +437,7 @@ func (s *IPService) IsExcluded(ipStr string) bool {
 	if s.redisRepo != nil {
 		excluded, _ = s.redisRepo.GetExcludedEntries()
 	}
-	return s.isExcludedMatch(ip, excluded)
+	return s.isExcludedMatch(ip, excluded) != nil
 }
 
 // GetExcludedCount returns the number of entries on the excluded list.
@@ -1052,7 +1084,11 @@ func (s *IPService) BulkBlock(ctx context.Context, ips []string, reason string, 
 		if err != nil {
 			continue
 		}
-		if !s.isValidIPInternal(ipStr, addr, whitelist, excluded) {
+		valid, matchedEntry := s.isValidIPInternal(ipStr, addr, whitelist, excluded)
+		if !valid {
+			if matchedEntry != nil && matchedEntry.AlertEnabled {
+				go s.triggerExcludedAlert(ctx, ipStr, reason, addedBy, actorIP, *matchedEntry)
+			}
 			continue
 		}
 
@@ -1378,13 +1414,25 @@ func (s *IPService) exportFallback(ctx context.Context, query string, country st
 }
 
 // BlockIP blocks a single IP.
-// BlockIP blocks a single IP.
 func (s *IPService) BlockIP(ctx context.Context, ip string, reason string, username string, actorIP string, persist bool, duration time.Duration) (*models.IPEntry, error) {
 	if s.redisRepo == nil {
 		return nil, nil
 	}
-	if !s.IsValidIP(ip) {
-		return nil, fmt.Errorf("invalid IP")
+
+	addr, err := netip.ParseAddr(ip)
+	if err != nil {
+		return nil, fmt.Errorf("invalid IP format")
+	}
+
+	whitelist, _ := s.redisRepo.GetWhitelistedIPs()
+	excluded, _ := s.redisRepo.GetExcludedEntries()
+
+	valid, matchedEntry := s.isValidIPInternal(ip, addr, whitelist, excluded)
+	if !valid {
+		if matchedEntry != nil && matchedEntry.AlertEnabled {
+			go s.triggerExcludedAlert(ctx, ip, reason, username, actorIP, *matchedEntry)
+		}
+		return nil, fmt.Errorf("IP is whitelisted or excluded")
 	}
 
 	now := time.Now().UTC()
@@ -1420,7 +1468,7 @@ func (s *IPService) BlockIP(ctx context.Context, ip string, reason string, usern
 		}
 	}
 
-	err := s.redisRepo.ExecBlockAtomic(ip, entry, now)
+	err = s.redisRepo.ExecBlockAtomic(ip, entry, now)
 	if err == nil {
 		s.bloomMu.Lock()
 		if s.bloomFilter != nil {
@@ -1477,7 +1525,7 @@ func (s *IPService) RemoveWhitelist(ctx context.Context, ip string, username str
 // AddExcluded adds a value (IP, CIDR, or FQDN) to the excluded list. The type is
 // auto-detected and the value canonicalized. expiresAt is optional (RFC3339);
 // an empty string means the exclusion never expires.
-func (s *IPService) AddExcluded(ctx context.Context, value string, reason string, username string, expiresAt string) error {
+func (s *IPService) AddExcluded(ctx context.Context, value string, reason string, username string, expiresAt string, alertEnabled bool) error {
 	if s.redisRepo == nil {
 		return fmt.Errorf("storage unavailable")
 	}
@@ -1504,12 +1552,13 @@ func (s *IPService) AddExcluded(ctx context.Context, value string, reason string
 	}
 
 	entry := models.ExcludedEntry{
-		Timestamp: time.Now().UTC().Format("2006-01-02 15:04:05 UTC"),
-		Value:     value,
-		Type:      typ,
-		AddedBy:   username,
-		Reason:    reason,
-		ExpiresAt: expiresAt,
+		Timestamp:    time.Now().UTC().Format("2006-01-02 15:04:05 UTC"),
+		Value:        value,
+		Type:         typ,
+		AddedBy:      username,
+		Reason:       reason,
+		ExpiresAt:    expiresAt,
+		AlertEnabled: alertEnabled,
 	}
 
 	if typ == "fqdn" {
