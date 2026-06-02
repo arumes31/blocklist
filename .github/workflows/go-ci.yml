@@ -12,12 +12,12 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
 
     - name: Set up Go
-      uses: actions/setup-go@v5
+      uses: actions/setup-go@v6
       with:
-        go-version: '1.25.0'
+        go-version: '1.26.4'
 
     - name: Build
       run: go build -v ./cmd/server
@@ -26,12 +26,12 @@ jobs:
       run: go test -v ./...
 
     - name: Lint
-      run: |
-        go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.5
-        golangci-lint run ./...
+      uses: golangci/golangci-lint-action@v9
+      with:
+        version: latest
 
     - name: Run Gosec Security Scan
-      uses: securego/gosec@v2.21.4
+      uses: securego/gosec@master
       with:
         args: ./...
       env:
