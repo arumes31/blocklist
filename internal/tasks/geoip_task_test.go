@@ -219,3 +219,27 @@ func TestGeoIPTaskHandler_ProcessTask_Traversal(t *testing.T) {
 		})
 	}
 }
+
+func TestGeoIPTaskHandler_Download_URL_Escaping(t *testing.T) {
+	var capturedPath string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedPath = r.URL.RawPath
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(createTestTarGz(t, "test.mmdb"))
+	}))
+	defer server.Close()
+
+	cfg := &config.Config{
+		GeoIPAccountID:  "test",
+		GeoIPLicenseKey: "test",
+	}
+	handler := NewGeoIPTaskHandler(cfg, nil)
+	// We expect the fix to use this as a format string
+	handler.testURL = server.URL + "/databases/%s/download"
+
+	edition := "../../traversal"
+	_ = handler.Download(edition)
+
+	// If properly escaped, it should contain %2F
+	assert.Contains(t, capturedPath, "..%2F..%2Ftraversal", "The edition parameter in the URL should be path-escaped")
+}

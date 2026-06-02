@@ -11,6 +11,7 @@ import (
 	"compress/gzip"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -74,7 +75,7 @@ func (h *GeoIPTaskHandler) ProcessTask(ctx context.Context, t *asynq.Task) error
 }
 
 func (h *GeoIPTaskHandler) getDBPath(edition string) string {
-	// Defense in depth: ensure filename is just the base
+	// Defense in depth: ensure filename is just the base to prevent traversal during file creation
 	filename := filepath.Base(edition) + ".mmdb"
 	// Prefer env-defined path or standard local path
 	primaryPath := filepath.Join("/home/blocklist/geoip", filename)
@@ -96,14 +97,20 @@ func (h *GeoIPTaskHandler) Download(edition string) error {
 		return fmt.Errorf("MaxMind credentials missing")
 	}
 
-	url := h.testURL
-	if url == "" {
-		url = fmt.Sprintf("https://download.maxmind.com/geoip/databases/%s/download?suffix=tar.gz", edition)
+	// Escape edition to prevent URL-based directory traversal or injection
+	escapedEdition := url.PathEscape(edition)
+	downloadURL := h.testURL
+	if downloadURL == "" {
+		downloadURL = fmt.Sprintf("https://download.maxmind.com/geoip/databases/%s/download?suffix=tar.gz", escapedEdition)
+	} else if strings.Contains(downloadURL, "%s") {
+		// Support format string for testing URL construction
+		downloadURL = fmt.Sprintf(downloadURL, escapedEdition)
 	}
+
 	log.Printf("Asynq: Downloading GeoIP %s", edition)
 
 	client := &http.Client{}
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequest("GET", downloadURL, nil)
 	if err != nil {
 		return err
 	}
