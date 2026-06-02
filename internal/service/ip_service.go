@@ -776,6 +776,74 @@ func (s *IPService) BulkUnblock(ctx context.Context, ips []string, actor string)
 	return nil
 }
 
+func (s *IPService) matchesFilters(ip string, entry *models.IPEntry, q string, queryNetwork *net.IPNet, countryList []string, addedBy string, fromTime, toTime time.Time) bool {
+	if entry == nil {
+		return false
+	}
+
+	// 1. Query filter (text match and CIDR)
+	if q != "" {
+		matches := false
+		// Text match on fields
+		if strings.Contains(strings.ToLower(ip), q) ||
+			strings.Contains(strings.ToLower(entry.Reason), q) ||
+			strings.Contains(strings.ToLower(entry.AddedBy), q) ||
+			(entry.Geolocation != nil && strings.Contains(strings.ToLower(entry.Geolocation.Country), q)) {
+			matches = true
+		}
+
+		// Smart Match: CIDR
+		if !matches && queryNetwork != nil {
+			if parsedIP := net.ParseIP(ip); parsedIP != nil && queryNetwork.Contains(parsedIP) {
+				matches = true
+			}
+		}
+
+		if !matches {
+			return false
+		}
+	}
+
+	// 2. Country filter
+	if len(countryList) > 0 {
+		match := false
+		if entry.Geolocation != nil {
+			cCode := strings.ToLower(entry.Geolocation.Country)
+			for _, c := range countryList {
+				if cCode == c {
+					match = true
+					break
+				}
+			}
+		}
+		if !match {
+			return false
+		}
+	}
+
+	// 3. AddedBy filter
+	if addedBy != "" {
+		if !strings.EqualFold(entry.AddedBy, addedBy) {
+			return false
+		}
+	}
+
+	// 4. Date range filters
+	if !fromTime.IsZero() || !toTime.IsZero() {
+		ts, err := time.Parse("2006-01-02 15:04:05 UTC", entry.Timestamp)
+		if err == nil {
+			if !fromTime.IsZero() && ts.Before(fromTime) {
+				return false
+			}
+			if !toTime.IsZero() && ts.After(toTime) {
+				return false
+			}
+		}
+	}
+
+	return true
+}
+
 // ListIPsPaginatedAdvanced provides server-side pagination and search across all records with advanced filters.
 func (s *IPService) ListIPsPaginatedAdvanced(ctx context.Context, limit int, cursor string, query string, country string, addedBy string, from string, to string) ([]map[string]interface{}, string, int, error) {
 	if s.redisRepo == nil {
@@ -850,58 +918,8 @@ func (s *IPService) ListIPsPaginatedAdvanced(ctx context.Context, limit int, cur
 					continue
 				}
 
-				// Apply filters
-				if q != "" {
-					matches := false
-					// 1. Text match on fields
-					if strings.Contains(strings.ToLower(ip), q) ||
-						strings.Contains(strings.ToLower(entry.Reason), q) ||
-						strings.Contains(strings.ToLower(entry.AddedBy), q) ||
-						(entry.Geolocation != nil && strings.Contains(strings.ToLower(entry.Geolocation.Country), q)) {
-						matches = true
-					}
-
-					// 2. Smart Match: CIDR (using pre-parsed network)
-					if !matches && queryNetwork != nil {
-						if parsedIP := net.ParseIP(ip); parsedIP != nil && queryNetwork.Contains(parsedIP) {
-							matches = true
-						}
-					}
-
-					if !matches {
-						continue
-					}
-				}
-				if len(countryList) > 0 {
-					match := false
-					if entry.Geolocation != nil {
-						cCode := strings.ToLower(entry.Geolocation.Country)
-						for _, c := range countryList {
-							if cCode == c {
-								match = true
-								break
-							}
-						}
-					}
-					if !match {
-						continue
-					}
-				}
-				if addedBy != "" {
-					if !strings.EqualFold(entry.AddedBy, addedBy) {
-						continue
-					}
-				}
-				if !fromTime.IsZero() || !toTime.IsZero() {
-					ts, err := time.Parse("2006-01-02 15:04:05 UTC", entry.Timestamp)
-					if err == nil {
-						if !fromTime.IsZero() && ts.Before(fromTime) {
-							continue
-						}
-						if !toTime.IsZero() && ts.After(toTime) {
-							continue
-						}
-					}
+				if !s.matchesFilters(ip, entry, q, queryNetwork, countryList, addedBy, fromTime, toTime) {
+					continue
 				}
 
 				items = append(items, map[string]interface{}{"ip": ip, "data": entry})
@@ -972,55 +990,8 @@ func (s *IPService) exportFallback(ctx context.Context, query string, country st
 			continue
 		}
 
-		if q != "" {
-			matches := false
-			if strings.Contains(strings.ToLower(ip), q) ||
-				strings.Contains(strings.ToLower(entry.Reason), q) ||
-				strings.Contains(strings.ToLower(entry.AddedBy), q) ||
-				(entry.Geolocation != nil && strings.Contains(strings.ToLower(entry.Geolocation.Country), q)) {
-				matches = true
-			}
-
-			if !matches && queryNetwork != nil {
-				if parsedIP := net.ParseIP(ip); parsedIP != nil && queryNetwork.Contains(parsedIP) {
-					matches = true
-				}
-			}
-
-			if !matches {
-				continue
-			}
-		}
-		if len(countryList) > 0 {
-			match := false
-			if entry.Geolocation != nil {
-				cCode := strings.ToLower(entry.Geolocation.Country)
-				for _, c := range countryList {
-					if cCode == c {
-						match = true
-						break
-					}
-				}
-			}
-			if !match {
-				continue
-			}
-		}
-		if addedBy != "" {
-			if !strings.EqualFold(entry.AddedBy, addedBy) {
-				continue
-			}
-		}
-		if !fromTime.IsZero() || !toTime.IsZero() {
-			ts, err := time.Parse("2006-01-02 15:04:05 UTC", entry.Timestamp)
-			if err == nil {
-				if !fromTime.IsZero() && ts.Before(fromTime) {
-					continue
-				}
-				if !toTime.IsZero() && ts.After(toTime) {
-					continue
-				}
-			}
+		if !s.matchesFilters(ip, &entry, q, queryNetwork, countryList, addedBy, fromTime, toTime) {
+			continue
 		}
 
 		items = append(items, map[string]interface{}{"ip": ip, "data": &entry})
