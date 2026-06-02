@@ -23,25 +23,57 @@ func createTestTarGz(t *testing.T, filename string) []byte {
 	gw := gzip.NewWriter(&buf)
 	tw := tar.NewWriter(gw)
 
-	content := []byte("mock mmdb content")
-	header := &tar.Header{
-		Name: filename,
-		Size: int64(len(content)),
-		Mode: 0600,
+	// Simulating a real MaxMind archive which usually has a directory structure
+	// e.g., GeoLite2-City_20240101/GeoLite2-City.mmdb
+	files := []struct {
+		name    string
+		content string
+	}{
+		{name: "GeoLite2-City_20240101/README.txt", content: "Copyright (c) 2024 MaxMind, Inc."},
+		{name: "GeoLite2-City_20240101/" + filename, content: "mock mmdb content"},
 	}
 
-	err := tw.WriteHeader(header)
-	require.NoError(t, err)
+	for _, f := range files {
+		header := &tar.Header{
+			Name: f.name,
+			Size: int64(len(f.content)),
+			Mode: 0600,
+		}
 
-	_, err = tw.Write(content)
-	require.NoError(t, err)
+		err := tw.WriteHeader(header)
+		require.NoError(t, err)
 
-	err = tw.Close()
+		_, err = tw.Write([]byte(f.content))
+		require.NoError(t, err)
+	}
+
+	err := tw.Close()
 	require.NoError(t, err)
 
 	err = gw.Close()
 	require.NoError(t, err)
 
+	return buf.Bytes()
+}
+
+func createEmptyTarGz(t *testing.T) []byte {
+	var buf bytes.Buffer
+	gw := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gw)
+
+	header := &tar.Header{
+		Name: "README.txt",
+		Size: 10,
+		Mode: 0600,
+	}
+	err := tw.WriteHeader(header)
+	require.NoError(t, err)
+	_, _ = tw.Write([]byte("1234567890"))
+
+	err = tw.Close()
+	require.NoError(t, err)
+	err = gw.Close()
+	require.NoError(t, err)
 	return buf.Bytes()
 }
 
@@ -194,6 +226,29 @@ func TestGeoIPTaskHandler_Download_ValidResponse(t *testing.T) {
 
 	_, err = os.Stat(dbPath)
 	assert.NoError(t, err)
+}
+
+func TestGeoIPTaskHandler_Download_NoMMDB(t *testing.T) {
+	edition := "GeoLite2-City"
+	tarData := createEmptyTarGz(t)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(tarData)
+	}))
+	defer server.Close()
+
+	cfg := &config.Config{
+		GeoIPAccountID:  "test-account",
+		GeoIPLicenseKey: "test-key",
+	}
+
+	handler := NewGeoIPTaskHandler(cfg, nil)
+	handler.testURL = server.URL
+
+	err := handler.Download(edition)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "mmdb not found in archive")
 }
 
 func TestGeoIPTaskHandler_ProcessTask_Traversal(t *testing.T) {
