@@ -81,6 +81,17 @@ func main() {
 
 	cfg := config.Load()
 
+	// Refuse to start with a default or weak SECRET_KEY. The session
+	// authentication/encryption keys are HKDF-derived from it, so a known or
+	// low-entropy secret allows an attacker to forge valid session cookies
+	// (full authentication bypass). Fail closed instead of booting insecurely.
+	if cfg.SecretKey == "" || cfg.SecretKey == "change-me" {
+		zlog.Fatal().Msg("SECRET_KEY is unset or using the insecure default 'change-me'. Set a strong, random SECRET_KEY (32+ characters) before starting.")
+	}
+	if len(cfg.SecretKey) < 16 {
+		zlog.Fatal().Msg("SECRET_KEY is too short. Use at least 16 characters (32+ recommended) of high-entropy randomness.")
+	}
+
 	// Ensure SECRET_KEY is stable and correctly sized for AES-256 (32 bytes)
 	// We use HKDF to derive two distinct keys from the single input secret.
 	// 1. Auth Key (Context: "blocklist_auth_key")
