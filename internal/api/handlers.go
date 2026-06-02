@@ -13,7 +13,6 @@ import (
 	"strings"
 	"time"
 
-	_ "embed"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
@@ -34,8 +33,6 @@ type HandlerOptions struct {
 	WebhookLimiter gin.HandlerFunc
 }
 
-//go:embed openapi.json
-var openapiSpec []byte
 
 type APIHandler struct {
 	cfg            *config.Config
@@ -392,7 +389,3 @@ func (h *APIHandler) Ready(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "READY", "dependencies": dep})
 }
 
-// Minimal OpenAPI spec
-func (h *APIHandler) OpenAPI(c *gin.Context) {
-	c.Data(http.StatusOK, "application/json", openapiSpec)
-}
