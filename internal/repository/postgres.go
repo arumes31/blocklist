@@ -404,43 +404,33 @@ func (p *PostgresRepository) BulkCreatePersistentBlocks(ips []string, entries []
 		return fmt.Errorf("length mismatch: ips (%d) != entries (%d)", len(ips), len(entries))
 	}
 
-	ctx := context.Background()
-	conn, err := p.db.Conn(ctx)
-	if err != nil {
-		return err
+	timestamps := make([]string, len(ips))
+	reasons := make([]string, len(ips))
+	addedBySlices := make([]string, len(ips))
+	geoJSONs := make([][]byte, len(ips))
+
+	for i := range ips {
+		timestamps[i] = entries[i].Timestamp
+		reasons[i] = entries[i].Reason
+		addedBySlices[i] = entries[i].AddedBy
+		geo, err := json.Marshal(entries[i].Geolocation)
+		if err != nil {
+			return err
+		}
+		geoJSONs[i] = geo
 	}
-	defer func() { _ = conn.Close() }()
 
-	err = conn.Raw(func(driverConn any) error {
-		stdlibConn, ok := driverConn.(*stdlib.Conn)
-		if !ok {
-			return errors.New("failed to get pgx connection")
-		}
-		pgxConn := stdlibConn.Conn()
+	query := `
+		INSERT INTO persistent_blocks (ip, timestamp, reason, added_by, geo_json)
+		SELECT * FROM unnest($1::text[], $2::timestamp[], $3::text[], $4::text[], $5::jsonb[])
+		ON CONFLICT (ip) DO UPDATE SET
+			timestamp = EXCLUDED.timestamp,
+			reason = EXCLUDED.reason,
+			added_by = EXCLUDED.added_by,
+			geo_json = EXCLUDED.geo_json
+	`
 
-		batch := &pgx.Batch{}
-		query := "INSERT INTO persistent_blocks (ip, timestamp, reason, added_by, geo_json) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (ip) DO UPDATE SET timestamp = $2, reason = $3, added_by = $4, geo_json = $5"
-
-		for i, ip := range ips {
-			geoJSON, err := json.Marshal(entries[i].Geolocation)
-			if err != nil {
-				return err
-			}
-			batch.Queue(query, ip, entries[i].Timestamp, entries[i].Reason, entries[i].AddedBy, geoJSON)
-		}
-
-		br := pgxConn.SendBatch(ctx, batch)
-		defer func() { _ = br.Close() }()
-
-		for range ips {
-			_, err := br.Exec()
-			if err != nil {
-				return err
-			}
-		}
-		return nil
-	})
-
+	_, err := p.db.Exec(query, ips, timestamps, reasons, addedBySlices, geoJSONs)
 	return err
 }
 
