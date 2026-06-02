@@ -12,12 +12,13 @@ import (
 )
 
 type SchedulerService struct {
-	redisRepo *repository.RedisRepository
-	pgRepo    *repository.PostgresRepository
-	cfg       *config.Config
-	ipService *IPService
-	stop      chan struct{}
-	stopOnce  sync.Once
+	redisRepo             *repository.RedisRepository
+	pgRepo                *repository.PostgresRepository
+	cfg                   *config.Config
+	ipService             *IPService
+	externalSourceService *ExternalSourceService
+	stop                  chan struct{}
+	stopOnce              sync.Once
 }
 
 // SetIPService attaches an IPService so the scheduler can run excluded-list FQDN
@@ -35,16 +36,25 @@ func NewSchedulerService(r *repository.RedisRepository, p *repository.PostgresRe
 	}
 }
 
+func (s *SchedulerService) SetExternalSourceService(svc *ExternalSourceService) {
+	s.externalSourceService = svc
+}
+
 func (s *SchedulerService) Start() {
 	// Warm the local FQDN-exclusion cache once at startup so the first block
 	// check after boot does not pay a DNS round-trip.
 	if s.ipService != nil {
 		go s.ipService.RefreshExcludedFQDNs(context.Background())
 	}
+	if s.externalSourceService != nil {
+		go s.externalSourceService.RefreshAll(context.Background())
+	}
 
 	ticker := time.NewTicker(15 * time.Minute)
+	extTicker := time.NewTicker(6 * time.Hour)
 	go func() {
 		defer ticker.Stop()
+		defer extTicker.Stop()
 		for {
 			select {
 			case <-ticker.C:
@@ -77,6 +87,10 @@ func (s *SchedulerService) Start() {
 					if err := s.redisRepo.ReleaseLock("lock_cleanup", token); err != nil {
 						zlog.Error().Err(err).Str("token", token).Msg("Error releasing cleanup lock")
 					}
+				}
+			case <-extTicker.C:
+				if s.externalSourceService != nil {
+					s.externalSourceService.RefreshAll(context.Background())
 				}
 			case <-s.stop:
 				return

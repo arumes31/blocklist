@@ -14,12 +14,13 @@ import (
 )
 
 func TestAPIHandler_Excluded(t *testing.T) {
-	h, rRepo, _, _, _ := setupTest()
+	h, rRepo, pgRepo, _, _ := setupTest()
 
 	rRepo.On("GetExcludedEntries").Return(map[string]models.ExcludedEntry{
 		"10.0.0.0/8":      {Value: "10.0.0.0/8", Type: "cidr", Reason: "internal"},
 		"api.example.com": {Value: "api.example.com", Type: "fqdn", Reason: "trusted"},
 	}, nil)
+	pgRepo.On("GetAllExternalSources").Return([]models.ExternalSource{}, nil)
 
 	w := httptest.NewRecorder()
 	c, _ := setupHTMLTest(w)

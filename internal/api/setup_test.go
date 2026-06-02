@@ -394,6 +394,31 @@ func (m *MockPostgresRepo) DeletePersistentBlock(ip string) error {
 	return args.Error(0)
 }
 
+func (m *MockPostgresRepo) GetActiveExternalSources() ([]models.ExternalSource, error) {
+	args := m.Called()
+	return args.Get(0).([]models.ExternalSource), args.Error(1)
+}
+
+func (m *MockPostgresRepo) GetAllExternalSources() ([]models.ExternalSource, error) {
+	args := m.Called()
+	return args.Get(0).([]models.ExternalSource), args.Error(1)
+}
+
+func (m *MockPostgresRepo) UpdateExternalSource(src models.ExternalSource) error {
+	args := m.Called(src)
+	return args.Error(0)
+}
+
+func (m *MockPostgresRepo) CreateExternalSource(src models.ExternalSource) error {
+	args := m.Called(src)
+	return args.Error(0)
+}
+
+func (m *MockPostgresRepo) DeleteExternalSource(id int) error {
+	args := m.Called(id)
+	return args.Error(0)
+}
+
 // MockAuthService implements AuthServiceProvider
 type MockAuthService struct {
 	mock.Mock

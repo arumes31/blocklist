@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"net/http"
 	"net/netip"
 	"regexp"
@@ -11,6 +12,7 @@ import (
 	"blocklist/internal/models"
 
 	"github.com/gin-gonic/gin"
+	zlog "github.com/rs/zerolog/log"
 )
 
 // fqdnPattern is a conservative hostname/FQDN matcher (labels of letters,
@@ -49,6 +51,11 @@ func (h *APIHandler) Excluded(c *gin.Context) {
 	if err != nil {
 		h.renderHTML(c, http.StatusInternalServerError, "error.html", gin.H{"error": "Failed to fetch excluded list"})
 		return
+	}
+
+	externalSources, err := h.pgRepo.GetAllExternalSources()
+	if err != nil {
+		zlog.Error().Err(err).Msg("Failed to fetch external sources")
 	}
 
 	permissions, _ := c.Get("permissions")
@@ -94,12 +101,13 @@ func (h *APIHandler) Excluded(c *gin.Context) {
 	}
 
 	h.renderHTML(c, http.StatusOK, "excluded.html", gin.H{
-		"excluded_items":  displayItems,
-		"blocked_subnets": blockedSubnets,
-		"username":        username,
-		"page":            "excluded",
-		"permissions":     permissions,
-		"admin_username":  h.cfg.GUIAdmin,
+		"excluded_items":   displayItems,
+		"blocked_subnets":  blockedSubnets,
+		"external_sources": externalSources,
+		"username":         username,
+		"page":             "excluded",
+		"permissions":      permissions,
+		"admin_username":   h.cfg.GUIAdmin,
 	})
 }
 
@@ -251,4 +259,55 @@ func (h *APIHandler) JSONExcluded(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, results)
+}
+
+func (h *APIHandler) AddExternalSource(c *gin.Context) {
+	username, _ := c.Get("username")
+
+	var req struct {
+		Name       string `json:"name"`
+		URL        string `json:"url"`
+		SourceType string `json:"source_type"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON"})
+		return
+	}
+
+	src := models.ExternalSource{
+		Name:                 req.Name,
+		URL:                  req.URL,
+		SourceType:           req.SourceType,
+		RefreshIntervalHours: 6,
+	}
+
+	if err := h.pgRepo.CreateExternalSource(src); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create external source"})
+		return
+	}
+
+	_ = h.pgRepo.LogAction(username.(string), "ADD_EXTERNAL_SOURCE", req.Name, req.URL)
+	c.JSON(http.StatusOK, gin.H{"status": "success"})
+}
+
+func (h *APIHandler) DeleteExternalSource(c *gin.Context) {
+	username, _ := c.Get("username")
+	id, _ := strconv.Atoi(c.Param("id"))
+
+	if err := h.pgRepo.DeleteExternalSource(id); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete external source"})
+		return
+	}
+
+	_ = h.pgRepo.LogAction(username.(string), "DELETE_EXTERNAL_SOURCE", strconv.Itoa(id), "")
+	c.JSON(http.StatusOK, gin.H{"status": "success"})
+}
+
+func (h *APIHandler) RefreshExternalSource(c *gin.Context) {
+	// Trigger manual refresh of all sources
+	if h.externalSourceService != nil {
+		go h.externalSourceService.RefreshAll(context.Background())
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "success", "message": "Refresh started in background"})
 }

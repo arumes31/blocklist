@@ -44,6 +44,19 @@ type ExcludedEntry struct {
 	AlertEnabled bool     `json:"alert_enabled,omitempty"` // Trigger webhook/mail on block attempt
 }
 
+type ExternalSource struct {
+	ID                   int    `json:"id" db:"id"`
+	Name                 string `json:"name" db:"name"`
+	URL                  string `json:"url" db:"url"`
+	SourceType           string `json:"source_type" db:"source_type"`
+	RefreshIntervalHours int    `json:"refresh_interval_hours" db:"refresh_interval_hours"`
+	FailureCount         int    `json:"failure_count" db:"failure_count"`
+	LastRefreshTS        string `json:"last_refresh_ts" db:"last_refresh_ts"`
+	LastError            string `json:"last_error" db:"last_error"`
+	IsActive             bool   `json:"is_active" db:"is_active"`
+	CreatedAt            string `json:"created_at" db:"created_at"`
+}
+
 type AuditLog struct {
 	ID        int    `json:"id" db:"id"`
 	Timestamp string `json:"timestamp" db:"timestamp"`

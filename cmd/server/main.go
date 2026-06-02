@@ -221,6 +221,11 @@ func main() {
 			zlog.Error().Err(err).Msg("Failed to schedule GeoLite2-ASN update")
 		}
 
+		// Schedule External Source refresh every 6 hours
+		if _, err := asynqScheduler.Register("@every 6h", tasks.NewRefreshExternalSourcesTask()); err != nil {
+			zlog.Error().Err(err).Msg("Failed to schedule external source refresh")
+		}
+
 		go func() {
 			if err := asynqScheduler.Run(); err != nil {
 				zlog.Fatal().Err(err).Msg("Failed to run asynq scheduler")
@@ -446,16 +451,17 @@ func main() {
 
 	// 6. Initialize API Handler
 	handler := api.NewAPIHandler(api.HandlerOptions{
-		Config:         cfg,
-		RedisRepo:      a.RedisRepo,
-		PgRepo:         a.PgRepo,
-		AuthService:    a.AuthService,
-		IPService:      a.IPService,
-		Hub:            hub,
-		WebhookService: a.WebhookService,
-		MainLimiter:    mainLimiter,
-		LoginLimiter:   loginLimiter,
-		WebhookLimiter: webhookLimiter,
+		Config:                cfg,
+		RedisRepo:             a.RedisRepo,
+		PgRepo:                a.PgRepo,
+		AuthService:           a.AuthService,
+		IPService:             a.IPService,
+		Hub:                   hub,
+		WebhookService:        a.WebhookService,
+		ExternalSourceService: a.ExternalSourceService,
+		MainLimiter:           mainLimiter,
+		LoginLimiter:          loginLimiter,
+		WebhookLimiter:        webhookLimiter,
 	})
 	handler.RegisterRoutes(r)
 

@@ -20,8 +20,7 @@ func TestAPIHandler_Webhook(t *testing.T) {
 
 	// 1. Success - Ban
 	ipService.On("BlockIP", mock.Anything, "1.2.3.4", "spam", "admin", "127.0.0.1", false, mock.Anything).Return(&models.IPEntry{Reason: "spam"}, nil)
-	ipService.On("GetGeoIP", "1.2.3.4").Return(&models.GeoData{}).Maybe()
-	ipService.On("GetGeoIP", "127.0.0.1").Return(&models.GeoData{}).Maybe()
+	ipService.On("GetGeoIP", mock.Anything).Return(&models.GeoData{}).Maybe()
 	rRepo.On("IndexWebhookHit", mock.Anything).Return(nil)
 
 	w := httptest.NewRecorder()
@@ -140,6 +139,7 @@ func TestAPIHandler_Webhook_BanTTL(t *testing.T) {
 	c.Set("username", "admin")
 
 	ipService.On("BlockIP", mock.Anything, "4.4.4.4", "ttl-test", "admin", "127.0.0.1", false, mock.Anything).Return(&models.IPEntry{Reason: "ttl-test"}, nil)
+	ipService.On("GetGeoIP", mock.Anything).Return(&models.GeoData{}).Maybe()
 	rRepo.On("IndexWebhookHit", mock.Anything).Return(nil)
 
 	h.Webhook(c)

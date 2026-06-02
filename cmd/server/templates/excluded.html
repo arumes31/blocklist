@@ -230,8 +230,8 @@
             are supported using forward-confirmed reverse DNS. Resolutions are refreshed periodically. Expiry defaults to <strong>Never</strong>.
             <br><br>
             <span style="color: var(--vibrant-red); font-weight: 600;">Pro-tip:</span> Enable <strong>Alert on attempt</strong> to receive notifications
-            via <a href="/settings" style="color: var(--vibrant-red);">Outbound Webhooks</a> (using the <code>excluded_block_attempt</code> event)
-            whenever a system or user tries to block an excluded target.
+            via <a href="/settings" style="color: var(--vibrant-red);">Outbound Webhooks</a> (using the <code>excluded_block_attempt</code> event) or 
+            <strong>Mail alerts</strong> whenever a system or user tries to block an excluded target.
         </p>
 
         <div class="table-card" style="padding: 1.5rem; margin-bottom: 2rem; display: flex; gap: 10px; align-items: center; justify-content: center; flex-wrap: wrap;">
@@ -273,7 +273,7 @@
                         <tr>
                             <td>
                                 <div style="font-family: monospace; font-weight: 600;">{{ $value }}</div>
-                                {{ if eq $data.Type "fqdn" }}
+                                {{ if or (eq $data.Type "fqdn") (eq $data.Type "wildcard") }}
                                     {{ if $data.ResolvedIPs }}
                                         <span class="resolved-ips" title="{{ range $idx, $ip := $data.ResolvedIPs }}{{ if $idx }}, {{ end }}{{ $ip }}{{ end }}">
                                             Resolves: {{ range $idx, $ip := $data.ResolvedIPs }}{{ if $idx }}, {{ end }}{{ $ip }}{{ end }}
@@ -307,9 +307,70 @@
                             <td><span class="type-badge type-cidr">cidr</span></td>
                             <td>System</td>
                             <td><span style="font-size: 0.9rem; color: var(--secondary-color);">Blocked range (ENV)</span></td>
+                            <td>-</td>
                             <td>NEVER</td>
                             <td style="color: var(--danger-color); font-weight: bold; font-size: 0.8rem;">PROTECTED</td>
                         </tr>
+                    {{ end }}
+                </tbody>
+            </table>
+        </div>
+
+        <div style="margin-top: 4rem; margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center;">
+            <h3 style="margin: 0; color: #fff;">External Dynamic Sources</h3>
+            <button class="btn btn-dark" onclick="refreshExternalSources()">Refresh All Now</button>
+        </div>
+        <p style="color: var(--secondary-color); font-size: 0.9rem; margin-bottom: 1.5rem;">
+            Subscribe to third-party IP/CIDR lists (e.g. Microsoft 365, AWS) to keep them automatically protected.
+            Refreshed every 6 hours with automatic failure fallback.
+        </p>
+
+        <div class="table-card" style="padding: 1.5rem; margin-bottom: 2rem; display: flex; gap: 10px; align-items: center; justify-content: center; flex-wrap: wrap;">
+            <input type="text" id="sourceName" class="filter-input" style="flex: 1; max-width: 250px;" placeholder="Source Name (e.g. M365)">
+            <input type="text" id="sourceURL" class="filter-input" style="flex: 2; max-width: 500px;" placeholder="URL (JSON or Plaintext list)">
+            <select id="sourceType" class="filter-input" style="max-width: 180px;">
+                <option value="plaintext">Plaintext / CIDR List</option>
+                <option value="microsoft_365">Microsoft 365 JSON</option>
+                <option value="json_cidr">JSON Array of CIDRs</option>
+            </select>
+            <button class="btn btn-danger" onclick="addExternalSource()">Add Source</button>
+        </div>
+
+        <div class="table-card">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Source Name</th>
+                        <th>Type</th>
+                        <th>URL</th>
+                        <th>Last Refresh</th>
+                        <th>Status</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{ range $src := .external_sources }}
+                        <tr>
+                            <td><strong>{{ $src.Name }}</strong></td>
+                            <td><span class="type-badge" style="background: rgba(255,255,255,0.1);">{{ $src.SourceType }}</span></td>
+                            <td style="font-size: 0.8rem; color: var(--secondary-color); max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{{ $src.URL }}">
+                                {{ $src.URL }}
+                            </td>
+                            <td>{{ if $src.LastRefreshTS }}{{ $src.LastRefreshTS }}{{ else }}Never{{ end }}</td>
+                            <td>
+                                {{ if $src.LastError }}
+                                    <span style="color: var(--vibrant-red); font-size: 0.8rem;" title="{{ $src.LastError }}">⚠️ Error ({{ $src.FailureCount }}/6)</span>
+                                {{ else if $src.LastRefreshTS }}
+                                    <span style="color: var(--success-color); font-size: 0.8rem;">● Active</span>
+                                {{ else }}
+                                    <span style="color: #666; font-size: 0.8rem;">Pending...</span>
+                                {{ end }}
+                            </td>
+                            <td><button class="btn btn-dark" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;" onclick="deleteExternalSource({{ $src.ID }})">Remove</button></td>
+                        </tr>
+                    {{ end }}
+                    {{ if not .external_sources }}
+                        <tr><td colspan="6" style="text-align: center; color: #555; padding: 2rem;">No external sources configured.</td></tr>
                     {{ end }}
                 </tbody>
             </table>
@@ -431,6 +492,52 @@
                     showToast('Failed to remove entry!', 'danger');
                 });
             }
+        }
+
+        function addExternalSource() {
+            const name = document.getElementById('sourceName').value.trim();
+            const url = document.getElementById('sourceURL').value.trim();
+            const type = document.getElementById('sourceType').value;
+
+            if (!name || !url) {
+                showToast('Name and URL are required.', 'danger');
+                return;
+            }
+
+            fetch('/api/v1/excluded/sources', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, url, source_type: type })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    showToast('External source added!', 'success');
+                    setTimeout(() => location.reload(), 1000);
+                } else {
+                    showToast(data.error || 'Failed to add source!', 'danger');
+                }
+            })
+            .catch(() => showToast('Failed to add source!', 'danger'));
+        }
+
+        function deleteExternalSource(id) {
+            if (confirm('Remove this external source? This will not remove existing entries fetched from it.')) {
+                fetch(`/api/v1/excluded/sources/${id}`, { method: 'DELETE' })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        showToast('Source removed!', 'success');
+                        setTimeout(() => location.reload(), 1000);
+                    }
+                });
+            }
+        }
+
+        function refreshExternalSources() {
+            showToast('Refresh started...', 'success');
+            fetch('/api/v1/excluded/sources/refresh', { method: 'POST' })
+            .then(() => setTimeout(() => location.reload(), 2000));
         }
 
         function filterTable() {

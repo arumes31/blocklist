@@ -49,6 +49,7 @@ func main() {
 	asynqMux := asynq.NewServeMux()
 	asynqMux.Handle(tasks.TypeWebhookDelivery, tasks.NewWebhookTaskHandler(a.PgRepo))
 	asynqMux.Handle(tasks.TypeGeoIPUpdate, tasks.NewGeoIPTaskHandler(cfg, a.IPService))
+	asynqMux.Handle(tasks.TypeRefreshExternalSources, tasks.NewExternalSourceTaskHandler(a.ExternalSourceService))
 
 	// Run worker
 	go func() {

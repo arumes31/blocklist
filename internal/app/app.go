@@ -30,9 +30,11 @@ type App struct {
 	RedisRepo      *repository.RedisRepository
 	PgRepo         *repository.PostgresRepository
 	AuthService    *service.AuthService
-	IPService      *service.IPService
-	WebhookService *service.WebhookService
-	GeoUpdater     GeoUpdaterI
+	IPService             *service.IPService
+	WebhookService        *service.WebhookService
+	MailService           *service.MailService
+	ExternalSourceService *service.ExternalSourceService
+	GeoUpdater            GeoUpdaterI
 	Scheduler      SchedulerI
 	RedisOpts      asynq.RedisClientOpt
 }
@@ -62,20 +64,27 @@ func Bootstrap(cfg *config.Config) (*App, error) {
 	webhookService := service.NewWebhookService(pgRepo, cfg, redisOpts)
 	geoUpdater := service.NewGeoIPService(cfg, redisOpts)
 	scheduler := service.NewSchedulerService(redisRepo, pgRepo, cfg)
+	mailService := service.NewMailService(cfg)
+	externalSourceService := service.NewExternalSourceService(pgRepo, ipService)
 
-	// Link WebhookService to IPService for alerts
+	// Link dependencies
 	ipService.SetWebhookService(webhookService)
+	ipService.SetMailService(mailService)
+	scheduler.SetIPService(ipService)
+	scheduler.SetExternalSourceService(externalSourceService)
 
 	return &App{
-		Config:         cfg,
-		RedisRepo:      redisRepo,
-		PgRepo:         pgRepo,
-		AuthService:    authService,
-		IPService:      ipService,
-		WebhookService: webhookService,
-		GeoUpdater:     geoUpdater,
-		Scheduler:      scheduler,
-		RedisOpts:      redisOpts,
+		Config:                cfg,
+		RedisRepo:             redisRepo,
+		PgRepo:                pgRepo,
+		AuthService:           authService,
+		IPService:             ipService,
+		WebhookService:        webhookService,
+		MailService:           mailService,
+		ExternalSourceService: externalSourceService,
+		GeoUpdater:            geoUpdater,
+		Scheduler:             scheduler,
+		RedisOpts:             redisOpts,
 	}, nil
 }
 

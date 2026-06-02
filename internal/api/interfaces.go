@@ -100,4 +100,11 @@ type PostgresRepositoryProvider interface {
 	GetBlockTrend() ([]models.BlockTrend, error)
 	CreatePersistentBlock(ip string, entry models.IPEntry) error
 	DeletePersistentBlock(ip string) error
+
+	// External sources
+	GetActiveExternalSources() ([]models.ExternalSource, error)
+	GetAllExternalSources() ([]models.ExternalSource, error)
+	UpdateExternalSource(src models.ExternalSource) error
+	CreateExternalSource(src models.ExternalSource) error
+	DeleteExternalSource(id int) error
 }

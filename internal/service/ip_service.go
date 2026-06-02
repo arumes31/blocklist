@@ -31,6 +31,7 @@ type IPService struct {
 	redisRepo      *repository.RedisRepository
 	pgRepo         *repository.PostgresRepository
 	webhookService *WebhookService
+	mailService    *MailService
 	blockedRanges  []netip.Prefix
 	geoipReader    *geoip2.Reader
 	asnReader      *geoip2.Reader
@@ -127,25 +128,42 @@ func (s *IPService) SetWebhookService(wh *WebhookService) {
 	s.webhookService = wh
 }
 
+func (s *IPService) SetMailService(ms *MailService) {
+	s.mailService = ms
+}
+
 func (s *IPService) triggerExcludedAlert(ctx context.Context, ip string, reason string, addedBy string, actorIP string, entry models.ExcludedEntry) {
-	if s.webhookService == nil {
-		return
+	// 1. Webhook Alert
+	if s.webhookService != nil {
+		payload := map[string]interface{}{
+			"event":          "excluded_block_attempt",
+			"target_ip":      ip,
+			"attempted_by":   addedBy,
+			"actor_ip":       actorIP,
+			"attempt_reason": reason,
+			"excluded_rule":  entry.Value,
+			"rule_type":      entry.Type,
+			"rule_reason":    entry.Reason,
+			"timestamp":      time.Now().UTC().Format(time.RFC3339),
+		}
+		data, _ := json.Marshal(payload)
+		s.webhookService.Notify(ctx, "excluded_block_attempt", string(data))
 	}
 
-	payload := map[string]interface{}{
-		"event":          "excluded_block_attempt",
-		"target_ip":      ip,
-		"attempted_by":   addedBy,
-		"actor_ip":       actorIP,
-		"attempt_reason": reason,
-		"excluded_rule":  entry.Value,
-		"rule_type":      entry.Type,
-		"rule_reason":    entry.Reason,
-		"timestamp":      time.Now().UTC().Format(time.RFC3339),
+	// 2. Email Alert
+	if s.mailService != nil {
+		subject := fmt.Sprintf("[ALERT] Block Attempted on Excluded Resource: %s", ip)
+		body := fmt.Sprintf("A block was attempted but prevented for an excluded resource.\n\n"+
+			"Target IP: %s\n"+
+			"Attempted By: %s\n"+
+			"Actor IP: %s\n"+
+			"Attempt Reason: %s\n\n"+
+			"Exclusion Rule: %s (%s)\n"+
+			"Rule Reason: %s\n"+
+			"Timestamp: %s\n",
+			ip, addedBy, actorIP, reason, entry.Value, entry.Type, entry.Reason, time.Now().UTC().Format(time.RFC3339))
+		_ = s.mailService.SendAlert(subject, body)
 	}
-
-	data, _ := json.Marshal(payload)
-	s.webhookService.Notify(ctx, "excluded_block_attempt", string(data))
 }
 func (s *IPService) syncBloomFilter() {
 	if !s.syncInProgress.CompareAndSwap(false, true) {

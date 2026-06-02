@@ -515,6 +515,41 @@ func (p *PostgresRepository) BulkLogAction(actor, action string, ips []string, r
 	return err
 }
 
+func (p *PostgresRepository) GetActiveExternalSources() ([]models.ExternalSource, error) {
+	var sources []models.ExternalSource
+	err := p.db.Select(&sources, "SELECT * FROM external_sources WHERE is_active = TRUE")
+	return sources, err
+}
+
+func (p *PostgresRepository) GetAllExternalSources() ([]models.ExternalSource, error) {
+	var sources []models.ExternalSource
+	err := p.db.Select(&sources, "SELECT * FROM external_sources ORDER BY id DESC")
+	return sources, err
+}
+
+func (p *PostgresRepository) UpdateExternalSource(src models.ExternalSource) error {
+	_, err := p.db.Exec(`UPDATE external_sources SET 
+		failure_count = $1, 
+		last_refresh_ts = $2, 
+		last_error = $3, 
+		is_active = $4 
+		WHERE id = $5`,
+		src.FailureCount, src.LastRefreshTS, src.LastError, src.IsActive, src.ID)
+	return err
+}
+
+func (p *PostgresRepository) CreateExternalSource(src models.ExternalSource) error {
+	_, err := p.db.Exec(`INSERT INTO external_sources (name, url, source_type, refresh_interval_hours) 
+		VALUES ($1, $2, $3, $4)`,
+		src.Name, src.URL, src.SourceType, src.RefreshIntervalHours)
+	return err
+}
+
+func (p *PostgresRepository) DeleteExternalSource(id int) error {
+	_, err := p.db.Exec("DELETE FROM external_sources WHERE id = $1", id)
+	return err
+}
+
 func (p *PostgresRepository) Close() error {
 	var errs []error
 	if p.db != nil {

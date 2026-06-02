@@ -22,34 +22,36 @@ import (
 )
 
 type HandlerOptions struct {
-	Config         *config.Config
-	RedisRepo      RedisRepositoryProvider
-	PgRepo         PostgresRepositoryProvider
-	AuthService    AuthServiceProvider
-	IPService      IPServiceProvider
-	Hub            *Hub
-	WebhookService *service.WebhookService
-	MainLimiter    gin.HandlerFunc
-	LoginLimiter   gin.HandlerFunc
-	WebhookLimiter gin.HandlerFunc
+	Config                *config.Config
+	RedisRepo             RedisRepositoryProvider
+	PgRepo                PostgresRepositoryProvider
+	AuthService           AuthServiceProvider
+	IPService             IPServiceProvider
+	Hub                   *Hub
+	WebhookService        *service.WebhookService
+	ExternalSourceService *service.ExternalSourceService
+	MainLimiter           gin.HandlerFunc
+	LoginLimiter          gin.HandlerFunc
+	WebhookLimiter        gin.HandlerFunc
 }
 
 //go:embed openapi.json
 var openapiSpec []byte
 
 type APIHandler struct {
-	cfg            *config.Config
-	redisRepo      RedisRepositoryProvider
-	pgRepo         PostgresRepositoryProvider
-	authService    AuthServiceProvider
-	ipService      IPServiceProvider
-	hub            *Hub
-	webhookService *service.WebhookService
-	mainLimiter    gin.HandlerFunc
-	loginLimiter   gin.HandlerFunc
-	trustedProxies []netip.Prefix
-	upgrader       websocket.Upgrader
-	webhookLimiter gin.HandlerFunc
+	cfg                   *config.Config
+	redisRepo             RedisRepositoryProvider
+	pgRepo                PostgresRepositoryProvider
+	authService           AuthServiceProvider
+	ipService             IPServiceProvider
+	hub                   *Hub
+	webhookService        *service.WebhookService
+	externalSourceService *service.ExternalSourceService
+	mainLimiter           gin.HandlerFunc
+	loginLimiter          gin.HandlerFunc
+	trustedProxies        []netip.Prefix
+	upgrader              websocket.Upgrader
+	webhookLimiter        gin.HandlerFunc
 }
 
 // NewAPIHandler creates a new instance of APIHandler with the necessary dependencies.
@@ -74,17 +76,18 @@ func NewAPIHandler(opts HandlerOptions) *APIHandler {
 	}
 
 	h := &APIHandler{
-		cfg:            opts.Config,
-		redisRepo:      opts.RedisRepo,
-		pgRepo:         opts.PgRepo,
-		authService:    opts.AuthService,
-		ipService:      opts.IPService,
-		hub:            opts.Hub,
-		webhookService: opts.WebhookService,
-		mainLimiter:    opts.MainLimiter,
-		loginLimiter:   opts.LoginLimiter,
-		webhookLimiter: opts.WebhookLimiter,
-		trustedProxies: prefixes,
+		cfg:                   opts.Config,
+		redisRepo:             opts.RedisRepo,
+		pgRepo:                opts.PgRepo,
+		authService:           opts.AuthService,
+		ipService:             opts.IPService,
+		hub:                   opts.Hub,
+		webhookService:        opts.WebhookService,
+		externalSourceService: opts.ExternalSourceService,
+		mainLimiter:           opts.MainLimiter,
+		loginLimiter:          opts.LoginLimiter,
+		webhookLimiter:        opts.WebhookLimiter,
+		trustedProxies:        prefixes,
 	}
 
 	h.upgrader = websocket.Upgrader{
@@ -343,6 +346,11 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 		auth.GET("/api/v1/excluded", h.PermissionMiddleware("manage_excluded"), h.JSONExcluded)
 		auth.POST("/add_excluded", h.PermissionMiddleware("manage_excluded"), h.AddExcluded)
 		auth.POST("/remove_excluded", h.PermissionMiddleware("manage_excluded"), h.RemoveExcluded)
+
+		// External sources
+		auth.POST("/api/v1/excluded/sources", h.PermissionMiddleware("manage_excluded"), h.AddExternalSource)
+		auth.DELETE("/api/v1/excluded/sources/:id", h.PermissionMiddleware("manage_excluded"), h.DeleteExternalSource)
+		auth.POST("/api/v1/excluded/sources/refresh", h.PermissionMiddleware("manage_excluded"), h.RefreshExternalSource)
 
 		// Admin management
 		admin := auth.Group("/admin_management")
