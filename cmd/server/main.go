@@ -445,7 +445,7 @@ func main() {
 	})
 
 	// 6. Initialize API Handler
-	handler := api.NewAPIHandler(api.HandlerOptions{
+	handler := api.NewAPIHandler(&api.HandlerOptions{
 		Config:         cfg,
 		RedisRepo:      a.RedisRepo,
 		PgRepo:         a.PgRepo,

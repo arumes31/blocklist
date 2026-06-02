@@ -38,7 +38,7 @@ func setupTestRouter(rRepo *repository.RedisRepository) *gin.Engine {
 	webhookSvc := service.NewWebhookService(nil, cfg, asynq.RedisClientOpt{})
 	hub := NewHub(rRepo.GetClient())
 
-	h := NewAPIHandler(HandlerOptions{
+	h := NewAPIHandler(&HandlerOptions{
 		Config:         cfg,
 		RedisRepo:      rRepo,
 		AuthService:    authSvc,
