@@ -152,7 +152,11 @@ func (s *IPService) triggerExcludedAlert(ctx context.Context, ip string, reason 
 
 	// 2. Email Alert
 	if s.mailService != nil {
-		subject := fmt.Sprintf("[ALERT] Block Attempted on Excluded Resource: %s", ip)
+		// Strip CR/LF from every untrusted field before it is interpolated into
+		// the message. The literal "\n" line breaks in the template stay intact,
+		// so the email remains multi-line, but an attacker-supplied value (e.g. a
+		// block reason) cannot inject email headers (CRLF injection).
+		subject := fmt.Sprintf("[ALERT] Block Attempted on Excluded Resource: %s", sanitizeHeader(ip))
 		body := fmt.Sprintf("A block was attempted but prevented for an excluded resource.\n\n"+
 			"Target IP: %s\n"+
 			"Attempted By: %s\n"+
@@ -161,7 +165,9 @@ func (s *IPService) triggerExcludedAlert(ctx context.Context, ip string, reason 
 			"Exclusion Rule: %s (%s)\n"+
 			"Rule Reason: %s\n"+
 			"Timestamp: %s\n",
-			ip, addedBy, actorIP, reason, entry.Value, entry.Type, entry.Reason, time.Now().UTC().Format(time.RFC3339))
+			sanitizeHeader(ip), sanitizeHeader(addedBy), sanitizeHeader(actorIP),
+			sanitizeHeader(reason), sanitizeHeader(entry.Value), sanitizeHeader(entry.Type),
+			sanitizeHeader(entry.Reason), time.Now().UTC().Format(time.RFC3339))
 		_ = s.mailService.SendAlert(subject, body)
 	}
 }
