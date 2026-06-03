@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"embed"
+	"encoding/base64"
 	"fmt"
 	"html/template"
 	"io"
@@ -29,8 +31,6 @@ import (
 	"blocklist/internal/config"
 	"blocklist/internal/models"
 	"blocklist/internal/tasks"
-	"crypto/rand"
-	"encoding/base64"
 
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-contrib/sessions/redis"
@@ -51,11 +51,13 @@ var staticFS embed.FS
 //go:embed migrations/*
 var migrationsFS embed.FS
 
+// CensorWriter masks sensitive information in logs using regex.
 type CensorWriter struct {
 	io.Writer
 	re *regexp.Regexp
 }
 
+// Write implements the io.Writer interface and censors sensitive keys.
 func (w *CensorWriter) Write(p []byte) (n int, err error) {
 	// Simple regex to mask common sensitive keys in JSON/Text logs
 	// matches: "password":"...", "secret":"...", etc.
@@ -69,7 +71,79 @@ func (w *CensorWriter) Write(p []byte) (n int, err error) {
 }
 
 func main() {
+	cfg := config.Load()
+
 	// 0. Setup Structured Logging
+	setupLogger(cfg)
+
+	// 1. Derive Session Keys
+	authKey, blockKey := deriveSessionKeys(cfg.SecretKey)
+
+	// 2. Run Database Migrations
+	runMigrations(cfg.PostgresURL)
+
+	// 3. Bootstrap shared state
+	a, err := app.Bootstrap(cfg)
+	if err != nil {
+		zlog.Fatal().Err(err).Msg("Failed to bootstrap app")
+	}
+	defer a.Close()
+
+	// 4. Seed Admin User if missing
+	seedAdminUser(a, cfg)
+
+	// 5. Start Schedulers & Task Workers (Optional)
+	asynqServer, asynqScheduler := initBackgroundWorkers(a, cfg)
+
+	// 6. Initialize WebSocket Hub
+	hub := api.NewHub(a.RedisRepo.GetClient())
+	go hub.Run()
+
+	// 7. Setup Gin Router
+	r := setupRouter(cfg, a, hub, authKey, blockKey)
+
+	// 8. Run Server with Graceful Shutdown
+	srv := &http.Server{
+		Addr:              ":" + cfg.Port,
+		Handler:           r,
+		ReadHeaderTimeout: 5 * time.Second, // Protect against Slowloris attacks
+	}
+
+	go func() {
+		zlog.Info().Str("port", cfg.Port).Msg("Starting Blocklist Go Server")
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			zlog.Fatal().Err(err).Msg("Failed to start server")
+		}
+	}()
+
+	// Wait for interrupt signal to gracefully shutdown the server
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+	zlog.Info().Msg("Shutting down server...")
+
+	// 1. Stop Asynq components first if they were started
+	if asynqScheduler != nil {
+		asynqScheduler.Shutdown()
+	}
+	if asynqServer != nil {
+		asynqServer.Shutdown()
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// 2. Shutdown HTTP Server
+	if err := srv.Shutdown(ctx); err != nil {
+		zlog.Fatal().Err(err).Msg("Server forced to shutdown")
+	}
+
+	a.Close()
+	zlog.Info().Msg("Server exiting")
+}
+
+// setupLogger initializes the structured logger with censorship.
+func setupLogger(cfg *config.Config) {
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
 
 	censorRE := regexp.MustCompile(`(?i)(password|secret|token)(["':\s]+)([^"'\s,{}]+)`)
@@ -79,53 +153,53 @@ func main() {
 	}
 	zlog.Logger = zerolog.New(cw).With().Timestamp().Logger()
 
-	cfg := config.Load()
-
-	// Refuse to start with a default or weak SECRET_KEY. The session
-	// authentication/encryption keys are HKDF-derived from it, so a known or
-	// low-entropy secret allows an attacker to forge valid session cookies
-	// (full authentication bypass). Fail closed instead of booting insecurely.
-	if cfg.SecretKey == "" || cfg.SecretKey == "change-me" {
-		zlog.Fatal().Msg("SECRET_KEY is unset or using the insecure default 'change-me'. Set a strong, random SECRET_KEY (32+ characters) before starting.")
-	}
-	if len(cfg.SecretKey) < 16 {
-		zlog.Fatal().Msg("SECRET_KEY is too short. Use at least 16 characters (32+ recommended) of high-entropy randomness.")
-	}
-
-	// Ensure SECRET_KEY is stable and correctly sized for AES-256 (32 bytes)
-	// We use HKDF to derive two distinct keys from the single input secret.
-	// 1. Auth Key (Context: "blocklist_auth_key")
-	authKDF := hkdf.New(sha256.New, []byte(cfg.SecretKey), nil, []byte("blocklist_auth_key"))
-	authKey := make([]byte, 32)
-	if _, err := io.ReadFull(authKDF, authKey); err != nil {
-		zlog.Fatal().Err(err).Msg("Failed to derive auth key")
-	}
-
-	// 2. Encryption Key (Context: "blocklist_encryption_key")
-	encKDF := hkdf.New(sha256.New, []byte(cfg.SecretKey), nil, []byte("blocklist_encryption_key"))
-	blockKey := make([]byte, 32)
-	if _, err := io.ReadFull(encKDF, blockKey); err != nil {
-		zlog.Fatal().Err(err).Msg("Failed to derive encryption key")
-	}
-
 	if !cfg.LogWeb {
 		zerolog.SetGlobalLevel(zerolog.InfoLevel)
 	} else {
 		zerolog.SetGlobalLevel(zerolog.DebugLevel)
 	}
+}
 
-	zlog.Info().Int("auth_key_len", len(authKey)).Int("block_key_len", len(blockKey)).Msg("Starting Blocklist Go Server")
-
-	if cfg.SecretKey == "change-me" {
-		zlog.Warn().Msg("SECRET_KEY is using default. Please set a 32-byte string via environment variable.")
+// deriveSessionKeys uses HKDF to derive stable keys for session encryption and authentication.
+func deriveSessionKeys(secretKey string) (authKey, blockKey []byte) {
+	// Refuse to start with a default or weak SECRET_KEY. The session
+	// authentication/encryption keys are HKDF-derived from it, so a known or
+	// low-entropy secret allows an attacker to forge valid session cookies
+	// (full authentication bypass). Fail closed instead of booting insecurely.
+	if secretKey == "" || secretKey == "change-me" {
+		zlog.Fatal().Msg("SECRET_KEY is unset or using the insecure default 'change-me'. Set a strong, random SECRET_KEY (32+ characters) before starting.")
+	}
+	if len(secretKey) < 16 {
+		zlog.Fatal().Msg("SECRET_KEY is too short. Use at least 16 characters (32+ recommended) of high-entropy randomness.")
 	}
 
-	// Run Migrations
+	// Ensure SECRET_KEY is stable and correctly sized for AES-256 (32 bytes)
+	// We use HKDF to derive two distinct keys from the single input secret.
+
+	// 1. Auth Key (Context: "blocklist_auth_key")
+	authKDF := hkdf.New(sha256.New, []byte(secretKey), nil, []byte("blocklist_auth_key"))
+	authKey = make([]byte, 32)
+	if _, err := io.ReadFull(authKDF, authKey); err != nil {
+		zlog.Fatal().Err(err).Msg("Failed to derive auth key")
+	}
+
+	// 2. Encryption Key (Context: "blocklist_encryption_key")
+	encKDF := hkdf.New(sha256.New, []byte(secretKey), nil, []byte("blocklist_encryption_key"))
+	blockKey = make([]byte, 32)
+	if _, err := io.ReadFull(encKDF, blockKey); err != nil {
+		zlog.Fatal().Err(err).Msg("Failed to derive encryption key")
+	}
+
+	return authKey, blockKey
+}
+
+// runMigrations applies database schema changes using embedded migrations.
+func runMigrations(postgresURL string) {
 	d, err := iofs.New(migrationsFS, "migrations")
 	if err != nil {
 		zlog.Fatal().Err(err).Msg("Failed to create iofs source")
 	}
-	m, err := migrate.NewWithSourceInstance("iofs", d, cfg.PostgresURL)
+	m, err := migrate.NewWithSourceInstance("iofs", d, postgresURL)
 	if err == nil {
 		version, dirty, err := m.Version()
 		if err != nil && err != migrate.ErrNilVersion {
@@ -144,16 +218,10 @@ func main() {
 	} else {
 		zlog.Error().Err(err).Msg("Failed to initialize migrations")
 	}
+}
 
-	// 1. Bootstrap shared state
-	a, err := app.Bootstrap(cfg)
-	if err != nil {
-		zlog.Fatal().Err(err).Msg("Failed to bootstrap app")
-	}
-	defer a.Close()
-
-	// Seed Admin User if missing
-	// Seed Admin User if missing
+// seedAdminUser creates the initial administrator account if it doesn't exist.
+func seedAdminUser(a *app.App, cfg *config.Config) {
 	if a.PgRepo != nil && cfg.GUIAdmin != "" {
 		admin, _ := a.PgRepo.GetAdmin(cfg.GUIAdmin)
 		if admin == nil {
@@ -174,8 +242,10 @@ func main() {
 			}
 		}
 	}
+}
 
-	// 3. Start Schedulers & Task Workers (Optional)
+// initBackgroundWorkers starts the Asynq server and scheduler for background tasks.
+func initBackgroundWorkers(a *app.App, cfg *config.Config) (*asynq.Server, *asynq.Scheduler) {
 	var asynqServer *asynq.Server
 	var asynqScheduler *asynq.Scheduler
 
@@ -235,16 +305,65 @@ func main() {
 		zlog.Info().Msg("Background worker disabled (external worker expected)")
 	}
 
-	// 4. Initialize WebSocket Hub
-	hub := api.NewHub(a.RedisRepo.GetClient())
-	go hub.Run()
+	return asynqServer, asynqScheduler
+}
 
-	// 5. Setup Gin
+// setupRouter configures the Gin engine with all middleware and routes.
+func setupRouter(cfg *config.Config, a *app.App, hub *api.Hub, authKey, blockKey []byte) *gin.Engine {
 	if !cfg.LogWeb {
 		gin.SetMode(gin.ReleaseMode)
 	}
 	r := gin.Default()
 
+	// Configure Trusted Proxies
+	setupTrustedProxies(r, cfg)
+
+	// Force HTTPS (Improvement)
+	if cfg.ForceHTTPS {
+		r.Use(httpsRedirectMiddleware())
+	}
+
+	// Sessions
+	setupSessions(r, cfg, authKey, blockKey)
+
+	// Rate Limiting
+	mainLimiter, loginLimiter, webhookLimiter := setupRateLimiters(cfg)
+
+	// Load Templates
+	setupTemplates(r)
+
+	// Security Headers with CSP and Nonce
+	r.Use(securityHeadersMiddleware(cfg))
+
+	// Basic CSRF Protection
+	r.Use(csrfProtectionMiddleware())
+
+	// Serve Static Files
+	setupStaticFiles(r)
+
+	// Serve favicon
+	setupFavicon(r)
+
+	// Initialize API Handler
+	handler := api.NewAPIHandler(&api.HandlerOptions{
+		Config:                cfg,
+		RedisRepo:             a.RedisRepo,
+		PgRepo:                a.PgRepo,
+		AuthService:           a.AuthService,
+		IPService:             a.IPService,
+		Hub:                   hub,
+		WebhookService:        a.WebhookService,
+		ExternalSourceService: a.ExternalSourceService,
+		MainLimiter:           mainLimiter,
+		LoginLimiter:          loginLimiter,
+		WebhookLimiter:        webhookLimiter,
+	})
+	handler.RegisterRoutes(r)
+
+	return r
+}
+
+func setupTrustedProxies(r *gin.Engine, cfg *config.Config) {
 	// Configure Trusted Proxies to handle requests from Docker, Tailscale, and private networks.
 	// This is critical for correct IP detection behind reverse proxies.
 	trustedProxies := []string{"127.0.0.1", "172.16.0.0/12", "100.64.0.0/10", "10.0.0.0/8", "192.168.0.0/16"}
@@ -257,26 +376,27 @@ func main() {
 	if err := r.SetTrustedProxies(trustedProxies); err != nil {
 		zlog.Error().Err(err).Msg("Failed to set trusted proxies")
 	}
+}
 
-	// Force HTTPS (Improvement)
-	if cfg.ForceHTTPS {
-		r.Use(func(c *gin.Context) {
-			if c.Request.Header.Get("X-Forwarded-Proto") != "https" && c.Request.TLS == nil {
-				// Use 308 Permanent Redirect to preserve non-GET methods (compliance/robustness)
-				target := "https://" + c.Request.Host + c.Request.RequestURI
-				c.Redirect(http.StatusPermanentRedirect, target)
-				c.Abort()
-				return
-			}
-			c.Next()
-		})
+func httpsRedirectMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if c.Request.Header.Get("X-Forwarded-Proto") != "https" && c.Request.TLS == nil {
+			// Use 308 Permanent Redirect to preserve non-GET methods (compliance/robustness)
+			target := "https://" + c.Request.Host + c.Request.RequestURI
+			c.Redirect(http.StatusPermanentRedirect, target)
+			c.Abort()
+			return
+		}
+		c.Next()
 	}
+}
 
-	// Sessions
+func setupSessions(r *gin.Engine, cfg *config.Config, authKey, blockKey []byte) {
 	store, err := redis.NewStore(10, "tcp", fmt.Sprintf("%s:%d", cfg.RedisHost, cfg.RedisPort), "", cfg.RedisPassword, authKey, blockKey)
 	if err != nil {
 		zlog.Fatal().Err(err).Msg("Failed to create session store")
 	}
+
 	// Harden cookie settings
 	sameSite := http.SameSiteLaxMode
 	if cfg.SameSiteStrict {
@@ -284,7 +404,6 @@ func main() {
 	}
 
 	// Automatically enable Secure cookies if HTTPS is forced.
-	// We don't force it solely on UseCloudflare because Cloudflare can be used with HTTP.
 	cookieSecure := cfg.CookieSecure
 	if cfg.ForceHTTPS {
 		cookieSecure = true
@@ -298,8 +417,9 @@ func main() {
 		MaxAge:   86400 * 7, // 1 week
 	})
 	r.Use(sessions.Sessions("blocklist_session", store))
+}
 
-	// Rate Limiting Helpers
+func setupRateLimiters(cfg *config.Config) (main, login, webhook gin.HandlerFunc) {
 	createLimiter := func(limit int, period int, prefix string) gin.HandlerFunc {
 		rate := limiter.Rate{
 			Period: time.Duration(period) * time.Second,
@@ -319,10 +439,13 @@ func main() {
 		return mgin.NewMiddleware(limiter.New(limitStore, rate))
 	}
 
-	mainLimiter := createLimiter(cfg.RateLimit, cfg.RatePeriod, "limiter_main")
-	loginLimiter := createLimiter(cfg.RateLimitLogin, cfg.RatePeriod, "limiter_login")
-	webhookLimiter := createLimiter(cfg.RateLimitWebhook, cfg.RatePeriod, "limiter_webhook")
+	main = createLimiter(cfg.RateLimit, cfg.RatePeriod, "limiter_main")
+	login = createLimiter(cfg.RateLimitLogin, cfg.RatePeriod, "limiter_login")
+	webhook = createLimiter(cfg.RateLimitWebhook, cfg.RatePeriod, "limiter_webhook")
+	return
+}
 
+func setupTemplates(r *gin.Engine) {
 	// Load Templates: Prefer filesystem for development/runtime updates, fallback to embed.FS
 	funcMap := api.GetFuncMap()
 
@@ -335,9 +458,10 @@ func main() {
 		zlog.Info().Msg("Templates loaded from embed.FS")
 	}
 	r.SetHTMLTemplate(templ)
+}
 
-	// Security headers middleware with CSP and Nonce
-	r.Use(func(c *gin.Context) {
+func securityHeadersMiddleware(cfg *config.Config) gin.HandlerFunc {
+	return func(c *gin.Context) {
 		// Generate Nonce
 		nonceBytes := make([]byte, 16)
 		if _, err := rand.Read(nonceBytes); err != nil {
@@ -358,18 +482,15 @@ func main() {
 		}
 
 		// Content Security Policy (CSP)
-		// style-src: Allow 'unsafe-inline' to support extensive inline styles and library injections (HTMX).
-		// script-src: Use nonces for <script> tags.
-		// script-src-attr: Allow inline event handlers (onclick) for compatibility.
-		// ws: and wss: are allowed for WebSocket connections.
 		csp := fmt.Sprintf("default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'nonce-%s'; script-src-attr 'self' 'unsafe-inline'; connect-src 'self' ws: wss:", nonce)
 		c.Header("Content-Security-Policy", csp)
 
 		c.Next()
-	})
+	}
+}
 
-	// Basic CSRF: enforce same-origin on unsafe methods via Origin/Referer
-	r.Use(func(c *gin.Context) {
+func csrfProtectionMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
 		if c.Request.Method == http.MethodGet || c.Request.Method == http.MethodHead || c.Request.Method == http.MethodOptions {
 			c.Next()
 			return
@@ -416,9 +537,10 @@ func main() {
 			return
 		}
 		c.Next()
-	})
+	}
+}
 
-	// Serve Static Files: Prefer filesystem, fallback to embed.FS
+func setupStaticFiles(r *gin.Engine) {
 	serveStatic := func(urlPath, diskPath, embedPath string) {
 		if _, err := os.Stat(diskPath); err == nil {
 			r.Static(urlPath, diskPath)
@@ -434,8 +556,9 @@ func main() {
 	serveStatic("/js", "cmd/server/static/js", "static/js")
 	serveStatic("/cd", "cmd/server/static/cd", "static/cd")
 	serveStatic("/flags", "cmd/server/static/flags", "static/flags")
+}
 
-	// Serve favicon
+func setupFavicon(r *gin.Engine) {
 	r.GET("/favicon.ico", func(c *gin.Context) {
 		if data, err := os.ReadFile("cmd/server/static/cd/favicon-color.png"); err == nil {
 			c.Data(http.StatusOK, "image/png", data)
@@ -449,58 +572,4 @@ func main() {
 		c.Data(http.StatusOK, "image/png", file)
 	})
 
-	// 6. Initialize API Handler
-	handler := api.NewAPIHandler(&api.HandlerOptions{
-		Config:                cfg,
-		RedisRepo:             a.RedisRepo,
-		PgRepo:                a.PgRepo,
-		AuthService:           a.AuthService,
-		IPService:             a.IPService,
-		Hub:                   hub,
-		WebhookService:        a.WebhookService,
-		ExternalSourceService: a.ExternalSourceService,
-		MainLimiter:           mainLimiter,
-		LoginLimiter:          loginLimiter,
-		WebhookLimiter:        webhookLimiter,
-	})
-	handler.RegisterRoutes(r)
-
-	// 7. Run Server with Graceful Shutdown
-	srv := &http.Server{
-		Addr:              ":" + cfg.Port,
-		Handler:           r,
-		ReadHeaderTimeout: 5 * time.Second, // Protect against Slowloris attacks
-	}
-
-	go func() {
-		zlog.Info().Str("port", cfg.Port).Msg("Starting Blocklist Go Server")
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			zlog.Fatal().Err(err).Msg("Failed to start server")
-		}
-	}()
-
-	// Wait for interrupt signal to gracefully shutdown the server
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
-	zlog.Info().Msg("Shutting down server...")
-
-	// 1. Stop Asynq components first if they were started
-	if asynqScheduler != nil {
-		asynqScheduler.Shutdown()
-	}
-	if asynqServer != nil {
-		asynqServer.Shutdown()
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	// 2. Shutdown HTTP Server
-	if err := srv.Shutdown(ctx); err != nil {
-		zlog.Fatal().Err(err).Msg("Server forced to shutdown")
-	}
-
-	a.Close()
-	zlog.Info().Msg("Server exiting")
 }
