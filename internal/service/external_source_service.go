@@ -53,7 +53,9 @@ func (s *ExternalSourceService) RefreshSource(ctx context.Context, src models.Ex
 		if src.FailureCount >= 6 {
 			zlog.Warn().Int("source_id", src.ID).Msg("External source reached max failures, keeping old data but marking as stale")
 		}
-		_ = s.pgRepo.UpdateExternalSource(src)
+		if s.pgRepo != nil {
+			_ = s.pgRepo.UpdateExternalSource(src)
+		}
 		return err
 	}
 
@@ -61,14 +63,16 @@ func (s *ExternalSourceService) RefreshSource(ctx context.Context, src models.Ex
 	src.FailureCount = 0
 	src.LastError = ""
 	src.LastRefreshTS = time.Now().UTC().Format(time.RFC3339)
-	_ = s.pgRepo.UpdateExternalSource(src)
+	if s.pgRepo != nil {
+		_ = s.pgRepo.UpdateExternalSource(src)
+	}
 
 	// Update excluded list in bulk
 	// We prefix the reason to identify these as coming from this source
 	reason := fmt.Sprintf("External Source: %s", src.Name)
+	expiresAt := time.Now().Add(24 * time.Hour).UTC().Format(time.RFC3339)
 	for _, ip := range ips {
-		// We use a long expiry or no expiry; these will be refreshed anyway
-		_ = s.ipService.AddExcluded(ctx, ip, reason, "system", "", false)
+		_ = s.ipService.AddExcluded(ctx, ip, reason, "system", expiresAt, false)
 	}
 
 	zlog.Info().Int("source_id", src.ID).Int("count", len(ips)).Msg("Successfully refreshed external source")
