@@ -2,28 +2,65 @@ package service
 
 import (
 	"blocklist/internal/models"
-	"blocklist/internal/repository"
+	"crypto/sha256"
+	"encoding/hex"
+	"time"
+
 	"github.com/pquerna/otp/totp"
 	"golang.org/x/crypto/bcrypt"
 )
 
-type AuthService struct {
-	pgRepo    *repository.PostgresRepository
-	redisRepo *repository.RedisRepository
+// PostgresRepo defines the interface for Postgres operations needed by AuthService
+type PostgresRepo interface {
+	GetAdmin(username string) (*models.AdminAccount, error)
+	CreateAdmin(admin models.AdminAccount) error
+	GetAPITokenByHash(hash string) (*models.APIToken, error)
 }
 
-func NewAuthService(pg *repository.PostgresRepository, r *repository.RedisRepository) *AuthService {
+// RedisRepo defines the interface for Redis operations needed by AuthService
+type RedisRepo interface {
+}
+
+type AuthService struct {
+	pg    PostgresRepo
+	redis RedisRepo
+}
+
+func NewAuthService(pg PostgresRepo, r RedisRepo) *AuthService {
 	return &AuthService{
-		pgRepo:    pg,
-		redisRepo: r,
+		pg:    pg,
+		redis: r,
 	}
 }
 
 func (s *AuthService) CheckAuth(username, password, token string) bool {
-	if s.pgRepo == nil {
+	if s.pg == nil {
 		return false
 	}
-	admin, err := s.pgRepo.GetAdmin(username)
+
+	// API Token Auth
+	if token != "" {
+		hash := sha256.Sum256([]byte(token))
+		hashStr := hex.EncodeToString(hash[:])
+		t, err := s.pg.GetAPITokenByHash(hashStr)
+		if err == nil && t != nil {
+			// Check expiration
+			if t.ExpiresAt != nil {
+				expiresAt, err := time.Parse(time.RFC3339, *t.ExpiresAt)
+				if err == nil && time.Now().After(expiresAt) {
+					return false
+				}
+			}
+			return true
+		}
+	}
+
+	// User Auth
+	if username == "" {
+		return false
+	}
+
+	admin, err := s.pg.GetAdmin(username)
 	if err != nil {
 		return false
 	}
@@ -45,10 +82,10 @@ func (s *AuthService) CheckAuth(username, password, token string) bool {
 }
 
 func (s *AuthService) VerifyTOTP(username, token string) bool {
-	if s.pgRepo == nil {
+	if s.pg == nil {
 		return false
 	}
-	admin, err := s.pgRepo.GetAdmin(username)
+	admin, err := s.pg.GetAdmin(username)
 	if err != nil {
 		return false
 	}
@@ -66,7 +103,7 @@ func (s *AuthService) HashPassword(password string) (string, error) {
 }
 
 func (s *AuthService) CreateAdmin(username, password, role, permissions string) (*models.AdminAccount, error) {
-	if s.pgRepo == nil {
+	if s.pg == nil {
 		return nil, nil
 	}
 	hash, err := s.HashPassword(password)
@@ -89,7 +126,7 @@ func (s *AuthService) CreateAdmin(username, password, role, permissions string) 
 		Permissions:  permissions,
 	}
 
-	err = s.pgRepo.CreateAdmin(admin)
+	err = s.pg.CreateAdmin(admin)
 	if err != nil {
 		return nil, err
 	}
