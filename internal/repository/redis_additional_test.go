@@ -43,6 +43,9 @@ func TestRedisRepository_AdditionalCoverage(t *testing.T) {
 		client: client,
 		ctx:    ctx,
 	}
+	// Close the shared client once, after all subtests, so no individual subtest
+	// shuts it down out from under the others.
+	t.Cleanup(func() { _ = repo.Close() })
 
 	t.Run("HGetAllRaw and HDel", func(t *testing.T) {
 		err := client.HSet(ctx, "test_hash", "field1", "value1").Err()
@@ -75,6 +78,10 @@ func TestRedisRepository_AdditionalCoverage(t *testing.T) {
 	})
 
 	t.Run("GetIPEntries", func(t *testing.T) {
+		// Seed explicitly so this subtest does not depend on GetBlockedIPs running first.
+		_ = repo.BlockIP("1.1.1.1", models.IPEntry{Reason: "r1"})
+		_ = repo.BlockIP("2.2.2.2", models.IPEntry{Reason: "r2"})
+
 		entries, err := repo.GetIPEntries([]string{"1.1.1.1", "2.2.2.2", "3.3.3.3"})
 		assert.NoError(t, err)
 		assert.Len(t, entries, 3)
@@ -243,11 +250,10 @@ func TestRedisRepository_AdditionalCoverage(t *testing.T) {
 		assert.Equal(t, int64(0), counts["9.9.9.9"])
 	})
 
-	t.Run("GetClient and Close", func(t *testing.T) {
+	t.Run("GetClient", func(t *testing.T) {
 		c := repo.GetClient()
 		assert.NotNil(t, c)
-
-		err := repo.Close()
-		assert.NoError(t, err)
+		// Close() is exercised once via the parent t.Cleanup so it does not shut
+		// the shared client down while other subtests are still running.
 	})
 }

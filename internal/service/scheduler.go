@@ -47,7 +47,11 @@ func (s *SchedulerService) Start() {
 		go s.ipService.RefreshExcludedFQDNs(context.Background())
 	}
 	if s.externalSourceService != nil {
-		go s.externalSourceService.RefreshAll(context.Background())
+		go func() {
+			if err := s.externalSourceService.RefreshAll(context.Background()); err != nil {
+				zlog.Error().Err(err).Msg("Initial external source refresh failed")
+			}
+		}()
 	}
 
 	ticker := time.NewTicker(15 * time.Minute)
@@ -90,7 +94,9 @@ func (s *SchedulerService) Start() {
 				}
 			case <-extTicker.C:
 				if s.externalSourceService != nil {
-					s.externalSourceService.RefreshAll(context.Background())
+					if err := s.externalSourceService.RefreshAll(context.Background()); err != nil {
+						zlog.Error().Err(err).Msg("Scheduled external source refresh failed")
+					}
 				}
 			case <-s.stop:
 				return

@@ -166,7 +166,7 @@ The application is configured via environment variables:
 | `SMTP_USER` | SMTP username | `""` |
 | `SMTP_PASS` | SMTP password | `""` |
 | `SMTP_FROM` | Sender address for alerts | `""` |
-| `SMTP_TO` | recipient address for alerts | `""` |
+| `SMTP_TO` | Recipient address for alerts | `""` |
 | `AUDIT_LOG_LIMIT_PER_IP` | Max audit trail entries kept per IP | `100` |
 | `LOG_RETENTION_MONTHS` | Number of months to retain logs | `6` |
 

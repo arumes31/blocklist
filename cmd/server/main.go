@@ -138,7 +138,7 @@ func main() {
 		zlog.Fatal().Err(err).Msg("Server forced to shutdown")
 	}
 
-	a.Close()
+	// Shared state (a) is released by the deferred a.Close() registered above.
 	zlog.Info().Msg("Server exiting")
 }
 

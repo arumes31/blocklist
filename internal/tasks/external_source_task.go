@@ -12,7 +12,7 @@ const (
 )
 
 type ExternalSourceRefresher interface {
-	RefreshAll(ctx context.Context)
+	RefreshAll(ctx context.Context) error
 }
 
 type ExternalSourceTaskHandler struct {
@@ -26,7 +26,9 @@ func NewExternalSourceTaskHandler(svc ExternalSourceRefresher) *ExternalSourceTa
 func (h *ExternalSourceTaskHandler) ProcessTask(ctx context.Context, t *asynq.Task) error {
 	switch t.Type() {
 	case TypeRefreshExternalSources:
-		h.svc.RefreshAll(ctx)
+		if err := h.svc.RefreshAll(ctx); err != nil {
+			return fmt.Errorf("refresh external sources: %w", err)
+		}
 		return nil
 	default:
 		return fmt.Errorf("unexpected task type: %s", t.Type())

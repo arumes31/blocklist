@@ -2,7 +2,9 @@ package tasks
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -101,10 +103,13 @@ func (h *WebhookTaskHandler) ProcessTask(ctx context.Context, t *asynq.Task) err
 
 	webhook, err := h.repo.GetWebhookByID(p.WebhookID)
 	if err != nil {
-		// If not found or inactive, GetWebhookByID returns error.
-		// We should check if it is a "not found" error to decide whether to retry.
-		// For now, if it is missing, we assume it is deleted or deactivated.
-		return nil // Do not retry
+		// A "not found" result means the webhook was deleted or deactivated while
+		// queued; that is permanent, so do not retry. Any other error (e.g. a
+		// transient DB failure) should be surfaced so Asynq retries.
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+		return fmt.Errorf("fetch webhook %d: %w", p.WebhookID, err)
 	}
 
 	if err := security.IsSafeURL(webhook.URL); err != nil {

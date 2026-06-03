@@ -75,28 +75,40 @@ func TestPostgresRepository_AdditionalCoverage(t *testing.T) {
 	assert.NoError(t, err)
 
 	t.Run("Update and Session Management for Admin", func(t *testing.T) {
-		err := repo.UpdateAdminPassword("test_user", "new_hash")
+		// Use a dedicated admin local to this subtest so deleting it does not
+		// affect the shared "test_user" relied on by sibling subtests.
+		const sessUser = "session_test_user"
+		err := repo.CreateAdmin(models.AdminAccount{
+			Username:     sessUser,
+			PasswordHash: "hash",
+			Token:        "token",
+			Role:         "admin",
+		})
+		assert.NoError(t, err)
+		t.Cleanup(func() { _ = repo.DeleteAdmin(sessUser) })
+
+		err = repo.UpdateAdminPassword(sessUser, "new_hash")
 		assert.NoError(t, err)
 
-		err = repo.UpdateAdminToken("test_user", "new_token")
+		err = repo.UpdateAdminToken(sessUser, "new_token")
 		assert.NoError(t, err)
 
-		err = repo.UpdateAdminPermissions("test_user", "write")
+		err = repo.UpdateAdminPermissions(sessUser, "write")
 		assert.NoError(t, err)
 
-		err = repo.IncrementSessionVersion("test_user")
+		err = repo.IncrementSessionVersion(sessUser)
 		assert.NoError(t, err)
 
-		adm, err := repo.GetAdmin("test_user")
+		adm, err := repo.GetAdmin(sessUser)
 		assert.NoError(t, err)
 		assert.Equal(t, "new_hash", adm.PasswordHash)
 		assert.Equal(t, "new_token", adm.Token)
 		assert.Equal(t, "write", adm.Permissions)
 
-		err = repo.DeleteAdmin("test_user")
+		err = repo.DeleteAdmin(sessUser)
 		assert.NoError(t, err)
 
-		_, err = repo.GetAdmin("test_user")
+		_, err = repo.GetAdmin(sessUser)
 		assert.Error(t, err)
 	})
 

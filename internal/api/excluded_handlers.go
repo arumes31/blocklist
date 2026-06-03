@@ -113,7 +113,12 @@ func (h *APIHandler) Excluded(c *gin.Context) {
 
 // AddExcluded adds an IP, CIDR, or FQDN to the excluded list.
 func (h *APIHandler) AddExcluded(c *gin.Context) {
-	username, _ := c.Get("username")
+	usernameVal, _ := c.Get("username")
+	username, ok := usernameVal.(string)
+	if !ok || username == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
+		return
+	}
 
 	var req struct {
 		Value        string `json:"value"`
@@ -181,7 +186,7 @@ func (h *APIHandler) AddExcluded(c *gin.Context) {
 		}
 	}
 
-	if err := h.ipService.AddExcluded(c.Request.Context(), value, reason, username.(string), req.ExpiresAt, req.AlertEnabled); err != nil {
+	if err := h.ipService.AddExcluded(c.Request.Context(), value, reason, username, req.ExpiresAt, req.AlertEnabled); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to add to excluded list"})
 		return
 	}
@@ -191,7 +196,12 @@ func (h *APIHandler) AddExcluded(c *gin.Context) {
 
 // RemoveExcluded removes a value from the excluded list.
 func (h *APIHandler) RemoveExcluded(c *gin.Context) {
-	username, _ := c.Get("username")
+	usernameVal, _ := c.Get("username")
+	username, ok := usernameVal.(string)
+	if !ok || username == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
+		return
+	}
 
 	var req struct {
 		Value string `json:"value"`
@@ -203,7 +213,7 @@ func (h *APIHandler) RemoveExcluded(c *gin.Context) {
 			value = req.IP
 		}
 		if value != "" {
-			if err := h.ipService.RemoveExcluded(c.Request.Context(), value, username.(string)); err != nil {
+			if err := h.ipService.RemoveExcluded(c.Request.Context(), value, username); err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to remove from excluded list"})
 				return
 			}
@@ -217,7 +227,7 @@ func (h *APIHandler) RemoveExcluded(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Value required"})
 		return
 	}
-	if err := h.ipService.RemoveExcluded(c.Request.Context(), value, username.(string)); err != nil {
+	if err := h.ipService.RemoveExcluded(c.Request.Context(), value, username); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to remove from excluded list"})
 		return
 	}
@@ -305,9 +315,17 @@ func (h *APIHandler) DeleteExternalSource(c *gin.Context) {
 }
 
 func (h *APIHandler) RefreshExternalSource(c *gin.Context) {
-	// Trigger manual refresh of all sources
+	// Trigger manual refresh of all sources. The refresh runs in the background
+	// (so it outlives this request) but is bounded by a timeout so it cannot run
+	// unbounded if a source hangs.
 	if h.externalSourceService != nil {
-		go h.externalSourceService.RefreshAll(context.Background())
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+			defer cancel()
+			if err := h.externalSourceService.RefreshAll(ctx); err != nil {
+				zlog.Error().Err(err).Msg("Background external source refresh failed")
+			}
+		}()
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "success", "message": "Refresh started in background"})
 }

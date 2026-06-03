@@ -104,6 +104,11 @@ func TestIPService_CoverageAdditional(t *testing.T) {
 	})
 
 	t.Run("FQDN & Wildcard resolving failure paths", func(t *testing.T) {
+		// This subtest performs real DNS lookups (NXDOMAIN paths); skip it in
+		// -short / hermetic CI runs where name resolution is unavailable.
+		if testing.Short() {
+			t.Skip("skipping DNS-dependent test in short mode")
+		}
 		// Non-existent or fake wildcard name
 		assert.False(t, svc.matchWildcard("*.nonexistent-domain-fake-123.com", netip.MustParseAddr("1.2.3.4")))
 

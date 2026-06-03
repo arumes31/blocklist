@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
@@ -102,7 +103,9 @@ func TestWebhookTaskHandler_ProcessTask_DeletedWebhook(t *testing.T) {
 	repo := new(mockWebhookRepository)
 	handler := NewWebhookTaskHandlerWithClient(repo, &http.Client{})
 
-	repo.On("GetWebhookByID", 123).Return(nil, assert.AnError)
+	// A not-found result (sql.ErrNoRows) means the webhook was deleted/deactivated
+	// while queued; that is permanent and must not be retried.
+	repo.On("GetWebhookByID", 123).Return(nil, sql.ErrNoRows)
 
 	data := []byte(`{"ip":"1.2.3.4"}`)
 	task, err := NewWebhookDeliveryTask(123, "ip.blocked", data)

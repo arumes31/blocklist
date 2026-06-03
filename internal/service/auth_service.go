@@ -44,10 +44,11 @@ func (s *AuthService) CheckAuth(username, password, token string) bool {
 		hashStr := hex.EncodeToString(hash[:])
 		t, err := s.pg.GetAPITokenByHash(hashStr)
 		if err == nil && t != nil {
-			// Check expiration
+			// Check expiration. Fail closed: if a token carries an expiry we
+			// cannot parse, reject it rather than treating it as non-expiring.
 			if t.ExpiresAt != nil {
-				expiresAt, err := time.Parse(time.RFC3339, *t.ExpiresAt)
-				if err == nil && time.Now().After(expiresAt) {
+				expiresAt, perr := time.Parse(time.RFC3339, *t.ExpiresAt)
+				if perr != nil || time.Now().After(expiresAt) {
 					return false
 				}
 			}

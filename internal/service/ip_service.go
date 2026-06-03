@@ -304,6 +304,31 @@ func classifyExclusionType(value string) string {
 	return "fqdn"
 }
 
+// excludedExpired reports whether an excluded entry has passed its expiry,
+// lazily removing it from storage when so. ExpiresAt is parsed leniently,
+// accepting both RFC3339 and the "2006-01-02 15:04:05 UTC" layout used elsewhere
+// for timestamps. An empty or unparseable ExpiresAt is treated as not-expired:
+// for an exclusion (never-block) list, over-protecting is the safe direction.
+func (s *IPService) excludedExpired(value string, entry models.ExcludedEntry) bool {
+	if entry.ExpiresAt == "" {
+		return false
+	}
+	exp, err := time.Parse(time.RFC3339, entry.ExpiresAt)
+	if err != nil {
+		exp, err = time.Parse("2006-01-02 15:04:05 UTC", entry.ExpiresAt)
+	}
+	if err != nil {
+		return false
+	}
+	if time.Now().After(exp) {
+		if s.redisRepo != nil {
+			_ = s.redisRepo.RemoveExcluded(value)
+		}
+		return true
+	}
+	return false
+}
+
 // isExcludedMatch reports which entry on the excluded list matched the given
 // IP, if any. Expired entries are lazily removed as they are encountered.
 func (s *IPService) isExcludedMatch(ip netip.Addr, excluded map[string]models.ExcludedEntry) *models.ExcludedEntry {
@@ -311,15 +336,20 @@ func (s *IPService) isExcludedMatch(ip netip.Addr, excluded map[string]models.Ex
 		return nil
 	}
 	ip = ip.Unmap()
-	now := time.Now()
+	ipStr := ip.String()
+
+	// Fast path: an exact IP key is the common case and avoids a full scan.
+	if entry, ok := excluded[ipStr]; ok && !s.excludedExpired(ipStr, entry) {
+		e := entry // copy
+		return &e
+	}
+
 	for value, entry := range excluded {
-		if entry.ExpiresAt != "" {
-			if exp, err := time.Parse(time.RFC3339, entry.ExpiresAt); err == nil && now.After(exp) {
-				if s.redisRepo != nil {
-					_ = s.redisRepo.RemoveExcluded(value)
-				}
-				continue
-			}
+		if value == ipStr {
+			continue // exact key already handled by the fast path above
+		}
+		if s.excludedExpired(value, entry) {
+			continue
 		}
 
 		typ := entry.Type

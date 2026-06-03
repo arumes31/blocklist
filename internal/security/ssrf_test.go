@@ -38,6 +38,12 @@ func TestIsInternalIP(t *testing.T) {
 }
 
 func TestIsSafeURL(t *testing.T) {
+	// IsSafeURL is a best-effort pre-flight check; the authoritative SSRF defense
+	// is the socket-level SafeSocketControl hook (see TestSafeSocketControl), which
+	// re-validates the actually-dialed IP and cannot be bypassed by DNS rebinding.
+	// The "localhost" and "*.invalid" vectors below rely only on RFC-reserved names
+	// (RFC 6761 localhost -> loopback; RFC 2606 .invalid -> never resolves), so they
+	// are deterministic rather than dependent on ambient DNS.
 	tests := []struct {
 		url     string
 		wantErr bool

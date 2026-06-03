@@ -29,24 +29,30 @@ func NewExternalSourceService(pgRepo *repository.PostgresRepository, ipService *
 	}
 }
 
-func (s *ExternalSourceService) RefreshAll(ctx context.Context) {
+func (s *ExternalSourceService) RefreshAll(ctx context.Context) error {
 	sources, err := s.pgRepo.GetActiveExternalSources()
 	if err != nil {
 		zlog.Error().Err(err).Msg("Failed to fetch active external sources")
-		return
+		return fmt.Errorf("fetch active external sources: %w", err)
 	}
 
+	var failures int
 	for _, src := range sources {
 		if err := s.RefreshSource(ctx, src); err != nil {
+			failures++
 			zlog.Error().Err(err).Int("source_id", src.ID).Str("name", src.Name).Msg("Failed to refresh external source")
 		}
 	}
+	if failures > 0 {
+		return fmt.Errorf("%d of %d external sources failed to refresh", failures, len(sources))
+	}
+	return nil
 }
 
 func (s *ExternalSourceService) RefreshSource(ctx context.Context, src models.ExternalSource) error {
 	zlog.Info().Int("source_id", src.ID).Str("name", src.Name).Msg("Refreshing external source")
 
-	ips, err := s.fetchAndParse(src)
+	ips, err := s.fetchAndParse(ctx, src)
 	if err != nil {
 		src.FailureCount++
 		src.LastError = err.Error()
@@ -79,18 +85,28 @@ func (s *ExternalSourceService) RefreshSource(ctx context.Context, src models.Ex
 	return nil
 }
 
-func (s *ExternalSourceService) fetchAndParse(src models.ExternalSource) ([]string, error) {
-	resp, err := s.client.Get(src.URL)
+// maxExternalSourceBytes caps how much of a remote source body we will read into
+// memory, bounding resource use on a hostile or misbehaving endpoint.
+const maxExternalSourceBytes = 32 * 1024 * 1024 // 32 MiB
+
+func (s *ExternalSourceService) fetchAndParse(ctx context.Context, src models.ExternalSource) ([]string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, src.URL, nil)
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("HTTP error: %d", resp.StatusCode)
 	}
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxExternalSourceBytes))
 	if err != nil {
 		return nil, err
 	}

@@ -1,7 +1,7 @@
 -- Remove the manage_excluded permission and clean up separators.
 UPDATE admins
 SET permissions = (
-    SELECT string_agg(p, ',')
+    SELECT COALESCE(string_agg(p, ','), '')
     FROM unnest(string_to_array(permissions, ',')) AS p
     WHERE trim(p) <> 'manage_excluded'
 )

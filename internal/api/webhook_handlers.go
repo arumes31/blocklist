@@ -144,8 +144,13 @@ func (h *APIHandler) handleWebhookBan(c *gin.Context, data webhookRequest, usern
 }
 
 func (h *APIHandler) handleWebhookUnban(c *gin.Context, data webhookRequest, username string, clientIP string) {
-	_ = h.ipService.UnblockIP(c.Request.Context(), data.IP, username)
 	addedBy := fmt.Sprintf("Webhook (%s:%s)", username, clientIP)
+
+	if err := h.ipService.UnblockIP(c.Request.Context(), data.IP, username); err != nil {
+		zlog.Error().Err(err).Str("ip", data.IP).Str("by", addedBy).Msg("Webhook unban failed")
+		c.JSON(http.StatusInternalServerError, gin.H{"status": fmt.Sprintf("Unblock failed: %v", err)})
+		return
+	}
 
 	if h.pgRepo != nil {
 		_ = h.pgRepo.LogAction(addedBy, "UNBLOCK", data.IP, "webhook unban")
@@ -177,7 +182,11 @@ func (h *APIHandler) handleWebhookWhitelist(c *gin.Context, data webhookRequest,
 		entry.ExpiresAt = now.Add(24 * time.Hour).Format(time.RFC3339)
 	}
 
-	_ = h.redisRepo.WhitelistIP(data.IP, entry)
+	if err := h.redisRepo.WhitelistIP(data.IP, entry); err != nil {
+		zlog.Error().Err(err).Str("ip", data.IP).Str("by", addedBy).Msg("Webhook whitelist failed")
+		c.JSON(http.StatusInternalServerError, gin.H{"status": fmt.Sprintf("Whitelist failed: %v", err)})
+		return
+	}
 
 	if h.pgRepo != nil {
 		_ = h.pgRepo.LogAction(addedBy, "WHITELIST", data.IP, entry.Reason)
