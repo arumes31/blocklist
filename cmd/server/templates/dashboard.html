@@ -1224,6 +1224,12 @@
                 </div>
                 <div style="height: 24px; width: 1px; background: rgba(255,255,255,0.1);"></div>
                 <div style="display: flex; align-items: baseline; gap: 0.5rem;">
+                    <span id="stat-excluded" style="font-size: 1.3rem; font-weight: 600; color: #3498db;">{{
+                        .stats.excluded }}</span>
+                    <span style="font-size: 0.85rem; color: var(--secondary-color);">Excluded</span>
+                </div>
+                <div style="height: 24px; width: 1px; background: rgba(255,255,255,0.1);"></div>
+                <div style="display: flex; align-items: baseline; gap: 0.5rem;">
                     <span id="stat-webhooks" style="font-size: 1.3rem; font-weight: 600; color: #fff;">{{
                         .stats.webhooks_hour }}</span>
                     <span style="font-size: 0.85rem; color: var(--secondary-color);">Webhooks 1/h</span>
@@ -1694,6 +1700,10 @@
                 }
                 if (typeof s.whitelisted === 'number') {
                     document.getElementById('stat-whitelisted').textContent = s.whitelisted;
+                }
+                if (typeof s.excluded === 'number') {
+                    var exEl = document.getElementById('stat-excluded');
+                    if (exEl) exEl.textContent = s.excluded;
                 }
                 if (typeof s.webhooks_hour === 'number') {
                     document.getElementById('stat-webhooks').textContent = s.webhooks_hour;

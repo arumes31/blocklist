@@ -70,6 +70,7 @@ func (h *APIHandler) Dashboard(c *gin.Context) {
 			"last_block_ts": lb,
 			"blocks_minute": bm,
 			"whitelisted":   whc,
+			"excluded":      h.ipService.GetExcludedCount(c.Request.Context()),
 		},
 	})
 }

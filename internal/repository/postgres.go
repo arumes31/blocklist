@@ -2,7 +2,6 @@ package repository
 
 import (
 	"blocklist/internal/models"
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,8 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/jmoiron/sqlx"
 	zlog "github.com/rs/zerolog/log"
 )
