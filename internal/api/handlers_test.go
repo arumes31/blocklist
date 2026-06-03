@@ -24,7 +24,7 @@ func setupTest() (*APIHandler, *MockRedisRepo, *MockPostgresRepo, *MockAuthServi
 	authService := new(MockAuthService)
 	ipService := new(MockIPService)
 
-	h := NewAPIHandler(HandlerOptions{
+	h := NewAPIHandler(&HandlerOptions{
 		Config:      cfg,
 		RedisRepo:   rRepo,
 		PgRepo:      pgRepo,
