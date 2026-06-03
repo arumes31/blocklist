@@ -36,3 +36,10 @@ jobs:
         args: ./...
       env:
         GOTOOLCHAIN: auto
+
+    - name: Run govulncheck
+      run: |
+        go install golang.org/x/vuln/cmd/govulncheck@latest
+        govulncheck ./...
+      env:
+        GOTOOLCHAIN: local
