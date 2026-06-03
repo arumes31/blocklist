@@ -462,55 +462,31 @@ func (p *PostgresRepository) BulkLogAction(actor, action string, ips []string, r
 		return nil
 	}
 
-	ctx := context.Background()
-	conn, err := p.db.Conn(ctx)
+	// Bulk insert using unnest
+	_, err := p.db.Exec(`
+		INSERT INTO audit_logs (actor, action, target, reason)
+		SELECT $1, $2, unnest($3::text[]), $4`,
+		actor, action, ips, reason)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = conn.Close() }()
 
-	err = conn.Raw(func(driverConn any) error {
-		stdlibConn, ok := driverConn.(*stdlib.Conn)
-		if !ok {
-			return errors.New("failed to get pgx connection")
-		}
-		pgxConn := stdlibConn.Conn()
-
-		batch := &pgx.Batch{}
-		insertQuery := "INSERT INTO audit_logs (actor, action, target, reason) VALUES ($1, $2, $3, $4)"
-		deleteQuery := `
-			DELETE FROM audit_logs 
-			WHERE target = $1 
-			  AND id <= (
-				  SELECT id FROM audit_logs 
-				  WHERE target = $1 
-				  ORDER BY timestamp DESC, id DESC 
-				  OFFSET $2 LIMIT 1
-			  )`
-
-		for _, ip := range ips {
-			batch.Queue(insertQuery, actor, action, ip, reason)
-			if p.auditLogLimitPerIP > 0 {
-				batch.Queue(deleteQuery, ip, p.auditLogLimitPerIP)
-			}
-		}
-
-		br := pgxConn.SendBatch(ctx, batch)
-		defer func() { _ = br.Close() }()
-
-		expectedExecs := len(ips)
-		if p.auditLogLimitPerIP > 0 {
-			expectedExecs *= 2
-		}
-
-		for i := 0; i < expectedExecs; i++ {
-			_, err := br.Exec()
-			if err != nil {
-				return err
-			}
-		}
-		return nil
-	})
+	if p.auditLogLimitPerIP > 0 {
+		// Bulk prune using a single query with row_number()
+		_, err = p.db.Exec(`
+			DELETE FROM audit_logs
+			WHERE (id, timestamp) IN (
+				SELECT id, timestamp
+				FROM (
+					SELECT id, timestamp,
+						   row_number() OVER (PARTITION BY target ORDER BY timestamp DESC, id DESC) as rn
+					FROM audit_logs
+					WHERE target = ANY($1)
+				) t
+				WHERE rn > $2
+			)`,
+			ips, p.auditLogLimitPerIP)
+	}
 
 	return err
 }
