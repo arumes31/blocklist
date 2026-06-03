@@ -984,6 +984,14 @@ func (s *IPService) ExportIPs(ctx context.Context, query string, country string,
 
 	addedBy = strings.ToLower(strings.TrimSpace(addedBy))
 
+	// Optimize CIDR parsing
+	var queryNetwork *net.IPNet
+	if q != "" {
+		if _, network, err := net.ParseCIDR(query); err == nil {
+			queryNetwork = network
+		}
+	}
+
 	// Batch fetch entries in groups of 100 to avoid N+1 queries
 	batchSize := 100
 	for i := 0; i < len(zs); i += batchSize {
@@ -1004,53 +1012,12 @@ func (s *IPService) ExportIPs(ctx context.Context, query string, country string,
 		}
 
 		for j, entry := range entries {
-			if entry == nil {
+			if !s.matchesFilters(ips[j], entry, q, queryNetwork, countryList, addedBy, fromTime, toTime) {
 				continue
-			}
-			ip := ips[j]
-
-			if q != "" {
-				if !strings.Contains(strings.ToLower(ip), q) &&
-					!strings.Contains(strings.ToLower(entry.Reason), q) &&
-					!strings.Contains(strings.ToLower(entry.AddedBy), q) &&
-					(entry.Geolocation == nil || !strings.Contains(strings.ToLower(entry.Geolocation.Country), q)) {
-					continue
-				}
-			}
-			if len(countryList) > 0 {
-				match := false
-				if entry.Geolocation != nil {
-					cCode := strings.ToLower(entry.Geolocation.Country)
-					for _, c := range countryList {
-						if cCode == c {
-							match = true
-							break
-						}
-					}
-				}
-				if !match {
-					continue
-				}
-			}
-			if addedBy != "" {
-				if !strings.EqualFold(entry.AddedBy, addedBy) {
-					continue
-				}
-			}
-			if !fromTime.IsZero() || !toTime.IsZero() {
-				ts, err := time.Parse("2006-01-02 15:04:05 UTC", entry.Timestamp)
-				if err == nil {
-					if !fromTime.IsZero() && ts.Before(fromTime) {
-						continue
-					}
-					if !toTime.IsZero() && ts.After(toTime) {
-						continue
-					}
-				}
 			}
 
 			// Ensure we always store a pointer to IPEntry
-			items = append(items, map[string]interface{}{"ip": ip, "data": entry})
+			items = append(items, map[string]interface{}{"ip": ips[j], "data": entry})
 		}
 	}
 
@@ -1306,17 +1273,12 @@ func (s *IPService) ListIPsPaginatedAdvanced(ctx context.Context, limit int, cur
 				if len(items) >= limit {
 					break
 				}
-				ip := ips[i]
-				entry := entries[i]
-				if entry == nil {
+
+				if !s.matchesFilters(ips[i], entries[i], q, queryNetwork, countryList, addedBy, fromTime, toTime) {
 					continue
 				}
 
-				if !s.matchesFilters(ip, entry, q, queryNetwork, countryList, addedBy, fromTime, toTime) {
-					continue
-				}
-
-				items = append(items, map[string]interface{}{"ip": ip, "data": entry})
+				items = append(items, map[string]interface{}{"ip": ips[i], "data": entries[i]})
 				lastAddedCursor = fmt.Sprintf("%v:%s", z.Score, z.Member.(string))
 			}
 
@@ -1396,6 +1358,7 @@ func (s *IPService) exportFallback(ctx context.Context, query string, country st
 }
 
 // BlockIP blocks a single IP.
+
 func (s *IPService) BlockIP(ctx context.Context, ip string, reason string, username string, actorIP string, persist bool, duration time.Duration) (*models.IPEntry, error) {
 	if s.redisRepo == nil {
 		return nil, nil
