@@ -68,7 +68,7 @@ While both lists prevent an IP from being listed in the active blocklist, they s
 *   **Scope**: Excluded entities are "untouchable".
 *   **Behavior**: Only prevents the target from being blocked. It does **not** grant any special access or trust status.
 *   **Advanced Features**:
-    *   **External Dynamic Sources**: Subscribe to official IP/CIDR lists (e.g. [Microsoft 365](https://learn.microsoft.com/en-us/microsoft-365/enterprise/urls-and-ip-address-ranges), AWS, Cloudflare). Refreshes every 6 hours with failure fallback.
+    *   **External Dynamic Sources**: Subscribe to official IP/CIDR lists (e.g. [Microsoft 365](https://learn.microsoft.com/en-us/microsoft-365/enterprise/urls-and-ip-address-ranges), AWS, Cloudflare). Refreshes every 6 hours with failure fallback. Entries auto-expire after 24 hours if not refreshed.
     *   **Proactive Alerting**: Optionally trigger **Webhook** or **Mail** alerts whenever an excluded resource is attempted to be blocked.
     *   **FQDN Support**: Add `api.service.com` to prevent blocking any IP it currently resolves to.
     *   **Wildcard FQDNs**: Support for `*.google.com` using Forward-Confirmed Reverse DNS (FCrDNS).
