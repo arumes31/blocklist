@@ -16,6 +16,10 @@ func TestIsInternalIP(t *testing.T) {
 		{"192.168.1.1", true},
 		{"169.254.0.1", true},
 		{"::1", true},
+		{"0.0.0.0", true},   // Unspecified
+		{"::", true},        // Unspecified
+		{"224.0.0.1", true}, // Link-local multicast
+		{"ff02::1", true},   // Link-local multicast
 		{"8.8.8.8", false},
 		{"1.1.1.1", false},
 		{"2001:4860:4860::8888", false},
@@ -40,13 +44,22 @@ func TestIsSafeURL(t *testing.T) {
 	}{
 		{"https://google.com", false},
 		{"http://example.com", false},
+		{"http://8.8.8.8", false},  // Public IP literal
 		{"http://127.0.0.1", true},
 		{"http://[::1]", true},
 		{"http://10.0.0.1", true},
+		{"http://localhost", true}, // Resolves to 127.0.0.1/::1
+		{"http://nonexistent.example.invalid", false}, // DNS fail, but no internal IP found
 		{"ftp://example.com", true},
 		{"javascript:alert(1)", true},
 		{"", true},
 		{"http://", true},
+		{"http://google.com:80", false},
+		{"http://1.1.1.1:443", false},
+		{"http://example.com:abc", true}, // url.ParseRequestURI error: invalid port
+		{"http://[::1", true},            // url.ParseRequestURI error: missing ']' in address
+		{"http://user:pass@host/path?query#fragment", false},
+		{"HTTP://EXAMPLE.COM", false},    // Case-insensitive scheme check
 	}
 
 	for _, tt := range tests {
