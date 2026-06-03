@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/jmoiron/sqlx"
+	// Register the "pgx" database/sql driver used by sqlx.Connect below.
+	_ "github.com/jackc/pgx/v5/stdlib"
 	zlog "github.com/rs/zerolog/log"
 )
 
