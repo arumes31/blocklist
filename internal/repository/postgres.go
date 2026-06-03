@@ -229,6 +229,15 @@ func (p *PostgresRepository) GetActiveWebhooks() ([]models.OutboundWebhook, erro
 	return webhooks, err
 }
 
+func (p *PostgresRepository) GetWebhookByID(id int) (*models.OutboundWebhook, error) {
+	var webhook models.OutboundWebhook
+	err := p.readDb.Get(&webhook, "SELECT id, url, events, secret, geo_filter, active, created_at FROM outbound_webhooks WHERE id = $1 AND active = TRUE", id)
+	if err != nil {
+		return nil, err
+	}
+	return &webhook, nil
+}
+
 func (p *PostgresRepository) LogWebhookDelivery(logEntry models.WebhookLog) error {
 	_, err := p.db.NamedExec("INSERT INTO webhook_logs (webhook_id, event, payload, status_code, response_body, error, attempt) VALUES (:webhook_id, :event, :payload, :status_code, :response_body, :error, :attempt)", logEntry)
 	return err

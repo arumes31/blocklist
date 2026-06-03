@@ -21,9 +21,12 @@ type mockWebhookRepository struct {
 	mock.Mock
 }
 
-func (m *mockWebhookRepository) GetActiveWebhooks() ([]models.OutboundWebhook, error) {
-	args := m.Called()
-	return args.Get(0).([]models.OutboundWebhook), args.Error(1)
+func (m *mockWebhookRepository) GetWebhookByID(id int) (*models.OutboundWebhook, error) {
+	args := m.Called(id)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.OutboundWebhook), args.Error(1)
 }
 
 func (m *mockWebhookRepository) LogWebhookDelivery(logEntry models.WebhookLog) error {
@@ -82,7 +85,7 @@ func TestWebhookTaskHandler_ProcessTask_Success(t *testing.T) {
 		},
 	}
 
-	repo.On("GetActiveWebhooks").Return(webhooks, nil)
+	repo.On("GetWebhookByID", 123).Return(&webhooks[0], nil)
 	repo.On("LogWebhookDelivery", mock.Anything).Return(nil)
 
 	data := []byte(`{"ip":"1.2.3.4"}`)
@@ -99,7 +102,7 @@ func TestWebhookTaskHandler_ProcessTask_DeletedWebhook(t *testing.T) {
 	repo := new(mockWebhookRepository)
 	handler := NewWebhookTaskHandlerWithClient(repo, &http.Client{})
 
-	repo.On("GetActiveWebhooks").Return([]models.OutboundWebhook{}, nil)
+	repo.On("GetWebhookByID", 123).Return(nil, assert.AnError)
 
 	data := []byte(`{"ip":"1.2.3.4"}`)
 	task, err := NewWebhookDeliveryTask(123, "ip.blocked", data)
@@ -128,7 +131,7 @@ func TestWebhookTaskHandler_ProcessTask_HTTPError(t *testing.T) {
 		},
 	}
 
-	repo.On("GetActiveWebhooks").Return(webhooks, nil)
+	repo.On("GetWebhookByID", 123).Return(&webhooks[0], nil)
 	repo.On("LogWebhookDelivery", mock.Anything).Return(nil)
 
 	data := []byte(`{"ip":"1.2.3.4"}`)
@@ -167,7 +170,7 @@ func TestWebhookTaskHandler_ProcessTask_WithSecret(t *testing.T) {
 		},
 	}
 
-	repo.On("GetActiveWebhooks").Return(webhooks, nil)
+	repo.On("GetWebhookByID", 123).Return(&webhooks[0], nil)
 	repo.On("LogWebhookDelivery", mock.Anything).Return(nil)
 
 	task, err := NewWebhookDeliveryTask(123, "ip.blocked", data)
@@ -216,7 +219,7 @@ func TestWebhookTaskHandler_ProcessTask_SSRFBlocked(t *testing.T) {
 		},
 	}
 
-	repo.On("GetActiveWebhooks").Return(webhooks, nil)
+	repo.On("GetWebhookByID", 123).Return(&webhooks[0], nil)
 	repo.On("LogWebhookDelivery", mock.Anything).Return(nil).Maybe()
 
 	data := []byte(`{"ip":"1.2.3.4"}`)
