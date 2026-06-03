@@ -203,3 +203,33 @@ func TestAPIHandler_BlockCheckMiddleware_Allowed(t *testing.T) {
 	assert.Equal(t, 200, w.Code)
 	ipService.AssertExpectations(t)
 }
+
+func TestAPIHandler_IsValidRedirect(t *testing.T) {
+	h, _, _, _, _ := setupTest()
+
+	tests := []struct {
+		name   string
+		target string
+		want   bool
+	}{
+		{"empty", "", false},
+		{"root", "/", true},
+		{"valid path", "/dashboard", true},
+		{"nested path", "/admin/settings", true},
+		{"protocol relative //", "//evil.com", false},
+		{"protocol relative /\\", "/\\evil.com", false},
+		{"absolute http", "http://evil.com", false},
+		{"absolute https", "https://evil.com", false},
+		{"no leading slash", "dashboard", false},
+		{"relative up", "../outside", false},
+		{"just backslash", "\\", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := h.isValidRedirect(tt.target); got != tt.want {
+				t.Errorf("APIHandler.isValidRedirect(%q) = %v, want %v", tt.target, got, tt.want)
+			}
+		})
+	}
+}
