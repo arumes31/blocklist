@@ -41,6 +41,7 @@ func TestSecurity_XSS_Reflected(t *testing.T) {
 			Count  int
 		}{},
 		5, int64(0), 1, 0, nil)
+	ipService.On("GetExcludedCount", mock.Anything).Return(0)
 
 	w := httptest.NewRecorder()
 	c, _ := setupHTMLTest(w)

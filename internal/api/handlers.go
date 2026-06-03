@@ -13,7 +13,6 @@ import (
 	"strings"
 	"time"
 
-	_ "embed"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
@@ -22,38 +21,41 @@ import (
 )
 
 type HandlerOptions struct {
-	Config         *config.Config
-	RedisRepo      RedisRepositoryProvider
-	PgRepo         PostgresRepositoryProvider
-	AuthService    AuthServiceProvider
-	IPService      IPServiceProvider
-	Hub            *Hub
-	WebhookService *service.WebhookService
-	MainLimiter    gin.HandlerFunc
-	LoginLimiter   gin.HandlerFunc
-	WebhookLimiter gin.HandlerFunc
+	Config                *config.Config
+	RedisRepo             RedisRepositoryProvider
+	PgRepo                PostgresRepositoryProvider
+	AuthService           AuthServiceProvider
+	IPService             IPServiceProvider
+	Hub                   *Hub
+	WebhookService        *service.WebhookService
+	ExternalSourceService *service.ExternalSourceService
+	MainLimiter           gin.HandlerFunc
+	LoginLimiter          gin.HandlerFunc
+	WebhookLimiter        gin.HandlerFunc
 }
 
-//go:embed openapi.json
-var openapiSpec []byte
 
 type APIHandler struct {
-	cfg            *config.Config
-	redisRepo      RedisRepositoryProvider
-	pgRepo         PostgresRepositoryProvider
-	authService    AuthServiceProvider
-	ipService      IPServiceProvider
-	hub            *Hub
-	webhookService *service.WebhookService
-	mainLimiter    gin.HandlerFunc
-	loginLimiter   gin.HandlerFunc
-	trustedProxies []netip.Prefix
-	upgrader       websocket.Upgrader
-	webhookLimiter gin.HandlerFunc
+	cfg                   *config.Config
+	redisRepo             RedisRepositoryProvider
+	pgRepo                PostgresRepositoryProvider
+	authService           AuthServiceProvider
+	ipService             IPServiceProvider
+	hub                   *Hub
+	webhookService        *service.WebhookService
+	externalSourceService *service.ExternalSourceService
+	mainLimiter           gin.HandlerFunc
+	loginLimiter          gin.HandlerFunc
+	trustedProxies        []netip.Prefix
+	upgrader              websocket.Upgrader
+	webhookLimiter        gin.HandlerFunc
 }
 
 // NewAPIHandler creates a new instance of APIHandler with the necessary dependencies.
-func NewAPIHandler(opts HandlerOptions) *APIHandler {
+func NewAPIHandler(opts *HandlerOptions) *APIHandler {
+	if opts == nil {
+		opts = &HandlerOptions{}
+	}
 	trusted := []string{"127.0.0.1/32", "172.16.0.0/12", "100.64.0.0/10", "10.0.0.0/8", "192.168.0.0/16"}
 	if opts.Config != nil && opts.Config.TrustedProxies != "" {
 		p := strings.Split(opts.Config.TrustedProxies, ",")
@@ -74,17 +76,18 @@ func NewAPIHandler(opts HandlerOptions) *APIHandler {
 	}
 
 	h := &APIHandler{
-		cfg:            opts.Config,
-		redisRepo:      opts.RedisRepo,
-		pgRepo:         opts.PgRepo,
-		authService:    opts.AuthService,
-		ipService:      opts.IPService,
-		hub:            opts.Hub,
-		webhookService: opts.WebhookService,
-		mainLimiter:    opts.MainLimiter,
-		loginLimiter:   opts.LoginLimiter,
-		webhookLimiter: opts.WebhookLimiter,
-		trustedProxies: prefixes,
+		cfg:                   opts.Config,
+		redisRepo:             opts.RedisRepo,
+		pgRepo:                opts.PgRepo,
+		authService:           opts.AuthService,
+		ipService:             opts.IPService,
+		hub:                   opts.Hub,
+		webhookService:        opts.WebhookService,
+		externalSourceService: opts.ExternalSourceService,
+		mainLimiter:           opts.MainLimiter,
+		loginLimiter:          opts.LoginLimiter,
+		webhookLimiter:        opts.WebhookLimiter,
+		trustedProxies:        prefixes,
 	}
 
 	h.upgrader = websocket.Upgrader{
@@ -338,6 +341,17 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 		auth.POST("/add_whitelist", h.PermissionMiddleware("manage_whitelist", "whitelist_ips"), h.AddWhitelist)
 		auth.POST("/remove_whitelist", h.PermissionMiddleware("manage_whitelist"), h.RemoveWhitelist)
 
+		// Excluded list management (IPs, subnets, or FQDNs that can never be blocked)
+		auth.GET("/excluded", h.PermissionMiddleware("manage_excluded"), h.Excluded)
+		auth.GET("/api/v1/excluded", h.PermissionMiddleware("manage_excluded"), h.JSONExcluded)
+		auth.POST("/add_excluded", h.PermissionMiddleware("manage_excluded"), h.AddExcluded)
+		auth.POST("/remove_excluded", h.PermissionMiddleware("manage_excluded"), h.RemoveExcluded)
+
+		// External sources
+		auth.POST("/api/v1/excluded/sources", h.PermissionMiddleware("manage_excluded"), h.AddExternalSource)
+		auth.DELETE("/api/v1/excluded/sources/:id", h.PermissionMiddleware("manage_excluded"), h.DeleteExternalSource)
+		auth.POST("/api/v1/excluded/sources/refresh", h.PermissionMiddleware("manage_excluded"), h.RefreshExternalSource)
+
 		// Admin management
 		admin := auth.Group("/admin_management")
 		admin.Use(h.PermissionMiddleware("manage_admins"))
@@ -392,7 +406,3 @@ func (h *APIHandler) Ready(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "READY", "dependencies": dep})
 }
 
-// Minimal OpenAPI spec
-func (h *APIHandler) OpenAPI(c *gin.Context) {
-	c.Data(http.StatusOK, "application/json", openapiSpec)
-}

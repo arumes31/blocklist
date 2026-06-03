@@ -26,7 +26,8 @@
 **Learning:** Sanitizing paths with `filepath.Base` alone can be insufficient if input strings contain unexpected characters or if the environment handles path separators differently (e.g., backslashes on Linux).
 **Prevention:** Use strict allow-list validation (e.g., regex `^[a-zA-Z0-9-]+$`) for externally controlled strings used in path construction or URL parameters. Apply `filepath.Base` as a defense-in-depth measure to ensure only the final component of a path is used.
 
-## 2024-05-26 - [Cross-Site WebSocket Hijacking via Protocol Spoofing]
-**Vulnerability:** Cross-Site WebSocket Hijacking (CSWSH) (CWE-1385)
-**Learning:** Blindly trusting headers like 'X-Forwarded-Proto' to derive the request scheme in 'CheckOrigin' allows attackers to spoof the protocol (e.g., 'https') and bypass same-origin checks even when the application is accessed over plain 'http'.
-**Prevention:** Only trust 'X-Forwarded-Proto' if the request originates from a verified 'Trusted Proxy'. The 'CheckOrigin' function should verify the 'RemoteAddr' against a whitelist of trusted CIDR ranges before considering proxy headers.
+
+## 2026-06-03 - [CRLF Injection in Email Alerts]
+**Vulnerability:** CRLF Injection (CWE-93) / Email Content Injection
+**Learning:** Interpolating untrusted data (like IP addresses, block reasons, or actor names) directly into email headers or the `Subject` line without sanitization allows an attacker to inject CR/LF characters. This can be used to terminate headers prematurely and inject additional headers (e.g., `Bcc`, `Reply-To`) or even replace the entire email body.
+**Prevention:** Always sanitize any input destined for a network header or a delimited protocol. Using a `strings.NewReplacer("\r", "", "\n", "")` to strip line-break characters ensures that untrusted content remains confined to its intended field and cannot "break out" to inject new headers.

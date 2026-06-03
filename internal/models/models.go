@@ -27,6 +27,36 @@ type WhitelistEntry struct {
 	ExpiresAt   string   `json:"expires_at,omitempty"`
 }
 
+// ExcludedEntry represents an entry on the excluded list. Anything matching an
+// excluded entry can never be blocked. Unlike the whitelist (which is IP-only),
+// an excluded entry can be a single IP, a CIDR subnet, or an FQDN. Expiry is
+// optional and defaults to "never" (empty ExpiresAt).
+type ExcludedEntry struct {
+	Timestamp    string   `json:"timestamp"`
+	Value        string   `json:"value"` // canonical IP, CIDR, FQDN, or *.wildcard
+	Type         string   `json:"type"`  // "ip" | "cidr" | "fqdn" | "wildcard"
+	AddedBy      string   `json:"added_by"`
+	Reason       string   `json:"reason"`                  // free-text description
+	ExpiresAt    string   `json:"expires_at,omitempty"`    // RFC3339; empty = never
+	ResolvedIPs  []string `json:"resolved_ips,omitempty"`  // last background FQDN resolution
+	ResolvedAt   string   `json:"resolved_at,omitempty"`   // when ResolvedIPs/ResolveError were set
+	ResolveError string   `json:"resolve_error,omitempty"` // last resolution failure, if any
+	AlertEnabled bool     `json:"alert_enabled,omitempty"` // Trigger webhook/mail on block attempt
+}
+
+type ExternalSource struct {
+	ID                   int    `json:"id" db:"id"`
+	Name                 string `json:"name" db:"name"`
+	URL                  string `json:"url" db:"url"`
+	SourceType           string `json:"source_type" db:"source_type"`
+	RefreshIntervalHours int    `json:"refresh_interval_hours" db:"refresh_interval_hours"`
+	FailureCount         int    `json:"failure_count" db:"failure_count"`
+	LastRefreshTS        string `json:"last_refresh_ts" db:"last_refresh_ts"`
+	LastError            string `json:"last_error" db:"last_error"`
+	IsActive             bool   `json:"is_active" db:"is_active"`
+	CreatedAt            string `json:"created_at" db:"created_at"`
+}
+
 type AuditLog struct {
 	ID        int    `json:"id" db:"id"`
 	Timestamp string `json:"timestamp" db:"timestamp"`

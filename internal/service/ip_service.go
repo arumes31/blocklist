@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"html"
 	"net"
 	"net/netip"
 	"os"
@@ -30,13 +31,41 @@ const MaxPageSize = 1000
 type IPService struct {
 	redisRepo      *repository.RedisRepository
 	pgRepo         *repository.PostgresRepository
+	webhookService *WebhookService
+	mailService    *MailService
 	blockedRanges  []netip.Prefix
 	geoipReader    *geoip2.Reader
 	asnReader      *geoip2.Reader
 	bloomFilter    *bloom.BloomFilter
 	bloomMu        sync.RWMutex
 	syncInProgress atomic.Bool
+	fqdnCache      map[string]fqdnResolution
+	fqdnCacheMu    sync.Mutex
+	ptrCache       map[netip.Addr]ptrResolution
+	ptrCacheMu     sync.Mutex
 }
+
+// fqdnResolution caches the set of addresses an excluded FQDN currently resolves
+// to, so that block-time exclusion checks do not hit DNS on every call.
+type fqdnResolution struct {
+	addrs   map[netip.Addr]struct{}
+	expires time.Time
+}
+
+// ptrResolution caches the reverse-DNS (PTR) names for an address, used for
+// wildcard FQDN exclusion matching.
+type ptrResolution struct {
+	names   []string
+	expires time.Time
+}
+
+const (
+	// fqdnCacheTTL is how long a successful FQDN resolution is cached.
+	fqdnCacheTTL = 5 * time.Minute
+	// fqdnCacheNegTTL is how long a failed/empty resolution is cached, to avoid
+	// hammering DNS for a host that does not resolve.
+	fqdnCacheNegTTL = 1 * time.Minute
+)
 
 func findGeoIPPath(filename string) string {
 	paths := []string{
@@ -89,11 +118,70 @@ func NewIPService(cfg *config.Config, rRepo *repository.RedisRepository, pgRepo 
 		geoipReader:   reader,
 		asnReader:     aReader,
 		bloomFilter:   bloom.NewWithEstimates(1000000, 0.01),
+		fqdnCache:     make(map[string]fqdnResolution),
+		ptrCache:      make(map[netip.Addr]ptrResolution),
 	}
 	svc.syncBloomFilter()
 	return svc
 }
 
+func (s *IPService) SetWebhookService(wh *WebhookService) {
+	s.webhookService = wh
+}
+
+func (s *IPService) SetMailService(ms *MailService) {
+	s.mailService = ms
+}
+
+func (s *IPService) triggerExcludedAlert(ctx context.Context, ip string, reason string, addedBy string, actorIP string, entry models.ExcludedEntry) {
+	// 1. Webhook Alert
+	if s.webhookService != nil {
+		payload := map[string]interface{}{
+			"event":          "excluded_block_attempt",
+			"target_ip":      ip,
+			"attempted_by":   addedBy,
+			"actor_ip":       actorIP,
+			"attempt_reason": reason,
+			"excluded_rule":  entry.Value,
+			"rule_type":      entry.Type,
+			"rule_reason":    entry.Reason,
+			"timestamp":      time.Now().UTC().Format(time.RFC3339),
+		}
+		data, _ := json.Marshal(payload)
+		s.webhookService.Notify(ctx, "excluded_block_attempt", string(data))
+	}
+
+	// 2. Email Alert
+	if s.mailService != nil {
+		// Sanitize untrusted fields for email-safe text output:
+		//  1) strip CR/LF (sanitizeHeader) to prevent header-style injection
+		//     primitives, while the literal "\n" line breaks in the template stay
+		//     intact so the email remains multi-line.
+		//  2) HTML-escape so any markup/script-like payload is neutralized if the
+		//     message is rendered by a downstream client/parser.
+		safeIP := html.EscapeString(sanitizeHeader(ip))
+		safeAddedBy := html.EscapeString(sanitizeHeader(addedBy))
+		safeActorIP := html.EscapeString(sanitizeHeader(actorIP))
+		safeReason := html.EscapeString(sanitizeHeader(reason))
+		safeEntryValue := html.EscapeString(sanitizeHeader(entry.Value))
+		safeEntryType := html.EscapeString(sanitizeHeader(entry.Type))
+		safeEntryReason := html.EscapeString(sanitizeHeader(entry.Reason))
+
+		subject := fmt.Sprintf("[ALERT] Block Attempted on Excluded Resource: %s", safeIP)
+		body := fmt.Sprintf("A block was attempted but prevented for an excluded resource.\n\n"+
+			"Target IP: %s\n"+
+			"Attempted By: %s\n"+
+			"Actor IP: %s\n"+
+			"Attempt Reason: %s\n\n"+
+			"Exclusion Rule: %s (%s)\n"+
+			"Rule Reason: %s\n"+
+			"Timestamp: %s\n",
+			safeIP, safeAddedBy, safeActorIP, safeReason,
+			safeEntryValue, safeEntryType, safeEntryReason,
+			time.Now().UTC().Format(time.RFC3339))
+		_ = s.mailService.SendAlert(subject, body)
+	}
+}
 func (s *IPService) syncBloomFilter() {
 	if !s.syncInProgress.CompareAndSwap(false, true) {
 		return // A sync is already concurrently running
@@ -171,7 +259,7 @@ func (s *IPService) ReloadReaders() {
 	}
 }
 
-func (s *IPService) isValidIPInternal(ipStr string, ip netip.Addr, whitelist map[string]models.WhitelistEntry) bool {
+func (s *IPService) isValidIPInternal(ipStr string, ip netip.Addr, whitelist map[string]models.WhitelistEntry, excluded map[string]models.ExcludedEntry) (bool, *models.ExcludedEntry) {
 	if whitelist != nil {
 		if entry, ok := whitelist[ipStr]; ok {
 			if entry.ExpiresAt != "" {
@@ -179,21 +267,26 @@ func (s *IPService) isValidIPInternal(ipStr string, ip netip.Addr, whitelist map
 				if err == nil && time.Now().After(exp) {
 					_ = s.redisRepo.RemoveFromWhitelist(ipStr)
 				} else {
-					return false
+					return false, nil
 				}
 			} else {
-				return false
+				return false, nil
 			}
 		}
 	}
 
+	// Excluded list: IPs, subnets, or FQDNs that must never be blocked.
+	if entry := s.isExcludedMatch(ip, excluded); entry != nil {
+		return false, entry
+	}
+
 	for _, prefix := range s.blockedRanges {
 		if prefix.Contains(ip) {
-			return false
+			return false, nil
 		}
 	}
 
-	return true
+	return true, nil
 }
 
 func (s *IPService) IsValidIP(ipStr string) bool {
@@ -203,11 +296,357 @@ func (s *IPService) IsValidIP(ipStr string) bool {
 	}
 
 	var whitelist map[string]models.WhitelistEntry
+	var excluded map[string]models.ExcludedEntry
 	if s.redisRepo != nil {
 		whitelist, _ = s.redisRepo.GetWhitelistedIPs()
+		excluded, _ = s.redisRepo.GetExcludedEntries()
 	}
 
-	return s.isValidIPInternal(ipStr, ip, whitelist)
+	valid, _ := s.isValidIPInternal(ipStr, ip, whitelist, excluded)
+	return valid
+}
+
+// classifyExclusionType infers whether an excluded value is a wildcard FQDN, a
+// CIDR, a single IP, or a plain FQDN.
+func classifyExclusionType(value string) string {
+	if strings.HasPrefix(value, "*.") {
+		return "wildcard"
+	}
+	if _, err := netip.ParsePrefix(value); err == nil {
+		return "cidr"
+	}
+	if _, err := netip.ParseAddr(value); err == nil {
+		return "ip"
+	}
+	return "fqdn"
+}
+
+// excludedExpired reports whether an excluded entry has passed its expiry,
+// lazily removing it from storage when so. ExpiresAt is parsed leniently,
+// accepting both RFC3339 and the "2006-01-02 15:04:05 UTC" layout used elsewhere
+// for timestamps. An empty or unparseable ExpiresAt is treated as not-expired:
+// for an exclusion (never-block) list, over-protecting is the safe direction.
+func (s *IPService) excludedExpired(value string, entry models.ExcludedEntry) bool {
+	if entry.ExpiresAt == "" {
+		return false
+	}
+	exp, err := time.Parse(time.RFC3339, entry.ExpiresAt)
+	if err != nil {
+		exp, err = time.Parse("2006-01-02 15:04:05 UTC", entry.ExpiresAt)
+	}
+	if err != nil {
+		return false
+	}
+	if time.Now().After(exp) {
+		if s.redisRepo != nil {
+			_ = s.redisRepo.RemoveExcluded(value)
+		}
+		return true
+	}
+	return false
+}
+
+// isExcludedMatch reports which entry on the excluded list matched the given
+// IP, if any. Expired entries are lazily removed as they are encountered.
+func (s *IPService) isExcludedMatch(ip netip.Addr, excluded map[string]models.ExcludedEntry) *models.ExcludedEntry {
+	if len(excluded) == 0 {
+		return nil
+	}
+	ip = ip.Unmap()
+	ipStr := ip.String()
+
+	// Fast path: an exact IP key is the common case and avoids a full scan.
+	if entry, ok := excluded[ipStr]; ok && !s.excludedExpired(ipStr, entry) {
+		e := entry // copy
+		return &e
+	}
+
+	for value, entry := range excluded {
+		if value == ipStr {
+			continue // exact key already handled by the fast path above
+		}
+		if s.excludedExpired(value, entry) {
+			continue
+		}
+
+		typ := entry.Type
+		if typ == "" {
+			typ = classifyExclusionType(value)
+		}
+
+		matched := false
+		switch typ {
+		case "fqdn":
+			if _, ok := s.resolveFQDN(value)[ip]; ok {
+				matched = true
+			}
+		case "wildcard":
+			if s.matchWildcard(value, ip) {
+				matched = true
+			}
+		case "cidr":
+			if prefix, err := netip.ParsePrefix(value); err == nil && prefix.Contains(ip) {
+				matched = true
+			}
+		default: // "ip"
+			if addr, err := netip.ParseAddr(value); err == nil && addr.Unmap() == ip {
+				matched = true
+			}
+		}
+
+		if matched {
+			e := entry // copy
+			return &e
+		}
+	}
+	return nil
+}
+
+// matchWildcard reports whether ip belongs to a wildcard FQDN exclusion such as
+// "*.example.com". It uses forward-confirmed reverse DNS (FCrDNS): the address
+// is reverse-resolved to candidate names, and a candidate is only accepted if it
+// matches the wildcard suffix AND forward-resolves back to the same address.
+// The forward confirmation prevents an attacker from evading a block by setting
+// a spoofed PTR record on an IP they control.
+func (s *IPService) matchWildcard(pattern string, ip netip.Addr) bool {
+	base := strings.ToLower(strings.TrimPrefix(pattern, "*."))
+	if base == "" {
+		return false
+	}
+	suffix := "." + base
+	for _, name := range s.lookupPTR(ip) {
+		if name != base && !strings.HasSuffix(name, suffix) {
+			continue
+		}
+		if _, ok := s.resolveFQDN(name)[ip]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+// resolveAndCache resolves host to its current address set, stores it in the
+// FQDN cache, and returns the set along with any resolution error.
+func (s *IPService) resolveAndCache(host string) (map[netip.Addr]struct{}, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	ips, err := net.DefaultResolver.LookupNetIP(ctx, "ip", host)
+
+	addrs := make(map[netip.Addr]struct{}, len(ips))
+	for _, a := range ips {
+		addrs[a.Unmap()] = struct{}{}
+	}
+	ttl := fqdnCacheTTL
+	if err != nil || len(addrs) == 0 {
+		ttl = fqdnCacheNegTTL
+	}
+
+	s.fqdnCacheMu.Lock()
+	s.fqdnCache[host] = fqdnResolution{addrs: addrs, expires: time.Now().Add(ttl)}
+	s.fqdnCacheMu.Unlock()
+	return addrs, err
+}
+
+// resolveFQDN returns the set of addresses host currently resolves to, using a
+// short-lived cache so block-time exclusion checks do not hit DNS on every call.
+func (s *IPService) resolveFQDN(host string) map[netip.Addr]struct{} {
+	s.fqdnCacheMu.Lock()
+	if cached, ok := s.fqdnCache[host]; ok && time.Now().Before(cached.expires) {
+		addrs := cached.addrs
+		s.fqdnCacheMu.Unlock()
+		return addrs
+	}
+	s.fqdnCacheMu.Unlock()
+
+	addrs, _ := s.resolveAndCache(host)
+	return addrs
+}
+
+// lookupPTR returns the lower-cased reverse-DNS names for ip, using a cache.
+func (s *IPService) lookupPTR(ip netip.Addr) []string {
+	s.ptrCacheMu.Lock()
+	if cached, ok := s.ptrCache[ip]; ok && time.Now().Before(cached.expires) {
+		names := cached.names
+		s.ptrCacheMu.Unlock()
+		return names
+	}
+	s.ptrCacheMu.Unlock()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	raw, err := net.DefaultResolver.LookupAddr(ctx, ip.String())
+
+	names := make([]string, 0, len(raw))
+	for _, n := range raw {
+		names = append(names, strings.ToLower(strings.TrimSuffix(n, ".")))
+	}
+	ttl := fqdnCacheTTL
+	if err != nil || len(names) == 0 {
+		ttl = fqdnCacheNegTTL
+	}
+
+	s.ptrCacheMu.Lock()
+	s.ptrCache[ip] = ptrResolution{names: names, expires: time.Now().Add(ttl)}
+	s.ptrCacheMu.Unlock()
+	return names
+}
+
+// IsExcluded reports whether the given IP is on the excluded list and therefore
+// must never be blocked.
+func (s *IPService) IsExcluded(ipStr string) bool {
+	ip, err := netip.ParseAddr(ipStr)
+	if err != nil {
+		return false
+	}
+	var excluded map[string]models.ExcludedEntry
+	if s.redisRepo != nil {
+		excluded, _ = s.redisRepo.GetExcludedEntries()
+	}
+	return s.isExcludedMatch(ip, excluded) != nil
+}
+
+// GetExcludedCount returns the number of entries on the excluded list.
+func (s *IPService) GetExcludedCount(ctx context.Context) int {
+	if s.redisRepo == nil {
+		return 0
+	}
+	entries, err := s.redisRepo.GetExcludedEntries()
+	if err != nil {
+		return 0
+	}
+	return len(entries)
+}
+
+// ExclusionConflicts returns human-readable warnings about a value being added
+// to the excluded list: whether it is currently blocked, already present, or
+// already covered by an existing excluded subnet or a configured blocked range.
+func (s *IPService) ExclusionConflicts(ctx context.Context, value string) []string {
+	value = strings.TrimSpace(value)
+	if value == "" || s.redisRepo == nil {
+		return nil
+	}
+	var warns []string
+	typ := classifyExclusionType(value)
+
+	existing, _ := s.redisRepo.GetExcludedEntries()
+	if _, ok := existing[value]; ok {
+		warns = append(warns, fmt.Sprintf("%s is already on the excluded list; it will be updated.", value))
+	}
+
+	switch typ {
+	case "ip":
+		if addr, err := netip.ParseAddr(value); err == nil {
+			addr = addr.Unmap()
+			// Currently blocked?
+			if entry, err := s.redisRepo.GetIPEntry(value); err == nil && entry != nil {
+				warns = append(warns, fmt.Sprintf("%s is currently blocked; excluding it does not remove the existing block — unblock it separately.", value))
+			}
+			// Inside configured blocked range?
+			for _, prefix := range s.blockedRanges {
+				if prefix.Contains(addr) {
+					warns = append(warns, fmt.Sprintf("%s falls within configured blocked range %s.", value, prefix.String()))
+				}
+			}
+			// Covered by existing excluded subnet?
+			for ev, ee := range existing {
+				if (ee.Type == "cidr" || (ee.Type == "" && classifyExclusionType(ev) == "cidr")) && ev != value {
+					if p, perr := netip.ParsePrefix(ev); perr == nil && p.Contains(addr) {
+						warns = append(warns, fmt.Sprintf("%s is already covered by excluded subnet %s.", value, ev))
+					}
+				}
+			}
+		}
+	case "cidr":
+		if prefix, err := netip.ParsePrefix(value); err == nil {
+			prefix = prefix.Masked()
+			// Check if any blocked IPs are inside this subnet
+			blocked, _ := s.redisRepo.GetBlockedIPs()
+			count := 0
+			for ipStr := range blocked {
+				if ip, ierr := netip.ParseAddr(ipStr); ierr == nil && prefix.Contains(ip.Unmap()) {
+					count++
+				}
+			}
+			if count > 0 {
+				warns = append(warns, fmt.Sprintf("%s covers %d currently blocked IPs; they will NOT be automatically unblocked.", value, count))
+			}
+		}
+	case "fqdn":
+		// Resolve now to see if it's currently blocked
+		addrs, _ := s.resolveAndCache(value)
+		blockedCount := 0
+		blockedIPs := []string{}
+		for a := range addrs {
+			if s.IsBlocked(a.String()) {
+				blockedCount++
+				blockedIPs = append(blockedIPs, a.String())
+			}
+		}
+		if blockedCount > 0 {
+			warns = append(warns, fmt.Sprintf("%s currently resolves to blocked IPs: %s. Exclusion will not remove these existing blocks.", value, strings.Join(blockedIPs, ", ")))
+		}
+	}
+
+	return warns
+}
+
+// RefreshExcludedFQDNs re-resolves every FQDN entry on the excluded list,
+// warming the in-memory cache and persisting the resolved addresses (or the
+// failure) back onto each entry. Resolution failures are logged as warnings.
+func (s *IPService) RefreshExcludedFQDNs(ctx context.Context) {
+	if s.redisRepo == nil {
+		return
+	}
+	entries, err := s.redisRepo.GetExcludedEntries()
+	if err != nil {
+		zlog.Error().Err(err).Msg("excluded: failed to load entries for FQDN refresh")
+		return
+	}
+
+	now := time.Now().UTC()
+	for value, entry := range entries {
+		typ := entry.Type
+		if typ == "" {
+			typ = classifyExclusionType(value)
+		}
+		if typ != "fqdn" {
+			continue
+		}
+		if entry.ExpiresAt != "" {
+			if exp, perr := time.Parse(time.RFC3339, entry.ExpiresAt); perr == nil && now.After(exp) {
+				continue // expired; the scheduler cleanup will remove it
+			} else if perr != nil {
+				if exp, perr = time.Parse("2006-01-02 15:04:05 UTC", entry.ExpiresAt); perr == nil && now.After(exp) {
+					continue
+				}
+			}
+		}
+
+		addrs, rerr := s.resolveAndCache(value)
+		entry.ResolvedAt = now.Format("2006-01-02 15:04:05 UTC")
+		if rerr != nil || len(addrs) == 0 {
+			msg := "no addresses resolved"
+			if rerr != nil {
+				msg = rerr.Error()
+			}
+			entry.ResolveError = msg
+			// Do NOT clear ResolvedIPs on failure; keep the last known good set
+			// to provide best-effort protection during DNS outages.
+			zlog.Warn().Str("fqdn", value).Str("error", msg).Msg("excluded: FQDN resolution failed")
+		} else {
+			entry.ResolveError = ""
+			ips := make([]string, 0, len(addrs))
+			for a := range addrs {
+				ips = append(ips, a.String())
+			}
+			sort.Strings(ips)
+			entry.ResolvedIPs = ips
+		}
+
+		if err := s.redisRepo.AddExcluded(value, entry); err != nil {
+			zlog.Error().Err(err).Str("fqdn", value).Msg("excluded: failed to persist resolution result")
+		}
+	}
 }
 
 // CalculateThreatScore computes a risk score (0-100) for an IP based on its history and current reason.
@@ -335,7 +774,8 @@ func (s *IPService) ListIPsPaginated(ctx context.Context, limit int, cursor stri
 				return items, currentCursor, tot, err
 			}
 
-			for i := range zs {
+			var lastAddedCursor string
+			for i, z := range zs {
 				if len(items) >= limit {
 					break
 				}
@@ -353,23 +793,18 @@ func (s *IPService) ListIPsPaginated(ctx context.Context, limit int, cursor stri
 					}
 				}
 				items = append(items, map[string]interface{}{"ip": ip, "data": entry})
+				lastAddedCursor = fmt.Sprintf("%v:%s", z.Score, z.Member.(string))
 			}
 
-			currentCursor = next
 			if len(items) >= limit {
-				// We reached the limit, use the specific item's cursor from the last appended z
-				// Because zs is preserved inside the loop chunk, we find the last item we added
-				if len(items) > 0 {
-					lastItemIP := items[len(items)-1]["ip"].(string)
-					for _, z := range zs {
-						if z.Member.(string) == lastItemIP {
-							currentCursor = fmt.Sprintf("%v:%s", z.Score, z.Member.(string))
-							break
-						}
-					}
+				if lastAddedCursor != "" {
+					currentCursor = lastAddedCursor
+				} else {
+					currentCursor = next
 				}
 				break
 			}
+			currentCursor = next
 			if currentCursor == "" {
 				break
 			}
@@ -596,6 +1031,14 @@ func (s *IPService) ExportIPs(ctx context.Context, query string, country string,
 
 	addedBy = strings.ToLower(strings.TrimSpace(addedBy))
 
+	// Optimize CIDR parsing
+	var queryNetwork *net.IPNet
+	if q != "" {
+		if _, network, err := net.ParseCIDR(query); err == nil {
+			queryNetwork = network
+		}
+	}
+
 	// Batch fetch entries in groups of 100 to avoid N+1 queries
 	batchSize := 100
 	for i := 0; i < len(zs); i += batchSize {
@@ -616,53 +1059,12 @@ func (s *IPService) ExportIPs(ctx context.Context, query string, country string,
 		}
 
 		for j, entry := range entries {
-			if entry == nil {
+			if !s.matchesFilters(ips[j], entry, q, queryNetwork, countryList, addedBy, fromTime, toTime) {
 				continue
-			}
-			ip := ips[j]
-
-			if q != "" {
-				if !strings.Contains(strings.ToLower(ip), q) &&
-					!strings.Contains(strings.ToLower(entry.Reason), q) &&
-					!strings.Contains(strings.ToLower(entry.AddedBy), q) &&
-					(entry.Geolocation == nil || !strings.Contains(strings.ToLower(entry.Geolocation.Country), q)) {
-					continue
-				}
-			}
-			if len(countryList) > 0 {
-				match := false
-				if entry.Geolocation != nil {
-					cCode := strings.ToLower(entry.Geolocation.Country)
-					for _, c := range countryList {
-						if cCode == c {
-							match = true
-							break
-						}
-					}
-				}
-				if !match {
-					continue
-				}
-			}
-			if addedBy != "" {
-				if !strings.EqualFold(entry.AddedBy, addedBy) {
-					continue
-				}
-			}
-			if !fromTime.IsZero() || !toTime.IsZero() {
-				ts, err := time.Parse("2006-01-02 15:04:05 UTC", entry.Timestamp)
-				if err == nil {
-					if !fromTime.IsZero() && ts.Before(fromTime) {
-						continue
-					}
-					if !toTime.IsZero() && ts.After(toTime) {
-						continue
-					}
-				}
 			}
 
 			// Ensure we always store a pointer to IPEntry
-			items = append(items, map[string]interface{}{"ip": ip, "data": entry})
+			items = append(items, map[string]interface{}{"ip": ips[j], "data": entry})
 		}
 	}
 
@@ -698,6 +1100,7 @@ func (s *IPService) BulkBlock(ctx context.Context, ips []string, reason string, 
 
 	// Batch fetch data
 	whitelist, _ := s.redisRepo.GetWhitelistedIPs()
+	excluded, _ := s.redisRepo.GetExcludedEntries()
 	banCounts, _ := s.redisRepo.GetIPBanCounts(uniqueIPs)
 	normalizedReason := strings.ToLower(reason)
 
@@ -709,7 +1112,11 @@ func (s *IPService) BulkBlock(ctx context.Context, ips []string, reason string, 
 		if err != nil {
 			continue
 		}
-		if !s.isValidIPInternal(ipStr, addr, whitelist) {
+		valid, matchedEntry := s.isValidIPInternal(ipStr, addr, whitelist, excluded)
+		if !valid {
+			if matchedEntry != nil && matchedEntry.AlertEnabled {
+				go s.triggerExcludedAlert(ctx, ipStr, reason, addedBy, actorIP, *matchedEntry)
+			}
 			continue
 		}
 
@@ -776,6 +1183,74 @@ func (s *IPService) BulkUnblock(ctx context.Context, ips []string, actor string)
 	return nil
 }
 
+func (s *IPService) matchesFilters(ip string, entry *models.IPEntry, q string, queryNetwork *net.IPNet, countryList []string, addedBy string, fromTime, toTime time.Time) bool {
+	if entry == nil {
+		return false
+	}
+
+	// 1. Query filter (text match and CIDR)
+	if q != "" {
+		matches := false
+		// Text match on fields
+		if strings.Contains(strings.ToLower(ip), q) ||
+			strings.Contains(strings.ToLower(entry.Reason), q) ||
+			strings.Contains(strings.ToLower(entry.AddedBy), q) ||
+			(entry.Geolocation != nil && strings.Contains(strings.ToLower(entry.Geolocation.Country), q)) {
+			matches = true
+		}
+
+		// Smart Match: CIDR
+		if !matches && queryNetwork != nil {
+			if parsedIP := net.ParseIP(ip); parsedIP != nil && queryNetwork.Contains(parsedIP) {
+				matches = true
+			}
+		}
+
+		if !matches {
+			return false
+		}
+	}
+
+	// 2. Country filter
+	if len(countryList) > 0 {
+		match := false
+		if entry.Geolocation != nil {
+			cCode := strings.ToLower(entry.Geolocation.Country)
+			for _, c := range countryList {
+				if cCode == c {
+					match = true
+					break
+				}
+			}
+		}
+		if !match {
+			return false
+		}
+	}
+
+	// 3. AddedBy filter
+	if addedBy != "" {
+		if !strings.EqualFold(entry.AddedBy, addedBy) {
+			return false
+		}
+	}
+
+	// 4. Date range filters
+	if !fromTime.IsZero() || !toTime.IsZero() {
+		ts, err := time.Parse("2006-01-02 15:04:05 UTC", entry.Timestamp)
+		if err == nil {
+			if !fromTime.IsZero() && ts.Before(fromTime) {
+				return false
+			}
+			if !toTime.IsZero() && ts.After(toTime) {
+				return false
+			}
+		}
+	}
+
+	return true
+}
+
 // ListIPsPaginatedAdvanced provides server-side pagination and search across all records with advanced filters.
 func (s *IPService) ListIPsPaginatedAdvanced(ctx context.Context, limit int, cursor string, query string, country string, addedBy string, from string, to string) ([]map[string]interface{}, string, int, error) {
 	if s.redisRepo == nil {
@@ -840,87 +1315,29 @@ func (s *IPService) ListIPsPaginatedAdvanced(ctx context.Context, limit int, cur
 				return items, currentCursor, tot, err
 			}
 
-			for i := range zs {
+			var lastAddedCursor string
+			for i, z := range zs {
 				if len(items) >= limit {
 					break
 				}
-				ip := ips[i]
-				entry := entries[i]
-				if entry == nil {
+
+				if !s.matchesFilters(ips[i], entries[i], q, queryNetwork, countryList, addedBy, fromTime, toTime) {
 					continue
 				}
 
-				// Apply filters
-				if q != "" {
-					matches := false
-					// 1. Text match on fields
-					if strings.Contains(strings.ToLower(ip), q) ||
-						strings.Contains(strings.ToLower(entry.Reason), q) ||
-						strings.Contains(strings.ToLower(entry.AddedBy), q) ||
-						(entry.Geolocation != nil && strings.Contains(strings.ToLower(entry.Geolocation.Country), q)) {
-						matches = true
-					}
-
-					// 2. Smart Match: CIDR (using pre-parsed network)
-					if !matches && queryNetwork != nil {
-						if parsedIP := net.ParseIP(ip); parsedIP != nil && queryNetwork.Contains(parsedIP) {
-							matches = true
-						}
-					}
-
-					if !matches {
-						continue
-					}
-				}
-				if len(countryList) > 0 {
-					match := false
-					if entry.Geolocation != nil {
-						cCode := strings.ToLower(entry.Geolocation.Country)
-						for _, c := range countryList {
-							if cCode == c {
-								match = true
-								break
-							}
-						}
-					}
-					if !match {
-						continue
-					}
-				}
-				if addedBy != "" {
-					if !strings.EqualFold(entry.AddedBy, addedBy) {
-						continue
-					}
-				}
-				if !fromTime.IsZero() || !toTime.IsZero() {
-					ts, err := time.Parse("2006-01-02 15:04:05 UTC", entry.Timestamp)
-					if err == nil {
-						if !fromTime.IsZero() && ts.Before(fromTime) {
-							continue
-						}
-						if !toTime.IsZero() && ts.After(toTime) {
-							continue
-						}
-					}
-				}
-
-				items = append(items, map[string]interface{}{"ip": ip, "data": entry})
+				items = append(items, map[string]interface{}{"ip": ips[i], "data": entries[i]})
+				lastAddedCursor = fmt.Sprintf("%v:%s", z.Score, z.Member.(string))
 			}
 
-			currentCursor = next
 			if len(items) >= limit {
-				// We reached the limit, use the specific item's cursor from the last appended z
-				if len(items) > 0 {
-					lastItemIP := items[len(items)-1]["ip"].(string)
-					for _, z := range zs {
-						if z.Member.(string) == lastItemIP {
-							currentCursor = fmt.Sprintf("%v:%s", z.Score, z.Member.(string))
-							break
-						}
-					}
+				if lastAddedCursor != "" {
+					currentCursor = lastAddedCursor
+				} else {
+					currentCursor = next
 				}
 				break
 			}
+			currentCursor = next
 			if currentCursor == "" {
 				break
 			}
@@ -972,55 +1389,8 @@ func (s *IPService) exportFallback(ctx context.Context, query string, country st
 			continue
 		}
 
-		if q != "" {
-			matches := false
-			if strings.Contains(strings.ToLower(ip), q) ||
-				strings.Contains(strings.ToLower(entry.Reason), q) ||
-				strings.Contains(strings.ToLower(entry.AddedBy), q) ||
-				(entry.Geolocation != nil && strings.Contains(strings.ToLower(entry.Geolocation.Country), q)) {
-				matches = true
-			}
-
-			if !matches && queryNetwork != nil {
-				if parsedIP := net.ParseIP(ip); parsedIP != nil && queryNetwork.Contains(parsedIP) {
-					matches = true
-				}
-			}
-
-			if !matches {
-				continue
-			}
-		}
-		if len(countryList) > 0 {
-			match := false
-			if entry.Geolocation != nil {
-				cCode := strings.ToLower(entry.Geolocation.Country)
-				for _, c := range countryList {
-					if cCode == c {
-						match = true
-						break
-					}
-				}
-			}
-			if !match {
-				continue
-			}
-		}
-		if addedBy != "" {
-			if !strings.EqualFold(entry.AddedBy, addedBy) {
-				continue
-			}
-		}
-		if !fromTime.IsZero() || !toTime.IsZero() {
-			ts, err := time.Parse("2006-01-02 15:04:05 UTC", entry.Timestamp)
-			if err == nil {
-				if !fromTime.IsZero() && ts.Before(fromTime) {
-					continue
-				}
-				if !toTime.IsZero() && ts.After(toTime) {
-					continue
-				}
-			}
+		if !s.matchesFilters(ip, &entry, q, queryNetwork, countryList, addedBy, fromTime, toTime) {
+			continue
 		}
 
 		items = append(items, map[string]interface{}{"ip": ip, "data": &entry})
@@ -1035,13 +1405,26 @@ func (s *IPService) exportFallback(ctx context.Context, query string, country st
 }
 
 // BlockIP blocks a single IP.
-// BlockIP blocks a single IP.
+
 func (s *IPService) BlockIP(ctx context.Context, ip string, reason string, username string, actorIP string, persist bool, duration time.Duration) (*models.IPEntry, error) {
 	if s.redisRepo == nil {
 		return nil, nil
 	}
-	if !s.IsValidIP(ip) {
-		return nil, fmt.Errorf("invalid IP")
+
+	addr, err := netip.ParseAddr(ip)
+	if err != nil {
+		return nil, fmt.Errorf("invalid IP format")
+	}
+
+	whitelist, _ := s.redisRepo.GetWhitelistedIPs()
+	excluded, _ := s.redisRepo.GetExcludedEntries()
+
+	valid, matchedEntry := s.isValidIPInternal(ip, addr, whitelist, excluded)
+	if !valid {
+		if matchedEntry != nil && matchedEntry.AlertEnabled {
+			go s.triggerExcludedAlert(ctx, ip, reason, username, actorIP, *matchedEntry)
+		}
+		return nil, fmt.Errorf("IP is whitelisted or excluded")
 	}
 
 	now := time.Now().UTC()
@@ -1077,7 +1460,7 @@ func (s *IPService) BlockIP(ctx context.Context, ip string, reason string, usern
 		}
 	}
 
-	err := s.redisRepo.ExecBlockAtomic(ip, entry, now)
+	err = s.redisRepo.ExecBlockAtomic(ip, entry, now)
 	if err == nil {
 		s.bloomMu.Lock()
 		if s.bloomFilter != nil {
@@ -1131,10 +1514,77 @@ func (s *IPService) RemoveWhitelist(ctx context.Context, ip string, username str
 	return s.redisRepo.RemoveFromWhitelist(ip)
 }
 
+// AddExcluded adds a value (IP, CIDR, or FQDN) to the excluded list. The type is
+// auto-detected and the value canonicalized. expiresAt is optional (RFC3339);
+// an empty string means the exclusion never expires.
+func (s *IPService) AddExcluded(ctx context.Context, value string, reason string, username string, expiresAt string, alertEnabled bool) error {
+	if s.redisRepo == nil {
+		return fmt.Errorf("storage unavailable")
+	}
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return fmt.Errorf("value required")
+	}
+
+	typ := classifyExclusionType(value)
+	// Canonicalize so lookups match regardless of input formatting.
+	switch typ {
+	case "cidr":
+		if p, err := netip.ParsePrefix(value); err == nil {
+			value = p.Masked().String()
+		}
+	case "ip":
+		if a, err := netip.ParseAddr(value); err == nil {
+			value = a.Unmap().String()
+		}
+	case "fqdn":
+		value = strings.ToLower(strings.TrimSuffix(value, "."))
+	case "wildcard":
+		value = "*." + strings.ToLower(strings.TrimSuffix(strings.TrimPrefix(value, "*."), "."))
+	}
+
+	entry := models.ExcludedEntry{
+		Timestamp:    time.Now().UTC().Format("2006-01-02 15:04:05 UTC"),
+		Value:        value,
+		Type:         typ,
+		AddedBy:      username,
+		Reason:       reason,
+		ExpiresAt:    expiresAt,
+		AlertEnabled: alertEnabled,
+	}
+
+	if typ == "fqdn" {
+		// Drop any stale cached resolution so the new entry is honored promptly.
+		s.fqdnCacheMu.Lock()
+		delete(s.fqdnCache, value)
+		s.fqdnCacheMu.Unlock()
+	}
+
+	if s.pgRepo != nil {
+		_ = s.pgRepo.LogAction(username, "EXCLUDE", value, reason)
+	}
+	return s.redisRepo.AddExcluded(value, entry)
+}
+
+// RemoveExcluded removes a value from the excluded list.
+func (s *IPService) RemoveExcluded(ctx context.Context, value string, username string) error {
+	if s.redisRepo == nil {
+		return fmt.Errorf("storage unavailable")
+	}
+	value = strings.TrimSpace(value)
+	if s.pgRepo != nil {
+		_ = s.pgRepo.LogAction(username, "UNEXCLUDE", value, "")
+	}
+	return s.redisRepo.RemoveExcluded(value)
+}
+
 // GetIPDetails retrieves current and historical details for an IP.
 func (s *IPService) GetIPDetails(ctx context.Context, ip string) (map[string]interface{}, error) {
 	entry, err := s.redisRepo.GetIPEntry(ip)
-	history, _ := s.pgRepo.GetIPHistory(ip)
+	var history []models.AuditLog
+	if s.pgRepo != nil {
+		history, _ = s.pgRepo.GetIPHistory(ip)
+	}
 	if history == nil {
 		history = []models.AuditLog{}
 	}

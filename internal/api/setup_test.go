@@ -61,6 +61,21 @@ func (m *MockIPService) RemoveWhitelist(ctx context.Context, ip string, username
 	return args.Error(0)
 }
 
+func (m *MockIPService) IsExcluded(ipStr string) bool {
+	args := m.Called(ipStr)
+	return args.Bool(0)
+}
+
+func (m *MockIPService) AddExcluded(ctx context.Context, value string, reason string, username string, expiresAt string, alertEnabled bool) error {
+	args := m.Called(ctx, value, reason, username, expiresAt, alertEnabled)
+	return args.Error(0)
+}
+
+func (m *MockIPService) RemoveExcluded(ctx context.Context, value string, username string) error {
+	args := m.Called(ctx, value, username)
+	return args.Error(0)
+}
+
 func (m *MockIPService) GetIPDetails(ctx context.Context, ip string) (map[string]interface{}, error) {
 	args := m.Called(ctx, ip)
 	return args.Get(0).(map[string]interface{}), args.Error(1)
@@ -124,6 +139,19 @@ func (m *MockIPService) CalculateThreatScore(ip string, reason string) int {
 	return args.Int(0)
 }
 
+func (m *MockIPService) GetExcludedCount(ctx context.Context) int {
+	args := m.Called(ctx)
+	return args.Int(0)
+}
+
+func (m *MockIPService) ExclusionConflicts(ctx context.Context, value string) []string {
+	args := m.Called(ctx, value)
+	if args.Get(0) == nil {
+		return nil
+	}
+	return args.Get(0).([]string)
+}
+
 // MockRedisRepo implements RedisRepositoryProvider
 type MockRedisRepo struct {
 	mock.Mock
@@ -166,6 +194,21 @@ func (m *MockRedisRepo) WhitelistIP(ip string, entry models.WhitelistEntry) erro
 
 func (m *MockRedisRepo) RemoveFromWhitelist(ip string) error {
 	args := m.Called(ip)
+	return args.Error(0)
+}
+
+func (m *MockRedisRepo) GetExcludedEntries() (map[string]models.ExcludedEntry, error) {
+	args := m.Called()
+	return args.Get(0).(map[string]models.ExcludedEntry), args.Error(1)
+}
+
+func (m *MockRedisRepo) AddExcluded(value string, entry models.ExcludedEntry) error {
+	args := m.Called(value, entry)
+	return args.Error(0)
+}
+
+func (m *MockRedisRepo) RemoveExcluded(value string) error {
+	args := m.Called(value)
 	return args.Error(0)
 }
 
@@ -268,6 +311,14 @@ func (m *MockPostgresRepo) GetActiveWebhooks() ([]models.OutboundWebhook, error)
 	return args.Get(0).([]models.OutboundWebhook), args.Error(1)
 }
 
+func (m *MockPostgresRepo) GetWebhookByID(id int) (*models.OutboundWebhook, error) {
+	args := m.Called(id)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*models.OutboundWebhook), args.Error(1)
+}
+
 func (m *MockPostgresRepo) GetAuditLogs(limit int) ([]models.AuditLog, error) {
 	args := m.Called(limit)
 	return args.Get(0).([]models.AuditLog), args.Error(1)
@@ -348,6 +399,31 @@ func (m *MockPostgresRepo) CreatePersistentBlock(ip string, entry models.IPEntry
 
 func (m *MockPostgresRepo) DeletePersistentBlock(ip string) error {
 	args := m.Called(ip)
+	return args.Error(0)
+}
+
+func (m *MockPostgresRepo) GetActiveExternalSources() ([]models.ExternalSource, error) {
+	args := m.Called()
+	return args.Get(0).([]models.ExternalSource), args.Error(1)
+}
+
+func (m *MockPostgresRepo) GetAllExternalSources() ([]models.ExternalSource, error) {
+	args := m.Called()
+	return args.Get(0).([]models.ExternalSource), args.Error(1)
+}
+
+func (m *MockPostgresRepo) UpdateExternalSource(src models.ExternalSource) error {
+	args := m.Called(src)
+	return args.Error(0)
+}
+
+func (m *MockPostgresRepo) CreateExternalSource(src models.ExternalSource) error {
+	args := m.Called(src)
+	return args.Error(0)
+}
+
+func (m *MockPostgresRepo) DeleteExternalSource(id int) error {
+	args := m.Called(id)
 	return args.Error(0)
 }
 

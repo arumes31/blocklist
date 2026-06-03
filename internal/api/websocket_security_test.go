@@ -13,7 +13,7 @@ func TestWebSocket_CheckOrigin(t *testing.T) {
 	cfg := &config.Config{
 		TrustedProxies: "1.1.1.1,2.2.2.0/24",
 	}
-	h := NewAPIHandler(HandlerOptions{Config: cfg})
+	h := NewAPIHandler(&HandlerOptions{Config: cfg})
 
 	tests := []struct {
 		name         string

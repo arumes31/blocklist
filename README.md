@@ -47,17 +47,39 @@ graph LR
 - **Bulk Operations**: Multi-select interface for batch unblocking and management.
 - **Security Hardening**: DOM-based XSS mitigation with robust HTML escaping, safe toast notifications using textContent, restricted slice memory allocation size validation, session invalidation on permission changes, and mandatory 2FA setup.
 - **Continuous Analysis**: Integrated **CodeQL** and **Gosec** for automated vulnerability detection and static analysis.
+- **Excluded List & Wildcard FQDNs**: Automated protection for critical targets. Supports background resolution, wildcard patterns, and **External Dynamic Sources** (e.g. M365, AWS) with auto-refresh.
 - **Interactive API Docs**: Embedded **API Reference** via RapiDoc/Scalar at `/docs`.
 - **GeoIP Enrichment**: Automated ASN, Country, and City detection for all entries.
 - **Observability**: Prometheus metrics for latency and operations, protected by IP-based ACL.
 - **Hardened Deployment**: Non-root Docker images based on Alpine 3.21 with conditional `:latest` tagging.
+
+## 🛡️ Whitelist vs. Excluded List
+
+While both lists prevent an IP from being listed in the active blocklist, they serve distinct architectural purposes:
+
+### **Whitelist (Access Control)**
+*   **Purpose**: To explicitly grant access to the application itself and other **internal/protected resources**.
+*   **Scope**: Whitelisted IPs are considered "Trusted".
+*   **Behavior**: Prevents an IP from being blocked **AND** provides an identity/access signal for integration with other systems.
+*   **Usage**: Use this for your own office IPs, VPN gateways, or known safe customer IPs that need consistent access.
+
+### **Excluded List (Target Protection)**
+*   **Purpose**: To prevent **accidental blocking** of critical infrastructure or targets, regardless of their reputation.
+*   **Scope**: Excluded entities are "untouchable".
+*   **Behavior**: Only prevents the target from being blocked. It does **not** grant any special access or trust status.
+*   **Advanced Features**:
+    *   **External Dynamic Sources**: Subscribe to official IP/CIDR lists (e.g. [Microsoft 365](https://learn.microsoft.com/en-us/microsoft-365/enterprise/urls-and-ip-address-ranges), AWS, Cloudflare). Refreshes every 6 hours with failure fallback. Entries auto-expire after 24 hours if not refreshed.
+    *   **Proactive Alerting**: Optionally trigger **Webhook** or **Mail** alerts whenever an excluded resource is attempted to be blocked.
+    *   **FQDN Support**: Add `api.service.com` to prevent blocking any IP it currently resolves to.
+    *   **Wildcard FQDNs**: Support for `*.google.com` using Forward-Confirmed Reverse DNS (FCrDNS).
+*   **Usage**: Use this for critical third-party APIs (e.g., Stripe, AWS), search engine crawlers, or large CDN subnets where you want to ensure connectivity is never severed.
 
 ## Project Structure
 - `cmd/server`: Go web server entry point, migrations, and static/template assets.
 - `internal/api`: HTTP handlers, middlewares (Auth, RBAC, Metrics), and WebSocket hub.
 - `internal/metrics`: Prometheus metrics definitions.
 - `internal/repository`: Redis and PostgreSQL data access layers.
-- `internal/service`: Core business logic (Auth, IP management, GeoIP, Webhooks).
+- `internal/service`: Core business logic (Auth, IP management, GeoIP, Webhooks, Dynamic Sources).
 
 ## API Endpoints
 
@@ -80,11 +102,7 @@ graph LR
 - **`GET /api/v1/ips_list`**: Simple JSON array of all blocked IP addresses.
 - **`GET /api/v1/raw`**: Plain-text list of blocked IPs.
 - **`GET /api/v1/whitelists`**: Authenticated JSON list of all whitelisted IPs with metadata.
-    - **Bearer Example**: `curl -H "Authorization: Bearer YOUR_TOKEN" http://localhost:5000/api/v1/whitelists`
-    - **Basic Auth Example**: `curl -u admin:password http://localhost:5000/api/v1/whitelists`
 - **`GET /api/v1/whitelists-raw`**: Authenticated plain-text, newline-separated list of whitelisted IPs.
-    - **Bearer Example**: `curl -H "Authorization: Bearer YOUR_TOKEN" http://localhost:5000/api/v1/whitelists-raw`
-    - **Basic Auth Example**: `curl -u admin:password http://localhost:5000/api/v1/whitelists-raw`
 - **`GET /api/v1/ips/export`**: Export data in CSV or NDJSON format (Requires `export_data` permission and sudo).
 - **`GET /api/v1/stats`**: Aggregate statistics including top countries, ASNs, and reasons.
 
@@ -121,7 +139,7 @@ graph LR
 The platform uses a detailed permission system for administrators:
 - **Monitoring**: `view_ips`, `view_stats`, `view_audit_logs`
 - **Enforcement**: `block_ips`, `unblock_ips`, `manage_whitelist`, `whitelist_ips`
-- **System**: `manage_webhooks`, `manage_api_tokens`, `manage_admins`
+- **System**: `manage_webhooks`, `manage_api_tokens`, `manage_admins`, `manage_excluded`
 - **Utility**: `export_data`
 
 ## Configuration
@@ -136,51 +154,28 @@ The application is configured via environment variables:
 | `REDIS_PORT` | Redis server port | `6379` |
 | `REDIS_PASSWORD` | Redis password | (empty) |
 | `REDIS_DB` | Redis database for IP storage | `0` |
-| `REDIS_LIM_DB` | Redis database for rate limiting | `1` |
 | `POSTGRES_URL` | PostgreSQL connection string | `postgres://...` |
-| `POSTGRES_READ_URL` | PostgreSQL connection string for read-only operations | (same as `POSTGRES_URL`) |
 | `GUIAdmin` | Primary administrator username | `admin` |
 | `GUIPassword` | Primary administrator password | (empty) |
-| `GUIToken` | Primary administrator 2FA seed (optional) | (empty) |
-| `DISABLE_GUIADMIN_LOGIN` | Disable login for the default admin user | `false` |
 | `LOGWEB` | Enable verbose web logging (debug level) | `false` |
 | `BLOCKED_RANGES` | Comma-separated list of subnets to whitelist | (empty) |
-| `GEOIPUPDATE_ACCOUNT_ID` | MaxMind Account ID | (empty) |
 | `GEOIPUPDATE_LICENSE_KEY` | MaxMind License Key | (empty) |
-| `TRUSTED_PROXIES` | Comma-separated list of trusted proxy IPs | `127.0.0.1` |
-| `USE_CLOUDFLARE` | Enable Cloudflare specific header handling | `false` |
-| `COOKIE_SECURE` | Force session cookies to be `Secure` (requires HTTPS) | `false` |
-| `COOKIE_SAMESITE_STRICT` | Set session cookie SameSite policy to `Strict` | `false` |
-| `FORCE_HTTPS` | Redirect HTTP to HTTPS | `false` |
-| `RUN_WORKER_IN_PROCESS` | Run background workers within the server process | `true` |
 | `ENABLE_OUTBOUND_WEBHOOKS` | Master switch for outbound notifications | `false` |
+| `SMTP_HOST` | SMTP server for alerts | `""` |
+| `SMTP_PORT` | SMTP port | `587` |
+| `SMTP_USER` | SMTP username | `""` |
+| `SMTP_PASS` | SMTP password | `""` |
+| `SMTP_FROM` | Sender address for alerts | `""` |
+| `SMTP_TO` | Recipient address for alerts | `""` |
 | `AUDIT_LOG_LIMIT_PER_IP` | Max audit trail entries kept per IP | `100` |
 | `LOG_RETENTION_MONTHS` | Number of months to retain logs | `6` |
-| `RATE_LIMIT` | Global API rate limit (requests) | `500` |
-| `RATE_PERIOD` | Rate limit window (seconds) | `30` |
-| `RATE_LIMIT_LOGIN` | Rate limit for login attempts | `10` |
-| `RATE_LIMIT_WEBHOOK` | Rate limit for incoming webhooks | `100` |
-| `METRICS_ALLOWED_IPS` | IPs allowed to access Prometheus metrics | `127.0.0.1` |
-
-> [!IMPORTANT]
-> **Secure Session Management**: If session authentication is enabled, ensure the application is served over HTTPS. Use `COOKIE_SECURE=true` if TLS is terminated at a reverse proxy. Setting `COOKIE_SAMESITE_STRICT=true` is recommended for maximum security unless it interferes with cross-origin dashboard embeds.
 
 ## Testing
 Comprehensive unit, functional, and integration tests using `miniredis` and `testcontainers-go`.
 ```bash
 # Run all tests
 go test ./...
-
-# Run unit/functional tests only (fast)
-go test -short ./...
 ```
-
-## GitHub Repository Settings
-**About:**
-Hardened Go-based IP Blocklist manager with GeoIP (ASN/Country), real-time WebSocket dashboard, RBAC, and automated webhooks.
-
-**Topics:**
-`golang` `security` `blocklist` `firewall-automation` `geoip` `prometheus` `websockets` `rbac` `docker-hardened`
 
 ## License
 MIT

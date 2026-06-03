@@ -2,7 +2,6 @@ package repository
 
 import (
 	"blocklist/internal/models"
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,8 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/jmoiron/sqlx"
 	zlog "github.com/rs/zerolog/log"
 )
@@ -229,6 +226,15 @@ func (p *PostgresRepository) GetActiveWebhooks() ([]models.OutboundWebhook, erro
 	return webhooks, err
 }
 
+func (p *PostgresRepository) GetWebhookByID(id int) (*models.OutboundWebhook, error) {
+	var webhook models.OutboundWebhook
+	err := p.readDb.Get(&webhook, "SELECT id, url, events, secret, geo_filter, active, created_at FROM outbound_webhooks WHERE id = $1 AND active = TRUE", id)
+	if err != nil {
+		return nil, err
+	}
+	return &webhook, nil
+}
+
 func (p *PostgresRepository) LogWebhookDelivery(logEntry models.WebhookLog) error {
 	_, err := p.db.NamedExec("INSERT INTO webhook_logs (webhook_id, event, payload, status_code, response_body, error, attempt) VALUES (:webhook_id, :event, :payload, :status_code, :response_body, :error, :attempt)", logEntry)
 	return err
@@ -404,43 +410,33 @@ func (p *PostgresRepository) BulkCreatePersistentBlocks(ips []string, entries []
 		return fmt.Errorf("length mismatch: ips (%d) != entries (%d)", len(ips), len(entries))
 	}
 
-	ctx := context.Background()
-	conn, err := p.db.Conn(ctx)
-	if err != nil {
-		return err
+	timestamps := make([]string, len(ips))
+	reasons := make([]string, len(ips))
+	addedBySlices := make([]string, len(ips))
+	geoJSONs := make([][]byte, len(ips))
+
+	for i := range ips {
+		timestamps[i] = entries[i].Timestamp
+		reasons[i] = entries[i].Reason
+		addedBySlices[i] = entries[i].AddedBy
+		geo, err := json.Marshal(entries[i].Geolocation)
+		if err != nil {
+			return err
+		}
+		geoJSONs[i] = geo
 	}
-	defer func() { _ = conn.Close() }()
 
-	err = conn.Raw(func(driverConn any) error {
-		stdlibConn, ok := driverConn.(*stdlib.Conn)
-		if !ok {
-			return errors.New("failed to get pgx connection")
-		}
-		pgxConn := stdlibConn.Conn()
+	query := `
+		INSERT INTO persistent_blocks (ip, timestamp, reason, added_by, geo_json)
+		SELECT * FROM unnest($1::text[], $2::timestamp[], $3::text[], $4::text[], $5::jsonb[])
+		ON CONFLICT (ip) DO UPDATE SET
+			timestamp = EXCLUDED.timestamp,
+			reason = EXCLUDED.reason,
+			added_by = EXCLUDED.added_by,
+			geo_json = EXCLUDED.geo_json
+	`
 
-		batch := &pgx.Batch{}
-		query := "INSERT INTO persistent_blocks (ip, timestamp, reason, added_by, geo_json) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (ip) DO UPDATE SET timestamp = $2, reason = $3, added_by = $4, geo_json = $5"
-
-		for i, ip := range ips {
-			geoJSON, err := json.Marshal(entries[i].Geolocation)
-			if err != nil {
-				return err
-			}
-			batch.Queue(query, ip, entries[i].Timestamp, entries[i].Reason, entries[i].AddedBy, geoJSON)
-		}
-
-		br := pgxConn.SendBatch(ctx, batch)
-		defer func() { _ = br.Close() }()
-
-		for range ips {
-			_, err := br.Exec()
-			if err != nil {
-				return err
-			}
-		}
-		return nil
-	})
-
+	_, err := p.db.Exec(query, ips, timestamps, reasons, addedBySlices, geoJSONs)
 	return err
 }
 
@@ -462,56 +458,67 @@ func (p *PostgresRepository) BulkLogAction(actor, action string, ips []string, r
 		return nil
 	}
 
-	ctx := context.Background()
-	conn, err := p.db.Conn(ctx)
+	// Bulk insert using unnest
+	_, err := p.db.Exec(`
+		INSERT INTO audit_logs (actor, action, target, reason)
+		SELECT $1, $2, unnest($3::text[]), $4`,
+		actor, action, ips, reason)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = conn.Close() }()
 
-	err = conn.Raw(func(driverConn any) error {
-		stdlibConn, ok := driverConn.(*stdlib.Conn)
-		if !ok {
-			return errors.New("failed to get pgx connection")
-		}
-		pgxConn := stdlibConn.Conn()
+	if p.auditLogLimitPerIP > 0 {
+		// Bulk prune using a single query with row_number()
+		_, err = p.db.Exec(`
+			DELETE FROM audit_logs
+			WHERE (id, timestamp) IN (
+				SELECT id, timestamp
+				FROM (
+					SELECT id, timestamp,
+						   row_number() OVER (PARTITION BY target ORDER BY timestamp DESC, id DESC) as rn
+					FROM audit_logs
+					WHERE target = ANY($1)
+				) t
+				WHERE rn > $2
+			)`,
+			ips, p.auditLogLimitPerIP)
+	}
 
-		batch := &pgx.Batch{}
-		insertQuery := "INSERT INTO audit_logs (actor, action, target, reason) VALUES ($1, $2, $3, $4)"
-		deleteQuery := `
-			DELETE FROM audit_logs 
-			WHERE target = $1 
-			  AND id <= (
-				  SELECT id FROM audit_logs 
-				  WHERE target = $1 
-				  ORDER BY timestamp DESC, id DESC 
-				  OFFSET $2 LIMIT 1
-			  )`
+	return err
+}
 
-		for _, ip := range ips {
-			batch.Queue(insertQuery, actor, action, ip, reason)
-			if p.auditLogLimitPerIP > 0 {
-				batch.Queue(deleteQuery, ip, p.auditLogLimitPerIP)
-			}
-		}
+func (p *PostgresRepository) GetActiveExternalSources() ([]models.ExternalSource, error) {
+	var sources []models.ExternalSource
+	err := p.db.Select(&sources, "SELECT * FROM external_sources WHERE is_active = TRUE")
+	return sources, err
+}
 
-		br := pgxConn.SendBatch(ctx, batch)
-		defer func() { _ = br.Close() }()
+func (p *PostgresRepository) GetAllExternalSources() ([]models.ExternalSource, error) {
+	var sources []models.ExternalSource
+	err := p.db.Select(&sources, "SELECT * FROM external_sources ORDER BY id DESC")
+	return sources, err
+}
 
-		expectedExecs := len(ips)
-		if p.auditLogLimitPerIP > 0 {
-			expectedExecs *= 2
-		}
+func (p *PostgresRepository) UpdateExternalSource(src models.ExternalSource) error {
+	_, err := p.db.Exec(`UPDATE external_sources SET 
+		failure_count = $1, 
+		last_refresh_ts = $2, 
+		last_error = $3, 
+		is_active = $4 
+		WHERE id = $5`,
+		src.FailureCount, src.LastRefreshTS, src.LastError, src.IsActive, src.ID)
+	return err
+}
 
-		for i := 0; i < expectedExecs; i++ {
-			_, err := br.Exec()
-			if err != nil {
-				return err
-			}
-		}
-		return nil
-	})
+func (p *PostgresRepository) CreateExternalSource(src models.ExternalSource) error {
+	_, err := p.db.Exec(`INSERT INTO external_sources (name, url, source_type, refresh_interval_hours) 
+		VALUES ($1, $2, $3, $4)`,
+		src.Name, src.URL, src.SourceType, src.RefreshIntervalHours)
+	return err
+}
 
+func (p *PostgresRepository) DeleteExternalSource(id int) error {
+	_, err := p.db.Exec("DELETE FROM external_sources WHERE id = $1", id)
 	return err
 }
 

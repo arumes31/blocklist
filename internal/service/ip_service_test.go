@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -232,6 +233,128 @@ func TestIPService_PaginationCursorOutOfRange_NoPanic(t *testing.T) {
 			t.Errorf("cursor %q: expected 0 items on empty set, got %d", cursor, len(items))
 		}
 	}
+}
+
+func TestIPService_ExcludedList(t *testing.T) {
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("failed to start miniredis: %v", err)
+	}
+	defer mr.Close()
+
+	port, _ := strconv.Atoi(mr.Port())
+	rRepo := repository.NewRedisRepository(mr.Host(), port, "", 0)
+	svc := NewIPService(&config.Config{}, rRepo, nil)
+	ctx := context.Background()
+
+	t.Run("classifyExclusionType", func(t *testing.T) {
+		cases := map[string]string{
+			"1.2.3.4":         "ip",
+			"10.0.0.0/8":      "cidr",
+			"api.example.com": "fqdn",
+			"2001:db8::1":     "ip",
+		}
+		for in, want := range cases {
+			if got := classifyExclusionType(in); got != want {
+				t.Errorf("classifyExclusionType(%q) = %q, want %q", in, got, want)
+			}
+		}
+	})
+
+	t.Run("ExactIP_CannotBeBlocked", func(t *testing.T) {
+		if err := svc.AddExcluded(ctx, "8.8.8.8", "trusted DNS", "admin", "", false); err != nil {
+			t.Fatalf("AddExcluded failed: %v", err)
+		}
+		if !svc.IsExcluded("8.8.8.8") {
+			t.Error("expected 8.8.8.8 to be excluded")
+		}
+		if svc.IsValidIP("8.8.8.8") {
+			t.Error("expected 8.8.8.8 to be invalid to block (excluded)")
+		}
+		if _, err := svc.BlockIP(ctx, "8.8.8.8", "test", "admin", "127.0.0.1", false, time.Hour); err == nil {
+			t.Error("expected BlockIP to fail for an excluded IP")
+		}
+	})
+
+	t.Run("CIDR_CoversContainedIP", func(t *testing.T) {
+		if err := svc.AddExcluded(ctx, "192.168.0.0/16", "internal", "admin", "", false); err != nil {
+			t.Fatalf("AddExcluded CIDR failed: %v", err)
+		}
+		if !svc.IsExcluded("192.168.42.7") {
+			t.Error("expected 192.168.42.7 to be excluded by 192.168.0.0/16")
+		}
+		if svc.IsExcluded("172.16.0.1") {
+			t.Error("did not expect 172.16.0.1 to be excluded")
+		}
+	})
+
+	t.Run("ExpiredEntry_IsIgnoredAndRemoved", func(t *testing.T) {
+		past := time.Now().Add(-1 * time.Hour).Format(time.RFC3339)
+		if err := svc.AddExcluded(ctx, "9.9.9.9", "temp", "admin", past, false); err != nil {
+			t.Fatalf("AddExcluded with expiry failed: %v", err)
+		}
+		if svc.IsExcluded("9.9.9.9") {
+			t.Error("expected expired exclusion to be ignored")
+		}
+		// Lazy cleanup should have removed it from Redis.
+		if mr.HGet("ips_webhook2_excluded", "9.9.9.9") != "" {
+			t.Error("expected expired exclusion to be removed from redis")
+		}
+	})
+
+	t.Run("Remove", func(t *testing.T) {
+		if err := svc.RemoveExcluded(ctx, "8.8.8.8", "admin"); err != nil {
+			t.Fatalf("RemoveExcluded failed: %v", err)
+		}
+		if svc.IsExcluded("8.8.8.8") {
+			t.Error("expected 8.8.8.8 to no longer be excluded after removal")
+		}
+	})
+
+	t.Run("WildcardMatching", func(t *testing.T) {
+		// This test is limited because we can't easily mock net.DefaultResolver for FCrDNS
+		// without substantial refactoring. We verify that classifyExclusionType and AddExcluded
+		// handle the pattern correctly.
+		val := "*.google.com"
+		if err := svc.AddExcluded(ctx, val, "google", "admin", "", false); err != nil {
+			t.Fatalf("AddExcluded failed for wildcard: %v", err)
+		}
+
+		entries, _ := rRepo.GetExcludedEntries()
+		if e, ok := entries[val]; !ok || e.Type != "wildcard" {
+			t.Errorf("expected wildcard entry, got type %q", e.Type)
+		}
+	})
+
+	t.Run("Conflicts", func(t *testing.T) {
+		_ = rRepo.BlockIP("1.2.3.4", models.IPEntry{Reason: "blocked"})
+		svc.syncBloomFilter()
+
+		warns := svc.ExclusionConflicts(ctx, "1.2.3.4")
+		found := false
+		for _, w := range warns {
+			if strings.Contains(w, "currently blocked") {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Error("expected conflict warning for blocked IP")
+		}
+
+		_ = svc.AddExcluded(ctx, "10.0.0.0/8", "internal", "admin", "", false)
+		warns = svc.ExclusionConflicts(ctx, "10.1.2.3")
+		found = false
+		for _, w := range warns {
+			if strings.Contains(w, "covered by excluded subnet") {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Error("expected conflict warning for subnet overlap")
+		}
+	})
 }
 
 func TestIPService_IsBlocked_LazyCleanup(t *testing.T) {

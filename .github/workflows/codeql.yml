@@ -25,14 +25,13 @@ jobs:
 
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
 
     # Setup Go to ensure the environment is ready for compilation-based analysis
     - name: Set up Go
-      uses: actions/setup-go@v5
+      uses: actions/setup-go@v6
       with:
-        go-version: '1.26.3'
-        cache: true
+        go-version: '1.26.4'
 
     # Initialize CodeQL. If this fails with ECONNRESET locally, consider using --toolcache in act.
     - name: Initialize CodeQL

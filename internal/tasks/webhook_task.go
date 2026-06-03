@@ -2,7 +2,9 @@ package tasks
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -25,7 +27,7 @@ const (
 
 // WebhookRepository defines the database operations needed for webhook tasks.
 type WebhookRepository interface {
-	GetActiveWebhooks() ([]models.OutboundWebhook, error)
+	GetWebhookByID(id int) (*models.OutboundWebhook, error)
 	LogWebhookDelivery(logEntry models.WebhookLog) error
 }
 
@@ -99,23 +101,15 @@ func (h *WebhookTaskHandler) ProcessTask(ctx context.Context, t *asynq.Task) err
 	// Let's rely on the payload having enough info if we trust the enqueuer, OR add the method.
 	// Let's add GetWebhookByID to PostgresRepository.
 
-	// Temporarily: we will fetch all active and find ours.
-	webhooks, err := h.repo.GetActiveWebhooks()
+	webhook, err := h.repo.GetWebhookByID(p.WebhookID)
 	if err != nil {
-		return fmt.Errorf("failed to fetch webhooks: %v", err)
-	}
-
-	var webhook *models.OutboundWebhook
-	for _, wh := range webhooks {
-		if wh.ID == p.WebhookID {
-			webhook = &wh
-			break
+		// A "not found" result means the webhook was deleted or deactivated while
+		// queued; that is permanent, so do not retry. Any other error (e.g. a
+		// transient DB failure) should be surfaced so Asynq retries.
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
 		}
-	}
-
-	if webhook == nil {
-		// Webhook no longer active or deleted
-		return nil // Do not retry
+		return fmt.Errorf("fetch webhook %d: %w", p.WebhookID, err)
 	}
 
 	if err := security.IsSafeURL(webhook.URL); err != nil {

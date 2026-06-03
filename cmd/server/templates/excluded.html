@@ -1,0 +1,563 @@
+<!-- excluded.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Excluded List Management</title>
+    <link rel="stylesheet" href="/cd/flag-icon.min.css">
+    <link rel="icon" type="image/x-icon" href="/cd/favicon-color.png" />
+    <style nonce="{{ .nonce }}">
+        :root {
+            --primary-red: #ff0000;
+            --dark-red: #8b0000;
+            --vibrant-red: #ff4d4d;
+            --glass-bg: rgba(20, 20, 20, 0.85);
+            --border-red: rgba(255, 0, 0, 0.3);
+            --secondary-color: #b3b3b3;
+            --success-color: #28a745;
+            --danger-color: #dc3545;
+        }
+        body {
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            background-color: #000;
+            color: #fff;
+        }
+        .header-container {
+            background: var(--glass-bg);
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 12px rgba(255,0,0,0.15);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            backdrop-filter: blur(8px);
+            border-bottom: 1px solid var(--border-red);
+        }
+        .header-container h2 {
+            margin: 0;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            color: #fff;
+        }
+        .header-container img { height: 40px; filter: drop-shadow(0 0 6px rgba(255,0,0,0.4)); }
+
+        .main-content { padding: 2rem; }
+
+        .btn {
+            padding: 0.6rem 1.2rem;
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(255,255,255,0.05);
+            color: #fff;
+            box-shadow: 0 0 10px rgba(255,0,0,0.08);
+        }
+        .btn-danger { background: linear-gradient(45deg, var(--dark-red), var(--primary-red)); border-color: var(--border-red); }
+        .btn-success { background: rgba(40, 167, 69, 0.2); }
+        .btn-dark { background: rgba(255,255,255,0.08); }
+        .btn:hover { transform: translateY(-1px); box-shadow: 0 0 16px rgba(255,0,0,0.2); }
+
+        .filter-input {
+            padding: 0.8rem 1rem;
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 8px;
+            font-size: 1rem;
+            background: rgba(255,255,255,0.05);
+            color: #fff;
+            outline: none;
+        }
+        .filter-input:focus { border-color: var(--primary-red); box-shadow: 0 0 0 2px rgba(255,0,0,0.2); }
+        select.filter-input { appearance: auto; }
+        select.filter-input option { background: #1a1a1a; color: #fff; padding: 4px 8px; }
+        select.filter-input option:hover, select.filter-input option:checked { background: var(--dark-red); color: #fff; }
+
+        .table-card {
+            background: rgba(20,20,20,0.85);
+            border: 1px solid var(--border-red);
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+            backdrop-filter: blur(8px);
+        }
+        table { border-collapse: collapse; width: 100%; color: #fff; }
+        th, td { text-align: left; padding: 0.75rem; border-bottom: 1px solid rgba(255,255,255,0.06); }
+        th {
+            background-color: rgba(255,255,255,0.04);
+            font-weight: 600;
+            color: var(--secondary-color);
+            text-transform: uppercase;
+            font-size: 0.85rem;
+            letter-spacing: 0.05em;
+        }
+        tr:hover { background-color: rgba(255,255,255,0.02); }
+
+        .type-badge {
+            display: inline-block;
+            padding: 0.15rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .type-ip { background: rgba(52, 152, 219, 0.2); color: #5dade2; }
+        .type-cidr { background: rgba(155, 89, 182, 0.2); color: #bb8fce; }
+        .type-fqdn { background: rgba(241, 196, 15, 0.18); color: #f1c40f; }
+        .type-wildcard { background: rgba(230, 126, 34, 0.2); color: #e67e22; }
+
+        .resolved-ips {
+            font-size: 0.75rem;
+            color: #888;
+            margin-top: 0.3rem;
+            display: block;
+            max-width: 300px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .resolve-err { color: var(--vibrant-red); font-size: 0.7rem; }
+
+        /* Modal / Dialog for conflicts */
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.85);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 3000;
+            backdrop-filter: blur(4px);
+        }
+        .modal-card {
+            background: #1a1a1a;
+            border: 1px solid var(--border-red);
+            border-radius: 12px;
+            padding: 2rem;
+            max-width: 500px;
+            width: 90%;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+        }
+        .modal-card h3 { margin-top: 0; color: var(--vibrant-red); }
+        .warning-list {
+            background: rgba(255,0,0,0.05);
+            border-radius: 6px;
+            padding: 1rem;
+            margin: 1rem 0;
+            font-size: 0.9rem;
+            color: #ccc;
+        }
+        .warning-item { margin-bottom: 0.5rem; display: flex; gap: 10px; }
+        .warning-item:before { content: "⚠️"; }
+
+        /* Toast Notifications */
+        #toast-container {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 2000;
+        }
+        .toast {
+            background: #333;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            margin-top: 10px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            animation: slideIn 0.3s ease-out;
+            transition: opacity 0.5s ease;
+        }
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        .toast.success { border-left: 4px solid var(--success-color); }
+        .toast.danger { border-left: 4px solid var(--danger-color); }
+    </style>
+</head>
+<body>
+    <div id="toast-container"></div>
+
+    <div id="conflictModal" class="modal-overlay">
+        <div class="modal-card">
+            <h3>Potential Conflict Detected</h3>
+            <div id="conflictWarnings" class="warning-list"></div>
+            <p style="font-size: 0.9rem; color: #888;">Do you want to proceed and add this exclusion anyway?</p>
+            <div style="display: flex; gap: 10px; margin-top: 1.5rem;">
+                <button class="btn btn-danger" style="flex: 1;" onclick="addExcluded(true)">Proceed</button>
+                <button class="btn btn-dark" style="flex: 1;" onclick="closeModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="header-container">
+        <div style="display: flex; align-items: center; gap: 2rem;">
+            <a href="/dashboard"><img src="/cd/logo.png" alt="Logo"></a>
+            <h2>Excluded List</h2>
+        </div>
+        <div style="display: flex; align-items: center; gap: 1rem;">
+            <div style="text-align: right; margin-right: 1rem;">
+                <div style="font-weight: 700; color: var(--vibrant-red);">Total Entries: {{ len .excluded_items }}</div>
+            </div>
+            <a href="/dashboard" class="btn btn-dark" style="min-width: 150px;">Back to Dashboard</a>
+            <a href="/whitelist" class="btn btn-dark" style="min-width: 120px;">Whitelist</a>
+            {{ if or (eq .username .admin_username) (contains .permissions "manage_admins") }}
+            <a href="/admin_management" class="btn btn-dark" style="min-width: 120px;">Admins</a>
+            {{ end }}
+            <a href="/logout" class="btn" style="background: rgba(255,255,255,0.08);">Logout</a>
+        </div>
+    </div>
+
+    <div class="main-content">
+        <p style="color: var(--secondary-color); max-width: 900px;">
+            Entries on the excluded list can <strong>never be blocked</strong> &mdash; not via the GUI, bulk actions, or webhooks.
+            Add a single <strong>IP</strong>, a <strong>CIDR subnet</strong> (e.g. <code>10.0.0.0/8</code>), or an
+            <strong>FQDN</strong> (e.g. <code>api.example.com</code>). FQDNs are resolved automatically; wildcards like <code>*.google.com</code>
+            are supported using forward-confirmed reverse DNS. Resolutions are refreshed periodically. Expiry defaults to <strong>Never</strong>.
+            <br><br>
+            <span style="color: var(--vibrant-red); font-weight: 600;">Pro-tip:</span> Enable <strong>Alert on attempt</strong> to receive notifications
+            via <a href="/settings" style="color: var(--vibrant-red);">Outbound Webhooks</a> (using the <code>excluded_block_attempt</code> event) or 
+            <strong>Mail alerts</strong> whenever a system or user tries to block an excluded target.
+        </p>
+
+        <div class="table-card" style="padding: 1.5rem; margin-bottom: 2rem; display: flex; gap: 10px; align-items: center; justify-content: center; flex-wrap: wrap;">
+            <input type="text" id="excludedValue" class="filter-input" style="flex: 1; max-width: 300px;" placeholder="IP, subnet, or FQDN">
+            <input type="text" id="excludedReason" class="filter-input" style="flex: 1; max-width: 400px;" placeholder="Description / reason">
+            <select id="expiryType" class="filter-input" style="max-width: 140px;" onchange="toggleExpiryInput()">
+                <option value="never">Never</option>
+                <option value="custom">Custom</option>
+            </select>
+            <input type="datetime-local" id="expiryDate" class="filter-input" style="max-width: 220px; display: none;">
+            
+            <label style="display: flex; align-items: center; gap: 8px; font-size: 0.9rem; cursor: pointer; color: var(--secondary-color); user-select: none;">
+                <input type="checkbox" id="alertEnabled" style="width: 18px; height: 18px; accent-color: var(--primary-red);">
+                Alert on attempt
+            </label>
+
+            <button class="btn btn-danger" onclick="addExcluded()">Add to Excluded</button>
+        </div>
+
+        <div style="margin-bottom: 1.5rem;">
+            <input type="text" id="filterInput" class="filter-input" style="width: 100%; box-sizing: border-box;" onkeyup="filterTable()" placeholder="Search by value, type, added by, or reason...">
+        </div>
+
+        <div class="table-card">
+            <table id="excludedTable">
+                <thead>
+                    <tr>
+                        <th>Value</th>
+                        <th>Type</th>
+                        <th>Added By</th>
+                        <th>Description</th>
+                        <th>Alerts</th>
+                        <th>Expires In</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{ range $value, $data := .excluded_items }}
+                        <tr>
+                            <td>
+                                <div style="font-family: monospace; font-weight: 600;">{{ $value }}</div>
+                                {{ if or (eq $data.Type "fqdn") (eq $data.Type "wildcard") }}
+                                    {{ if $data.ResolvedIPs }}
+                                        <span class="resolved-ips" title="{{ range $idx, $ip := $data.ResolvedIPs }}{{ if $idx }}, {{ end }}{{ $ip }}{{ end }}">
+                                            Resolves: {{ range $idx, $ip := $data.ResolvedIPs }}{{ if $idx }}, {{ end }}{{ $ip }}{{ end }}
+                                        </span>
+                                    {{ end }}
+                                    {{ if $data.ResolveError }}
+                                        <div class="resolve-err">⚠️ {{ $data.ResolveError }}</div>
+                                    {{ end }}
+                                    {{ if $data.ResolvedAt }}
+                                        <div style="font-size: 0.65rem; color: #555;">Refreshed: {{ $data.ResolvedAt }}</div>
+                                    {{ end }}
+                                {{ end }}
+                            </td>
+                            <td><span class="type-badge type-{{ if $data.Type }}{{ $data.Type }}{{ else }}ip{{ end }}">{{ if $data.Type }}{{ $data.Type }}{{ else }}ip{{ end }}</span></td>
+                            <td>{{ if $data.AddedBy }}{{ $data.AddedBy }}{{ else }}Unknown{{ end }}</td>
+                            <td><span style="font-size: 0.9rem; color: var(--secondary-color);">{{ if $data.Reason }}{{ $data.Reason }}{{ else }}No description{{ end }}</span></td>
+                            <td>
+                                {{ if $data.AlertEnabled }}
+                                    <span style="color: var(--primary-red); font-weight: bold; font-size: 0.75rem;">ENABLED</span>
+                                {{ else }}
+                                    <span style="color: #444; font-size: 0.75rem;">OFF</span>
+                                {{ end }}
+                            </td>
+                            <td>{{ $data.ExpiresIn }}</td>
+                            <td><button class="btn btn-success" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;" onclick="removeExcluded('{{ $value }}')">Delete</button></td>
+                        </tr>
+                    {{ end }}
+                    {{ range $subnet := .blocked_subnets }}
+                        <tr>
+                            <td style="font-family: monospace; font-weight: 600;">{{ $subnet }}</td>
+                            <td><span class="type-badge type-cidr">cidr</span></td>
+                            <td>System</td>
+                            <td><span style="font-size: 0.9rem; color: var(--secondary-color);">Blocked range (ENV)</span></td>
+                            <td>-</td>
+                            <td>NEVER</td>
+                            <td style="color: var(--danger-color); font-weight: bold; font-size: 0.8rem;">PROTECTED</td>
+                        </tr>
+                    {{ end }}
+                </tbody>
+            </table>
+        </div>
+
+        <div style="margin-top: 4rem; margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center;">
+            <h3 style="margin: 0; color: #fff;">External Dynamic Sources</h3>
+            <button class="btn btn-dark" onclick="refreshExternalSources()">Refresh All Now</button>
+        </div>
+        <p style="color: var(--secondary-color); font-size: 0.9rem; margin-bottom: 1.5rem;">
+            Subscribe to third-party IP/CIDR lists (e.g. Microsoft 365, AWS) to keep them automatically protected.
+            Refreshed every 6 hours with automatic failure fallback.
+        </p>
+
+        <div class="table-card" style="padding: 1.5rem; margin-bottom: 2rem; display: flex; gap: 10px; align-items: center; justify-content: center; flex-wrap: wrap;">
+            <input type="text" id="sourceName" class="filter-input" style="flex: 1; max-width: 250px;" placeholder="Source Name (e.g. M365)">
+            <input type="text" id="sourceURL" class="filter-input" style="flex: 2; max-width: 500px;" placeholder="URL (JSON or Plaintext list)">
+            <select id="sourceType" class="filter-input" style="max-width: 180px;">
+                <option value="plaintext">Plaintext / CIDR List</option>
+                <option value="microsoft_365">Microsoft 365 JSON</option>
+                <option value="json_cidr">JSON Array of CIDRs</option>
+            </select>
+            <button class="btn btn-danger" onclick="addExternalSource()">Add Source</button>
+        </div>
+
+        <div class="table-card">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Source Name</th>
+                        <th>Type</th>
+                        <th>URL</th>
+                        <th>Last Refresh</th>
+                        <th>Status</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{ range $src := .external_sources }}
+                        <tr>
+                            <td><strong>{{ $src.Name }}</strong></td>
+                            <td><span class="type-badge" style="background: rgba(255,255,255,0.1);">{{ $src.SourceType }}</span></td>
+                            <td style="font-size: 0.8rem; color: var(--secondary-color); max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{{ $src.URL }}">
+                                {{ $src.URL }}
+                            </td>
+                            <td>{{ if $src.LastRefreshTS }}{{ $src.LastRefreshTS }}{{ else }}Never{{ end }}</td>
+                            <td>
+                                {{ if $src.LastError }}
+                                    <span style="color: var(--vibrant-red); font-size: 0.8rem;" title="{{ $src.LastError }}">⚠️ Error ({{ $src.FailureCount }}/6)</span>
+                                {{ else if $src.LastRefreshTS }}
+                                    <span style="color: var(--success-color); font-size: 0.8rem;">● Active</span>
+                                {{ else }}
+                                    <span style="color: #666; font-size: 0.8rem;">Pending...</span>
+                                {{ end }}
+                            </td>
+                            <td><button class="btn btn-dark" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;" onclick="deleteExternalSource({{ $src.ID }})">Remove</button></td>
+                        </tr>
+                    {{ end }}
+                    {{ if not .external_sources }}
+                        <tr><td colspan="6" style="text-align: center; color: #555; padding: 2rem;">No external sources configured.</td></tr>
+                    {{ end }}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script nonce="{{ .nonce }}">
+        let pendingExclusion = null;
+
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.innerHTML = `<span>${message}</span>`;
+            container.appendChild(toast);
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                setTimeout(() => toast.remove(), 500);
+            }, 4000);
+        }
+
+        function toggleExpiryInput() {
+            var type = document.getElementById('expiryType').value;
+            document.getElementById('expiryDate').style.display = type === 'custom' ? '' : 'none';
+        }
+
+        function closeModal() {
+            document.getElementById('conflictModal').style.display = 'none';
+            pendingExclusion = null;
+        }
+
+        function addExcluded(confirmed = false) {
+            var value = document.getElementById('excludedValue').value.trim();
+            var reason = document.getElementById('excludedReason').value.trim();
+            var alertEnabled = document.getElementById('alertEnabled').checked;
+
+            if (!value) {
+                showToast('Please enter an IP, subnet, or FQDN.', 'danger');
+                return;
+            }
+            if (!reason) {
+                showToast('Description is required.', 'danger');
+                return;
+            }
+
+            var expiresAt = '';
+            var expiryType = document.getElementById('expiryType').value;
+            if (expiryType === 'custom') {
+                var dateVal = document.getElementById('expiryDate').value;
+                if (!dateVal) {
+                    showToast('Please select an expiry date.', 'danger');
+                    return;
+                }
+                expiresAt = new Date(dateVal).toISOString();
+            }
+
+            fetch('/add_excluded', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    'value': value,
+                    'reason': reason,
+                    'expires_at': expiresAt,
+                    'confirm': confirmed,
+                    'alert_enabled': alertEnabled
+                })
+            })
+            .then(response => {
+                if (response.status === 409) { // Conflict
+                    return response.json().then(data => {
+                        const list = document.getElementById('conflictWarnings');
+                        list.innerHTML = '';
+                        data.warnings.forEach(w => {
+                            const item = document.createElement('div');
+                            item.className = 'warning-item';
+                            item.innerText = w;
+                            list.appendChild(item);
+                        });
+                        document.getElementById('conflictModal').style.display = 'flex';
+                        throw new Error('conflict');
+                    });
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.status === 'success') {
+                    showToast('Added to excluded list!', 'success');
+                    closeModal();
+                    setTimeout(() => location.reload(), 1000);
+                } else if (data.error) {
+                    showToast(data.error, 'danger');
+                }
+            })
+            .catch(err => {
+                if (err.message !== 'conflict') {
+                    showToast('Failed to add entry!', 'danger');
+                }
+            });
+        }
+
+        function removeExcluded(value) {
+            if (confirm('Remove this entry from the excluded list?')) {
+                fetch('/remove_excluded', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 'value': value })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        showToast('Entry removed from excluded list!', 'success');
+                        setTimeout(() => location.reload(), 1000);
+                    } else {
+                        showToast('Failed to remove entry!', 'danger');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    showToast('Failed to remove entry!', 'danger');
+                });
+            }
+        }
+
+        function addExternalSource() {
+            const name = document.getElementById('sourceName').value.trim();
+            const url = document.getElementById('sourceURL').value.trim();
+            const type = document.getElementById('sourceType').value;
+
+            if (!name || !url) {
+                showToast('Name and URL are required.', 'danger');
+                return;
+            }
+
+            fetch('/api/v1/excluded/sources', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, url, source_type: type })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    showToast('External source added!', 'success');
+                    setTimeout(() => location.reload(), 1000);
+                } else {
+                    showToast(data.error || 'Failed to add source!', 'danger');
+                }
+            })
+            .catch(() => showToast('Failed to add source!', 'danger'));
+        }
+
+        function deleteExternalSource(id) {
+            if (confirm('Remove this external source? This will not remove existing entries fetched from it.')) {
+                fetch(`/api/v1/excluded/sources/${id}`, { method: 'DELETE' })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        showToast('Source removed!', 'success');
+                        setTimeout(() => location.reload(), 1000);
+                    }
+                });
+            }
+        }
+
+        function refreshExternalSources() {
+            showToast('Refresh started...', 'success');
+            fetch('/api/v1/excluded/sources/refresh', { method: 'POST' })
+            .then(() => setTimeout(() => location.reload(), 2000));
+        }
+
+        function filterTable() {
+            var input = document.getElementById("filterInput");
+            var filter = input.value.toUpperCase();
+            var table = document.getElementById("excludedTable");
+            var tr = table.getElementsByTagName("tr");
+            for (var i = 1; i < tr.length; i++) {
+                var tds = tr[i].getElementsByTagName("td");
+                var match = false;
+                // Search columns: 0 (Value), 1 (Type), 2 (Added By), 3 (Description)
+                [0, 1, 2, 3].forEach(function(col) {
+                    if (tds[col]) {
+                        var txt = (tds[col].textContent || tds[col].innerText).toUpperCase();
+                        if (txt.indexOf(filter) > -1) match = true;
+                    }
+                });
+                tr[i].style.display = match ? "" : "none";
+            }
+        }
+    </script>
+</body>
+</html>

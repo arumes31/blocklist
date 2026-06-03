@@ -258,6 +258,34 @@ func (r *RedisRepository) RemoveFromWhitelist(ip string) error {
 	return r.client.HDel(r.ctx, "ips_webhook2_whitelist", ip).Err()
 }
 
+func (r *RedisRepository) GetExcludedEntries() (map[string]models.ExcludedEntry, error) {
+	res, err := r.client.HGetAll(r.ctx, "ips_webhook2_excluded").Result()
+	if err != nil {
+		return nil, err
+	}
+
+	entries := make(map[string]models.ExcludedEntry)
+	for k, v := range res {
+		var entry models.ExcludedEntry
+		if err := json.Unmarshal([]byte(v), &entry); err == nil {
+			entries[k] = entry
+		}
+	}
+	return entries, nil
+}
+
+func (r *RedisRepository) AddExcluded(value string, entry models.ExcludedEntry) error {
+	data, err := json.Marshal(entry)
+	if err != nil {
+		return err
+	}
+	return r.client.HSet(r.ctx, "ips_webhook2_excluded", value, data).Err()
+}
+
+func (r *RedisRepository) RemoveExcluded(value string) error {
+	return r.client.HDel(r.ctx, "ips_webhook2_excluded", value).Err()
+}
+
 func (r *RedisRepository) IndexWebhookHit(ts time.Time) error {
 	return r.client.ZAdd(r.ctx, "webhooks_by_ts", redis.Z{Score: float64(ts.Unix()), Member: fmt.Sprintf("%d-%d", ts.UnixNano(), ts.Unix())}).Err()
 }
