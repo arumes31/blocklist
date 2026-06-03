@@ -27,7 +27,7 @@
 **Prevention:** Use strict allow-list validation (e.g., regex `^[a-zA-Z0-9-]+$`) for externally controlled strings used in path construction or URL parameters. Apply `filepath.Base` as a defense-in-depth measure to ensure only the final component of a path is used.
 
 
-## 2026-06-02 - Directory Traversal via URL Construction in GeoIP Download
-**Vulnerability:** Directory traversal via unescaped URL construction in GeoIP database download.
-**Learning:** `filepath.Base` and `filepath.Clean` are useful for local file paths but do not protect against URL-based traversal or injection if the input is directly formatted into a URL string.
-**Prevention:** Always use `url.PathEscape` for dynamic segments in URLs and maintain strict input validation (regex) as the first line of defense.
+## 2026-06-03 - [CRLF Injection in Email Alerts]
+**Vulnerability:** CRLF Injection (CWE-93) / Email Content Injection
+**Learning:** Interpolating untrusted data (like IP addresses, block reasons, or actor names) directly into email headers or the `Subject` line without sanitization allows an attacker to inject CR/LF characters. This can be used to terminate headers prematurely and inject additional headers (e.g., `Bcc`, `Reply-To`) or even replace the entire email body.
+**Prevention:** Always sanitize any input destined for a network header or a delimited protocol. Using a `strings.NewReplacer("\r", "", "\n", "")` to strip line-break characters ensures that untrusted content remains confined to its intended field and cannot "break out" to inject new headers.

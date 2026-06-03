@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"html"
 	"net"
 	"net/netip"
 	"os"
@@ -152,11 +153,21 @@ func (s *IPService) triggerExcludedAlert(ctx context.Context, ip string, reason 
 
 	// 2. Email Alert
 	if s.mailService != nil {
-		// Strip CR/LF from every untrusted field before it is interpolated into
-		// the message. The literal "\n" line breaks in the template stay intact,
-		// so the email remains multi-line, but an attacker-supplied value (e.g. a
-		// block reason) cannot inject email headers (CRLF injection).
-		subject := fmt.Sprintf("[ALERT] Block Attempted on Excluded Resource: %s", sanitizeHeader(ip))
+		// Sanitize untrusted fields for email-safe text output:
+		//  1) strip CR/LF (sanitizeHeader) to prevent header-style injection
+		//     primitives, while the literal "\n" line breaks in the template stay
+		//     intact so the email remains multi-line.
+		//  2) HTML-escape so any markup/script-like payload is neutralized if the
+		//     message is rendered by a downstream client/parser.
+		safeIP := html.EscapeString(sanitizeHeader(ip))
+		safeAddedBy := html.EscapeString(sanitizeHeader(addedBy))
+		safeActorIP := html.EscapeString(sanitizeHeader(actorIP))
+		safeReason := html.EscapeString(sanitizeHeader(reason))
+		safeEntryValue := html.EscapeString(sanitizeHeader(entry.Value))
+		safeEntryType := html.EscapeString(sanitizeHeader(entry.Type))
+		safeEntryReason := html.EscapeString(sanitizeHeader(entry.Reason))
+
+		subject := fmt.Sprintf("[ALERT] Block Attempted on Excluded Resource: %s", safeIP)
 		body := fmt.Sprintf("A block was attempted but prevented for an excluded resource.\n\n"+
 			"Target IP: %s\n"+
 			"Attempted By: %s\n"+
@@ -165,9 +176,9 @@ func (s *IPService) triggerExcludedAlert(ctx context.Context, ip string, reason 
 			"Exclusion Rule: %s (%s)\n"+
 			"Rule Reason: %s\n"+
 			"Timestamp: %s\n",
-			sanitizeHeader(ip), sanitizeHeader(addedBy), sanitizeHeader(actorIP),
-			sanitizeHeader(reason), sanitizeHeader(entry.Value), sanitizeHeader(entry.Type),
-			sanitizeHeader(entry.Reason), time.Now().UTC().Format(time.RFC3339))
+			safeIP, safeAddedBy, safeActorIP, safeReason,
+			safeEntryValue, safeEntryType, safeEntryReason,
+			time.Now().UTC().Format(time.RFC3339))
 		_ = s.mailService.SendAlert(subject, body)
 	}
 }
