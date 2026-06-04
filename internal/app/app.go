@@ -26,17 +26,17 @@ type SchedulerI interface {
 }
 
 type App struct {
-	Config         *config.Config
-	RedisRepo      *repository.RedisRepository
-	PgRepo         *repository.PostgresRepository
-	AuthService    *service.AuthService
+	Config                *config.Config
+	RedisRepo             *repository.RedisRepository
+	PgRepo                *repository.PostgresRepository
+	AuthService           *service.AuthService
 	IPService             *service.IPService
 	WebhookService        *service.WebhookService
 	MailService           *service.MailService
 	ExternalSourceService *service.ExternalSourceService
 	GeoUpdater            GeoUpdaterI
-	Scheduler      SchedulerI
-	RedisOpts      asynq.RedisClientOpt
+	Scheduler             SchedulerI
+	RedisOpts             asynq.RedisClientOpt
 }
 
 func Bootstrap(cfg *config.Config) (*App, error) {

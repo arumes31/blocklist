@@ -34,7 +34,6 @@ type HandlerOptions struct {
 	WebhookLimiter        gin.HandlerFunc
 }
 
-
 type APIHandler struct {
 	cfg                   *config.Config
 	redisRepo             RedisRepositoryProvider
@@ -405,4 +404,3 @@ func (h *APIHandler) Ready(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "READY", "dependencies": dep})
 }
-
