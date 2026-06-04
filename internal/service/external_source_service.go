@@ -4,7 +4,7 @@ import (
 	"blocklist/internal/models"
 	"blocklist/internal/repository"
 	"context"
-	"encoding/json"
+	"github.com/bytedance/sonic"
 	"fmt"
 	"io"
 	"net/http"
@@ -127,7 +127,7 @@ func (s *ExternalSourceService) parseMicrosoft365(body []byte) ([]string, error)
 		IPs []string `json:"ips"`
 	}
 	var entries []msEntry
-	if err := json.Unmarshal(body, &entries); err != nil {
+	if err := sonic.Unmarshal(body, &entries); err != nil {
 		return nil, err
 	}
 
@@ -140,7 +140,7 @@ func (s *ExternalSourceService) parseMicrosoft365(body []byte) ([]string, error)
 
 func (s *ExternalSourceService) parseJSONCIDR(body []byte) ([]string, error) {
 	var ips []string
-	if err := json.Unmarshal(body, &ips); err != nil {
+	if err := sonic.Unmarshal(body, &ips); err != nil {
 		return nil, err
 	}
 	return ips, nil
