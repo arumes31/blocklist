@@ -253,8 +253,11 @@ func (p *PostgresRepository) DeleteOutboundWebhook(id int) error {
 }
 
 func (p *PostgresRepository) CreatePersistentBlock(ip string, entry models.IPEntry) error {
-	geoJSON, _ := json.Marshal(entry.Geolocation)
-	_, err := p.db.Exec("INSERT INTO persistent_blocks (ip, timestamp, reason, added_by, geo_json) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (ip) DO UPDATE SET timestamp = $2, reason = $3, added_by = $4, geo_json = $5",
+	geoJSON, err := json.Marshal(entry.Geolocation)
+	if err != nil {
+		return err
+	}
+	_, err = p.db.Exec("INSERT INTO persistent_blocks (ip, timestamp, reason, added_by, geo_json) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (ip) DO UPDATE SET timestamp = $2, reason = $3, added_by = $4, geo_json = $5",
 		ip, entry.Timestamp, entry.Reason, entry.AddedBy, geoJSON)
 	return err
 }
@@ -404,6 +407,7 @@ func (p *PostgresRepository) GetIPHistory(ip string) ([]models.AuditLog, error) 
 	return logs, err
 }
 
+// BulkCreatePersistentBlocks inserts multiple persistent blocks in a single query to avoid N+1 issues.
 func (p *PostgresRepository) BulkCreatePersistentBlocks(ips []string, entries []models.IPEntry) error {
 	if len(ips) == 0 {
 		return nil
@@ -430,7 +434,7 @@ func (p *PostgresRepository) BulkCreatePersistentBlocks(ips []string, entries []
 
 	query := `
 		INSERT INTO persistent_blocks (ip, timestamp, reason, added_by, geo_json)
-		SELECT * FROM unnest($1::text[], $2::timestamp[], $3::text[], $4::text[], $5::jsonb[])
+		SELECT * FROM unnest($1::text[], $2::timestamp[], $3::text[], $4::text[], $5::jsonb[]) AS t(ip, timestamp, reason, added_by, geo_json)
 		ON CONFLICT (ip) DO UPDATE SET
 			timestamp = EXCLUDED.timestamp,
 			reason = EXCLUDED.reason,

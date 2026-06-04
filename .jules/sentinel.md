@@ -31,3 +31,7 @@
 **Vulnerability:** CRLF Injection (CWE-93) / Email Content Injection
 **Learning:** Interpolating untrusted data (like IP addresses, block reasons, or actor names) directly into email headers or the `Subject` line without sanitization allows an attacker to inject CR/LF characters. This can be used to terminate headers prematurely and inject additional headers (e.g., `Bcc`, `Reply-To`) or even replace the entire email body.
 **Prevention:** Always sanitize any input destined for a network header or a delimited protocol. Using a `strings.NewReplacer("\r", "", "\n", "")` to strip line-break characters ensures that untrusted content remains confined to its intended field and cannot "break out" to inject new headers.
+## 2026-06-04 - [security improvement] Improved Error Handling in Persistent Block Creation
+**Vulnerability:** Silent failure during GeoData serialization.
+**Learning:** Ignored errors in data serialization (json.Marshal) can lead to database inconsistencies or partial data loss without alerting the system, potentially bypassing auditing or geolocation-based security filters.
+**Prevention:** Always capture and handle error returns from serialization functions, especially when the resulting data is a critical component of a database record.
