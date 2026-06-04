@@ -34,7 +34,6 @@ type HandlerOptions struct {
 	WebhookLimiter        gin.HandlerFunc
 }
 
-
 type APIHandler struct {
 	cfg                   *config.Config
 	redisRepo             RedisRepositoryProvider
@@ -393,7 +392,7 @@ func (h *APIHandler) getCombinedIPs() map[string]models.IPEntry {
 	return ips
 }
 
-// Stats returns hour/day/total and top countries.
+// Ready returns the application status and dependency health.
 func (h *APIHandler) Ready(c *gin.Context) {
 	dep := map[string]interface{}{"redis": true, "geoip": "unknown"}
 	if h.redisRepo != nil {
@@ -405,4 +404,3 @@ func (h *APIHandler) Ready(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "READY", "dependencies": dep})
 }
-

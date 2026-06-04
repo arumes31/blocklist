@@ -50,11 +50,11 @@ func TestIsSafeURL(t *testing.T) {
 	}{
 		{"https://google.com", false},
 		{"http://example.com", false},
-		{"http://8.8.8.8", false},  // Public IP literal
+		{"http://8.8.8.8", false}, // Public IP literal
 		{"http://127.0.0.1", true},
 		{"http://[::1]", true},
 		{"http://10.0.0.1", true},
-		{"http://localhost", true}, // Resolves to 127.0.0.1/::1
+		{"http://localhost", true},                    // Resolves to 127.0.0.1/::1
 		{"http://nonexistent.example.invalid", false}, // DNS fail, but no internal IP found
 		{"ftp://example.com", true},
 		{"javascript:alert(1)", true},
@@ -65,7 +65,7 @@ func TestIsSafeURL(t *testing.T) {
 		{"http://example.com:abc", true}, // url.ParseRequestURI error: invalid port
 		{"http://[::1", true},            // url.ParseRequestURI error: missing ']' in address
 		{"http://user:pass@host/path?query#fragment", false},
-		{"HTTP://EXAMPLE.COM", false},    // Case-insensitive scheme check
+		{"HTTP://EXAMPLE.COM", false}, // Case-insensitive scheme check
 	}
 
 	for _, tt := range tests {
