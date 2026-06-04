@@ -16,7 +16,7 @@ func TestAPIHandler_PrometheusMiddleware(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	h, _, _, _, _ := setupTest()
 
-	t.Run("tracked path", func(t *testing.T) {
+	t.Run("tracked route pattern", func(t *testing.T) {
 		r := gin.New()
 		r.Use(h.PrometheusMiddleware())
 		r.GET("/test/:id", func(c *gin.Context) {
@@ -33,10 +33,9 @@ func TestAPIHandler_PrometheusMiddleware(t *testing.T) {
 		assert.Equal(t, initialCount+1, testutil.CollectAndCount(metrics.MetricHttpDuration), "Metric should be incremented")
 	})
 
-	t.Run("unknown path", func(t *testing.T) {
+	t.Run("unknown route", func(t *testing.T) {
 		r := gin.New()
 		r.Use(h.PrometheusMiddleware())
-		// No route defined, so FullPath() should be empty in the middleware
 
 		initialCount := testutil.CollectAndCount(metrics.MetricHttpDuration)
 
@@ -45,6 +44,23 @@ func TestAPIHandler_PrometheusMiddleware(t *testing.T) {
 		r.ServeHTTP(w, req)
 
 		assert.Equal(t, http.StatusNotFound, w.Code)
-		assert.Equal(t, initialCount+1, testutil.CollectAndCount(metrics.MetricHttpDuration), "Metric should be incremented even for 404")
+		assert.Equal(t, initialCount+1, testutil.CollectAndCount(metrics.MetricHttpDuration), "Metric should be incremented for unknown routes")
+	})
+
+	t.Run("aborted request", func(t *testing.T) {
+		r := gin.New()
+		r.Use(h.PrometheusMiddleware())
+		r.GET("/aborted", func(c *gin.Context) {
+			c.AbortWithStatus(http.StatusForbidden)
+		})
+
+		initialCount := testutil.CollectAndCount(metrics.MetricHttpDuration)
+
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("GET", "/aborted", nil)
+		r.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusForbidden, w.Code)
+		assert.Equal(t, initialCount+1, testutil.CollectAndCount(metrics.MetricHttpDuration))
 	})
 }
