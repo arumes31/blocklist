@@ -1560,7 +1560,7 @@ func (s *IPService) AddExcluded(ctx context.Context, value string, reason string
 		s.fqdnCacheMu.Unlock()
 	}
 
-	if s.pgRepo != nil {
+	if s.pgRepo != nil && username != "system" {
 		_ = s.pgRepo.LogAction(username, "EXCLUDE", value, reason)
 	}
 	return s.redisRepo.AddExcluded(value, entry)

@@ -286,6 +286,11 @@ func (m *MockPostgresRepo) LogAction(username, action, target, details string) e
 	return args.Error(0)
 }
 
+func (m *MockPostgresRepo) BulkLogAction(actor, action string, ips []string, reason string) error {
+	args := m.Called(actor, action, ips, reason)
+	return args.Error(0)
+}
+
 func (m *MockPostgresRepo) UpdateAdminPassword(username, hash string) error {
 	args := m.Called(username, hash)
 	return args.Error(0)

@@ -77,6 +77,9 @@ func (s *ExternalSourceService) RefreshSource(ctx context.Context, src models.Ex
 	// We prefix the reason to identify these as coming from this source
 	reason := fmt.Sprintf("External Source: %s", src.Name)
 	expiresAt := time.Now().Add(24 * time.Hour).UTC().Format(time.RFC3339)
+	if s.pgRepo != nil {
+		_ = s.pgRepo.BulkLogAction("system", "EXCLUDE", ips, reason)
+	}
 	for _, ip := range ips {
 		_ = s.ipService.AddExcluded(ctx, ip, reason, "system", expiresAt, false)
 	}
