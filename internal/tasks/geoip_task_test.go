@@ -267,8 +267,14 @@ func TestGeoIPTaskHandler_ProcessTask_Traversal(t *testing.T) {
 
 	for _, input := range traversalInputs {
 		t.Run(input, func(t *testing.T) {
-			task, _ := NewGeoIPUpdateTask(input)
-			err := handler.ProcessTask(context.Background(), task)
+			task, err := NewGeoIPUpdateTask(input)
+			// Now NewGeoIPUpdateTask will return an error
+			if err != nil {
+				assert.Contains(t, err.Error(), "invalid edition")
+				return
+			}
+
+			err = handler.ProcessTask(context.Background(), task)
 			assert.Error(t, err, "Should fail for input: %s", input)
 			assert.Contains(t, err.Error(), "invalid edition", "Should return invalid edition error for: %s", input)
 		})
@@ -276,25 +282,16 @@ func TestGeoIPTaskHandler_ProcessTask_Traversal(t *testing.T) {
 }
 
 func TestGeoIPTaskHandler_Download_URL_Escaping(t *testing.T) {
-	var capturedPath string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		capturedPath = r.URL.RawPath
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write(createTestTarGz(t, "test.mmdb"))
-	}))
-	defer server.Close()
-
 	cfg := &config.Config{
 		GeoIPAccountID:  "test",
 		GeoIPLicenseKey: "test",
 	}
 	handler := NewGeoIPTaskHandler(cfg, nil)
-	// We expect the fix to use this as a format string
-	handler.testURL = server.URL + "/databases/%s/download"
 
 	edition := "../../traversal"
-	_ = handler.Download(edition)
+	err := handler.Download(edition)
 
-	// If properly escaped, it should contain %2F
-	assert.Contains(t, capturedPath, "..%2F..%2Ftraversal", "The edition parameter in the URL should be path-escaped")
+	// Now it should return an error because it fails validation
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid edition")
 }
