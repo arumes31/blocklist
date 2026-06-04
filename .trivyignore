@@ -1,0 +1,21 @@
+# Trivy vulnerability suppressions.
+#
+# Each entry must document WHY the finding is not applicable. Re-review on every
+# dependency bump and remove the entry once it can be resolved upstream.
+
+# CVE-2026-34040 — github.com/docker/docker (Moby authorization bypass)
+#
+# Not exploitable here and not fixable via a dependency bump:
+#   * docker/docker is a TEST-ONLY transitive dependency, pulled in by
+#     testcontainers-go (integration tests that only run under Docker and are
+#     skipped on the application build and on Windows). It is not part of the
+#     production blocklist-server binary.
+#   * The CVE is a Moby *daemon* authz-plugin bypass. This project never runs a
+#     docker daemon and uses no authz plugins; it only imports the client
+#     library transitively.
+#   * The fix (Moby 29.3.1) ships under the github.com/moby/moby module path.
+#     The legacy github.com/docker/docker import path tops out at
+#     v28.5.2+incompatible (no v29.x tag exists), and testcontainers-go v0.42.0
+#     (latest) still depends on the legacy path, so there is no version to
+#     bump to. Revisit when testcontainers-go migrates fully to moby/moby.
+CVE-2026-34040
