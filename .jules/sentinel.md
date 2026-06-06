@@ -31,3 +31,7 @@
 **Vulnerability:** CRLF Injection (CWE-93) / Email Content Injection
 **Learning:** Interpolating untrusted data (like IP addresses, block reasons, or actor names) directly into email headers or the `Subject` line without sanitization allows an attacker to inject CR/LF characters. This can be used to terminate headers prematurely and inject additional headers (e.g., `Bcc`, `Reply-To`) or even replace the entire email body.
 **Prevention:** Always sanitize any input destined for a network header or a delimited protocol. Using a `strings.NewReplacer("\r", "", "\n", "")` to strip line-break characters ensures that untrusted content remains confined to its intended field and cannot "break out" to inject new headers.
+## 2026-06-06 - Unbounded String Input via Form Parsing
+**Vulnerability:** HTTP POST endpoints utilizing `c.PostForm()` allowed unbounded string inputs, causing uncontrolled memory allocation per request. This exposes the application to Denial of Service (DoS) attacks via memory exhaustion (CWE-400).
+**Learning:** Functions like `c.PostForm` or manual JSON binding on unbounded strings implicitly trust client data lengths. While `c.ShouldBindJSON` provides some protection if the body is limited (e.g., via middleware), form fields individually extracted have no length cap unless checked explicitly.
+**Prevention:** Always implement explicit boundary checks (e.g., `len(str) > MAX_LENGTH`) immediately after extracting variables from HTTP requests. Apply limits based on data types (e.g., 255 for tokens, 2048 for texts/URLs).
