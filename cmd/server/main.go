@@ -146,7 +146,7 @@ func main() {
 func setupLogger(cfg *config.Config) {
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
 
-	censorRE := regexp.MustCompile(`(?i)(password|secret|token)(["':\s]+)([^"'\s,{}]+)`)
+	censorRE := regexp.MustCompile(`(?i)(password|secret|token)(["':\s=]*[:=][\s"':=]*|\s*["']\s*)([^"'\s,{}]+)`)
 	cw := &CensorWriter{
 		Writer: zerolog.ConsoleWriter{Out: os.Stderr},
 		re:     censorRE,

@@ -9,7 +9,7 @@ import (
 )
 
 func TestCensorWriter_Write(t *testing.T) {
-	censorRE := regexp.MustCompile(`(?i)(password|secret|token)(["':\s]+)([^"'\s,{}]+)`)
+	censorRE := regexp.MustCompile(`(?i)(password|secret|token)(["':\s=]*[:=][\s"':=]*|\s*["']\s*)([^"'\s,{}]+)`)
 
 	tests := []struct {
 		name     string
