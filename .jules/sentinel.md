@@ -31,3 +31,8 @@
 **Vulnerability:** CRLF Injection (CWE-93) / Email Content Injection
 **Learning:** Interpolating untrusted data (like IP addresses, block reasons, or actor names) directly into email headers or the `Subject` line without sanitization allows an attacker to inject CR/LF characters. This can be used to terminate headers prematurely and inject additional headers (e.g., `Bcc`, `Reply-To`) or even replace the entire email body.
 **Prevention:** Always sanitize any input destined for a network header or a delimited protocol. Using a `strings.NewReplacer("\r", "", "\n", "")` to strip line-break characters ensures that untrusted content remains confined to its intended field and cannot "break out" to inject new headers.
+
+## 2025-03-05 - [DOM-based XSS in Toast Notifications]
+**Vulnerability:** DOM-based Cross-Site Scripting (XSS) via `innerHTML` (CWE-79)
+**Learning:** The `showToast` function across multiple HTML templates (`admin_management.html`, `excluded.html`, `settings.html`, `whitelist.html`) dynamically constructed HTML using `toast.innerHTML = \`<span>${message}</span>\`;`. If the `message` contained untrusted data (like a failed API response reflecting user input), it could execute arbitrary JavaScript in the user's browser context.
+**Prevention:** Always use safe DOM manipulation methods. Instead of `innerHTML`, create elements dynamically (e.g., `document.createElement("span")`) and assign untrusted data to safe properties like `textContent` or `innerText`.
