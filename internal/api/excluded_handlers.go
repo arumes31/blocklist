@@ -145,6 +145,11 @@ func (h *APIHandler) AddExcluded(c *gin.Context) {
 		req.AlertEnabled, _ = strconv.ParseBool(c.PostForm("alert_enabled"))
 	}
 
+	if len(req.Value) > 2048 || len(req.IP) > 255 || len(req.Reason) > 2048 || len(req.Note) > 2048 || len(req.ExpiresAt) > 255 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Input fields exceed maximum length"})
+		return
+	}
+
 	value := strings.TrimSpace(req.Value)
 	if value == "" {
 		value = strings.TrimSpace(req.IP)
