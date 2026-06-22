@@ -304,6 +304,11 @@ func (h *APIHandler) AddWhitelist(c *gin.Context) {
 		req.ExpiresAt = c.PostForm("expires_at")
 	}
 
+	if len(req.IP) > 255 || len(req.Note) > 2048 || len(req.Reason) > 2048 || len(req.ExpiresAt) > 255 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Input length limit exceeded"})
+		return
+	}
+
 	// Map reason to note if needed, or vice-versa
 	note := req.Note
 	if note == "" {

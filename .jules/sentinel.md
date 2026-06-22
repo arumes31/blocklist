@@ -36,3 +36,8 @@
 **Vulnerability:** Directory Traversal (CWE-22)
 **Learning:** Even when inputs are escaped or sanitized with `filepath.Base`, the lack of strict validation for the core parameters used in URL and path construction can leave edge cases open. In this case, although `url.PathEscape` and `filepath.Base` were used, adding a strict regex validation at the entry point provides a much stronger security guarantee.
 **Prevention:** Implement strict allow-list validation (e.g., regex `^[a-zA-Z0-9-]+$`) for any externally influenced strings used in file system operations or as dynamic components of URLs. Apply this validation as early as possible (e.g., in the task constructor and the handler).
+
+## 2026-06-06 - Unbounded String Input via Form Parsing
+**Vulnerability:** HTTP POST endpoints utilizing `c.PostForm()` allowed unbounded string inputs, causing uncontrolled memory allocation per request. This exposes the application to Denial of Service (DoS) attacks via memory exhaustion (CWE-400).
+**Learning:** Functions like `c.PostForm` or manual JSON binding on unbounded strings implicitly trust client data lengths. While `c.ShouldBindJSON` provides some protection if the body is limited (e.g., via middleware), form fields individually extracted have no length cap unless checked explicitly.
+**Prevention:** Always implement explicit boundary checks (e.g., `len(str) > MAX_LENGTH`) immediately after extracting variables from HTTP requests. Apply limits based on data types (e.g., 255 for tokens, 2048 for texts/URLs).
