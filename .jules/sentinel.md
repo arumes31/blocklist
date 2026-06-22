@@ -31,3 +31,8 @@
 **Vulnerability:** CRLF Injection (CWE-93) / Email Content Injection
 **Learning:** Interpolating untrusted data (like IP addresses, block reasons, or actor names) directly into email headers or the `Subject` line without sanitization allows an attacker to inject CR/LF characters. This can be used to terminate headers prematurely and inject additional headers (e.g., `Bcc`, `Reply-To`) or even replace the entire email body.
 **Prevention:** Always sanitize any input destined for a network header or a delimited protocol. Using a `strings.NewReplacer("\r", "", "\n", "")` to strip line-break characters ensures that untrusted content remains confined to its intended field and cannot "break out" to inject new headers.
+
+## 2026-06-04 - [Directory Traversal in GeoIP Download]
+**Vulnerability:** Directory Traversal (CWE-22)
+**Learning:** Even when inputs are escaped or sanitized with `filepath.Base`, the lack of strict validation for the core parameters used in URL and path construction can leave edge cases open. In this case, although `url.PathEscape` and `filepath.Base` were used, adding a strict regex validation at the entry point provides a much stronger security guarantee.
+**Prevention:** Implement strict allow-list validation (e.g., regex `^[a-zA-Z0-9-]+$`) for any externally influenced strings used in file system operations or as dynamic components of URLs. Apply this validation as early as possible (e.g., in the task constructor and the handler).
