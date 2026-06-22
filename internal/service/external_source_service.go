@@ -77,14 +77,21 @@ func (s *ExternalSourceService) RefreshSource(ctx context.Context, src models.Ex
 	// We prefix the reason to identify these as coming from this source
 	reason := fmt.Sprintf("External Source: %s", src.Name)
 	expiresAt := time.Now().Add(24 * time.Hour).UTC().Format(time.RFC3339)
-	if s.pgRepo != nil {
-		_ = s.pgRepo.BulkLogAction("system", "EXCLUDE", ips, reason)
-	}
+	excluded := make([]string, 0, len(ips))
 	for _, ip := range ips {
-		_ = s.ipService.AddExcluded(ctx, ip, reason, "system", expiresAt, false)
+		if err := s.ipService.AddExcluded(ctx, ip, reason, "system", expiresAt, false); err != nil {
+			zlog.Warn().Err(err).Int("source_id", src.ID).Str("ip", ip).Msg("External source: failed to add excluded entry")
+			continue
+		}
+		excluded = append(excluded, ip)
+	}
+	// Only audit-log the entries that were actually persisted, so the log reflects
+	// the real exclusion state rather than the full input set.
+	if s.pgRepo != nil && len(excluded) > 0 {
+		_ = s.pgRepo.BulkLogAction("system", "EXCLUDE", excluded, reason)
 	}
 
-	zlog.Info().Int("source_id", src.ID).Int("count", len(ips)).Msg("Successfully refreshed external source")
+	zlog.Info().Int("source_id", src.ID).Int("count", len(excluded)).Msg("Successfully refreshed external source")
 	return nil
 }
 

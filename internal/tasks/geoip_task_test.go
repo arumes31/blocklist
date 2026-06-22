@@ -6,6 +6,7 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -284,6 +285,28 @@ func TestGeoIPTaskHandler_ProcessTask_Traversal(t *testing.T) {
 			assert.Contains(t, err.Error(), "invalid edition", "Should return invalid edition error for: %s", input)
 		})
 	}
+}
+
+// TestGeoIPTaskHandler_ProcessTask_InvalidEdition exercises the ProcessTask
+// handler's own edition validation by manually constructing a task whose payload
+// bypasses the NewGeoIPUpdateTask constructor check. This complements
+// TestGeoIPTaskHandler_ProcessTask_Traversal, which only reaches the constructor.
+func TestGeoIPTaskHandler_ProcessTask_InvalidEdition(t *testing.T) {
+	cfg := &config.Config{
+		GeoIPAccountID:  "test",
+		GeoIPLicenseKey: "test",
+	}
+	handler := NewGeoIPTaskHandler(cfg, nil)
+
+	payload, err := json.Marshal(GeoIPPayload{Edition: "../../etc/passwd"})
+	require.NoError(t, err)
+	task := asynq.NewTask(TypeGeoIPUpdate, payload)
+
+	err = handler.ProcessTask(context.Background(), task)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid edition")
+	// Permanent validation failures must not be retried.
+	assert.True(t, errors.Is(err, asynq.SkipRetry))
 }
 
 func TestGeoIPTaskHandler_Download_URL_Escaping(t *testing.T) {

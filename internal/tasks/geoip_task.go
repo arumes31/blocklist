@@ -68,7 +68,7 @@ func (h *GeoIPTaskHandler) ProcessTask(ctx context.Context, t *asynq.Task) error
 
 	// Validate edition string to prevent directory traversal
 	if !validEditionRegex.MatchString(p.Edition) {
-		return fmt.Errorf("invalid edition: %s", p.Edition)
+		return fmt.Errorf("invalid edition: %s: %w", p.Edition, asynq.SkipRetry)
 	}
 
 	if err := h.Download(p.Edition); err != nil {

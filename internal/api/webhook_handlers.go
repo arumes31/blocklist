@@ -44,7 +44,12 @@ func (h *APIHandler) parseWebhookRequest(c *gin.Context) (string, webhookRequest
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Bearer token required"})
 		return "", webhookRequest{}, "", false
 	}
-	username := usernameVal.(string)
+	username, ok := usernameVal.(string)
+	if !ok {
+		zlog.Error().Msg("Webhook: username in context is not a string")
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Bearer token required"})
+		return "", webhookRequest{}, "", false
+	}
 
 	var data webhookRequest
 	if err := c.ShouldBindJSON(&data); err != nil {
