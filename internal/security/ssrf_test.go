@@ -23,6 +23,12 @@ func TestIsInternalIP(t *testing.T) {
 		{"8.8.8.8", false},
 		{"1.1.1.1", false},
 		{"2001:4860:4860::8888", false},
+		// Additional cases for coverage and robustness
+		{"::ffff:127.0.0.1", true}, // IPv4-mapped loopback
+		{"::ffff:10.0.0.1", true},  // IPv4-mapped private
+		{"::ffff:8.8.8.8", false},  // IPv4-mapped public
+		{"fc00::1", true},          // ULA
+		{"fe80::1", true},          // Link-local unicast
 	}
 
 	for _, tt := range tests {
@@ -50,11 +56,11 @@ func TestIsSafeURL(t *testing.T) {
 	}{
 		{"https://google.com", false},
 		{"http://example.com", false},
-		{"http://8.8.8.8", false},  // Public IP literal
+		{"http://8.8.8.8", false}, // Public IP literal
 		{"http://127.0.0.1", true},
 		{"http://[::1]", true},
 		{"http://10.0.0.1", true},
-		{"http://localhost", true}, // Resolves to 127.0.0.1/::1
+		{"http://localhost", true},                    // Resolves to 127.0.0.1/::1
 		{"http://nonexistent.example.invalid", false}, // DNS fail, but no internal IP found
 		{"ftp://example.com", true},
 		{"javascript:alert(1)", true},
@@ -65,7 +71,12 @@ func TestIsSafeURL(t *testing.T) {
 		{"http://example.com:abc", true}, // url.ParseRequestURI error: invalid port
 		{"http://[::1", true},            // url.ParseRequestURI error: missing ']' in address
 		{"http://user:pass@host/path?query#fragment", false},
-		{"HTTP://EXAMPLE.COM", false},    // Case-insensitive scheme check
+		{"HTTP://EXAMPLE.COM", false}, // Case-insensitive scheme check
+		// Additional cases for coverage
+		{"http://[::ffff:127.0.0.1]", true},
+		{"https://[2001:4860:4860::8888]", false},
+		{"https://[fc00::1]", true},
+		{"http://127.0.0.1:8080", true}, // IP literal with port
 	}
 
 	for _, tt := range tests {
@@ -89,6 +100,12 @@ func TestSafeSocketControl(t *testing.T) {
 		{"tcp", "127.0.0.1:80", true},
 		{"tcp", "10.0.0.1:443", true},
 		{"tcp", "invalid-ip", true},
+		// Additional cases for coverage
+		{"tcp", "8.8.8.8", false},  // Address without port
+		{"tcp", "127.0.0.1", true}, // Address without port (internal)
+		{"tcp", "[::1]:80", true},  // IPv6 with brackets
+		{"tcp", "::1", true},       // IPv6 without brackets
+		{"tcp", "::ffff:127.0.0.1", true},
 	}
 
 	for _, tt := range tests {
