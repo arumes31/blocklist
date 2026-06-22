@@ -41,3 +41,8 @@
 **Vulnerability:** HTTP POST endpoints utilizing `c.PostForm()` allowed unbounded string inputs, causing uncontrolled memory allocation per request. This exposes the application to Denial of Service (DoS) attacks via memory exhaustion (CWE-400).
 **Learning:** Functions like `c.PostForm` or manual JSON binding on unbounded strings implicitly trust client data lengths. While `c.ShouldBindJSON` provides some protection if the body is limited (e.g., via middleware), form fields individually extracted have no length cap unless checked explicitly.
 **Prevention:** Always implement explicit boundary checks (e.g., `len(str) > MAX_LENGTH`) immediately after extracting variables from HTTP requests. Apply limits based on data types (e.g., 255 for tokens, 2048 for texts/URLs).
+
+## 2025-03-05 - [DOM-based XSS in Toast Notifications]
+**Vulnerability:** DOM-based Cross-Site Scripting (XSS) via `innerHTML` (CWE-79)
+**Learning:** The `showToast` function across multiple HTML templates (`admin_management.html`, `excluded.html`, `settings.html`, `whitelist.html`) dynamically constructed HTML using `toast.innerHTML = \`<span>${message}</span>\`;`. If the `message` contained untrusted data (like a failed API response reflecting user input), it could execute arbitrary JavaScript in the user's browser context.
+**Prevention:** Always use safe DOM manipulation methods. Instead of `innerHTML`, create elements dynamically (e.g., `document.createElement("span")`) and assign untrusted data to safe properties like `textContent` or `innerText`.
