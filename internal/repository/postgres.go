@@ -2,7 +2,7 @@ package repository
 
 import (
 	"blocklist/internal/models"
-	"encoding/json"
+	"github.com/bytedance/sonic"
 	"errors"
 	"fmt"
 	"strconv"
@@ -253,7 +253,7 @@ func (p *PostgresRepository) DeleteOutboundWebhook(id int) error {
 }
 
 func (p *PostgresRepository) CreatePersistentBlock(ip string, entry models.IPEntry) error {
-	geoJSON, _ := json.Marshal(entry.Geolocation)
+	geoJSON, _ := sonic.Marshal(entry.Geolocation)
 	_, err := p.db.Exec("INSERT INTO persistent_blocks (ip, timestamp, reason, added_by, geo_json) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (ip) DO UPDATE SET timestamp = $2, reason = $3, added_by = $4, geo_json = $5",
 		ip, entry.Timestamp, entry.Reason, entry.AddedBy, geoJSON)
 	return err
@@ -280,7 +280,7 @@ func (p *PostgresRepository) GetPersistentBlocks() (map[string]models.IPEntry, e
 	ips := make(map[string]models.IPEntry)
 	for _, r := range results {
 		var geo models.GeoData
-		if err := json.Unmarshal(r.GeoJSON, &geo); err != nil {
+		if err := sonic.Unmarshal(r.GeoJSON, &geo); err != nil {
 			continue
 		}
 		ips[r.IP] = models.IPEntry{
@@ -421,7 +421,7 @@ func (p *PostgresRepository) BulkCreatePersistentBlocks(ips []string, entries []
 		timestamps[i] = entries[i].Timestamp
 		reasons[i] = entries[i].Reason
 		addedBySlices[i] = entries[i].AddedBy
-		geo, err := json.Marshal(entries[i].Geolocation)
+		geo, err := sonic.Marshal(entries[i].Geolocation)
 		if err != nil {
 			return err
 		}

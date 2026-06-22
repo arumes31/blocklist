@@ -4,7 +4,7 @@ import (
 	"blocklist/internal/config"
 	"blocklist/internal/repository"
 	"context"
-	"encoding/json"
+	"github.com/bytedance/sonic"
 	"sync"
 	"time"
 
@@ -128,7 +128,7 @@ func (s *SchedulerService) CleanOldIPs(hashKey string) {
 			Timestamp string `json:"timestamp"`
 			ExpiresAt string `json:"expires_at"`
 		}
-		if err := json.Unmarshal([]byte(jsonStr), &entry); err != nil {
+		if err := sonic.UnmarshalString(jsonStr, &entry); err != nil {
 			continue
 		}
 
