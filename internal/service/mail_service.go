@@ -49,7 +49,6 @@ func deTaint(s string) string {
 	return string(out)
 }
 
-
 func (s *MailService) SendAlert(subject string, body string) error {
 	if s.cfg.SMTPHost == "" {
 		return nil // Not configured

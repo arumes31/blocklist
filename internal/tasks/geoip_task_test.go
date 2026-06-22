@@ -6,6 +6,7 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -18,7 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func createTestTarGz(t *testing.T, filename string) []byte {
+func createTestTarGz(t *testing.T, edition string, content string) []byte {
 	var buf bytes.Buffer
 	gw := gzip.NewWriter(&buf)
 	tw := tar.NewWriter(gw)
@@ -29,8 +30,8 @@ func createTestTarGz(t *testing.T, filename string) []byte {
 		name    string
 		content string
 	}{
-		{name: "GeoLite2-City_20240101/README.txt", content: "Copyright (c) 2024 MaxMind, Inc."},
-		{name: "GeoLite2-City_20240101/" + filename, content: "mock mmdb content"},
+		{name: edition + "_20240101/README.txt", content: "Copyright (c) 2024 MaxMind, Inc."},
+		{name: edition + "_20240101/" + edition + ".mmdb", content: content},
 	}
 
 	for _, f := range files {
@@ -101,7 +102,8 @@ func (m *mockIPService) ReloadReaders() {
 
 func TestGeoIPTaskHandler_ProcessTask_Success(t *testing.T) {
 	edition := "GeoLite2-City"
-	tarData := createTestTarGz(t, edition+".mmdb")
+	expectedContent := "mock mmdb content for success"
+	tarData := createTestTarGz(t, edition, expectedContent)
 
 	// Create a mock HTTP server that returns a valid tar.gz
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -137,9 +139,10 @@ func TestGeoIPTaskHandler_ProcessTask_Success(t *testing.T) {
 	assert.NoError(t, err)
 	assert.True(t, mockIP.reloadCalled)
 
-	// Verify file exists
-	_, err = os.Stat(dbPath)
+	// Verify file exists and has correct content
+	content, err := os.ReadFile(dbPath)
 	assert.NoError(t, err)
+	assert.Equal(t, expectedContent, string(content))
 }
 
 func TestGeoIPTaskHandler_ProcessTask_InvalidPayload(t *testing.T) {
@@ -202,7 +205,8 @@ func TestGeoIPTaskHandler_Download_HTTPError(t *testing.T) {
 
 func TestGeoIPTaskHandler_Download_ValidResponse(t *testing.T) {
 	edition := "GeoLite2-City"
-	tarData := createTestTarGz(t, edition+".mmdb")
+	expectedContent := "mock mmdb content for download"
+	tarData := createTestTarGz(t, edition, expectedContent)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -224,8 +228,10 @@ func TestGeoIPTaskHandler_Download_ValidResponse(t *testing.T) {
 	err := handler.Download(edition)
 	assert.NoError(t, err)
 
-	_, err = os.Stat(dbPath)
+	// Verify file exists and has correct content
+	content, err := os.ReadFile(dbPath)
 	assert.NoError(t, err)
+	assert.Equal(t, expectedContent, string(content))
 }
 
 func TestGeoIPTaskHandler_Download_NoMMDB(t *testing.T) {
@@ -267,34 +273,53 @@ func TestGeoIPTaskHandler_ProcessTask_Traversal(t *testing.T) {
 
 	for _, input := range traversalInputs {
 		t.Run(input, func(t *testing.T) {
-			task, _ := NewGeoIPUpdateTask(input)
-			err := handler.ProcessTask(context.Background(), task)
+			task, err := NewGeoIPUpdateTask(input)
+			// Now NewGeoIPUpdateTask will return an error
+			if err != nil {
+				assert.Contains(t, err.Error(), "invalid edition")
+				return
+			}
+
+			err = handler.ProcessTask(context.Background(), task)
 			assert.Error(t, err, "Should fail for input: %s", input)
 			assert.Contains(t, err.Error(), "invalid edition", "Should return invalid edition error for: %s", input)
 		})
 	}
 }
 
-func TestGeoIPTaskHandler_Download_URL_Escaping(t *testing.T) {
-	var capturedPath string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		capturedPath = r.URL.RawPath
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write(createTestTarGz(t, "test.mmdb"))
-	}))
-	defer server.Close()
-
+// TestGeoIPTaskHandler_ProcessTask_InvalidEdition exercises the ProcessTask
+// handler's own edition validation by manually constructing a task whose payload
+// bypasses the NewGeoIPUpdateTask constructor check. This complements
+// TestGeoIPTaskHandler_ProcessTask_Traversal, which only reaches the constructor.
+func TestGeoIPTaskHandler_ProcessTask_InvalidEdition(t *testing.T) {
 	cfg := &config.Config{
 		GeoIPAccountID:  "test",
 		GeoIPLicenseKey: "test",
 	}
 	handler := NewGeoIPTaskHandler(cfg, nil)
-	// We expect the fix to use this as a format string
-	handler.testURL = server.URL + "/databases/%s/download"
+
+	payload, err := json.Marshal(GeoIPPayload{Edition: "../../etc/passwd"})
+	require.NoError(t, err)
+	task := asynq.NewTask(TypeGeoIPUpdate, payload)
+
+	err = handler.ProcessTask(context.Background(), task)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid edition")
+	// Permanent validation failures must not be retried.
+	assert.True(t, errors.Is(err, asynq.SkipRetry))
+}
+
+func TestGeoIPTaskHandler_Download_URL_Escaping(t *testing.T) {
+	cfg := &config.Config{
+		GeoIPAccountID:  "test",
+		GeoIPLicenseKey: "test",
+	}
+	handler := NewGeoIPTaskHandler(cfg, nil)
 
 	edition := "../../traversal"
-	_ = handler.Download(edition)
+	err := handler.Download(edition)
 
-	// If properly escaped, it should contain %2F
-	assert.Contains(t, capturedPath, "..%2F..%2Ftraversal", "The edition parameter in the URL should be path-escaped")
+	// Now it should return an error because it fails validation
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid edition")
 }

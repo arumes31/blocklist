@@ -31,3 +31,33 @@
 **Vulnerability:** CRLF Injection (CWE-93) / Email Content Injection
 **Learning:** Interpolating untrusted data (like IP addresses, block reasons, or actor names) directly into email headers or the `Subject` line without sanitization allows an attacker to inject CR/LF characters. This can be used to terminate headers prematurely and inject additional headers (e.g., `Bcc`, `Reply-To`) or even replace the entire email body.
 **Prevention:** Always sanitize any input destined for a network header or a delimited protocol. Using a `strings.NewReplacer("\r", "", "\n", "")` to strip line-break characters ensures that untrusted content remains confined to its intended field and cannot "break out" to inject new headers.
+
+## 2026-06-04 - [Directory Traversal in GeoIP Download]
+**Vulnerability:** Directory Traversal (CWE-22)
+**Learning:** Even when inputs are escaped or sanitized with `filepath.Base`, the lack of strict validation for the core parameters used in URL and path construction can leave edge cases open. In this case, although `url.PathEscape` and `filepath.Base` were used, adding a strict regex validation at the entry point provides a much stronger security guarantee.
+**Prevention:** Implement strict allow-list validation (e.g., regex `^[a-zA-Z0-9-]+$`) for any externally influenced strings used in file system operations or as dynamic components of URLs. Apply this validation as early as possible (e.g., in the task constructor and the handler).
+
+## 2026-06-06 - Unbounded String Input via Form Parsing
+**Vulnerability:** HTTP POST endpoints utilizing `c.PostForm()` allowed unbounded string inputs, causing uncontrolled memory allocation per request. This exposes the application to Denial of Service (DoS) attacks via memory exhaustion (CWE-400).
+**Learning:** Functions like `c.PostForm` or manual JSON binding on unbounded strings implicitly trust client data lengths. While `c.ShouldBindJSON` provides some protection if the body is limited (e.g., via middleware), form fields individually extracted have no length cap unless checked explicitly.
+**Prevention:** Always implement explicit boundary checks (e.g., `len(str) > MAX_LENGTH`) immediately after extracting variables from HTTP requests. Apply limits based on data types (e.g., 255 for tokens, 2048 for texts/URLs).
+
+## 2025-03-05 - [DOM-based XSS in Toast Notifications]
+**Vulnerability:** DOM-based Cross-Site Scripting (XSS) via `innerHTML` (CWE-79)
+**Learning:** The `showToast` function across multiple HTML templates (`admin_management.html`, `excluded.html`, `settings.html`, `whitelist.html`) dynamically constructed HTML using `toast.innerHTML = \`<span>${message}</span>\`;`. If the `message` contained untrusted data (like a failed API response reflecting user input), it could execute arbitrary JavaScript in the user's browser context.
+**Prevention:** Always use safe DOM manipulation methods. Instead of `innerHTML`, create elements dynamically (e.g., `document.createElement("span")`) and assign untrusted data to safe properties like `textContent` or `innerText`.
+
+## 2026-06-04 - Fix potential panic in getCombinedIPs
+**Vulnerability:** Application panic (DoS) due to nil map assignment.
+**Learning:** Functions returning maps alongside errors might return a nil map on failure. Merging such results without initialization can cause runtime panics.
+**Prevention:** Always initialize map variables with `make()` or check for nil before assignment when receiving them from external dependencies or repositories.
+
+## 2026-06-04 - [security improvement] Improved Error Handling in Persistent Block Creation
+**Vulnerability:** Silent failure during GeoData serialization.
+**Learning:** Ignored errors in data serialization (json.Marshal) can lead to database inconsistencies or partial data loss without alerting the system, potentially bypassing auditing or geolocation-based security filters.
+**Prevention:** Always capture and handle error returns from serialization functions, especially when the resulting data is a critical component of a database record.
+
+## 2026-06-04 - [security improvement] Refactor long Webhook handler
+**Vulnerability:** Not a direct vulnerability, but overly long handlers increase cognitive load and the likelihood of security-critical logic (like permission checks or input validation) being overlooked or bypassed during future maintenance.
+**Learning:** Modularizing complex handlers into distinct "parse", "authorize", and "dispatch" phases clarifies the security boundaries and ensures that each step (authentication, authorization, validation) must succeed before any state-changing action is taken.
+**Prevention:** Regularly refactor handlers that exceed a reasonable length (e.g., 50 lines) into smaller, single-responsibility methods.

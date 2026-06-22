@@ -4,7 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
+	"github.com/bytedance/sonic"
 	"fmt"
 	"strconv"
 	"strings"
@@ -57,7 +57,7 @@ func (r *RedisRepository) GetBlockedIPs() (map[string]models.IPEntry, error) {
 	ips := make(map[string]models.IPEntry)
 	for k, v := range res {
 		var entry models.IPEntry
-		if err := json.Unmarshal([]byte(v), &entry); err == nil {
+		if err := sonic.UnmarshalString(v, &entry); err == nil {
 			ips[k] = entry
 		}
 	}
@@ -66,7 +66,7 @@ func (r *RedisRepository) GetBlockedIPs() (map[string]models.IPEntry, error) {
 
 func (r *RedisRepository) BlockIP(ip string, entry models.IPEntry) error {
 	defer r.trackDuration("BlockIP", time.Now())
-	data, err := json.Marshal(entry)
+	data, err := sonic.Marshal(entry)
 	if err != nil {
 		return err
 	}
@@ -81,7 +81,7 @@ func (r *RedisRepository) GetIPEntry(ip string) (*models.IPEntry, error) {
 		return nil, err
 	}
 	var e models.IPEntry
-	if err := json.Unmarshal([]byte(val), &e); err != nil {
+	if err := sonic.UnmarshalString(val, &e); err != nil {
 		return nil, err
 	}
 	return &e, nil
@@ -108,7 +108,7 @@ func (r *RedisRepository) GetIPEntries(ips []string) ([]*models.IPEntry, error) 
 			continue
 		}
 		var e models.IPEntry
-		if err := json.Unmarshal([]byte(strVal), &e); err == nil {
+		if err := sonic.UnmarshalString(strVal, &e); err == nil {
 			entries[i] = &e
 		}
 	}
@@ -239,7 +239,7 @@ func (r *RedisRepository) GetWhitelistedIPs() (map[string]models.WhitelistEntry,
 	ips := make(map[string]models.WhitelistEntry)
 	for k, v := range res {
 		var entry models.WhitelistEntry
-		if err := json.Unmarshal([]byte(v), &entry); err == nil {
+		if err := sonic.UnmarshalString(v, &entry); err == nil {
 			ips[k] = entry
 		}
 	}
@@ -247,7 +247,7 @@ func (r *RedisRepository) GetWhitelistedIPs() (map[string]models.WhitelistEntry,
 }
 
 func (r *RedisRepository) WhitelistIP(ip string, entry models.WhitelistEntry) error {
-	data, err := json.Marshal(entry)
+	data, err := sonic.Marshal(entry)
 	if err != nil {
 		return err
 	}
@@ -267,7 +267,7 @@ func (r *RedisRepository) GetExcludedEntries() (map[string]models.ExcludedEntry,
 	entries := make(map[string]models.ExcludedEntry)
 	for k, v := range res {
 		var entry models.ExcludedEntry
-		if err := json.Unmarshal([]byte(v), &entry); err == nil {
+		if err := sonic.UnmarshalString(v, &entry); err == nil {
 			entries[k] = entry
 		}
 	}
@@ -275,7 +275,7 @@ func (r *RedisRepository) GetExcludedEntries() (map[string]models.ExcludedEntry,
 }
 
 func (r *RedisRepository) AddExcluded(value string, entry models.ExcludedEntry) error {
-	data, err := json.Marshal(entry)
+	data, err := sonic.Marshal(entry)
 	if err != nil {
 		return err
 	}
@@ -323,7 +323,7 @@ func (r *RedisRepository) CountBlocksLastMinute() (int, error) {
 }
 
 func (r *RedisRepository) SetCache(key string, val interface{}, expiration time.Duration) error {
-	data, err := json.Marshal(val)
+	data, err := sonic.Marshal(val)
 	if err != nil {
 		return err
 	}
@@ -335,7 +335,7 @@ func (r *RedisRepository) GetCache(key string, target interface{}) error {
 	if err != nil {
 		return err
 	}
-	return json.Unmarshal([]byte(val), target)
+	return sonic.UnmarshalString(val, target)
 }
 
 func (r *RedisRepository) AcquireLock(key string, expiration time.Duration) (string, bool, error) {
@@ -427,7 +427,7 @@ return count
 // ExecBlockAtomic executes atomic block writes (hash, zset) and increments persistent counters
 func (r *RedisRepository) ExecBlockAtomic(ip string, entry models.IPEntry, now time.Time) error {
 	defer r.trackDuration("ExecBlockAtomic", time.Now())
-	data, err := json.Marshal(entry)
+	data, err := sonic.Marshal(entry)
 	if err != nil {
 		return err
 	}
@@ -468,7 +468,7 @@ func (r *RedisRepository) ExecBulkBlockAtomic(ips []string, entries []models.IPE
 	args[2] = nowUnix
 
 	for i, ip := range ips {
-		data, err := json.Marshal(entries[i])
+		data, err := sonic.Marshal(entries[i])
 		if err != nil {
 			return err
 		}

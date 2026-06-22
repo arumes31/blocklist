@@ -12,7 +12,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
 
     - name: Set up Go
       uses: actions/setup-go@v6
@@ -42,4 +42,4 @@ jobs:
         go install golang.org/x/vuln/cmd/govulncheck@latest
         govulncheck ./...
       env:
-        GOTOOLCHAIN: local
+        GOTOOLCHAIN: go1.26.4

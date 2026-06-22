@@ -24,11 +24,21 @@ const (
 	TypeGeoIPUpdate = "geoip:update"
 )
 
+var (
+	// validEditionRegex restricts GeoIP edition names to alphanumeric characters and hyphens.
+	// This prevents directory traversal and shell injection attacks.
+	validEditionRegex = regexp.MustCompile("^[a-zA-Z0-9-]+$")
+)
+
 type GeoIPPayload struct {
 	Edition string `json:"edition"`
 }
 
 func NewGeoIPUpdateTask(edition string) (*asynq.Task, error) {
+	if !validEditionRegex.MatchString(edition) {
+		return nil, fmt.Errorf("invalid edition: %s", edition)
+	}
+
 	payload, err := json.Marshal(GeoIPPayload{Edition: edition})
 	if err != nil {
 		return nil, err
@@ -57,10 +67,8 @@ func (h *GeoIPTaskHandler) ProcessTask(ctx context.Context, t *asynq.Task) error
 	}
 
 	// Validate edition string to prevent directory traversal
-	// Editions are expected to be alphanumeric strings like "GeoLite2-City"
-	validEdition := regexp.MustCompile("^[a-zA-Z0-9-]+$")
-	if !validEdition.MatchString(p.Edition) {
-		return fmt.Errorf("invalid edition: %s", p.Edition)
+	if !validEditionRegex.MatchString(p.Edition) {
+		return fmt.Errorf("invalid edition: %s: %w", p.Edition, asynq.SkipRetry)
 	}
 
 	if err := h.Download(p.Edition); err != nil {
@@ -75,8 +83,15 @@ func (h *GeoIPTaskHandler) ProcessTask(ctx context.Context, t *asynq.Task) error
 }
 
 func (h *GeoIPTaskHandler) getDBPath(edition string) string {
-	// Defense in depth: ensure filename is just the base to prevent traversal during file creation
-	filename := filepath.Base(edition) + ".mmdb"
+	// Defense in depth: ensure filename only contains allowed characters and is just the base
+	safeEdition := filepath.Base(edition)
+	if !validEditionRegex.MatchString(safeEdition) {
+		// This should have been caught earlier, but as a last resort, we'll use a generic name if something went wrong
+		// though with our validation it shouldn't happen.
+		safeEdition = "unknown"
+	}
+	filename := safeEdition + ".mmdb"
+
 	// Prefer env-defined path or standard local path
 	primaryPath := filepath.Join("/home/blocklist/geoip", filename)
 
@@ -90,6 +105,10 @@ func (h *GeoIPTaskHandler) getDBPath(edition string) string {
 }
 
 func (h *GeoIPTaskHandler) Download(edition string) error {
+	if !validEditionRegex.MatchString(edition) {
+		return fmt.Errorf("invalid edition: %s", edition)
+	}
+
 	accountID := h.cfg.GeoIPAccountID
 	licenseKey := h.cfg.GeoIPLicenseKey
 
@@ -97,7 +116,7 @@ func (h *GeoIPTaskHandler) Download(edition string) error {
 		return fmt.Errorf("MaxMind credentials missing")
 	}
 
-	// Escape edition to prevent URL-based directory traversal or injection
+	// Escape edition as well, though our regex already ensures it is safe
 	escapedEdition := url.PathEscape(edition)
 	downloadURL := h.testURL
 	if downloadURL == "" {

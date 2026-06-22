@@ -387,6 +387,11 @@ func (h *APIHandler) VerifyFirstFactor(c *gin.Context) {
 	username := c.PostForm("username")
 	password := c.PostForm("password")
 
+	if len(username) > 255 || len(password) > 2048 {
+		h.renderHTML(c, http.StatusOK, "login_error.html", gin.H{"error": "Invalid input length"})
+		return
+	}
+
 	if h.cfg.DisableGUIAdminLogin && username == h.cfg.GUIAdmin {
 		h.renderHTML(c, http.StatusOK, "login_error.html", gin.H{"error": "GUIAdmin login is disabled"})
 		return
@@ -471,6 +476,11 @@ func (h *APIHandler) Login(c *gin.Context) {
 	password := c.PostForm("password")
 	totpCode := c.PostForm("totp")
 	setupSecret := c.PostForm("setup_secret")
+
+	if len(username) > 255 || len(password) > 2048 || len(totpCode) > 255 || len(setupSecret) > 2048 {
+		h.renderHTML(c, http.StatusOK, "login_error.html", gin.H{"error": "Invalid input length"})
+		return
+	}
 
 	if h.cfg.DisableGUIAdminLogin && username == h.cfg.GUIAdmin {
 		h.renderHTML(c, http.StatusOK, "login_error.html", gin.H{"error": "GUIAdmin login is disabled"})
@@ -635,6 +645,11 @@ func (h *APIHandler) VerifySudo(c *gin.Context) {
 		next = c.Query("next")
 	}
 
+	if len(totpCode) > 255 || len(next) > 2048 {
+		h.renderHTML(c, http.StatusOK, "login.html", gin.H{"error": "Invalid input length", "step": "totp", "is_sudo": true, "next": "/dashboard"})
+		return
+	}
+
 	admin, _ := h.pgRepo.GetAdmin(username)
 	// admin.Token must be non-empty: an empty secret would accept the
 	// attacker-computable empty-key code, allowing sudo elevation without 2FA.
@@ -703,6 +718,12 @@ func (h *APIHandler) CreateAPIToken(c *gin.Context) {
 
 	if name == "" {
 		c.String(http.StatusBadRequest, "Token name required")
+		return
+	}
+
+	// Security: Input length validation to prevent unconstrained resource consumption
+	if len(name) > 255 || len(requestedPerms) > 1024 || len(allowedIPs) > 2048 {
+		c.String(http.StatusBadRequest, "Input length exceeds maximum allowed")
 		return
 	}
 

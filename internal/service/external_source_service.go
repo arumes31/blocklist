@@ -4,7 +4,7 @@ import (
 	"blocklist/internal/models"
 	"blocklist/internal/repository"
 	"context"
-	"encoding/json"
+	"github.com/bytedance/sonic"
 	"fmt"
 	"io"
 	"net/http"
@@ -77,11 +77,21 @@ func (s *ExternalSourceService) RefreshSource(ctx context.Context, src models.Ex
 	// We prefix the reason to identify these as coming from this source
 	reason := fmt.Sprintf("External Source: %s", src.Name)
 	expiresAt := time.Now().Add(24 * time.Hour).UTC().Format(time.RFC3339)
+	excluded := make([]string, 0, len(ips))
 	for _, ip := range ips {
-		_ = s.ipService.AddExcluded(ctx, ip, reason, "system", expiresAt, false)
+		if err := s.ipService.AddExcluded(ctx, ip, reason, "system", expiresAt, false); err != nil {
+			zlog.Warn().Err(err).Int("source_id", src.ID).Str("ip", ip).Msg("External source: failed to add excluded entry")
+			continue
+		}
+		excluded = append(excluded, ip)
+	}
+	// Only audit-log the entries that were actually persisted, so the log reflects
+	// the real exclusion state rather than the full input set.
+	if s.pgRepo != nil && len(excluded) > 0 {
+		_ = s.pgRepo.BulkLogAction("system", "EXCLUDE", excluded, reason)
 	}
 
-	zlog.Info().Int("source_id", src.ID).Int("count", len(ips)).Msg("Successfully refreshed external source")
+	zlog.Info().Int("source_id", src.ID).Int("count", len(excluded)).Msg("Successfully refreshed external source")
 	return nil
 }
 
@@ -127,7 +137,7 @@ func (s *ExternalSourceService) parseMicrosoft365(body []byte) ([]string, error)
 		IPs []string `json:"ips"`
 	}
 	var entries []msEntry
-	if err := json.Unmarshal(body, &entries); err != nil {
+	if err := sonic.Unmarshal(body, &entries); err != nil {
 		return nil, err
 	}
 
@@ -140,7 +150,7 @@ func (s *ExternalSourceService) parseMicrosoft365(body []byte) ([]string, error)
 
 func (s *ExternalSourceService) parseJSONCIDR(body []byte) ([]string, error) {
 	var ips []string
-	if err := json.Unmarshal(body, &ips); err != nil {
+	if err := sonic.Unmarshal(body, &ips); err != nil {
 		return nil, err
 	}
 	return ips, nil
