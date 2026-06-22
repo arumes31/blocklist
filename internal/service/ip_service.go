@@ -989,13 +989,7 @@ func (s *IPService) ExportIPs(ctx context.Context, query string, country string,
 	// For export, we fetch a large batch or iterate.
 	// Simple implementation: fetch up to 10k items.
 
-	var fromTime, toTime time.Time
-	if from != "" {
-		fromTime, _ = time.Parse(time.RFC3339, from)
-	}
-	if to != "" {
-		toTime, _ = time.Parse(time.RFC3339, to)
-	}
+	opts := s.prepareFilterOptions(query, country, addedBy, from, to)
 
 	// We use ZRange to get all members if possible, or iterate in batches
 	// Fetch up to 1,000,000 entries for export
@@ -1011,33 +1005,13 @@ func (s *IPService) ExportIPs(ctx context.Context, query string, country string,
 	zs, err := s.redisRepo.ZRangeArgsWithScores(ctx, *args)
 	// If ZSET is empty or missing, fallback to full hash scan
 	if err == nil && len(zs) == 0 {
-		return s.exportFallback(ctx, query, country, addedBy, fromTime, toTime)
+		return s.exportFallback(ctx, opts)
 	}
 	if err != nil {
 		return nil, err
 	}
 
 	items := make([]map[string]interface{}, 0)
-	q := strings.ToLower(strings.TrimSpace(query))
-
-	countryList := []string{}
-	if country != "" {
-		for _, c := range strings.Split(country, ",") {
-			if trimmed := strings.TrimSpace(c); trimmed != "" {
-				countryList = append(countryList, strings.ToLower(trimmed))
-			}
-		}
-	}
-
-	addedBy = strings.ToLower(strings.TrimSpace(addedBy))
-
-	// Optimize CIDR parsing
-	var queryNetwork *net.IPNet
-	if q != "" {
-		if _, network, err := net.ParseCIDR(query); err == nil {
-			queryNetwork = network
-		}
-	}
 
 	// Batch fetch entries in groups of 100 to avoid N+1 queries
 	batchSize := 100
@@ -1059,7 +1033,7 @@ func (s *IPService) ExportIPs(ctx context.Context, query string, country string,
 		}
 
 		for j, entry := range entries {
-			if !s.matchesFilters(ips[j], entry, q, queryNetwork, countryList, addedBy, fromTime, toTime) {
+			if !s.matchesFilters(ips[j], entry, opts) {
 				continue
 			}
 
@@ -1183,25 +1157,58 @@ func (s *IPService) BulkUnblock(ctx context.Context, ips []string, actor string)
 	return nil
 }
 
-func (s *IPService) matchesFilters(ip string, entry *models.IPEntry, q string, queryNetwork *net.IPNet, countryList []string, addedBy string, fromTime, toTime time.Time) bool {
+type filterOptions struct {
+	query        string
+	queryNetwork *net.IPNet
+	countryList  []string
+	addedBy      string
+	fromTime     time.Time
+	toTime       time.Time
+}
+func (s *IPService) prepareFilterOptions(query, country, addedBy, from, to string) *filterOptions {
+	opts := &filterOptions{}
+	if from != "" {
+		opts.fromTime, _ = time.Parse(time.RFC3339, from)
+	}
+	if to != "" {
+		opts.toTime, _ = time.Parse(time.RFC3339, to)
+	}
+	opts.query = strings.ToLower(strings.TrimSpace(query))
+	if country != "" {
+		for _, c := range strings.Split(country, ",") {
+			if trimmed := strings.TrimSpace(c); trimmed != "" {
+				opts.countryList = append(opts.countryList, strings.ToLower(trimmed))
+			}
+		}
+	}
+	opts.addedBy = strings.ToLower(strings.TrimSpace(addedBy))
+	if opts.query != "" {
+		if _, network, err := net.ParseCIDR(query); err == nil {
+			opts.queryNetwork = network
+		}
+	}
+	return opts
+}
+
+func (s *IPService) matchesFilters(ip string, entry *models.IPEntry, opts *filterOptions) bool {
 	if entry == nil {
 		return false
 	}
 
 	// 1. Query filter (text match and CIDR)
-	if q != "" {
+	if opts.query != "" {
 		matches := false
 		// Text match on fields
-		if strings.Contains(strings.ToLower(ip), q) ||
-			strings.Contains(strings.ToLower(entry.Reason), q) ||
-			strings.Contains(strings.ToLower(entry.AddedBy), q) ||
-			(entry.Geolocation != nil && strings.Contains(strings.ToLower(entry.Geolocation.Country), q)) {
+		if strings.Contains(strings.ToLower(ip), opts.query) ||
+			strings.Contains(strings.ToLower(entry.Reason), opts.query) ||
+			strings.Contains(strings.ToLower(entry.AddedBy), opts.query) ||
+			(entry.Geolocation != nil && strings.Contains(strings.ToLower(entry.Geolocation.Country), opts.query)) {
 			matches = true
 		}
 
 		// Smart Match: CIDR
-		if !matches && queryNetwork != nil {
-			if parsedIP := net.ParseIP(ip); parsedIP != nil && queryNetwork.Contains(parsedIP) {
+		if !matches && opts.queryNetwork != nil {
+			if parsedIP := net.ParseIP(ip); parsedIP != nil && opts.queryNetwork.Contains(parsedIP) {
 				matches = true
 			}
 		}
@@ -1212,11 +1219,11 @@ func (s *IPService) matchesFilters(ip string, entry *models.IPEntry, q string, q
 	}
 
 	// 2. Country filter
-	if len(countryList) > 0 {
+	if len(opts.countryList) > 0 {
 		match := false
 		if entry.Geolocation != nil {
 			cCode := strings.ToLower(entry.Geolocation.Country)
-			for _, c := range countryList {
+			for _, c := range opts.countryList {
 				if cCode == c {
 					match = true
 					break
@@ -1229,20 +1236,20 @@ func (s *IPService) matchesFilters(ip string, entry *models.IPEntry, q string, q
 	}
 
 	// 3. AddedBy filter
-	if addedBy != "" {
-		if !strings.EqualFold(entry.AddedBy, addedBy) {
+	if opts.addedBy != "" {
+		if !strings.EqualFold(entry.AddedBy, opts.addedBy) {
 			return false
 		}
 	}
 
 	// 4. Date range filters
-	if !fromTime.IsZero() || !toTime.IsZero() {
+	if !opts.fromTime.IsZero() || !opts.toTime.IsZero() {
 		ts, err := time.Parse("2006-01-02 15:04:05 UTC", entry.Timestamp)
 		if err == nil {
-			if !fromTime.IsZero() && ts.Before(fromTime) {
+			if !opts.fromTime.IsZero() && ts.Before(opts.fromTime) {
 				return false
 			}
-			if !toTime.IsZero() && ts.After(toTime) {
+			if !opts.toTime.IsZero() && ts.After(opts.toTime) {
 				return false
 			}
 		}
@@ -1256,14 +1263,7 @@ func (s *IPService) ListIPsPaginatedAdvanced(ctx context.Context, limit int, cur
 	if s.redisRepo == nil {
 		return nil, "", 0, nil
 	}
-	// Parse dates if provided
-	var fromTime, toTime time.Time
-	if from != "" {
-		fromTime, _ = time.Parse(time.RFC3339, from)
-	}
-	if to != "" {
-		toTime, _ = time.Parse(time.RFC3339, to)
-	}
+	opts := s.prepareFilterOptions(query, country, addedBy, from, to)
 
 	// We'll fetch a larger batch if filtering is active to try and fulfill 'limit'
 	if limit <= 0 {
@@ -1285,24 +1285,6 @@ func (s *IPService) ListIPsPaginatedAdvanced(ctx context.Context, limit int, cur
 		// any untrusted value out of make()'s size argument so CodeQL's allocation
 		// taint analysis (CWE-770) is satisfied; capacity is only a growth hint.
 		items := make([]map[string]interface{}, 0, MaxPageSize)
-		q := strings.ToLower(strings.TrimSpace(query))
-		countryList := []string{}
-		if country != "" {
-			for _, c := range strings.Split(country, ",") {
-				if trimmed := strings.TrimSpace(c); trimmed != "" {
-					countryList = append(countryList, strings.ToLower(trimmed))
-				}
-			}
-		}
-		addedBy = strings.ToLower(strings.TrimSpace(addedBy))
-
-		// Optimize CIDR parsing: parse once outside the loop
-		var queryNetwork *net.IPNet
-		if q != "" {
-			if _, network, err := net.ParseCIDR(query); err == nil {
-				queryNetwork = network
-			}
-		}
 
 		var currentCursor string
 		for {
@@ -1321,7 +1303,7 @@ func (s *IPService) ListIPsPaginatedAdvanced(ctx context.Context, limit int, cur
 					break
 				}
 
-				if !s.matchesFilters(ips[i], entries[i], q, queryNetwork, countryList, addedBy, fromTime, toTime) {
+				if !s.matchesFilters(ips[i], entries[i], opts) {
 					continue
 				}
 
@@ -1357,31 +1339,13 @@ func (s *IPService) ListIPsPaginatedAdvanced(ctx context.Context, limit int, cur
 	return s.ListIPsPaginated(ctx, limit, cursor, query)
 }
 
-func (s *IPService) exportFallback(ctx context.Context, query string, country string, addedBy string, fromTime, toTime time.Time) ([]map[string]interface{}, error) {
+func (s *IPService) exportFallback(ctx context.Context, opts *filterOptions) ([]map[string]interface{}, error) {
 	all, err := s.redisRepo.HGetAllRaw("ips")
 	if err != nil {
 		return nil, err
 	}
 
 	items := make([]map[string]interface{}, 0)
-	q := strings.ToLower(strings.TrimSpace(query))
-	countryList := []string{}
-	if country != "" {
-		for _, c := range strings.Split(country, ",") {
-			if trimmed := strings.TrimSpace(c); trimmed != "" {
-				countryList = append(countryList, strings.ToLower(trimmed))
-			}
-		}
-	}
-	addedBy = strings.ToLower(strings.TrimSpace(addedBy))
-
-	// Optimize CIDR parsing
-	var queryNetwork *net.IPNet
-	if q != "" {
-		if _, network, err := net.ParseCIDR(query); err == nil {
-			queryNetwork = network
-		}
-	}
 
 	for ip, raw := range all {
 		var entry models.IPEntry
@@ -1389,7 +1353,7 @@ func (s *IPService) exportFallback(ctx context.Context, query string, country st
 			continue
 		}
 
-		if !s.matchesFilters(ip, &entry, q, queryNetwork, countryList, addedBy, fromTime, toTime) {
+		if !s.matchesFilters(ip, &entry, opts) {
 			continue
 		}
 
