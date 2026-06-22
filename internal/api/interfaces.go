@@ -84,6 +84,7 @@ type PostgresRepositoryProvider interface {
 	GetWebhookByID(id int) (*models.OutboundWebhook, error)
 	GetAuditLogs(limit int) ([]models.AuditLog, error)
 	GetAuditLogsPaginated(limit int, offset int, actor string, action string, query string) ([]models.AuditLog, int, error)
+	BulkLogAction(actor, action string, ips []string, reason string) error
 
 	// API Token methods
 	GetAPITokenByHash(hash string) (*models.APIToken, error)

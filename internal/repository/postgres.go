@@ -460,8 +460,14 @@ func (p *PostgresRepository) BulkLogAction(actor, action string, ips []string, r
 		return nil
 	}
 
+	tx, err := p.db.Beginx()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
 	// Bulk insert using unnest
-	_, err := p.db.Exec(`
+	_, err = tx.Exec(`
 		INSERT INTO audit_logs (actor, action, target, reason)
 		SELECT $1, $2, unnest($3::text[]), $4`,
 		actor, action, ips, reason)
@@ -471,7 +477,7 @@ func (p *PostgresRepository) BulkLogAction(actor, action string, ips []string, r
 
 	if p.auditLogLimitPerIP > 0 {
 		// Bulk prune using a single query with row_number()
-		_, err = p.db.Exec(`
+		_, err = tx.Exec(`
 			DELETE FROM audit_logs
 			WHERE (id, timestamp) IN (
 				SELECT id, timestamp
@@ -484,9 +490,12 @@ func (p *PostgresRepository) BulkLogAction(actor, action string, ips []string, r
 				WHERE rn > $2
 			)`,
 			ips, p.auditLogLimitPerIP)
+		if err != nil {
+			return err
+		}
 	}
 
-	return err
+	return tx.Commit()
 }
 
 func (p *PostgresRepository) GetActiveExternalSources() ([]models.ExternalSource, error) {
