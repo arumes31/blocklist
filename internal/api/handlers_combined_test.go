@@ -106,4 +106,63 @@ func TestAPIHandler_getCombinedIPs(t *testing.T) {
 		rRepo.AssertExpectations(t)
 		pgRepo.AssertExpectations(t)
 	})
+
+	t.Run("RedisError", func(t *testing.T) {
+		h, rRepo, pgRepo, _, _ := setupTest()
+
+		// Redis error returns nil map
+		rRepo.On("GetBlockedIPs").Return(map[string]models.IPEntry(nil), assert.AnError)
+		// Postgres has data
+		persistentIPs := map[string]models.IPEntry{
+			"3.3.3.3": {Reason: "persistent block db"},
+		}
+		rRepo.On("GetCache", "persistent_ips_cache", mock.Anything).Return(assert.AnError)
+		pgRepo.On("GetPersistentBlocks").Return(persistentIPs, nil)
+		rRepo.On("SetCache", "persistent_ips_cache", persistentIPs, 1*time.Minute).Return(nil)
+
+		ips := h.getCombinedIPs()
+
+		// Should still have persistent blocks
+		assert.Len(t, ips, 1)
+		assert.Equal(t, "persistent block db", ips["3.3.3.3"].Reason)
+
+		rRepo.AssertExpectations(t)
+		pgRepo.AssertExpectations(t)
+	})
+
+	t.Run("PostgresError", func(t *testing.T) {
+		h, rRepo, pgRepo, _, _ := setupTest()
+
+		redisIPs := map[string]models.IPEntry{
+			"1.1.1.1": {Reason: "redis block"},
+		}
+		rRepo.On("GetBlockedIPs").Return(redisIPs, nil)
+		rRepo.On("GetCache", "persistent_ips_cache", mock.Anything).Return(assert.AnError)
+		// DB error
+		pgRepo.On("GetPersistentBlocks").Return(map[string]models.IPEntry(nil), assert.AnError)
+
+		ips := h.getCombinedIPs()
+
+		// Should only have redis blocks, no cache should be set
+		assert.Len(t, ips, 1)
+		assert.Equal(t, "redis block", ips["1.1.1.1"].Reason)
+
+		rRepo.AssertExpectations(t)
+		pgRepo.AssertExpectations(t)
+		rRepo.AssertNotCalled(t, "SetCache", mock.Anything, mock.Anything, mock.Anything)
+	})
+
+	t.Run("RedisNilMap", func(t *testing.T) {
+		h, rRepo, _, _, _ := setupTest()
+		h.pgRepo = nil
+
+		// Redis returns nil map but no error
+		rRepo.On("GetBlockedIPs").Return(map[string]models.IPEntry(nil), nil)
+
+		ips := h.getCombinedIPs()
+
+		assert.NotNil(t, ips)
+		assert.Len(t, ips, 0)
+		rRepo.AssertExpectations(t)
+	})
 }

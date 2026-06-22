@@ -34,7 +34,6 @@ type HandlerOptions struct {
 	WebhookLimiter        gin.HandlerFunc
 }
 
-
 type APIHandler struct {
 	cfg                   *config.Config
 	redisRepo             RedisRepositoryProvider
@@ -380,7 +379,13 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 
 // getCombinedIPs fetches blocked IPs from Redis and enriches them with persistent blocks from Postgres (cached).
 func (h *APIHandler) getCombinedIPs() map[string]models.IPEntry {
-	ips, _ := h.redisRepo.GetBlockedIPs()
+	ips, err := h.redisRepo.GetBlockedIPs()
+	if err != nil {
+		zlog.Error().Err(err).Msg("Failed to fetch blocked IPs from Redis")
+		ips = make(map[string]models.IPEntry)
+	} else if ips == nil {
+		ips = make(map[string]models.IPEntry)
+	}
 
 	if h.pgRepo != nil {
 		var pIps map[string]models.IPEntry
@@ -388,9 +393,14 @@ func (h *APIHandler) getCombinedIPs() map[string]models.IPEntry {
 		err := h.redisRepo.GetCache("persistent_ips_cache", &pIps)
 		if err != nil {
 			// Cache miss, fetch from DB
-			pIps, _ = h.pgRepo.GetPersistentBlocks()
-			// Set cache for 1 minute
-			_ = h.redisRepo.SetCache("persistent_ips_cache", pIps, 1*time.Minute)
+			var pgErr error
+			pIps, pgErr = h.pgRepo.GetPersistentBlocks()
+			if pgErr != nil {
+				zlog.Error().Err(pgErr).Msg("Failed to fetch persistent blocks from Postgres")
+			} else {
+				// Set cache for 1 minute
+				_ = h.redisRepo.SetCache("persistent_ips_cache", pIps, 1*time.Minute)
+			}
 		}
 
 		for ip, data := range pIps {
@@ -412,4 +422,3 @@ func (h *APIHandler) Ready(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "READY", "dependencies": dep})
 }
-
