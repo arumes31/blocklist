@@ -88,19 +88,8 @@ func (h *WebhookTaskHandler) ProcessTask(ctx context.Context, t *asynq.Task) err
 		return fmt.Errorf("json.Unmarshal failed: %v: %w", err, asynq.SkipRetry)
 	}
 
-	// Fetch webhook details fresh to ensure it's still active/valid
-	// (Note: In a high-throughput system, you might pass the URL/Secret in payload to avoid DB hit,
-	// but passing ID ensures we respect updates/deletions that happened while in queue)
-	// For now, we'll assume we need to re-fetch the webhook details from DB or cache.
-	// Since GetActiveWebhooks returns a list, let's implement a GetWebhookByID in repository or find it.
-	// For simplicity, we might iterate or add a helper.
-	// Optimization: If the payload contained URL/Secret, we wouldn't need a DB lookup,
-	// but we risk sending to a deleted webhook. Let's look it up.
-
-	// Since we don't have GetWebhookByID yet, we can add it or scan.
-	// Let's rely on the payload having enough info if we trust the enqueuer, OR add the method.
-	// Let's add GetWebhookByID to PostgresRepository.
-
+	// Fetch webhook details fresh to ensure it's still active/valid and to avoid
+	// the overhead of fetching all active webhooks.
 	webhook, err := h.repo.GetWebhookByID(p.WebhookID)
 	if err != nil {
 		// A "not found" result means the webhook was deleted or deactivated while
