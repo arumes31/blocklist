@@ -25,11 +25,24 @@ type webhookRequest struct {
 }
 
 func (h *APIHandler) Webhook(c *gin.Context) {
+	username, data, clientIP, ok := h.parseWebhookRequest(c)
+	if !ok {
+		return
+	}
+
+	if !h.validateAndAuthorizeWebhook(c, username, &data, clientIP) {
+		return
+	}
+
+	h.dispatchWebhook(c, username, data, clientIP)
+}
+
+func (h *APIHandler) parseWebhookRequest(c *gin.Context) (string, webhookRequest, string, bool) {
 	// Webhook requires authentication (Bearer token via AuthMiddleware)
 	usernameVal, exists := c.Get("username")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Bearer token required"})
-		return
+		return "", webhookRequest{}, "", false
 	}
 	username := usernameVal.(string)
 
@@ -37,7 +50,7 @@ func (h *APIHandler) Webhook(c *gin.Context) {
 	if err := c.ShouldBindJSON(&data); err != nil {
 		zlog.Error().Err(err).Msg("Webhook: failed to bind JSON")
 		c.JSON(http.StatusBadRequest, gin.H{"status": "invalid request"})
-		return
+		return "", webhookRequest{}, "", false
 	}
 
 	// Extract real client IP
@@ -45,9 +58,13 @@ func (h *APIHandler) Webhook(c *gin.Context) {
 	if net.ParseIP(clientIP) == nil {
 		zlog.Error().Str("ip", clientIP).Msg("Webhook: detected invalid client IP")
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid IP address"})
-		return
+		return "", webhookRequest{}, "", false
 	}
 
+	return username, data, clientIP, true
+}
+
+func (h *APIHandler) validateAndAuthorizeWebhook(c *gin.Context, username string, data *webhookRequest, clientIP string) bool {
 	// Handle selfwhitelist: implicit IP from connection
 	if data.Act == "selfwhitelist" {
 		data.IP = clientIP
@@ -55,20 +72,20 @@ func (h *APIHandler) Webhook(c *gin.Context) {
 
 	// Syntactic validation of target IP
 	if !h.validateIP(c, data.IP) {
-		return
+		return false
 	}
 
 	// Determine required permission and check access
 	requiredPerm, err := h.getRequiredPermissionForAction(data.Act)
 	if err != nil {
 		c.JSON(http.StatusNotImplemented, gin.H{"status": err.Error()})
-		return
+		return false
 	}
 
-	if !h.checkWebhookPermissions(c, username, requiredPerm) {
-		return
-	}
+	return h.checkWebhookPermissions(c, username, requiredPerm)
+}
 
+func (h *APIHandler) dispatchWebhook(c *gin.Context, username string, data webhookRequest, clientIP string) {
 	metrics.MetricWebhooksTotal.Inc()
 	_ = h.redisRepo.IndexWebhookHit(time.Now().UTC())
 
