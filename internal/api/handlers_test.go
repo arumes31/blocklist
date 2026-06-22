@@ -223,6 +223,12 @@ func TestAPIHandler_IsValidRedirect(t *testing.T) {
 		{"no leading slash", "dashboard", false},
 		{"relative up", "../outside", false},
 		{"just backslash", "\\", false},
+		{"triple slash", "///evil.com", false},
+		{"slash space", "/ /evil.com", false},
+		{"slash tab", "/\t/evil.com", false},
+		{"slash newline", "/\n/evil.com", false},
+		{"slash carriage return", "/\r/evil.com", false},
+		{"slash at", "/@evil.com", false},
 	}
 
 	for _, tt := range tests {

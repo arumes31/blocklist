@@ -222,7 +222,14 @@ func (h *APIHandler) isValidRedirect(target string) bool {
 	// Only allow local paths starting with /
 	// Disallow // which some browsers interpret as protocol-relative (e.g. //evil.com)
 	// Disallow /\ which can be used to trick some parsers
-	return strings.HasPrefix(target, "/") && !strings.HasPrefix(target, "//") && !strings.HasPrefix(target, "/\\")
+	if !strings.HasPrefix(target, "/") || strings.HasPrefix(target, "//") || strings.HasPrefix(target, `/\`) {
+		return false
+	}
+	// Disallow / followed by whitespace, control characters or @
+	if len(target) > 1 && (target[1] <= ' ' || target[1] == '@') {
+		return false
+	}
+	return true
 }
 
 func (h *APIHandler) validateIP(c *gin.Context, ip string) bool {
