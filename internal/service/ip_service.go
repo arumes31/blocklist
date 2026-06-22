@@ -1183,7 +1183,7 @@ func (s *IPService) prepareFilterOptions(query, country, addedBy, from, to strin
 	}
 	opts.addedBy = strings.ToLower(strings.TrimSpace(addedBy))
 	if opts.query != "" {
-		if _, network, err := net.ParseCIDR(query); err == nil {
+		if _, network, err := net.ParseCIDR(opts.query); err == nil {
 			opts.queryNetwork = network
 		}
 	}

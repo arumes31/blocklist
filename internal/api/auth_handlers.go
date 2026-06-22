@@ -716,12 +716,6 @@ func (h *APIHandler) CreateAPIToken(c *gin.Context) {
 	requestedPerms := c.PostForm("permissions")
 	allowedIPs := c.PostForm("allowed_ips")
 
-	// Security: Input length validation to prevent unconstrained resource consumption
-	if len(name) > 255 || len(requestedPerms) > 2048 || len(allowedIPs) > 2048 {
-		c.String(http.StatusBadRequest, "Input fields exceed maximum length limits")
-		return
-	}
-
 	if name == "" {
 		c.String(http.StatusBadRequest, "Token name required")
 		return
