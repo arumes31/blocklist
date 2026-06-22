@@ -193,6 +193,26 @@ func TestAuthService_CheckAuth(t *testing.T) {
 		}
 		pg.AssertExpectations(t)
 	})
+
+	t.Run("Nil Repo", func(t *testing.T) {
+		svc := NewAuthService(nil, nil)
+		assert.False(t, svc.CheckAuth("admin", "pass", "token"))
+	})
+
+	t.Run("Token Invalid Expiry", func(t *testing.T) {
+		pg := new(MockPostgresRepo)
+		svc := NewAuthService(pg, nil)
+		token := "bl_token"
+		invalidExpiry := "not-a-date"
+
+		pg.On("GetAPITokenByHash", mock.Anything).Return(&models.APIToken{
+			Name:      "test",
+			ExpiresAt: &invalidExpiry,
+		}, nil).Once()
+
+		assert.False(t, svc.CheckAuth("", "", token))
+		pg.AssertExpectations(t)
+	})
 }
 
 func TestAuthService_VerifyTOTP(t *testing.T) {
@@ -223,6 +243,19 @@ func TestAuthService_VerifyTOTP(t *testing.T) {
 		if svc.VerifyTOTP(username, "000000") {
 			t.Error("expected TOTP verification to fail for empty secret")
 		}
+	})
+
+	t.Run("Nil Repo", func(t *testing.T) {
+		svc := NewAuthService(nil, nil)
+		assert.False(t, svc.VerifyTOTP("admin", "123456"))
+	})
+
+	t.Run("GetAdmin Error", func(t *testing.T) {
+		pg := new(MockPostgresRepo)
+		svc := NewAuthService(pg, nil)
+		pg.On("GetAdmin", "admin").Return(nil, errors.New("db error")).Once()
+		assert.False(t, svc.VerifyTOTP("admin", "123456"))
+		pg.AssertExpectations(t)
 	})
 
 	pg.AssertExpectations(t)
@@ -258,6 +291,33 @@ func TestAuthService_CreateAdmin(t *testing.T) {
 		if err != nil {
 			t.Fatalf("CreateAdmin failed: %v", err)
 		}
+	})
+
+	t.Run("Nil Repo", func(t *testing.T) {
+		svc := NewAuthService(nil, nil)
+		admin, err := svc.CreateAdmin("admin", "pass", "role", "perms")
+		assert.Nil(t, admin)
+		assert.NoError(t, err)
+	})
+
+	t.Run("CreateAdmin Error", func(t *testing.T) {
+		pg := new(MockPostgresRepo)
+		svc := NewAuthService(pg, nil)
+		pg.On("CreateAdmin", mock.Anything).Return(errors.New("db error")).Once()
+
+		admin, err := svc.CreateAdmin("admin", "pass", "role", "perms")
+		assert.Nil(t, admin)
+		assert.Error(t, err)
+		pg.AssertExpectations(t)
+	})
+
+	t.Run("HashPassword Error", func(t *testing.T) {
+		svc := NewAuthService(new(MockPostgresRepo), nil)
+		// bcrypt fails on passwords > 72 bytes
+		longPass := string(make([]byte, 80))
+		admin, err := svc.CreateAdmin("admin", longPass, "role", "perms")
+		assert.Nil(t, admin)
+		assert.Error(t, err)
 	})
 
 	pg.AssertExpectations(t)
