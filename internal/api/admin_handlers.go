@@ -372,7 +372,7 @@ func (h *APIHandler) ChangeAdminTOTP(c *gin.Context) {
 	}
 
 	if req.Username == h.cfg.GUIAdmin {
-		c.JSON(400, gin.H{"error": "cannot reset main admin TOTP via UI"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "cannot reset main admin TOTP via UI"})
 		return
 	}
 
