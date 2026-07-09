@@ -198,3 +198,41 @@ func TestAPIHandler_ChangeAdminPermissions(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 	pgRepo.AssertExpectations(t)
 }
+
+func TestAPIHandler_ChangeAdminTOTP(t *testing.T) {
+	h, _, pgRepo, _, _ := setupTest()
+
+	pgRepo.On("UpdateAdminToken", "targetadmin", "").Return(nil)
+	pgRepo.On("LogAction", "admin", "RESET_TOTP", "targetadmin", mock.Anything).Return(nil)
+
+	w := httptest.NewRecorder()
+	r := gin.New()
+	store := cookie.NewStore([]byte("secret"))
+	r.Use(sessions.Sessions("mysession", store))
+
+	r.POST("/api/admin/totp", func(c *gin.Context) {
+		session := sessions.Default(c)
+		session.Set("username", "admin")
+		_ = session.Save()
+		c.Set("username", "admin")
+		h.ChangeAdminTOTP(c)
+	})
+
+	// Test successful reset of another admin
+	reqBody := `{"username": "targetadmin"}`
+	req, _ := http.NewRequest("POST", "/api/admin/totp", bytes.NewBufferString(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	pgRepo.AssertExpectations(t)
+
+	// Test trying to reset GUIAdmin
+	w = httptest.NewRecorder()
+	reqBody = `{"username": "admin"}`
+	req, _ = http.NewRequest("POST", "/api/admin/totp", bytes.NewBufferString(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
