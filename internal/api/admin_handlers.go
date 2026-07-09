@@ -142,6 +142,11 @@ func (h *APIHandler) CreateSavedView(c *gin.Context) {
 		return
 	}
 
+	if len(req.Name) > 255 || len(req.Filters) > 2048 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Input length limit exceeded"})
+		return
+	}
+
 	view := models.SavedView{
 		Username: username.(string),
 		Name:     req.Name,
@@ -223,6 +228,11 @@ func (h *APIHandler) CreateAdmin(c *gin.Context) {
 		return
 	}
 
+	if len(req.Username) > 255 || len(req.Password) > 2048 || len(req.Role) > 255 || len(req.Permissions) > 1024 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Input length limit exceeded"})
+		return
+	}
+
 	if req.Role == "" {
 		req.Role = "operator"
 	}
@@ -254,6 +264,11 @@ func (h *APIHandler) ChangeAdminPermissions(c *gin.Context) {
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(400, gin.H{"error": "invalid request"})
+		return
+	}
+
+	if len(req.Username) > 255 || len(req.Permissions) > 1024 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Input length limit exceeded"})
 		return
 	}
 
@@ -312,6 +327,11 @@ func (h *APIHandler) DeleteAdmin(c *gin.Context) {
 		return
 	}
 
+	if len(req.Username) > 255 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Input length limit exceeded"})
+		return
+	}
+
 	if req.Username == h.cfg.GUIAdmin {
 		c.JSON(400, gin.H{"error": "cannot delete main admin"})
 		return
@@ -342,6 +362,11 @@ func (h *APIHandler) ChangeAdminPassword(c *gin.Context) {
 		return
 	}
 
+	if len(req.Username) > 255 || len(req.NewPassword) > 2048 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Input length limit exceeded"})
+		return
+	}
+
 	if req.Username == h.cfg.GUIAdmin {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Password for GUIAdmin cannot be changed via UI"})
 		return
@@ -368,6 +393,11 @@ func (h *APIHandler) ChangeAdminTOTP(c *gin.Context) {
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(400, gin.H{"error": "invalid request"})
+		return
+	}
+
+	if len(req.Username) > 255 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Input length limit exceeded"})
 		return
 	}
 
