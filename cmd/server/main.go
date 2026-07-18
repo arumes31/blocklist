@@ -473,6 +473,7 @@ func securityHeadersMiddleware(cfg *config.Config) gin.HandlerFunc {
 		c.Set("nonce", nonce)
 
 		c.Header("X-Content-Type-Options", "nosniff")
+		c.Header("X-XSS-Protection", "1; mode=block")
 		c.Header("X-Frame-Options", "DENY")
 		c.Header("Referrer-Policy", "same-origin")
 
