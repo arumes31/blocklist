@@ -372,6 +372,11 @@ func (h *APIHandler) ChangeAdminTOTP(c *gin.Context) {
 	}
 
 	// Clear TOTP secret to force re-setup on next login
+	if req.Username == h.cfg.GUIAdmin {
+		c.JSON(http.StatusForbidden, gin.H{"error": "TOTP for GUIAdmin cannot be reset via UI"})
+		return
+	}
+
 	_ = h.pgRepo.UpdateAdminToken(req.Username, "")
 
 	actor := c.GetString("username")

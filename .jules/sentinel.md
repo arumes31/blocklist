@@ -61,3 +61,8 @@
 **Vulnerability:** Not a direct vulnerability, but overly long handlers increase cognitive load and the likelihood of security-critical logic (like permission checks or input validation) being overlooked or bypassed during future maintenance.
 **Learning:** Modularizing complex handlers into distinct "parse", "authorize", and "dispatch" phases clarifies the security boundaries and ensures that each step (authentication, authorization, validation) must succeed before any state-changing action is taken.
 **Prevention:** Regularly refactor handlers that exceed a reasonable length (e.g., 50 lines) into smaller, single-responsibility methods.
+
+## 2026-07-21 - [Authorization Bypass on Main Admin TOTP]
+**Vulnerability:** Authorization Bypass (CWE-285)
+**Learning:** The `ChangeAdminTOTP` endpoint allowed the TOTP secret of the main configuration-driven admin account (`GUIAdmin`) to be reset by anyone with `manage_admins` permissions via the UI. This could lead to a localized denial of service (lockout) or potential privilege escalation/account takeover of the primary system administrator.
+**Prevention:** Always implement explicit identity checks (`if req.Username == h.cfg.GUIAdmin`) in administrative endpoints to ensure core configuration-driven accounts are immutable via standard API/UI paths.
