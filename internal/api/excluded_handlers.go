@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"blocklist/internal/models"
+	"blocklist/internal/security"
 
 	"github.com/gin-gonic/gin"
 	zlog "github.com/rs/zerolog/log"
@@ -287,6 +288,12 @@ func (h *APIHandler) AddExternalSource(c *gin.Context) {
 
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON"})
+		return
+	}
+
+	if err := security.IsSafeURL(req.URL); err != nil {
+		zlog.Warn().Err(err).Str("url", req.URL).Msg("Attempted to add unsafe external source URL")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid or unsafe URL"})
 		return
 	}
 

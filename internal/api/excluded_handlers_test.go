@@ -111,3 +111,38 @@ func TestIsValidExclusionValue(t *testing.T) {
 		}
 	}
 }
+
+func TestAPIHandler_AddExternalSource(t *testing.T) {
+	h, _, pgRepo, _, _ := setupTest()
+
+	// Safe URL
+	pgRepo.On("CreateExternalSource", mock.Anything).Return(nil).Once()
+	pgRepo.On("LogAction", "admin", "ADD_EXTERNAL_SOURCE", "test-source", "https://example.com/ips.txt").Return(nil).Once()
+
+	w1 := httptest.NewRecorder()
+	c1, _ := gin.CreateTestContext(w1)
+	c1.Request, _ = http.NewRequest("POST", "/api/v1/excluded/sources",
+		bytes.NewBufferString(`{"name":"test-source","url":"https://example.com/ips.txt","source_type":"ip"}`))
+	c1.Request.Header.Set("Content-Type", "application/json")
+	c1.Set("username", "admin")
+
+	h.AddExternalSource(c1)
+
+	assert.Equal(t, http.StatusOK, w1.Code)
+	assert.JSONEq(t, `{"status":"success"}`, w1.Body.String())
+
+	// Unsafe URL
+	w2 := httptest.NewRecorder()
+	c2, _ := gin.CreateTestContext(w2)
+	c2.Request, _ = http.NewRequest("POST", "/api/v1/excluded/sources",
+		bytes.NewBufferString(`{"name":"unsafe-source","url":"http://127.0.0.1/admin","source_type":"ip"}`))
+	c2.Request.Header.Set("Content-Type", "application/json")
+	c2.Set("username", "admin")
+
+	h.AddExternalSource(c2)
+
+	assert.Equal(t, http.StatusBadRequest, w2.Code)
+	assert.JSONEq(t, `{"error":"Invalid or unsafe URL"}`, w2.Body.String())
+
+	pgRepo.AssertExpectations(t)
+}
