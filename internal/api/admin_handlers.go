@@ -389,6 +389,10 @@ func (h *APIHandler) ChangeAdminTOTP(c *gin.Context) {
 
 func (h *APIHandler) GetQR(c *gin.Context) {
 	username := c.Param("username")
+	if username == h.cfg.GUIAdmin {
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Cannot view QR code for GUIAdmin"})
+		return
+	}
 	admin, err := h.pgRepo.GetAdmin(username)
 	if err != nil {
 		c.AbortWithStatus(404)
