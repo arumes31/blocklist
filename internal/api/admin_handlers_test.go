@@ -1,6 +1,7 @@
 package api
 
 import (
+	"blocklist/internal/config"
 	"bytes"
 	"encoding/json"
 	"errors"
@@ -197,4 +198,43 @@ func TestAPIHandler_ChangeAdminPermissions(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	pgRepo.AssertExpectations(t)
+}
+
+func TestChangeAdminTOTP_GUIAdminForbidden(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+
+	cfg := &config.Config{GUIAdmin: "admin"}
+	h := &APIHandler{cfg: cfg}
+
+	reqBody, _ := json.Marshal(map[string]string{"username": "admin"})
+	c.Request, _ = http.NewRequest(http.MethodPost, "/change_totp", bytes.NewBuffer(reqBody))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	h.ChangeAdminTOTP(c)
+
+	assert.Equal(t, http.StatusForbidden, w.Code)
+	var resp map[string]string
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	assert.Equal(t, "TOTP for GUIAdmin cannot be reset via UI", resp["error"])
+}
+
+func TestGetQR_GUIAdminForbidden(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+
+	cfg := &config.Config{GUIAdmin: "admin"}
+	h := &APIHandler{cfg: cfg}
+
+	c.Params = []gin.Param{{Key: "username", Value: "admin"}}
+	c.Request, _ = http.NewRequest(http.MethodGet, "/get_qr/admin", nil)
+
+	h.GetQR(c)
+
+	assert.Equal(t, http.StatusForbidden, w.Code)
+	var resp map[string]string
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	assert.Equal(t, "Cannot view QR code for GUIAdmin", resp["error"])
 }
