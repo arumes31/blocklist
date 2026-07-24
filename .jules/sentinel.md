@@ -61,3 +61,8 @@
 **Vulnerability:** Not a direct vulnerability, but overly long handlers increase cognitive load and the likelihood of security-critical logic (like permission checks or input validation) being overlooked or bypassed during future maintenance.
 **Learning:** Modularizing complex handlers into distinct "parse", "authorize", and "dispatch" phases clarifies the security boundaries and ensures that each step (authentication, authorization, validation) must succeed before any state-changing action is taken.
 **Prevention:** Regularly refactor handlers that exceed a reasonable length (e.g., 50 lines) into smaller, single-responsibility methods.
+
+## 2026-07-24 - [Privilege Escalation via Missing Admin Check]
+**Vulnerability:** Privilege Escalation (CWE-269)
+**Learning:** Handlers for sensitive admin operations (like `GetQR` and `ChangeAdminTOTP`) lacked explicit authorization checks to prevent users with `manage_admins` permission from modifying or retrieving the main system admin's (`GUIAdmin`) credentials. This could lead to account takeover of the root administrative account.
+**Prevention:** Always implement explicit authorization checks in sensitive handlers to prevent any user (even admins with elevated permissions) from accessing or modifying the credentials of the primary system administrator.
