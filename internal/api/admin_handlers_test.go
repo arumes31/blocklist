@@ -170,6 +170,100 @@ func TestAPIHandler_AuditLogExplorer(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 }
 
+// postAsAdmin runs a handler behind a session that authenticates "admin",
+// mirroring how the admin routes execute in production.
+func postAsAdmin(h *APIHandler, handler gin.HandlerFunc, path, body string) *httptest.ResponseRecorder {
+	w := httptest.NewRecorder()
+	r := gin.New()
+	store := cookie.NewStore([]byte("secret"))
+	r.Use(sessions.Sessions("mysession", store))
+	r.POST(path, func(c *gin.Context) {
+		session := sessions.Default(c)
+		session.Set("username", "admin")
+		_ = session.Save()
+		c.Set("username", "admin")
+		handler(c)
+	})
+	req, _ := http.NewRequest("POST", path, bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+	return w
+}
+
+// The GUIAdmin account must not be strippable of 2FA through this endpoint:
+// doing so would let any manage_admins holder disable the primary account's
+// second factor and then enrol their own device via self-service setup.
+func TestAPIHandler_ChangeAdminTOTP_RejectsGUIAdmin(t *testing.T) {
+	h, _, pgRepo, _, _ := setupTest()
+
+	w := postAsAdmin(h, h.ChangeAdminTOTP, "/api/admin/totp", `{"username": "admin"}`)
+
+	assert.Equal(t, http.StatusForbidden, w.Code)
+	pgRepo.AssertNotCalled(t, "UpdateAdminToken", "admin", "")
+}
+
+func TestAPIHandler_ChangeAdminTOTP_ClearsOtherAdmin(t *testing.T) {
+	h, _, pgRepo, _, _ := setupTest()
+
+	pgRepo.On("UpdateAdminToken", "targetadmin", "").Return(nil)
+	pgRepo.On("LogAction", "admin", "RESET_TOTP", "targetadmin", mock.Anything).Return(nil)
+
+	w := postAsAdmin(h, h.ChangeAdminTOTP, "/api/admin/totp", `{"username": "targetadmin"}`)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	pgRepo.AssertExpectations(t)
+}
+
+// A TOTP secret is a credential; serving another account's QR would let the
+// caller generate that account's codes indefinitely.
+func TestAPIHandler_GetQR_RejectsOtherAccount(t *testing.T) {
+	h, _, pgRepo, _, _ := setupTest()
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request, _ = http.NewRequest("GET", "/get_qr/targetadmin", nil)
+	c.Params = gin.Params{{Key: "username", Value: "targetadmin"}}
+	c.Set("username", "admin")
+
+	h.GetQR(c)
+
+	assert.Equal(t, http.StatusForbidden, w.Code)
+	pgRepo.AssertNotCalled(t, "GetAdmin", "targetadmin")
+}
+
+func TestAPIHandler_GetQR_RejectsUnenrolledAccount(t *testing.T) {
+	h, _, pgRepo, _, _ := setupTest()
+
+	pgRepo.On("GetAdmin", "admin").Return(&models.AdminAccount{Username: "admin", Token: ""}, nil)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request, _ = http.NewRequest("GET", "/get_qr/admin", nil)
+	c.Params = gin.Params{{Key: "username", Value: "admin"}}
+	c.Set("username", "admin")
+
+	h.GetQR(c)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
+func TestAPIHandler_GetQR_AllowsOwnAccount(t *testing.T) {
+	h, _, pgRepo, _, _ := setupTest()
+
+	pgRepo.On("GetAdmin", "admin").Return(&models.AdminAccount{Username: "admin", Token: "JBSWY3DPEHPK3PXP"}, nil)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request, _ = http.NewRequest("GET", "/get_qr/admin", nil)
+	c.Params = gin.Params{{Key: "username", Value: "admin"}}
+	c.Set("username", "admin")
+
+	h.GetQR(c)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "image/png", w.Header().Get("Content-Type"))
+}
+
 func TestAPIHandler_ChangeAdminPermissions(t *testing.T) {
 	h, _, pgRepo, _, _ := setupTest()
 

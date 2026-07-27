@@ -61,3 +61,13 @@
 **Vulnerability:** Not a direct vulnerability, but overly long handlers increase cognitive load and the likelihood of security-critical logic (like permission checks or input validation) being overlooked or bypassed during future maintenance.
 **Learning:** Modularizing complex handlers into distinct "parse", "authorize", and "dispatch" phases clarifies the security boundaries and ensures that each step (authentication, authorization, validation) must succeed before any state-changing action is taken.
 **Prevention:** Regularly refactor handlers that exceed a reasonable length (e.g., 50 lines) into smaller, single-responsibility methods.
+
+## 2026-07-27 - SSRF in external source refresh, not just at input
+**Vulnerability:** `AddExternalSource` stored operator-supplied URLs unchecked, and `ExternalSourceService` fetched them with a default `http.Client`. Unlike the webhook path, no socket-level guard was installed, so the refresh loop would fetch internal endpoints (e.g. cloud metadata) on a schedule.
+**Learning:** Validating a URL when it is stored is a pre-flight check, not a defense. A host can resolve to a public address at validation time and an internal one at fetch time (DNS rebinding), and a public URL can redirect inward. Every proposed fix for this issue validated only at input and left the fetch path untouched, so none of them actually closed the hole.
+**Prevention:** Any outbound fetch of a user-supplied URL must dial through `security.SafeSocketControl`, which re-checks the address actually being dialed on every connection including redirects, and must bound redirect chasing. Treat input validation as defense in depth on top of that, never as the only layer.
+
+## 2026-07-27 - TOTP secret disclosure and 2FA reset via admin endpoints
+**Vulnerability:** `GetQR` served any account's TOTP secret to any holder of `manage_admins`, and `ChangeAdminTOTP` could clear the configuration-driven `GUIAdmin` account's second factor without re-authentication. The UI hid these actions for `GUIAdmin`, but the API enforced nothing.
+**Learning:** A TOTP secret is a credential, not account metadata: whoever reads it can generate that account's codes indefinitely. Enrolment here is self-service through the login flow, so serving another user's QR had no legitimate workflow behind it — the endpoint was pure disclosure. Hiding a button in a template is not authorization.
+**Prevention:** Scope credential-returning endpoints to the authenticated caller's own account, and mirror every UI-level restriction with a server-side check. Gate second-factor resets behind the same re-authentication (`SudoMiddleware`) as account deletion.

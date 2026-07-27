@@ -371,6 +371,15 @@ func (h *APIHandler) ChangeAdminTOTP(c *gin.Context) {
 		return
 	}
 
+	// The GUIAdmin account is configuration-driven and is the recovery path of
+	// last resort. Allowing its TOTP to be cleared here would let any holder of
+	// manage_admins strip 2FA from the primary account and then enrol their own
+	// device through the self-service setup flow.
+	if req.Username == h.cfg.GUIAdmin {
+		c.JSON(http.StatusForbidden, gin.H{"error": "TOTP for GUIAdmin cannot be reset via UI"})
+		return
+	}
+
 	// Clear TOTP secret to force re-setup on next login
 	_ = h.pgRepo.UpdateAdminToken(req.Username, "")
 
@@ -384,9 +393,26 @@ func (h *APIHandler) ChangeAdminTOTP(c *gin.Context) {
 
 func (h *APIHandler) GetQR(c *gin.Context) {
 	username := c.Param("username")
+
+	// A TOTP secret is a credential, not account metadata: anyone holding it can
+	// generate that account's codes indefinitely. Enrolment is self-service via
+	// the login flow, so there is no legitimate reason to hand one account's
+	// secret to another user, however privileged.
+	if actor := c.GetString("username"); actor == "" || actor != username {
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "TOTP secrets can only be retrieved for your own account"})
+		return
+	}
+
 	admin, err := h.pgRepo.GetAdmin(username)
 	if err != nil {
 		c.AbortWithStatus(404)
+		return
+	}
+
+	// Nothing to render before enrolment; the login flow issues the provisioning
+	// secret. Returning a QR for an empty secret would encode a usable "empty key".
+	if admin.Token == "" {
+		c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": "No TOTP secret is enrolled for this account"})
 		return
 	}
 
