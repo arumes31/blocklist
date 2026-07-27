@@ -61,3 +61,8 @@
 **Vulnerability:** Not a direct vulnerability, but overly long handlers increase cognitive load and the likelihood of security-critical logic (like permission checks or input validation) being overlooked or bypassed during future maintenance.
 **Learning:** Modularizing complex handlers into distinct "parse", "authorize", and "dispatch" phases clarifies the security boundaries and ensures that each step (authentication, authorization, validation) must succeed before any state-changing action is taken.
 **Prevention:** Regularly refactor handlers that exceed a reasonable length (e.g., 50 lines) into smaller, single-responsibility methods.
+
+## 2024-07-27 - SSRF Protection on External Source URLs
+**Vulnerability:** The `AddExternalSource` handler in `internal/api/excluded_handlers.go` allowed unconstrained external URL submission without pre-flight checks, enabling potential Server-Side Request Forgery (SSRF) and Local Network sweeps.
+**Learning:** This codebase maintains its own purpose-built `blocklist/internal/security` package for validating SSRF. Using standard URL parsing is not enough when we need to intercept DNS rebinding and internal IP resolutions.
+**Prevention:** Always enforce URL schema limits and utilize the internal `security.IsSafeURL` function when validating user-provided external destinations before storing or fetching them.

@@ -2,8 +2,8 @@ package service
 
 import (
 	"context"
-	"github.com/bytedance/sonic"
 	"fmt"
+	"github.com/bytedance/sonic"
 	"html"
 	"net"
 	"net/netip"
@@ -1165,6 +1165,7 @@ type filterOptions struct {
 	fromTime     time.Time
 	toTime       time.Time
 }
+
 func (s *IPService) prepareFilterOptions(query, country, addedBy, from, to string) *filterOptions {
 	opts := &filterOptions{}
 	if from != "" {
