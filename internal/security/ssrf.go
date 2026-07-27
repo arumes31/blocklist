@@ -4,22 +4,53 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/netip"
 	"net/url"
 	"strings"
 	"syscall"
 )
 
-// IsInternalIP returns true if the IP belongs to a private network, loopback,
-// unspecified, link-local, or multicast address space.
+// reservedRanges are blocks that Go's own IP classifiers do not report as
+// private but that must still be unreachable from a user-supplied URL. Shared
+// address space in particular is routable inside many hosting environments.
+var reservedRanges = []netip.Prefix{
+	netip.MustParsePrefix("0.0.0.0/8"),          // RFC 1122 "this network"
+	netip.MustParsePrefix("100.64.0.0/10"),      // RFC 6598 shared address space (CGNAT)
+	netip.MustParsePrefix("192.0.0.0/24"),       // RFC 6890 IETF protocol assignments
+	netip.MustParsePrefix("198.18.0.0/15"),      // RFC 2544 benchmarking
+	netip.MustParsePrefix("255.255.255.255/32"), // limited broadcast
+}
+
+// IsInternalIP reports whether the IP belongs to private, loopback,
+// unspecified, link-local, multicast, or otherwise reserved address space.
 func IsInternalIP(ip net.IP) bool {
 	if ip == nil {
 		return false
 	}
-	return ip.IsPrivate() ||
+
+	if ip.IsPrivate() ||
 		ip.IsLoopback() ||
 		ip.IsUnspecified() ||
 		ip.IsLinkLocalUnicast() ||
-		ip.IsLinkLocalMulticast()
+		ip.IsMulticast() ||
+		ip.IsInterfaceLocalMulticast() {
+		return true
+	}
+
+	addr, ok := netip.AddrFromSlice(ip)
+	if !ok {
+		// An address we cannot classify is not one we should dial.
+		return true
+	}
+	// Unmap so IPv4-mapped IPv6 forms (::ffff:100.64.0.1) match the IPv4 blocks.
+	addr = addr.Unmap()
+	for _, r := range reservedRanges {
+		if r.Contains(addr) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // IsSafeURL validates the URL to prevent SSRF at input time.

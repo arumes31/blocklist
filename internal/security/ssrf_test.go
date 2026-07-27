@@ -77,6 +77,16 @@ func TestIsSafeURL(t *testing.T) {
 		{"https://[2001:4860:4860::8888]", false},
 		{"https://[fc00::1]", true},
 		{"http://127.0.0.1:8080", true}, // IP literal with port
+		// Reserved space that Go's IsPrivate/IsLoopback do not cover but that is
+		// still reachable inside many hosting environments.
+		{"http://100.64.0.1", true},          // RFC 6598 shared address space (CGNAT)
+		{"http://0.0.0.1", true},             // RFC 1122 "this network"
+		{"http://198.18.0.1", true},          // RFC 2544 benchmarking
+		{"http://192.0.0.1", true},           // RFC 6890 protocol assignments
+		{"http://255.255.255.255", true},     // limited broadcast
+		{"http://224.0.0.1", true},           // multicast
+		{"http://[::ffff:100.64.0.1]", true}, // IPv4-mapped CGNAT
+		{"http://169.254.169.254", true},     // cloud metadata (link-local)
 	}
 
 	for _, tt := range tests {
