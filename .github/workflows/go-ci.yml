@@ -42,4 +42,4 @@ jobs:
         go install golang.org/x/vuln/cmd/govulncheck@latest
         govulncheck ./...
       env:
-        GOTOOLCHAIN: go1.26.4
+        GOTOOLCHAIN: go1.26.5
