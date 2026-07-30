@@ -371,6 +371,11 @@ func (h *APIHandler) ChangeAdminTOTP(c *gin.Context) {
 		return
 	}
 
+	if req.Username == h.cfg.GUIAdmin {
+		c.JSON(http.StatusForbidden, gin.H{"error": "TOTP for GUIAdmin cannot be changed via UI"})
+		return
+	}
+
 	// Clear TOTP secret to force re-setup on next login
 	_ = h.pgRepo.UpdateAdminToken(req.Username, "")
 
@@ -384,8 +389,14 @@ func (h *APIHandler) ChangeAdminTOTP(c *gin.Context) {
 
 func (h *APIHandler) GetQR(c *gin.Context) {
 	username := c.Param("username")
+	callerUsername := c.GetString("username")
+	if callerUsername != username {
+		c.AbortWithStatus(http.StatusForbidden)
+		return
+	}
+
 	admin, err := h.pgRepo.GetAdmin(username)
-	if err != nil {
+	if err != nil || admin.Token == "" {
 		c.AbortWithStatus(404)
 		return
 	}
