@@ -61,7 +61,3 @@
 **Vulnerability:** Not a direct vulnerability, but overly long handlers increase cognitive load and the likelihood of security-critical logic (like permission checks or input validation) being overlooked or bypassed during future maintenance.
 **Learning:** Modularizing complex handlers into distinct "parse", "authorize", and "dispatch" phases clarifies the security boundaries and ensures that each step (authentication, authorization, validation) must succeed before any state-changing action is taken.
 **Prevention:** Regularly refactor handlers that exceed a reasonable length (e.g., 50 lines) into smaller, single-responsibility methods.
-## 2026-08-02 - Content Security Policy Hardening
-**Vulnerability:** The application was missing strict CSP directives like frame-ancestors, object-src, and base-uri.
-**Learning:** Relying only on standard security headers (like X-Frame-Options) without defense-in-depth CSP can leave gaps for advanced clickjacking and object embedding attacks.
-**Prevention:** Ensure modern security headers, particularly a restrictive Content Security Policy, define explicit boundaries for object sources, frame ancestors, and base URIs.
