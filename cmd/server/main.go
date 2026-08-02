@@ -482,7 +482,7 @@ func securityHeadersMiddleware(cfg *config.Config) gin.HandlerFunc {
 		}
 
 		// Content Security Policy (CSP)
-		csp := fmt.Sprintf("default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'nonce-%s'; script-src-attr 'self' 'unsafe-inline'; connect-src 'self' ws: wss:", nonce)
+		csp := fmt.Sprintf("default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'nonce-%s'; script-src-attr 'self' 'unsafe-inline'; connect-src 'self' ws: wss:; frame-ancestors 'none'; object-src 'none'; base-uri 'none';", nonce)
 		c.Header("Content-Security-Policy", csp)
 
 		c.Next()
