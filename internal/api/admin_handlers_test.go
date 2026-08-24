@@ -214,6 +214,17 @@ func TestAPIHandler_ChangeAdminTOTP_ClearsOtherAdmin(t *testing.T) {
 	pgRepo.AssertExpectations(t)
 }
 
+func TestAPIHandler_ChangeAdminTOTP_ReportsUpdateFailure(t *testing.T) {
+	h, _, pgRepo, _, _ := setupTest()
+
+	pgRepo.On("UpdateAdminToken", "targetadmin", "").Return(errors.New("database unavailable"))
+
+	w := postAsAdmin(h, h.ChangeAdminTOTP, "/api/admin/totp", `{"username": "targetadmin"}`)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	pgRepo.AssertNotCalled(t, "LogAction", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
 // A TOTP secret is a credential; serving another account's QR would let the
 // caller generate that account's codes indefinitely.
 func TestAPIHandler_GetQR_RejectsOtherAccount(t *testing.T) {
@@ -262,6 +273,22 @@ func TestAPIHandler_GetQR_AllowsOwnAccount(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, "image/png", w.Header().Get("Content-Type"))
+}
+
+func TestAPIHandler_GetQR_HandlesMissingAccount(t *testing.T) {
+	h, _, pgRepo, _, _ := setupTest()
+
+	pgRepo.On("GetAdmin", "admin").Return((*models.AdminAccount)(nil), nil)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request, _ = http.NewRequest("GET", "/get_qr/admin", nil)
+	c.Params = gin.Params{{Key: "username", Value: "admin"}}
+	c.Set("username", "admin")
+
+	h.GetQR(c)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
 }
 
 func TestAPIHandler_ChangeAdminPermissions(t *testing.T) {

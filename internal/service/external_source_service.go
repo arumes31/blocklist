@@ -24,19 +24,10 @@ type ExternalSourceService struct {
 }
 
 func NewExternalSourceService(pgRepo *repository.PostgresRepository, ipService *IPService) *ExternalSourceService {
-	return NewExternalSourceServiceWithClient(pgRepo, ipService, nil)
-}
-
-// NewExternalSourceServiceWithClient allows injecting the HTTP client; passing
-// nil installs the SSRF-guarded client used in production.
-func NewExternalSourceServiceWithClient(pgRepo *repository.PostgresRepository, ipService *IPService, client *http.Client) *ExternalSourceService {
-	if client == nil {
-		client = newGuardedClient()
-	}
 	return &ExternalSourceService{
 		pgRepo:    pgRepo,
 		ipService: ipService,
-		client:    client,
+		client:    newGuardedClient(),
 	}
 }
 
@@ -164,9 +155,12 @@ func (s *ExternalSourceService) fetchAndParse(ctx context.Context, src models.Ex
 		return nil, fmt.Errorf("HTTP error: %d", resp.StatusCode)
 	}
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxExternalSourceBytes))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxExternalSourceBytes+1))
 	if err != nil {
 		return nil, err
+	}
+	if len(body) > maxExternalSourceBytes {
+		return nil, fmt.Errorf("external source exceeds %d-byte limit", maxExternalSourceBytes)
 	}
 
 	switch src.SourceType {

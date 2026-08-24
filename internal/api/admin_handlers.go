@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -380,8 +381,12 @@ func (h *APIHandler) ChangeAdminTOTP(c *gin.Context) {
 		return
 	}
 
-	// Clear TOTP secret to force re-setup on next login
-	_ = h.pgRepo.UpdateAdminToken(req.Username, "")
+	// Clear TOTP secret to force re-setup on next login.
+	if err := h.pgRepo.UpdateAdminToken(req.Username, ""); err != nil {
+		zlog.Error().Err(err).Str("target", req.Username).Msg("Failed to clear admin TOTP")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
+		return
+	}
 
 	actor := c.GetString("username")
 	if err := h.pgRepo.LogAction(actor, "RESET_TOTP", req.Username, "TOTP secret cleared, re-setup required on next login"); err != nil {
@@ -404,8 +409,8 @@ func (h *APIHandler) GetQR(c *gin.Context) {
 	}
 
 	admin, err := h.pgRepo.GetAdmin(username)
-	if err != nil {
-		c.AbortWithStatus(404)
+	if err != nil || admin == nil {
+		c.AbortWithStatus(http.StatusNotFound)
 		return
 	}
 
@@ -416,14 +421,29 @@ func (h *APIHandler) GetQR(c *gin.Context) {
 		return
 	}
 
-	// Reconstruct the TOTP URL
-	url := fmt.Sprintf("otpauth://totp/Blocklist%%20App:%s?secret=%s&issuer=Blocklist%%20App", username, admin.Token)
-	pngData, err := h.generateQRWithLogo(url)
-	if err != nil {
-		simplePng, _ := qrcode.Encode(url, qrcode.Medium, 256)
-		pngData = simplePng
+	// Construct the provisioning URL through net/url so account names cannot
+	// alter the path or inject query parameters.
+	query := url.Values{
+		"issuer": {"Blocklist App"},
+		"secret": {admin.Token},
 	}
-	c.Data(200, "image/png", pngData)
+	provisioningURL := (&url.URL{
+		Scheme:   "otpauth",
+		Host:     "totp",
+		Path:     "Blocklist App:" + username,
+		RawQuery: query.Encode(),
+	}).String()
+
+	pngData, err := h.generateQRWithLogo(provisioningURL)
+	if err != nil {
+		pngData, err = qrcode.Encode(provisioningURL, qrcode.Medium, 256)
+		if err != nil {
+			zlog.Error().Err(err).Str("username", username).Msg("Failed to generate TOTP QR code")
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "failed to generate QR code"})
+			return
+		}
+	}
+	c.Data(http.StatusOK, "image/png", pngData)
 }
 
 func (h *APIHandler) Stats(c *gin.Context) {

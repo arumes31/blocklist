@@ -62,7 +62,8 @@ func TestExternalSourceService_RefreshSource(t *testing.T) {
 
 	// Sources are addressed by a public-looking hostname so they survive the SSRF
 	// URL check, while the injected client dials the loopback test server.
-	extService := NewExternalSourceServiceWithClient(nil, ipService, newTestClient(server))
+	extService := NewExternalSourceService(nil, ipService)
+	extService.client = newTestClient(server)
 	const sourceHost = "http://example.com"
 
 	ctx := context.Background()
