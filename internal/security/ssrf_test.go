@@ -29,6 +29,12 @@ func TestIsInternalIP(t *testing.T) {
 		{"::ffff:8.8.8.8", false},  // IPv4-mapped public
 		{"fc00::1", true},          // ULA
 		{"fe80::1", true},          // Link-local unicast
+		{"192.0.2.1", true},        // Documentation
+		{"198.51.100.1", true},     // Documentation
+		{"203.0.113.1", true},      // Documentation
+		{"240.0.0.1", true},        // Future use
+		{"2001:db8::1", true},      // Documentation
+		{"2002:7f00:1::", true},    // Deprecated 6to4
 	}
 
 	for _, tt := range tests {
@@ -38,8 +44,8 @@ func TestIsInternalIP(t *testing.T) {
 		}
 	}
 
-	if IsInternalIP(nil) != false {
-		t.Error("IsInternalIP(nil) should be false")
+	if !IsInternalIP(nil) {
+		t.Error("IsInternalIP(nil) should fail closed")
 	}
 }
 
@@ -60,8 +66,8 @@ func TestIsSafeURL(t *testing.T) {
 		{"http://127.0.0.1", true},
 		{"http://[::1]", true},
 		{"http://10.0.0.1", true},
-		{"http://localhost", true},                    // Resolves to 127.0.0.1/::1
-		{"http://nonexistent.example.invalid", false}, // DNS fail, but no internal IP found
+		{"http://localhost", true},                   // Resolves to 127.0.0.1/::1
+		{"http://nonexistent.example.invalid", true}, // DNS failures are rejected
 		{"ftp://example.com", true},
 		{"javascript:alert(1)", true},
 		{"", true},
@@ -70,13 +76,23 @@ func TestIsSafeURL(t *testing.T) {
 		{"http://1.1.1.1:443", false},
 		{"http://example.com:abc", true}, // url.ParseRequestURI error: invalid port
 		{"http://[::1", true},            // url.ParseRequestURI error: missing ']' in address
-		{"http://user:pass@host/path?query#fragment", false},
+		{"http://user:pass@example.com/path?query#fragment", true},
 		{"HTTP://EXAMPLE.COM", false}, // Case-insensitive scheme check
 		// Additional cases for coverage
 		{"http://[::ffff:127.0.0.1]", true},
 		{"https://[2001:4860:4860::8888]", false},
 		{"https://[fc00::1]", true},
 		{"http://127.0.0.1:8080", true}, // IP literal with port
+		// Reserved space that Go's IsPrivate/IsLoopback do not cover but that is
+		// still reachable inside many hosting environments.
+		{"http://100.64.0.1", true},          // RFC 6598 shared address space (CGNAT)
+		{"http://0.0.0.1", true},             // RFC 1122 "this network"
+		{"http://198.18.0.1", true},          // RFC 2544 benchmarking
+		{"http://192.0.0.1", true},           // RFC 6890 protocol assignments
+		{"http://255.255.255.255", true},     // limited broadcast
+		{"http://224.0.0.1", true},           // multicast
+		{"http://[::ffff:100.64.0.1]", true}, // IPv4-mapped CGNAT
+		{"http://169.254.169.254", true},     // cloud metadata (link-local)
 	}
 
 	for _, tt := range tests {
