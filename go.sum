@@ -228,8 +228,8 @@ github.com/rogpeppe/go-internal v1.14.1 h1:UQB4HGPB6osV0SQTLymcB4TgvyWu6ZyliaW0t
 github.com/rogpeppe/go-internal v1.14.1/go.mod h1:MaRKkUm5W0goXpeCfT7UZI6fk/L7L7so1lCWt35ZSgc=
 github.com/rs/zerolog v1.35.1 h1:m7xQeoiLIiV0BCEY4Hs+j2NG4Gp2o2KPKmhnnLiazKI=
 github.com/rs/zerolog v1.35.1/go.mod h1:EjML9kdfa/RMA7h/6z6pYmq1ykOuA8/mjWaEvGI+jcw=
-github.com/shirou/gopsutil/v4 v4.26.5 h1:RPcBXkpz7kOj9PqGFQOlBPZHsyaPvPVQc098y9RmCNM=
-github.com/shirou/gopsutil/v4 v4.26.5/go.mod h1:LZ6ewCSkBqUpvSOf+LsTGnRinC6iaNUNMGBtDkJBaLQ=
+github.com/shirou/gopsutil/v4 v4.26.6 h1:Mzr/npDtQC/xpeEuQKHZt8Zo9CmPvhTj8nkR8w5TLDs=
+github.com/shirou/gopsutil/v4 v4.26.6/go.mod h1:LZ6ewCSkBqUpvSOf+LsTGnRinC6iaNUNMGBtDkJBaLQ=
 github.com/sirupsen/logrus v1.9.4 h1:TsZE7l11zFCLZnZ+teH4Umoq5BhEIfIzfRDZ1Uzql2w=
 github.com/sirupsen/logrus v1.9.4/go.mod h1:ftWc9WdOfJ0a92nsE2jF5u5ZwH8Bv2zdeOC42RjbV2g=
 github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e h1:MRM5ITcdelLK2j1vwZ3Je0FKVCfqOLp5zO6trqMLYs0=
@@ -250,8 +250,8 @@ github.com/stretchr/testify v1.8.4/go.mod h1:sz/lmYIOXD/1dqDmKjjqLyZ2RngseejIcXl
 github.com/stretchr/testify v1.10.0/go.mod h1:r2ic/lqez/lEtzL7wO/rwa5dbSLXVDPFyf8C91i36aY=
 github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu7U=
 github.com/stretchr/testify v1.11.1/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD981Nm4B6U=
-github.com/testcontainers/testcontainers-go v0.43.0 h1:oEQx5MW2DGd9z3AeEQfB2lPM0eLs7ztyaGRu75bFo5A=
-github.com/testcontainers/testcontainers-go v0.43.0/go.mod h1:+VxkT2NQnKOZPKi6praMuMKYHYyOGXr0XSBSlSMCzFo=
+github.com/testcontainers/testcontainers-go v0.44.0 h1:/Fwh6HY1mIikhnm9e7HwoxGycx0lzRAE0f5VQpjFxzI=
+github.com/testcontainers/testcontainers-go v0.44.0/go.mod h1:IcnwQrYTO86xHXu5bvMaBH7ATlbS3Qn1M1QWW3c66rE=
 github.com/testcontainers/testcontainers-go/modules/postgres v0.43.0 h1:ShNOFYAF4lKHvdIG258hi69bSxC88uXnxJkJvNs/IVs=
 github.com/testcontainers/testcontainers-go/modules/postgres v0.43.0/go.mod h1:vdq5/RqmGfWeefzyfcVI/pID1rzmc1TDvqXa15bPJks=
 github.com/testcontainers/testcontainers-go/modules/redis v0.43.0 h1:qzATMhrltLr07KcGl/d674ouqI0AFtf6wnQb3VnqP7M=
