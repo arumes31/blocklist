@@ -3,15 +3,17 @@ package service
 import (
 	"blocklist/internal/models"
 	"blocklist/internal/repository"
+	"blocklist/internal/security"
 	"context"
-	"github.com/bytedance/sonic"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/netip"
 	"strings"
 	"time"
 
+	"github.com/bytedance/sonic"
 	zlog "github.com/rs/zerolog/log"
 )
 
@@ -25,7 +27,37 @@ func NewExternalSourceService(pgRepo *repository.PostgresRepository, ipService *
 	return &ExternalSourceService{
 		pgRepo:    pgRepo,
 		ipService: ipService,
-		client:    &http.Client{Timeout: 10 * time.Second},
+		client:    newGuardedClient(),
+	}
+}
+
+// maxExternalSourceRedirects bounds redirect chasing so a hostile endpoint
+// cannot keep us looping.
+const maxExternalSourceRedirects = 5
+
+// newGuardedClient builds the HTTP client used to fetch operator-configured
+// source URLs. Validating the URL when it is added is not sufficient on its own:
+// the host may resolve to a public address at validation time and to an internal
+// one at fetch time (DNS rebinding), and a public URL may redirect inward.
+//
+// SafeSocketControl is therefore the authoritative check. It runs after DNS
+// resolution on every connection attempt, including those made while following
+// redirects, so it sees the address actually being dialed.
+func newGuardedClient() *http.Client {
+	dialer := &net.Dialer{
+		Timeout:   10 * time.Second,
+		KeepAlive: 10 * time.Second,
+		Control:   security.SafeSocketControl,
+	}
+	return &http.Client{
+		Timeout:   10 * time.Second,
+		Transport: &http.Transport{DialContext: dialer.DialContext},
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= maxExternalSourceRedirects {
+				return fmt.Errorf("stopped after %d redirects", maxExternalSourceRedirects)
+			}
+			return security.IsSafeURL(req.URL.String())
+		},
 	}
 }
 
@@ -100,6 +132,13 @@ func (s *ExternalSourceService) RefreshSource(ctx context.Context, src models.Ex
 const maxExternalSourceBytes = 32 * 1024 * 1024 // 32 MiB
 
 func (s *ExternalSourceService) fetchAndParse(ctx context.Context, src models.ExternalSource) ([]string, error) {
+	// Re-check on every refresh rather than trusting the stored value: rows may
+	// predate input validation, and a source that was safe when added can be
+	// repointed at internal address space later.
+	if err := security.IsSafeURL(src.URL); err != nil {
+		return nil, fmt.Errorf("unsafe external source URL: %w", err)
+	}
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, src.URL, nil)
 	if err != nil {
 		return nil, err
@@ -116,9 +155,12 @@ func (s *ExternalSourceService) fetchAndParse(ctx context.Context, src models.Ex
 		return nil, fmt.Errorf("HTTP error: %d", resp.StatusCode)
 	}
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxExternalSourceBytes))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxExternalSourceBytes+1))
 	if err != nil {
 		return nil, err
+	}
+	if len(body) > maxExternalSourceBytes {
+		return nil, fmt.Errorf("external source exceeds %d-byte limit", maxExternalSourceBytes)
 	}
 
 	switch src.SourceType {

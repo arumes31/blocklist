@@ -15,6 +15,19 @@ import (
 	"github.com/alicebob/miniredis/v2"
 )
 
+// newTestClient returns a client that dials the given test server regardless of
+// the request's host, so tests can use public-looking URLs that pass the SSRF
+// check while still reaching a loopback listener.
+func newTestClient(server *httptest.Server) *http.Client {
+	return &http.Client{
+		Transport: &http.Transport{
+			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+				return net.Dial(network, server.Listener.Addr().String())
+			},
+		},
+	}
+}
+
 func TestExternalSourceService_RefreshSource(t *testing.T) {
 	// Setup miniredis
 	mr, err := miniredis.Run()
@@ -28,7 +41,6 @@ func TestExternalSourceService_RefreshSource(t *testing.T) {
 	redisRepo := repository.NewRedisRepository(host, port, "", 0)
 
 	ipService := NewIPService(&config.Config{}, redisRepo, nil)
-	extService := NewExternalSourceService(nil, ipService)
 
 	// Mock server to return IP lists
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -48,6 +60,12 @@ func TestExternalSourceService_RefreshSource(t *testing.T) {
 	}))
 	defer server.Close()
 
+	// Sources are addressed by a public-looking hostname so they survive the SSRF
+	// URL check, while the injected client dials the loopback test server.
+	extService := NewExternalSourceService(nil, ipService)
+	extService.client = newTestClient(server)
+	const sourceHost = "http://example.com"
+
 	ctx := context.Background()
 
 	t.Run("Plaintext format", func(t *testing.T) {
@@ -55,7 +73,7 @@ func TestExternalSourceService_RefreshSource(t *testing.T) {
 		src := models.ExternalSource{
 			ID:         1,
 			Name:       "Test Plaintext",
-			URL:        server.URL + "/plaintext",
+			URL:        sourceHost + "/plaintext",
 			SourceType: "plaintext",
 		}
 
@@ -105,7 +123,7 @@ func TestExternalSourceService_RefreshSource(t *testing.T) {
 		src := models.ExternalSource{
 			ID:         2,
 			Name:       "Test JSON",
-			URL:        server.URL + "/json",
+			URL:        sourceHost + "/json",
 			SourceType: "json_cidr",
 		}
 
@@ -134,12 +152,36 @@ func TestExternalSourceService_RefreshSource(t *testing.T) {
 		}
 	})
 
+	t.Run("Internal URL is refused at refresh time", func(t *testing.T) {
+		mr.FlushAll()
+		// A source row pointing at internal address space must be refused even
+		// though it is already stored, and must not populate the excluded list.
+		src := models.ExternalSource{
+			ID:         4,
+			Name:       "Rebound Source",
+			URL:        "http://127.0.0.1/plaintext",
+			SourceType: "plaintext",
+		}
+
+		if err := extService.RefreshSource(ctx, src); err == nil {
+			t.Fatal("expected RefreshSource to reject an internal URL")
+		}
+
+		entries, err := redisRepo.GetExcludedEntries()
+		if err != nil {
+			t.Fatalf("GetExcludedEntries failed: %v", err)
+		}
+		if len(entries) != 0 {
+			t.Fatalf("expected no excluded entries, got %d", len(entries))
+		}
+	})
+
 	t.Run("MS365 format", func(t *testing.T) {
 		mr.FlushAll()
 		src := models.ExternalSource{
 			ID:         3,
 			Name:       "Test MS365",
-			URL:        server.URL + "/ms365",
+			URL:        sourceHost + "/ms365",
 			SourceType: "microsoft_365",
 		}
 

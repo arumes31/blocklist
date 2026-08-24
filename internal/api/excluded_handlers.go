@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"blocklist/internal/models"
+	"blocklist/internal/security"
 
 	"github.com/gin-gonic/gin"
 	zlog "github.com/rs/zerolog/log"
@@ -276,6 +277,13 @@ func (h *APIHandler) JSONExcluded(c *gin.Context) {
 	c.JSON(http.StatusOK, results)
 }
 
+// Bounds on operator-supplied external source fields, so a caller cannot force
+// oversized rows into the database or oversized entries into the audit log.
+const (
+	maxSourceNameLen = 255
+	maxSourceURLLen  = 2048
+)
+
 func (h *APIHandler) AddExternalSource(c *gin.Context) {
 	username, _ := c.Get("username")
 
@@ -287,6 +295,24 @@ func (h *APIHandler) AddExternalSource(c *gin.Context) {
 
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON"})
+		return
+	}
+
+	if len(req.Name) > maxSourceNameLen || len(req.SourceType) > maxSourceNameLen {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Name and source_type must be at most 255 characters"})
+		return
+	}
+	if len(req.URL) > maxSourceURLLen {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "URL must be at most 2048 characters"})
+		return
+	}
+
+	// Reject URLs that point into internal address space before we ever store
+	// them. This is a pre-flight check only: it cannot survive DNS rebinding, so
+	// the refresh path re-validates and dials through a guarded socket as well.
+	if err := security.IsSafeURL(req.URL); err != nil {
+		zlog.Warn().Err(err).Str("actor", username.(string)).Msg("Rejected unsafe external source URL")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid or unsafe URL"})
 		return
 	}
 
