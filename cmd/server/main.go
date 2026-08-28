@@ -106,7 +106,11 @@ func main() {
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
 		Handler:           r,
-		ReadHeaderTimeout: 5 * time.Second, // Protect against Slowloris attacks
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		MaxHeaderBytes:    1 << 20,
 	}
 
 	go func() {
