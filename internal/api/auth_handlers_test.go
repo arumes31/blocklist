@@ -80,6 +80,49 @@ func TestAPIHandler_Login_Failure(t *testing.T) {
 	assert.Contains(t, w.Body.String(), "Invalid credentials")
 }
 
+func TestAPIHandler_Login_RejectsCrossAccountTOTPEnrollment(t *testing.T) {
+	h, _, pg := setupAuthTest()
+
+	key, err := totp.Generate(totp.GenerateOpts{
+		Issuer:      "Blocklist App",
+		AccountName: "attacker",
+	})
+	assert.NoError(t, err)
+	code, err := totp.GenerateCode(key.Secret(), time.Now())
+	assert.NoError(t, err)
+
+	pg.On("GetAdmin", "victim").Return(&models.AdminAccount{
+		Username: "victim",
+	}, nil).Maybe()
+	pg.On("UpdateAdminToken", "victim", key.Secret()).Return(nil).Maybe()
+	pg.On("LogAction", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+
+	w := httptest.NewRecorder()
+	_, r := setupHTMLTest(w)
+	store := cookie.NewStore([]byte("secret"))
+	r.Use(sessions.Sessions("mysession", store))
+	r.POST("/login", func(c *gin.Context) {
+		session := sessions.Default(c)
+		session.Set("pending_auth_user", "attacker")
+		session.Set("pending_auth_verified", true)
+		session.Set("pending_totp_secret", key.Secret())
+		h.Login(c)
+	})
+
+	form := url.Values{}
+	form.Add("username", "victim")
+	form.Add("password", "bypass-multistep-check")
+	form.Add("totp", code)
+	form.Add("setup_secret", key.Secret())
+	req, _ := http.NewRequest("POST", "/login", bytes.NewBufferString(form.Encode()))
+	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), "Session expired or invalid setup attempt")
+	pg.AssertNotCalled(t, "UpdateAdminToken", "victim", key.Secret())
+}
+
 // TestAPIHandler_VerifySudo_RejectsEmptyTOTPSecret is a regression test for the
 // TOTP empty-secret bypass: an account that has not enrolled TOTP (Token == "")
 // must not be able to elevate to sudo, because totp.Validate against an empty

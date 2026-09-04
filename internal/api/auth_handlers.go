@@ -492,9 +492,9 @@ func (h *APIHandler) Login(c *gin.Context) {
 	// Check for pending auth session if password is not provided (multi-step)
 	isMultiStep := false
 	if password == "" {
-		pendingUser := session.Get("pending_auth_user")
-		pendingVerified := session.Get("pending_auth_verified")
-		if pendingUser == nil || pendingUser.(string) != username || pendingVerified == nil || !pendingVerified.(bool) {
+		pendingUser, hasPendingUser := session.Get("pending_auth_user").(string)
+		pendingVerified, hasPendingVerification := session.Get("pending_auth_verified").(bool)
+		if !hasPendingUser || pendingUser != username || !hasPendingVerification || !pendingVerified {
 			zlog.Warn().Str("username", username).Msg("Invalid multi-step login attempt")
 			_ = h.pgRepo.LogAction(username, "LOGIN_FAILURE", c.ClientIP(), "Invalid multi-step session or mismatch")
 			h.renderHTML(c, http.StatusOK, "login.html", gin.H{
@@ -507,11 +507,10 @@ func (h *APIHandler) Login(c *gin.Context) {
 
 	// If it's a setup attempt
 	if setupSecret != "" {
-		pendingVerified := session.Get("pending_auth_verified")
-		pendingSecret := session.Get("pending_totp_secret")
-		admin, _ := h.pgRepo.GetAdmin(username)
-
-		if pendingVerified == nil || !pendingVerified.(bool) || pendingSecret == nil || pendingSecret.(string) != setupSecret {
+		pendingUser, hasPendingUser := session.Get("pending_auth_user").(string)
+		pendingVerified, hasPendingVerification := session.Get("pending_auth_verified").(bool)
+		pendingSecret, hasPendingSecret := session.Get("pending_totp_secret").(string)
+		if !hasPendingUser || pendingUser != username || !hasPendingVerification || !pendingVerified || !hasPendingSecret || pendingSecret != setupSecret {
 			zlog.Warn().Str("username", username).Msg("Unauthenticated or invalid TOTP setup attempt")
 			_ = h.pgRepo.LogAction(username, "LOGIN_FAILURE", c.ClientIP(), "Unauthenticated TOTP setup attempt")
 			h.renderHTML(c, http.StatusOK, "login.html", gin.H{
@@ -520,6 +519,8 @@ func (h *APIHandler) Login(c *gin.Context) {
 			})
 			return
 		}
+
+		admin, _ := h.pgRepo.GetAdmin(username)
 
 		// Prevent overwriting existing token via this flow
 		if admin != nil && admin.Token != "" {

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -9,8 +10,11 @@ import (
 	"blocklist/internal/config"
 	"blocklist/internal/models"
 
+	"github.com/gin-contrib/sessions"
+	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 )
 
 func setupTest() (*APIHandler, *MockRedisRepo, *MockPostgresRepo, *MockAuthService, *MockIPService) {
@@ -32,6 +36,66 @@ func setupTest() (*APIHandler, *MockRedisRepo, *MockPostgresRepo, *MockAuthServi
 		IPService:   ipService,
 	})
 	return h, rRepo, pgRepo, authService, ipService
+}
+
+func TestAPIHandler_RegisterRoutes_RequiresSudoForSensitiveAdminActions(t *testing.T) {
+	tests := []struct {
+		name   string
+		method string
+		path   string
+	}{
+		{name: "create admin", method: http.MethodPost, path: "/admin_management/create"},
+		{name: "delete admin", method: http.MethodPost, path: "/admin_management/delete"},
+		{name: "change password", method: http.MethodPost, path: "/admin_management/change_password"},
+		{name: "reset TOTP", method: http.MethodPost, path: "/admin_management/change_totp"},
+		{name: "change permissions", method: http.MethodPost, path: "/admin_management/change_permissions"},
+		{name: "disclose TOTP QR", method: http.MethodGet, path: "/admin_management/get_qr/target"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h, _, pg, _, ipService := setupTest()
+			passThrough := func(c *gin.Context) { c.Next() }
+			h.mainLimiter = passThrough
+			h.loginLimiter = passThrough
+			h.webhookLimiter = passThrough
+
+			admin := &models.AdminAccount{
+				Username:       "operator",
+				Role:           "admin",
+				Permissions:    "manage_admins",
+				SessionVersion: 1,
+			}
+			pg.On("GetAdmin", "operator").Return(admin, nil)
+			pg.On("GetAdmin", "target").Return(&models.AdminAccount{Username: "target", Token: "secret"}, nil).Maybe()
+			ipService.On("IsBlocked", mock.Anything).Return(false)
+
+			r := gin.New()
+			store := cookie.NewStore([]byte("secret"))
+			r.Use(sessions.Sessions("mysession", store))
+			r.Use(func(c *gin.Context) {
+				session := sessions.Default(c)
+				session.Set("logged_in", true)
+				session.Set("username", "operator")
+				session.Set("client_ip", "127.0.0.1")
+				session.Set("role", "admin")
+				session.Set("permissions", "manage_admins")
+				session.Set("session_version", 1)
+				c.Next()
+			})
+			h.RegisterRoutes(r)
+
+			body := bytes.NewBufferString("{")
+			req, _ := http.NewRequest(tt.method, tt.path, body)
+			req.RemoteAddr = "127.0.0.1:1234"
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, req)
+
+			assert.Equal(t, http.StatusFound, w.Code)
+			assert.Equal(t, "/sudo?next="+tt.path, w.Header().Get("Location"))
+		})
+	}
 }
 
 func TestAPIHandler_Health(t *testing.T) {
