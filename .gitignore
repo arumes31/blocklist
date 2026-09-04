@@ -6,6 +6,7 @@
 *.dylib
 blocklist
 blocklist-server
+server
 
 # Local Data
 geoip_data/
@@ -34,10 +35,14 @@ Thumbs.db
 
 ROADMAP.md
 .geminiignore
+.claudeignore
 *test*.txt
 test_output.txt
 api_test.txt
 .qodo/
+.jules/
+.kimi-code/
 walkthrough.md
 coverage/
 coverage*
+docs/

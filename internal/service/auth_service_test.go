@@ -21,6 +21,7 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type MockPostgresRepo struct {
@@ -374,6 +375,16 @@ func TestAuthService_Integration(t *testing.T) {
 		assert.NoError(t, err)
 		assert.NotNil(t, admin)
 		assert.Equal(t, "admin_test", admin.Username)
+
+		// CheckAuth performs bcrypt verification before validating TOTP. Under
+		// the race detector, the production cost can outlive the short TOTP
+		// validity window on slower CI runners, making this integration test
+		// timing-dependent. CreateAdmin above still exercises the production
+		// hashing path; use a low-cost hash for the authentication assertions.
+		fastHash, err := bcrypt.GenerateFromPassword([]byte("supersecret"), bcrypt.MinCost)
+		assert.NoError(t, err)
+		err = pgRepo.UpdateAdminPassword("admin_test", string(fastHash))
+		assert.NoError(t, err)
 
 		// Create TOTP secret for the user
 		secret, err := totp.Generate(totp.GenerateOpts{

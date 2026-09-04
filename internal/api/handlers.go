@@ -363,14 +363,14 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 		admin.Use(h.PermissionMiddleware("manage_admins"))
 		{
 			admin.GET("", h.AdminManagement)
-			admin.POST("/create", h.CreateAdmin)
+			admin.POST("/create", h.SudoMiddleware(), h.CreateAdmin)
 			admin.POST("/delete", h.SudoMiddleware(), h.DeleteAdmin)
-			admin.POST("/change_password", h.ChangeAdminPassword)
+			admin.POST("/change_password", h.SudoMiddleware(), h.ChangeAdminPassword)
 			// Clearing another account's 2FA is at least as sensitive as deleting
 			// it, so it carries the same re-authentication requirement.
 			admin.POST("/change_totp", h.SudoMiddleware(), h.ChangeAdminTOTP)
-			admin.POST("/change_permissions", h.ChangeAdminPermissions)
-			admin.GET("/get_qr/:username", h.GetQR)
+			admin.POST("/change_permissions", h.SudoMiddleware(), h.ChangeAdminPermissions)
+			admin.GET("/get_qr/:username", h.SudoMiddleware(), h.GetQR)
 		}
 	}
 
