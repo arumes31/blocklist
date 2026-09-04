@@ -25,8 +25,9 @@ LABEL org.opencontainers.image.description="Hardened Blocklist API with GeoIP an
 # Create a non-root user
 RUN addgroup -S blocklist && adduser -S blocklist -G blocklist
 
-# Install runtime trust and timezone data without a non-reproducible full upgrade.
-RUN apk add --no-cache ca-certificates tzdata
+# Install runtime data and apply targeted OpenSSL security updates without a
+# non-reproducible full-system upgrade.
+RUN apk add --no-cache --upgrade ca-certificates tzdata libcrypto3 libssl3
 
 WORKDIR /home/blocklist/
 
