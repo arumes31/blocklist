@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"blocklist/internal/models"
@@ -12,6 +13,60 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
+
+func addExternalSource(h *APIHandler, body string) *httptest.ResponseRecorder {
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request, _ = http.NewRequest("POST", "/api/v1/excluded/sources", bytes.NewBufferString(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Set("username", "admin")
+	h.AddExternalSource(c)
+	return w
+}
+
+func TestAPIHandler_AddExternalSource_RejectsUnsafeURL(t *testing.T) {
+	h, _, pgRepo, _, _ := setupTest()
+
+	// Loopback, private space, and non-HTTP schemes must never reach the database.
+	for _, url := range []string{
+		"http://127.0.0.1/admin",
+		"http://169.254.169.254/latest/meta-data/",
+		"http://10.0.0.5/internal",
+		"file:///etc/passwd",
+		"gopher://example.com/",
+	} {
+		w := addExternalSource(h, `{"name":"bad","url":"`+url+`","source_type":"plaintext"}`)
+		assert.Equal(t, http.StatusBadRequest, w.Code, "expected %s to be rejected", url)
+	}
+
+	pgRepo.AssertNotCalled(t, "CreateExternalSource", mock.Anything)
+}
+
+func TestAPIHandler_AddExternalSource_RejectsOversizedFields(t *testing.T) {
+	h, _, pgRepo, _, _ := setupTest()
+
+	longURL := "https://example.com/" + strings.Repeat("a", maxSourceURLLen)
+	w := addExternalSource(h, `{"name":"ok","url":"`+longURL+`","source_type":"plaintext"}`)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+
+	longName := strings.Repeat("n", maxSourceNameLen+1)
+	w = addExternalSource(h, `{"name":"`+longName+`","url":"https://example.com/l.txt","source_type":"plaintext"}`)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+
+	pgRepo.AssertNotCalled(t, "CreateExternalSource", mock.Anything)
+}
+
+func TestAPIHandler_AddExternalSource_AcceptsPublicURL(t *testing.T) {
+	h, _, pgRepo, _, _ := setupTest()
+
+	pgRepo.On("CreateExternalSource", mock.Anything).Return(nil)
+	pgRepo.On("LogAction", "admin", "ADD_EXTERNAL_SOURCE", "good", "https://example.com/list.txt").Return(nil)
+
+	w := addExternalSource(h, `{"name":"good","url":"https://example.com/list.txt","source_type":"plaintext"}`)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	pgRepo.AssertExpectations(t)
+}
 
 func TestAPIHandler_Excluded(t *testing.T) {
 	h, rRepo, pgRepo, _, _ := setupTest()

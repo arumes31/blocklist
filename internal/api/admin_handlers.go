@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -371,8 +372,21 @@ func (h *APIHandler) ChangeAdminTOTP(c *gin.Context) {
 		return
 	}
 
-	// Clear TOTP secret to force re-setup on next login
-	_ = h.pgRepo.UpdateAdminToken(req.Username, "")
+	// The GUIAdmin account is configuration-driven and is the recovery path of
+	// last resort. Allowing its TOTP to be cleared here would let any holder of
+	// manage_admins strip 2FA from the primary account and then enrol their own
+	// device through the self-service setup flow.
+	if req.Username == h.cfg.GUIAdmin {
+		c.JSON(http.StatusForbidden, gin.H{"error": "TOTP for GUIAdmin cannot be reset via UI"})
+		return
+	}
+
+	// Clear TOTP secret to force re-setup on next login.
+	if err := h.pgRepo.UpdateAdminToken(req.Username, ""); err != nil {
+		zlog.Error().Err(err).Str("target", req.Username).Msg("Failed to clear admin TOTP")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
+		return
+	}
 
 	actor := c.GetString("username")
 	if err := h.pgRepo.LogAction(actor, "RESET_TOTP", req.Username, "TOTP secret cleared, re-setup required on next login"); err != nil {
@@ -384,20 +398,52 @@ func (h *APIHandler) ChangeAdminTOTP(c *gin.Context) {
 
 func (h *APIHandler) GetQR(c *gin.Context) {
 	username := c.Param("username")
-	admin, err := h.pgRepo.GetAdmin(username)
-	if err != nil {
-		c.AbortWithStatus(404)
+
+	// A TOTP secret is a credential, not account metadata: anyone holding it can
+	// generate that account's codes indefinitely. Enrolment is self-service via
+	// the login flow, so there is no legitimate reason to hand one account's
+	// secret to another user, however privileged.
+	if actor := c.GetString("username"); actor == "" || actor != username {
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "TOTP secrets can only be retrieved for your own account"})
 		return
 	}
 
-	// Reconstruct the TOTP URL
-	url := fmt.Sprintf("otpauth://totp/Blocklist%%20App:%s?secret=%s&issuer=Blocklist%%20App", username, admin.Token)
-	pngData, err := h.generateQRWithLogo(url)
-	if err != nil {
-		simplePng, _ := qrcode.Encode(url, qrcode.Medium, 256)
-		pngData = simplePng
+	admin, err := h.pgRepo.GetAdmin(username)
+	if err != nil || admin == nil {
+		c.AbortWithStatus(http.StatusNotFound)
+		return
 	}
-	c.Data(200, "image/png", pngData)
+
+	// Nothing to render before enrolment; the login flow issues the provisioning
+	// secret. Returning a QR for an empty secret would encode a usable "empty key".
+	if admin.Token == "" {
+		c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": "No TOTP secret is enrolled for this account"})
+		return
+	}
+
+	// Construct the provisioning URL through net/url so account names cannot
+	// alter the path or inject query parameters.
+	query := url.Values{
+		"issuer": {"Blocklist App"},
+		"secret": {admin.Token},
+	}
+	provisioningURL := (&url.URL{
+		Scheme:   "otpauth",
+		Host:     "totp",
+		Path:     "Blocklist App:" + username,
+		RawQuery: query.Encode(),
+	}).String()
+
+	pngData, err := h.generateQRWithLogo(provisioningURL)
+	if err != nil {
+		pngData, err = qrcode.Encode(provisioningURL, qrcode.Medium, 256)
+		if err != nil {
+			zlog.Error().Err(err).Str("username", username).Msg("Failed to generate TOTP QR code")
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "failed to generate QR code"})
+			return
+		}
+	}
+	c.Data(http.StatusOK, "image/png", pngData)
 }
 
 func (h *APIHandler) Stats(c *gin.Context) {

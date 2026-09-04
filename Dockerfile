@@ -1,10 +1,10 @@
 # Stage 1: Build
-FROM golang:1.27.1-alpine AS builder
+FROM golang:1.27.1-alpine@sha256:cf6fca6641884b8433441b2b0652976f975e1d0fdd26d177eaaf8596087f3125 AS builder
 
 WORKDIR /app
 
-# Install build dependencies and patch OS
-RUN apk update && apk upgrade --no-cache && apk add --no-cache git
+# Install only the build dependency required for module retrieval.
+RUN apk add --no-cache git
 
 # Copy dependency files
 COPY go.mod go.sum ./
@@ -17,7 +17,7 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -o blocklist-server ./cmd/server/main.go
 
 # Stage 2: Final Image
-FROM alpine:3.24.1
+FROM alpine:3.24.1@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
 LABEL maintainer="arumes31 <https://github.com/arumes31>"
 LABEL org.opencontainers.image.source="https://github.com/arumes31"
 LABEL org.opencontainers.image.description="Hardened Blocklist API with GeoIP and RBAC"
@@ -25,8 +25,8 @@ LABEL org.opencontainers.image.description="Hardened Blocklist API with GeoIP an
 # Create a non-root user
 RUN addgroup -S blocklist && adduser -S blocklist -G blocklist
 
-# Patch OS and install core utilities
-RUN apk update && apk upgrade --no-cache && apk add --no-cache ca-certificates tzdata
+# Install runtime trust and timezone data without a non-reproducible full upgrade.
+RUN apk add --no-cache ca-certificates tzdata
 
 WORKDIR /home/blocklist/
 

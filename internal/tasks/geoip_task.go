@@ -16,12 +16,16 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/hibiken/asynq"
+	"github.com/oschwald/geoip2-golang"
 )
 
 const (
-	TypeGeoIPUpdate = "geoip:update"
+	TypeGeoIPUpdate   = "geoip:update"
+	maxGeoIPDBSize    = 256 * 1024 * 1024
+	geoIPDownloadTime = 2 * time.Minute
 )
 
 var (
@@ -54,10 +58,36 @@ type GeoIPTaskHandler struct {
 	cfg       *config.Config
 	ipService IPService
 	testURL   string
+	client    *http.Client
+	validate  func(string) error
 }
 
 func NewGeoIPTaskHandler(cfg *config.Config, ipService IPService) *GeoIPTaskHandler {
-	return &GeoIPTaskHandler{cfg: cfg, ipService: ipService}
+	return &GeoIPTaskHandler{
+		cfg:       cfg,
+		ipService: ipService,
+		client: &http.Client{
+			Timeout: geoIPDownloadTime,
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				if len(via) >= 3 {
+					return fmt.Errorf("too many redirects")
+				}
+				if len(via) > 0 && !strings.EqualFold(req.URL.Hostname(), via[0].URL.Hostname()) {
+					return fmt.Errorf("redirect changed host")
+				}
+				return nil
+			},
+		},
+		validate: validateGeoIPDatabase,
+	}
+}
+
+func validateGeoIPDatabase(path string) error {
+	reader, err := geoip2.Open(path)
+	if err != nil {
+		return fmt.Errorf("validate GeoIP database: %w", err)
+	}
+	return reader.Close()
 }
 
 func (h *GeoIPTaskHandler) ProcessTask(ctx context.Context, t *asynq.Task) error {
@@ -71,7 +101,7 @@ func (h *GeoIPTaskHandler) ProcessTask(ctx context.Context, t *asynq.Task) error
 		return fmt.Errorf("invalid edition: %s: %w", p.Edition, asynq.SkipRetry)
 	}
 
-	if err := h.Download(p.Edition); err != nil {
+	if err := h.Download(ctx, p.Edition); err != nil {
 		return err
 	}
 
@@ -104,7 +134,7 @@ func (h *GeoIPTaskHandler) getDBPath(edition string) string {
 	return primaryPath
 }
 
-func (h *GeoIPTaskHandler) Download(edition string) error {
+func (h *GeoIPTaskHandler) Download(ctx context.Context, edition string) error {
 	if !validEditionRegex.MatchString(edition) {
 		return fmt.Errorf("invalid edition: %s", edition)
 	}
@@ -128,14 +158,13 @@ func (h *GeoIPTaskHandler) Download(edition string) error {
 
 	log.Printf("Asynq: Downloading GeoIP %s", edition)
 
-	client := &http.Client{}
-	req, err := http.NewRequest("GET", downloadURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, downloadURL, nil)
 	if err != nil {
 		return err
 	}
 	req.SetBasicAuth(accountID, licenseKey)
 
-	resp, err := client.Do(req)
+	resp, err := h.client.Do(req)
 	if err != nil {
 		return err
 	}
@@ -162,24 +191,51 @@ func (h *GeoIPTaskHandler) Download(edition string) error {
 		}
 
 		if strings.HasSuffix(header.Name, ".mmdb") {
+			if header.Size <= 0 || header.Size > maxGeoIPDBSize {
+				return fmt.Errorf("invalid GeoIP database size: %d", header.Size)
+			}
+
 			destPath := h.getDBPath(edition)
 			if err := os.MkdirAll(filepath.Dir(destPath), 0750); err != nil {
 				return err
 			}
 
-			outFile, err := os.Create(destPath) // #nosec G304
+			outFile, err := os.CreateTemp(filepath.Dir(destPath), ".geoip-*.tmp") // #nosec G304 -- fixed, validated destination directory
 			if err != nil {
 				return err
 			}
-
-			// Use LimitReader to prevent decompression bomb (CWE-409)
-			// MaxMind GeoLite2 databases are typically < 100MB, so 256MB is a safe upper bound.
-			lr := io.LimitReader(tr, 256*1024*1024)
-			if _, err := io.Copy(outFile, lr); err != nil {
+			tempPath := outFile.Name()
+			committed := false
+			defer func() {
 				_ = outFile.Close()
+				if !committed {
+					_ = os.Remove(tempPath)
+				}
+			}()
+
+			if err := outFile.Chmod(0600); err != nil {
+				return fmt.Errorf("secure GeoIP temporary file: %w", err)
+			}
+			written, err := io.CopyN(outFile, tr, header.Size)
+			if err != nil || written != header.Size {
+				return fmt.Errorf("copy complete GeoIP database: wrote %d of %d bytes: %w", written, header.Size, err)
+			}
+			if err := outFile.Sync(); err != nil {
+				return fmt.Errorf("sync GeoIP database: %w", err)
+			}
+			if err := outFile.Close(); err != nil {
+				return fmt.Errorf("close GeoIP database: %w", err)
+			}
+			if err := h.validate(tempPath); err != nil {
 				return err
 			}
-			_ = outFile.Close()
+			if err := os.Rename(tempPath, destPath); err != nil {
+				return fmt.Errorf("activate GeoIP database: %w", err)
+			}
+			if err := os.Chmod(destPath, 0600); err != nil {
+				return fmt.Errorf("secure GeoIP database: %w", err)
+			}
+			committed = true
 			log.Printf("Asynq: Successfully updated GeoIP database: %s", destPath)
 			return nil
 		}
