@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"testing"
+	"time"
 
 	"blocklist/internal/config"
 
@@ -127,6 +128,7 @@ func TestGeoIPTaskHandler_ProcessTask_Success(t *testing.T) {
 	mockIP := &mockIPService{}
 	handler := NewGeoIPTaskHandler(cfg, mockIP)
 	handler.testURL = server.URL
+	handler.validate = func(string) error { return nil }
 
 	// Ensure cleanup of the downloaded file
 	dbPath := handler.getDBPath(edition)
@@ -198,7 +200,7 @@ func TestGeoIPTaskHandler_Download_HTTPError(t *testing.T) {
 	handler.testURL = server.URL
 
 	// This will fail because the mock server returns 403
-	err := handler.Download("GeoLite2-City")
+	err := handler.Download(context.Background(), "GeoLite2-City")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "bad status")
 }
@@ -221,11 +223,12 @@ func TestGeoIPTaskHandler_Download_ValidResponse(t *testing.T) {
 
 	handler := NewGeoIPTaskHandler(cfg, nil)
 	handler.testURL = server.URL
+	handler.validate = func(string) error { return nil }
 
 	dbPath := handler.getDBPath(edition)
 	defer func() { _ = os.Remove(dbPath) }()
 
-	err := handler.Download(edition)
+	err := handler.Download(context.Background(), edition)
 	assert.NoError(t, err)
 
 	// Verify file exists and has correct content
@@ -252,7 +255,7 @@ func TestGeoIPTaskHandler_Download_NoMMDB(t *testing.T) {
 	handler := NewGeoIPTaskHandler(cfg, nil)
 	handler.testURL = server.URL
 
-	err := handler.Download(edition)
+	err := handler.Download(context.Background(), edition)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "mmdb not found in archive")
 }
@@ -317,9 +320,42 @@ func TestGeoIPTaskHandler_Download_URL_Escaping(t *testing.T) {
 	handler := NewGeoIPTaskHandler(cfg, nil)
 
 	edition := "../../traversal"
-	err := handler.Download(edition)
+	err := handler.Download(context.Background(), edition)
 
 	// Now it should return an error because it fails validation
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid edition")
+}
+
+func TestGeoIPTaskHandler_Download_RejectsOversizedEntry(t *testing.T) {
+	var archive bytes.Buffer
+	gw := gzip.NewWriter(&archive)
+	tw := tar.NewWriter(gw)
+	require.NoError(t, tw.WriteHeader(&tar.Header{Name: "GeoLite2-City.mmdb", Size: maxGeoIPDBSize + 1, Mode: 0600}))
+	// Deliberately omit the claimed payload. Download must reject the header size
+	// before attempting to read or activate this malformed archive.
+	require.NoError(t, gw.Close())
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(archive.Bytes())
+	}))
+	defer server.Close()
+
+	handler := NewGeoIPTaskHandler(&config.Config{GeoIPAccountID: "account", GeoIPLicenseKey: "key"}, nil)
+	handler.testURL = server.URL
+	err := handler.Download(context.Background(), "GeoLite2-City")
+	require.ErrorContains(t, err, "invalid GeoIP database size")
+}
+
+func TestGeoIPTaskHandler_Download_RespectsTimeout(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		time.Sleep(200 * time.Millisecond)
+	}))
+	defer server.Close()
+
+	handler := NewGeoIPTaskHandler(&config.Config{GeoIPAccountID: "account", GeoIPLicenseKey: "key"}, nil)
+	handler.testURL = server.URL
+	handler.client.Timeout = 20 * time.Millisecond
+	err := handler.Download(context.Background(), "GeoLite2-City")
+	require.Error(t, err)
 }
