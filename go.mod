@@ -6,7 +6,7 @@ require (
 	github.com/alicebob/miniredis/v2 v2.39.0
 	github.com/bits-and-blooms/bloom/v3 v3.7.1
 	github.com/bytedance/sonic v1.15.3
-	github.com/gin-contrib/sessions v1.1.0
+	github.com/gin-contrib/sessions v1.1.1
 	github.com/gin-gonic/gin v1.12.0
 	github.com/golang-migrate/migrate/v4 v4.19.1
 	github.com/gorilla/websocket v1.5.3
