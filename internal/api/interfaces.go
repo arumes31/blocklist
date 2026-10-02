@@ -50,6 +50,7 @@ type AuthServiceProvider interface {
 
 // RedisRepositoryProvider defines the interface for Redis operations
 type RedisRepositoryProvider interface {
+	Ping(ctx context.Context) error
 	HGetAllRaw(hashKey string) (map[string]string, error)
 	GetWhitelistedIPs() (map[string]models.WhitelistEntry, error)
 	GetBlockedIPs() (map[string]models.IPEntry, error)
@@ -68,6 +69,7 @@ type RedisRepositoryProvider interface {
 
 // PostgresRepositoryProvider defines the interface for Postgres operations
 type PostgresRepositoryProvider interface {
+	Ping(ctx context.Context) (error, error)
 	GetSavedViews(username string) ([]models.SavedView, error)
 	CreateSavedView(view models.SavedView) error
 	DeleteSavedView(id int, username string) error

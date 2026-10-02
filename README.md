@@ -38,6 +38,7 @@ graph LR
 ## Key Features
 
 - **Advanced Filtering**: Server-side filtering by IP, Reason, Country, Added By, and Date Range (ISO8601).
+  The dashboard renders at most 100 rows with Previous/Next navigation; searches and filters still cover the entire blocklist. Selections persist across pages of the same search, and select-all selects the current page. Live events coalesce into server-filtered refreshes; paused or selected views show an updates-available button instead of accumulating rows. Display statistics share a five-second snapshot per application process; search and enforcement never use that snapshot.
 - **Real-time Updates**: Live dashboard updates via WebSockets, now scaled with **Redis Pub/Sub** for multi-instance support.
 - **Visual Threat Intelligence**: Dedicated **Threat Map** page with interactive mapping (Leaflet) and distribution charts (Chart.js) for instant situational awareness.
 - **Audit Trail & Optimization**: Complete history of IP actions with automated **per-IP entry limiting** (configurable) to prevent database bloat.
@@ -175,6 +176,9 @@ Comprehensive unit, functional, and integration tests using `miniredis` and `tes
 ```bash
 # Run all tests
 go test ./...
+
+# Dashboard cursor state tests (Node.js, no npm dependencies)
+node --test tests/dashboard_pager.test.cjs
 ```
 
 ## License

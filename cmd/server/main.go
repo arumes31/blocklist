@@ -551,7 +551,7 @@ func setupStaticFiles(r *gin.Engine) {
 			zlog.Info().Str("url", urlPath).Str("disk", diskPath).Msg("Serving static files from disk")
 		} else {
 			sub, _ := fs.Sub(staticFS, embedPath)
-			r.StaticFS(urlPath, http.FS(sub))
+			r.Group(urlPath, embeddedAssetCache(sub)).StaticFS("", http.FS(sub))
 			zlog.Info().Str("url", urlPath).Str("embed", embedPath).Msg("Serving static files from embed.FS")
 		}
 	}
@@ -560,6 +560,29 @@ func setupStaticFiles(r *gin.Engine) {
 	serveStatic("/js", "cmd/server/static/js", "static/js")
 	serveStatic("/cd", "cmd/server/static/cd", "static/cd")
 	serveStatic("/flags", "cmd/server/static/flags", "static/flags")
+}
+
+// Embedded files have no modification time. Content ETags let browsers
+// revalidate them without downloading unchanged assets or keeping stale builds.
+func embeddedAssetCache(files fs.FS) gin.HandlerFunc {
+	etags := make(map[string]string)
+	_ = fs.WalkDir(files, ".", func(name string, entry fs.DirEntry, err error) error {
+		if err != nil || entry.IsDir() {
+			return nil
+		}
+		if data, err := fs.ReadFile(files, name); err == nil {
+			sum := sha256.Sum256(data)
+			etags["/"+name] = fmt.Sprintf(`"%x"`, sum)
+		}
+		return nil
+	})
+	return func(c *gin.Context) {
+		if etag := etags[c.Param("filepath")]; etag != "" {
+			c.Header("ETag", etag)
+			c.Header("Cache-Control", "public, max-age=0, must-revalidate")
+		}
+		c.Next()
+	}
 }
 
 func setupFavicon(r *gin.Engine) {

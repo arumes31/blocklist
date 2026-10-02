@@ -157,6 +157,10 @@ type MockRedisRepo struct {
 	mock.Mock
 }
 
+func (m *MockRedisRepo) Ping(ctx context.Context) error {
+	return m.Called(ctx).Error(0)
+}
+
 func (m *MockRedisRepo) HGetAllRaw(hashKey string) (map[string]string, error) {
 	args := m.Called(hashKey)
 	return args.Get(0).(map[string]string), args.Error(1)
@@ -241,6 +245,11 @@ func (m *MockRedisRepo) SetCache(key string, val interface{}, expiration time.Du
 // MockPostgresRepo implements PostgresRepositoryProvider
 type MockPostgresRepo struct {
 	mock.Mock
+}
+
+func (m *MockPostgresRepo) Ping(ctx context.Context) (error, error) {
+	args := m.Called(ctx)
+	return args.Error(0), args.Error(1)
 }
 
 func (m *MockPostgresRepo) GetSavedViews(username string) ([]models.SavedView, error) {

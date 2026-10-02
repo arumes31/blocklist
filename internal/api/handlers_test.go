@@ -102,12 +102,12 @@ func TestAPIHandler_Health(t *testing.T) {
 	h, rRepo, pgRepo, _, _ := setupTest()
 
 	// Mock successful health checks
-	rRepo.On("HGetAllRaw", "ips").Return(map[string]string{}, nil)
-	pgRepo.On("GetAllAdmins").Return([]models.AdminAccount{}, nil)
-	pgRepo.On("GetPersistentCount").Return(int64(0), nil)
+	rRepo.On("Ping", mock.Anything).Return(nil)
+	pgRepo.On("Ping", mock.Anything).Return(nil, nil)
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest("GET", "/health", nil)
 	h.Health(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -122,10 +122,11 @@ func TestAPIHandler_Health(t *testing.T) {
 func TestAPIHandler_Ready(t *testing.T) {
 	h, rRepo, _, _, _ := setupTest()
 
-	rRepo.On("HGetAllRaw", "ips").Return(map[string]string{}, nil)
+	rRepo.On("Ping", mock.Anything).Return(nil)
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest("GET", "/ready", nil)
 	h.Ready(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)

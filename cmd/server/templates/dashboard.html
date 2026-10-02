@@ -6,12 +6,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>IP Dashboard</title>
     <link rel="stylesheet" href="/cd/flag-icon.min.css">
-    <link rel="stylesheet" href="/js/leaflet.css">
     <link rel="icon" type="image/x-icon" href="/cd/favicon-color.png" />
     <script src="/js/htmx.min.js"></script>
     <script src="/js/json-enc.js"></script>
-    <script src="/js/leaflet.js"></script>
-    <script src="/js/chart.js"></script>
+    <script src="/js/blocklist-pager.js"></script>
     <style nonce="{{ .nonce }}">
         :root {
             --primary-red: #ff0000;
@@ -595,7 +593,7 @@
                 </div>
                 <div
                     style="font-size: 0.75rem; color: var(--secondary-color); display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 2px;">
-                    <span id="bpm-display" title="Blocks Per Minute">0.0 BPM</span>
+                    <span id="bpm-display" title="Blocks Per Minute">{{ .stats.blocks_minute }} BPM</span>
                     <span id="last-block-display">Last: never</span>
                     <span id="health-dot"
                         style="width: 8px; height: 8px; background: var(--success-color); border-radius: 50%; display: inline-block;"
@@ -1283,7 +1281,7 @@
             <table id="ipTable">
                 <thead>
                     <tr>
-                        <th style="width: 40px;"><input type="checkbox" id="selectAll" onclick="toggleSelectAll(this)">
+                        <th style="width: 40px;"><input type="checkbox" id="selectAll" aria-label="Select all IPs on this page" onclick="toggleSelectAll(this)">
                         </th>
                         <th class="col-ip">IP</th>
                         <th class="col-ts">Date Added</th>
@@ -1298,12 +1296,17 @@
                 <tbody id="ipTableBody"></tbody>
             </table>
         </div>
-        <div id="scroll-sentinel" class="loading" style="display:none;"><span class="spinner"></span> Loading...</div>
+        <nav aria-label="Blocklist pages" style="display:flex; gap:1rem; align-items:center; justify-content:center; flex-wrap:wrap; padding:1rem;">
+            <button id="previousPage" class="btn btn-dark" type="button" disabled>Previous</button>
+            <span id="pageStatus" role="status" aria-live="polite">Loading results…</span>
+            <button id="nextPage" class="btn btn-dark" type="button" disabled>Next</button>
+            <button id="refreshPage" class="btn btn-dark" type="button">Refresh</button>
+        </nav>
     </div>
 
     <div id="bulkActionBar"
-        style="display: none; position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: rgba(20,20,20,0.95); border: 1px solid var(--border-red); border-radius: 12px; padding: 1rem 2rem; z-index: 1001; box-shadow: 0 10px 40px rgba(255,0,0,0.3); align-items: center; gap: 2rem; backdrop-filter: blur(10px);">
-        <div style="font-weight: bold; color: #fff;"><span id="selectedCount">0</span> IPs Selected</div>
+        style="display: none; margin: 0 auto 1.5rem; width: fit-content; max-width: calc(100% - 2rem); flex-wrap: wrap; justify-content: center; background: rgba(20,20,20,0.95); border: 1px solid var(--border-red); border-radius: 12px; padding: 1rem 2rem; align-items: center; gap: 2rem;">
+        <div style="font-weight: bold; color: #fff;"><span id="selectedCount">0</span> IPs Selected (max 500)</div>
         <div style="display: flex; gap: 1rem;">
             <button class="btn btn-success" onclick="confirmBulkUnblock()">Unblock All</button>
             <button class="btn btn-dark" onclick="clearSelection()">Cancel</button>
@@ -1358,8 +1361,10 @@
     </div>
 
     <script nonce="{{ .nonce }}">
-        // Virtualized dataset and pagination
-        const PAGE_SIZE = 500;
+        // Page size limits rendering, never the scope of server-side search.
+        const PAGE_SIZE = 100;
+        const pager = new BlocklistPager();
+        const selectedIPs = new Set();
         let items = [];
 
         // Helper to escape HTML characters to prevent XSS
@@ -1382,7 +1387,6 @@
         document.getElementById('closePanelBtn')?.addEventListener('click', closeSidePanel);
 
         let total = parseInt(document.getElementById('stat-active').innerText || '0');
-        let cursor = null; // server-provided cursor for next page
         let currentFilters = {
             query: "",
             country: "",
@@ -1391,9 +1395,14 @@
             to: ""
         };
         let inflight = null; // AbortController for in-flight fetch
+        let requestVersion = 0;
+        let pageLoading = false;
+        let pageError = false;
+        let retryPage = 0;
         let paused = false;
-        let updateQueue = [];
-        let lastBlockTime = 0;
+        let liveDirty = false;
+        let liveTimer = null;
+        let lastBlockTime = Number({{ .stats.last_block_ts }}) || 0;
         const tbody = document.getElementById('ipTableBody');
 
         function rowHTML(ip, data) {
@@ -1412,7 +1421,7 @@
             const expiresHTML = expires === 'Never' ? 'Never' : `<span class="utc-timestamp">${expires}</span>`;
             const escapedCountry = data && data.geolocation && data.geolocation.country ? escapeHTML(data.geolocation.country) : '';
             return `<tr id="row-${escapedIp.toLowerCase().replace(/\./g, '-').replace(/:/g, '-')}">
-            <td><input type="checkbox" class="ip-checkbox" value="${escapedIp}" data-ip="${escapedIp}"></td>
+            <td><input type="checkbox" class="ip-checkbox" aria-label="Select ${escapedIp}" value="${escapedIp}" data-ip="${escapedIp}" ${selectedIPs.has(ip) ? 'checked' : ''}></td>
                             <td class="col-ip">
                                 <a href="#" class="ip-details-link" data-ip="${escapedIp}" data-country="${escapedCountry}" data-timestamp="${ts}" style="color: var(--vibrant-red); text-decoration: none; border-bottom: 1px dashed rgba(255,0,0,0.3);">${escapedIp}</a>
                             </td>
@@ -1576,6 +1585,8 @@
             // cancel previous request if still in flight
             if (inflight) inflight.abort();
             inflight = new AbortController();
+            const controller = inflight;
+            const version = ++requestVersion;
 
             let params = new URLSearchParams({
                 limit: PAGE_SIZE
@@ -1589,9 +1600,10 @@
 
             const url = `/api/v1/ips?${params.toString()}`;
             try {
-                const res = await fetch(url, { headers: { 'Accept': 'application/json' }, signal: inflight.signal });
-                if (!res.ok) return { items: [], next: null };
+                const res = await fetch(url, { headers: { 'Accept': 'application/json' }, signal: controller.signal });
+                if (!res.ok) throw new Error(`Blocklist request failed: ${res.status}`);
                 const payload = await res.json();
+                if (version !== requestVersion) return { aborted: true };
                 if (payload.total != null) {
                     total = payload.total;
                     const el = document.getElementById('total-ips-count');
@@ -1599,12 +1611,13 @@
                 }
                 return { items: payload.items || [], next: payload.next || null };
             } catch (err) {
-                if (err.name === 'AbortError') {
+                if (err.name === 'AbortError' || version !== requestVersion) {
                     // Return current state so we don't kill the observer
                     return { items: [], next: nextCursor, aborted: true };
                 }
                 console.error("fetchPage error:", err);
-                return { items: [], next: null };
+                showToast('Could not load blocklist results. Please retry.', 'danger');
+                return { failed: true };
             }
         }
 
@@ -1612,10 +1625,10 @@
             const currentTbody = document.getElementById('ipTableBody');
             if (!currentTbody) return;
 
-            const frag = document.createDocumentFragment();
             const container = document.createElement('tbody');
             container.id = 'ipTableBody';
             container.innerHTML = list.map(it => rowHTML(it.ip, it.data)).join('');
+            convertTimestamps(container);
 
             if (currentTbody.parentNode) {
                 currentTbody.parentNode.replaceChild(container, currentTbody);
@@ -1623,54 +1636,93 @@
                 currentTbody.innerHTML = container.innerHTML;
             }
             htmx.process(document.getElementById('ipTableBody'));
-            convertTimestamps();
         }
 
         async function init() {
             loadFromURL();
             renderChips();
-            refreshStats(); // Load initial stats including lastBlockTime
-            const page = await fetchPage(null);
-            items = page.items;
-            cursor = page.next;
-            renderWindow(items);
-            if (cursor) observeScroll();
+            updateLastBlockDisplay();
+            refreshStats(false);
+            await loadTablePage(0);
         }
 
-        function observeScroll() {
-            let loading = false;
-            const sentinel = document.getElementById('scroll-sentinel');
-            sentinel.style.display = 'block';
-            const io = new IntersectionObserver(async (entries) => {
-                if (!entries[0].isIntersecting || loading || !cursor) return;
-                loading = true;
-                try {
-                    const page = await fetchPage(cursor);
-                    if (page.aborted) return; // Don't update cursor or items if aborted
+        function updatePagination() {
+            document.getElementById('previousPage').disabled = pageLoading || pager.index === 0;
+            document.getElementById('nextPage').disabled = pageLoading || !pager.next;
+            const refresh = document.getElementById('refreshPage');
+            refresh.disabled = pageLoading;
+            refresh.textContent = pageError ? 'Retry' : liveDirty ? 'Updates available — Refresh' : 'Refresh';
+            const status = document.getElementById('pageStatus');
+            status.textContent = pageLoading ? 'Loading results…' : pageError ? 'Could not load results. Please retry.' :
+                `Page ${pager.index + 1} · ${items.length} results on this page`;
+            document.getElementById('ipTable').setAttribute('aria-busy', String(pageLoading));
+        }
 
-                    cursor = page.next;
-                    if (page.items && page.items.length > 0) {
-                        items = items.concat(page.items);
-                        const tbodyEl = document.getElementById('ipTableBody');
-                        if (tbodyEl) {
-                            const html = page.items.map(it => rowHTML(it.ip, it.data)).join('');
-                            tbodyEl.insertAdjacentHTML('beforeend', html);
-                            htmx.process(tbodyEl);
-                            convertTimestamps();
-                        }
-                    }
-                    if (!cursor) sentinel.style.display = 'none';
-                } catch (err) {
-                    console.error("Scroll load error:", err);
-                } finally {
-                    loading = false;
+        async function loadTablePage(index = pager.index, reset = false) {
+            if (reset) {
+                pager.reset();
+                items = [];
+                renderWindow(items);
+                updateBulkUI();
+            }
+            const request = pager.begin(index);
+            if (!request) return;
+            clearTimeout(liveTimer);
+            liveTimer = null;
+            pageLoading = true;
+            pageError = false;
+            retryPage = index;
+            liveDirty = false;
+            updatePagination();
+            try {
+                const page = await fetchPage(request.cursor);
+                if (page.aborted || request.version !== pager.version) return;
+                if (page.failed) {
+                    pageError = true;
+                    return;
                 }
-            }, { rootMargin: '200px' });
-            io.observe(sentinel);
+                if (!pager.accept(request, page)) return;
+                items = pager.items;
+                renderWindow(items);
+                updateBulkUI();
+            } finally {
+                if (request.version === pager.version) {
+                    pageLoading = false;
+                    updatePagination();
+                    if (liveDirty && !pageError) scheduleLiveRefresh();
+                }
+            }
+        }
+
+        function scheduleLiveRefresh() {
+            updatePagination();
+            if (!liveDirty || paused || pageLoading || pageError || document.hidden || selectedIPs.size || liveTimer) return;
+            liveTimer = setTimeout(() => {
+                liveTimer = null;
+                if (!paused && !document.hidden && !pageLoading && !selectedIPs.size) loadTablePage();
+            }, 500);
+        }
+
+        document.getElementById('previousPage').addEventListener('click', () => loadTablePage(pager.index - 1));
+        document.getElementById('nextPage').addEventListener('click', () => loadTablePage(pager.index + 1));
+        document.getElementById('refreshPage').addEventListener('click', () => loadTablePage(pageError ? retryPage : pager.index));
+        document.addEventListener('visibilitychange', () => { if (!document.hidden) scheduleLiveRefresh(); });
+
+        function updateLastBlockDisplay() {
+            if (lastBlockTime <= 0) return;
+            const diff = Math.floor(Date.now() / 1000 - lastBlockTime);
+            let text = 'just now';
+            if (diff >= 3600) text = Math.floor(diff / 3600) + 'h ago';
+            else if (diff >= 60) text = Math.floor(diff / 60) + 'm ago';
+            else if (diff > 0) text = diff + 's ago';
+            document.getElementById('last-block-display').textContent = 'Last: ' + text;
         }
 
         // Periodic stats refresh
-        async function refreshStats() {
+        let statsLoading = false;
+        async function refreshStats(includeStats = true) {
+            if (statsLoading) return;
+            statsLoading = true;
             try {
                 const hr = await fetch('/health');
                 if (!hr.ok) throw new Error(`Health check failed: ${hr.status}`);
@@ -1684,6 +1736,7 @@
                     dot.title = 'System Health: ' + hdata.status;
                 }
 
+                if (!includeStats) return;
                 const r = await fetch('/api/v1/stats', { headers: { 'Accept': 'application/json' } });
                 if (!r.ok) throw new Error(`Stats fetch failed: ${r.status}`);
                 const s = await r.json();
@@ -1716,16 +1769,7 @@
                     lastBlockTime = s.last_block_ts;
                 }
 
-                if (lastBlockTime > 0) {
-                    const diff = Math.floor((Date.now() / 1000) - lastBlockTime);
-                    let text = "just now";
-                    if (diff > 0) {
-                        if (diff < 60) text = diff + "s ago";
-                        else if (diff < 3600) text = Math.floor(diff / 60) + "m ago";
-                        else text = Math.floor(diff / 3600) + "h ago";
-                    }
-                    document.getElementById('last-block-display').textContent = 'Last: ' + text;
-                }
+                updateLastBlockDisplay();
 
                 if (Array.isArray(s.top_countries)) {
                     const wrap = document.getElementById('stat-countries');
@@ -1773,9 +1817,11 @@
                     dot.style.background = 'orange';
                     dot.title = 'Stats refresh failed: ' + err.message;
                 }
+            } finally {
+                statsLoading = false;
             }
         }
-        setInterval(refreshStats, 15000);
+        setInterval(() => { if (!document.hidden) refreshStats(); }, 15000);
 
         // WebSocket differential updates
         const socket = new WebSocket((window.location.protocol === 'https:' ? 'wss://' : 'ws://') + window.location.host + '/ws');
@@ -1783,7 +1829,6 @@
         socket.onclose = function () { setStatus('offline'); };
         socket.onmessage = function (event) {
             const msg = JSON.parse(event.data);
-            if (paused) { updateQueue.push(msg); return; }
             applyMessage(msg);
         };
 
@@ -1796,56 +1841,17 @@
         }
 
         function applyMessage(msg) {
-            if (msg.action === 'block') {
-                const ip = msg.data.ip;
-                const entry = { ip, data: msg.data.data };
-                // Check if it matches current filters
-                if (currentFilters.query && !ip.includes(currentFilters.query) && !entry.data.reason.includes(currentFilters.query)) return;
-                if (currentFilters.country && (!entry.data.geolocation || entry.data.geolocation.country !== currentFilters.country)) return;
-                if (currentFilters.addedBy && entry.data.added_by !== currentFilters.addedBy) return;
-
-                items.unshift(entry);
-                const tbodyEl = document.getElementById('ipTableBody');
-                const temp = document.createElement('tbody');
-                temp.innerHTML = rowHTML(ip, entry.data);
-                const row = temp.firstChild;
-                // add animation classes
-                row.classList.add('slide-in');
-                const firstCell = row.querySelector('td');
-                if (firstCell) firstCell.classList.add('pulse-start');
-                tbodyEl.insertBefore(row, tbodyEl.firstChild);
-                htmx.process(row);
-                convertTimestamps();
-                updateTotalCount(1);
-                // optional toast
-                showToast(`IP Blocked: ${ip}`, 'danger');
-                // bump hour/day/total counters optimistically
-                const h = document.getElementById('stat-hour'); if (h) h.textContent = (parseInt(h.textContent || '0') + 1).toString();
-                const d = document.getElementById('stat-day'); if (d) d.textContent = (parseInt(d.textContent || '0') + 1).toString();
-                const t = document.getElementById('stat-total'); if (t) t.textContent = (parseInt(t.textContent || '0') + 1).toString();
-
-                // Update BPM and Last Block
-                document.getElementById('last-block-display').textContent = 'Last: just now';
-                lastBlockTime = Date.now() / 1000;
-            } else if (msg.action === 'unblock') {
-                const ip = msg.data.ip;
-                const id = 'row-' + ip.toLowerCase().replace(/\./g, '-').replace(/:/g, '-');
-                const row = document.getElementById(id);
-                if (row) {
-                    row.style.transition = 'opacity 250ms ease';
-                    row.style.opacity = '0';
-                    setTimeout(() => row.remove(), 250);
-                }
-                const idx = items.findIndex(it => it.ip === ip);
-                if (idx >= 0) items.splice(idx, 1);
-                updateTotalCount(-1);
-                showToast(`IP Unblocked: ${ip}`, 'success');
+            if (msg.action !== 'block' && msg.action !== 'unblock') return;
+            if (msg.action === 'unblock') {
+                selectedIPs.delete(msg.data.ip);
+                const checkbox = Array.from(document.querySelectorAll('.ip-checkbox')).find(el => el.value === msg.data.ip);
+                if (checkbox) checkbox.checked = false;
+                updateBulkUI();
             }
-        }
-
-        function updateTotalCount(delta) {
-            const el = document.getElementById('total-ips-count');
-            el.innerText = Math.max(0, parseInt(el.innerText) + delta);
+            // The server applies every filter and returns at most one page. A
+            // dirty flag also bounds memory during long pauses or event bursts.
+            liveDirty = true;
+            scheduleLiveRefresh();
         }
 
         // Server-side search across all records
@@ -1874,13 +1880,11 @@
                 from: document.getElementById('fromDateFilter').value,
                 to: document.getElementById('toDateFilter').value
             };
-            cursor = null;
             updateURL();
             renderChips();
-            const page = await fetchPage(null);
-            cursor = page.next;
-            items = page.items;
-            renderWindow(items);
+            selectedIPs.clear();
+            updateBulkUI();
+            await loadTablePage(0, true);
         }
 
         function updateURL() {
@@ -2074,23 +2078,31 @@
             }, 4000);
         }
 
-        function convertTimestamps() {
-            const utcTimestamps = document.querySelectorAll('.utc-timestamp:not([data-converted])');
+        function convertTimestamps(root = document) {
+            const utcTimestamps = root.querySelectorAll('.utc-timestamp:not([data-converted])');
             utcTimestamps.forEach(function (timestamp) {
-                const date = new Date(timestamp.innerText);
-                timestamp.innerText = date.toLocaleString();
+                const date = new Date(timestamp.textContent);
+                timestamp.textContent = date.toLocaleString();
                 timestamp.setAttribute('data-converted', 'true');
             });
         }
 
         window.toggleSelectAll = function (el) {
             const checkboxes = document.querySelectorAll('.ip-checkbox');
-            checkboxes.forEach(c => c.checked = el.checked);
+            checkboxes.forEach(c => {
+                c.checked = el.checked && (selectedIPs.has(c.value) || selectedIPs.size < 500);
+                if (c.checked) selectedIPs.add(c.value); else selectedIPs.delete(c.value);
+            });
             updateBulkUI();
+            scheduleLiveRefresh();
         }
 
         window.updateBulkUI = function () {
-            const selected = document.querySelectorAll('.ip-checkbox:checked').length;
+            const selected = selectedIPs.size;
+            const all = document.getElementById('selectAll');
+            const visibleSelected = items.filter(item => selectedIPs.has(item.ip)).length;
+            all.checked = items.length > 0 && visibleSelected === items.length;
+            all.indeterminate = visibleSelected > 0 && visibleSelected < items.length;
             const bar = document.getElementById('bulkActionBar');
             const count = document.getElementById('selectedCount');
             if (selected > 0) {
@@ -2102,14 +2114,16 @@
         }
 
         window.clearSelection = function () {
+            selectedIPs.clear();
             const checkboxes = document.querySelectorAll('.ip-checkbox');
             checkboxes.forEach(c => c.checked = false);
             document.getElementById('selectAll').checked = false;
             updateBulkUI();
+            scheduleLiveRefresh();
         }
 
         window.confirmBulkUnblock = function () {
-            const selected = Array.from(document.querySelectorAll('.ip-checkbox:checked')).map(c => c.value);
+            const selected = Array.from(selectedIPs);
             if (selected.length === 0) return;
 
             if (!confirm(`Are you sure you want to unblock ${selected.length} IPs?`)) return;
@@ -2121,10 +2135,9 @@
             }).then(r => r.json()).then(data => {
                 if (data.status === 'success') {
                     showToast(`Successfully unblocked ${selected.length} IPs`, 'success');
-                    // We could reload or manually remove rows. 
-                    // Since WS will trigger unblock events, they should disappear automatically.
-                    document.getElementById('selectAll').checked = false;
+                    selected.forEach(ip => selectedIPs.delete(ip));
                     updateBulkUI();
+                    loadTablePage();
                 } else {
                     showToast(data.error || 'Bulk unblock failed', 'danger');
                 }
@@ -2142,7 +2155,13 @@
 
             const checkbox = event.target.closest('.ip-checkbox');
             if (checkbox) {
+                if (checkbox.checked && !selectedIPs.has(checkbox.value) && selectedIPs.size >= 500) {
+                    checkbox.checked = false;
+                    showToast('Select up to 500 IPs per bulk action.', 'danger');
+                }
+                if (checkbox.checked) selectedIPs.add(checkbox.value); else selectedIPs.delete(checkbox.value);
                 updateBulkUI();
+                scheduleLiveRefresh();
             }
         });
 
@@ -2153,8 +2172,7 @@
                 setStatus('live');
                 btn.textContent = 'Pause';
                 btn.classList.remove('btn-danger');
-                const q = updateQueue.splice(0, updateQueue.length);
-                q.forEach(applyMessage);
+                if (liveDirty) loadTablePage();
             } else {
                 setStatus('paused');
                 btn.textContent = 'Resume';
@@ -2182,7 +2200,7 @@
         });
 
         setTimeout(() => { convertTimestamps(); init(); }, 100);
-        document.body.addEventListener('htmx:afterOnLoad', convertTimestamps);
+        document.body.addEventListener('htmx:afterOnLoad', () => convertTimestamps());
 
         // HTMX Error Handling
         document.body.addEventListener('htmx:responseError', function (evt) {

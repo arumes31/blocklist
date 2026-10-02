@@ -6,7 +6,7 @@
 *.dylib
 blocklist
 blocklist-server
-server
+/server
 
 # Local Data
 geoip_data/

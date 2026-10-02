@@ -2,11 +2,40 @@ package main
 
 import (
 	"bytes"
+	"net/http"
+	"net/http/httptest"
 	"regexp"
 	"testing"
+	"testing/fstest"
 
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 )
+
+func TestEmbeddedAssetCache(t *testing.T) {
+	assets := fstest.MapFS{"app.js": {Data: []byte("console.log('test')")}}
+	r := gin.New()
+	r.Group("/js", embeddedAssetCache(assets)).StaticFS("", http.FS(assets))
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest("GET", "/js/app.js", nil))
+	assert.Equal(t, http.StatusOK, w.Code)
+	etag := w.Header().Get("ETag")
+	assert.NotEmpty(t, etag)
+	request := httptest.NewRequest("GET", "/js/app.js", nil)
+	request.Header.Set("If-None-Match", etag)
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, request)
+	assert.Equal(t, http.StatusNotModified, w.Code)
+	assert.Empty(t, w.Body.String())
+
+	updated := fstest.MapFS{"app.js": {Data: []byte("console.log('updated')")}}
+	r = gin.New()
+	r.Group("/js", embeddedAssetCache(updated)).StaticFS("", http.FS(updated))
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, request)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.NotEqual(t, etag, w.Header().Get("ETag"))
+}
 
 func TestCensorWriter_Write(t *testing.T) {
 	censorRE := regexp.MustCompile(`(?i)(password|secret|token)(["':\s=]*[:=][\s"':=]*|\s*["']\s*)([^"'\s,{}]+)`)

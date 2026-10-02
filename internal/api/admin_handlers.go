@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"html/template"
@@ -8,6 +9,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"blocklist/internal/models"
 
@@ -19,8 +21,6 @@ import (
 // Dashboard renders the main dashboard page.
 func (h *APIHandler) Dashboard(c *gin.Context) {
 	username, _ := c.Get("username")
-
-	ips := h.getCombinedIPs()
 
 	// Preload stats for initial render
 	hour, day, totalEver, activeBlocks, top, topASN, topReason, wh, lb, bm, whc, err := h.ipService.Stats(c.Request.Context())
@@ -47,19 +47,12 @@ func (h *APIHandler) Dashboard(c *gin.Context) {
 
 	views, _ := h.pgRepo.GetSavedViews(username.(string))
 	permissions, _ := c.Get("permissions")
-	trend, err := h.pgRepo.GetBlockTrend()
-	if err != nil {
-		zlog.Error().Err(err).Msg("failed to get block trend")
-	}
-
 	h.renderHTML(c, http.StatusOK, "dashboard.html", gin.H{
-		"ips":            ips,
 		"total_ips":      activeBlocks, // Use value from Stats() for consistency
 		"admin_username": h.cfg.GUIAdmin,
 		"username":       username,
 		"permissions":    permissions,
 		"views":          views,
-		"block_trend":    trend,
 		"stats": gin.H{
 			"hour":          hour,
 			"day":           day,
@@ -180,12 +173,14 @@ func (h *APIHandler) DashboardTable(c *gin.Context) {
 }
 
 func (h *APIHandler) Health(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Second)
+	defer cancel()
 	status := "UP"
 	dbStatus := "OK"
 	readDbStatus := "OK"
 	redisStatus := "OK"
 	if h.redisRepo != nil {
-		if _, err := h.redisRepo.HGetAllRaw("ips"); err != nil {
+		if err := h.redisRepo.Ping(ctx); err != nil {
 			redisStatus = "ERROR"
 			status = "DEGRADED"
 		}
@@ -194,12 +189,13 @@ func (h *APIHandler) Health(c *gin.Context) {
 		status = "DEGRADED"
 	}
 	if h.pgRepo != nil {
-		if _, err := h.pgRepo.GetAllAdmins(); err != nil {
+		primaryErr, readErr := h.pgRepo.Ping(ctx)
+		if primaryErr != nil {
 			dbStatus = "ERROR"
 			status = "DEGRADED"
 		}
 		// Check read replica if it's different from primary
-		if _, err := h.pgRepo.GetPersistentCount(); err != nil {
+		if readErr != nil {
 			readDbStatus = "ERROR"
 			status = "DEGRADED"
 		}

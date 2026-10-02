@@ -2,9 +2,10 @@ package repository
 
 import (
 	"blocklist/internal/models"
-	"github.com/bytedance/sonic"
+	"context"
 	"errors"
 	"fmt"
+	"github.com/bytedance/sonic"
 	"strconv"
 	"strings"
 	"time"
@@ -19,6 +20,15 @@ type PostgresRepository struct {
 	db                 *sqlx.DB
 	readDb             *sqlx.DB
 	auditLogLimitPerIP int
+}
+
+// Ping checks both database connections without querying application tables.
+func (p *PostgresRepository) Ping(ctx context.Context) (error, error) {
+	primaryErr := p.db.PingContext(ctx)
+	if p.readDb == p.db {
+		return primaryErr, primaryErr
+	}
+	return primaryErr, p.readDb.PingContext(ctx)
 }
 
 func NewPostgresRepository(url string, readUrl string, auditLogLimitPerIP int) (*PostgresRepository, error) {

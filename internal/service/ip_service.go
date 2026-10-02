@@ -2,8 +2,9 @@ package service
 
 import (
 	"context"
-	"github.com/bytedance/sonic"
+	"errors"
 	"fmt"
+	"github.com/bytedance/sonic"
 	"html"
 	"net"
 	"net/netip"
@@ -43,6 +44,9 @@ type IPService struct {
 	fqdnCacheMu    sync.Mutex
 	ptrCache       map[netip.Addr]ptrResolution
 	ptrCacheMu     sync.Mutex
+	statsMu        sync.Mutex
+	statsCached    *statsSnapshot
+	statsRefresh   *statsRefresh
 }
 
 // fqdnResolution caches the set of addresses an excluded FQDN currently resolves
@@ -736,91 +740,12 @@ func (s *IPService) GetTotalCount(ctx context.Context) int {
 	return 0
 }
 
-// ListIPsPaginated returns items ordered by recency with cursor-based pagination and optional query filter.
-// Fallback implementation using Redis hash if sorted index is unavailable.
+// ListIPsPaginated shares complete search and cursor handling with advanced filters.
 func (s *IPService) ListIPsPaginated(ctx context.Context, limit int, cursor string, query string) ([]map[string]interface{}, string, int, error) {
-	if limit <= 0 {
-		limit = MaxPageSize
-	}
-	if limit > MaxPageSize {
-		limit = MaxPageSize
-	}
-	q := strings.ToLower(strings.TrimSpace(query))
+	return s.ListIPsPaginatedAdvanced(ctx, limit, cursor, query, "", "", "", "")
+}
 
-	fetchLimit := limit
-	if q != "" {
-		fetchLimit = 500
-	}
-
-	// If ZSET exists, use score-based cursor. Otherwise fallback to hash scan.
-	zs, next, zerr := s.redisRepo.ZPageByScoreDesc(fetchLimit, cursor)
-	if zerr == nil && len(zs) > 0 {
-		// total via GetTotalCount
-		tot := s.GetTotalCount(ctx)
-		// Use the fixed MaxPageSize constant for capacity instead of the
-		// user-derived limit (already clamped to <= MaxPageSize above). This keeps
-		// any untrusted value out of make()'s size argument so CodeQL's allocation
-		// taint analysis (CWE-770) is satisfied; capacity is only a growth hint.
-		items := make([]map[string]interface{}, 0, MaxPageSize)
-
-		var currentCursor string
-		for {
-			ips := make([]string, len(zs))
-			for i, z := range zs {
-				ips[i] = z.Member.(string)
-			}
-			entries, err := s.redisRepo.GetIPEntries(ips)
-			if err != nil {
-				return items, currentCursor, tot, err
-			}
-
-			var lastAddedCursor string
-			for i, z := range zs {
-				if len(items) >= limit {
-					break
-				}
-				ip := ips[i]
-				entry := entries[i]
-				if entry == nil {
-					continue
-				}
-				if q != "" {
-					if !strings.Contains(strings.ToLower(ip), q) &&
-						!strings.Contains(strings.ToLower(entry.Reason), q) &&
-						!strings.Contains(strings.ToLower(entry.AddedBy), q) &&
-						(entry.Geolocation == nil || !strings.Contains(strings.ToLower(entry.Geolocation.Country), q)) {
-						continue
-					}
-				}
-				items = append(items, map[string]interface{}{"ip": ip, "data": entry})
-				lastAddedCursor = fmt.Sprintf("%v:%s", z.Score, z.Member.(string))
-			}
-
-			if len(items) >= limit {
-				if lastAddedCursor != "" {
-					currentCursor = lastAddedCursor
-				} else {
-					currentCursor = next
-				}
-				break
-			}
-			currentCursor = next
-			if currentCursor == "" {
-				break
-			}
-
-			// Fetch next page
-			zs, next, zerr = s.redisRepo.ZPageByScoreDesc(fetchLimit, currentCursor)
-			if zerr != nil {
-				return items, currentCursor, tot, zerr
-			}
-			if len(zs) == 0 {
-				break
-			}
-		}
-		return items, currentCursor, tot, nil
-	}
-	// fallback to hash listing
+func (s *IPService) listIPsHashFallback(ctx context.Context, limit int, cursor string, opts *filterOptions) ([]map[string]interface{}, string, int, error) {
 	all, err := s.redisRepo.HGetAllRaw("ips")
 	if err != nil {
 		return nil, "", 0, err
@@ -837,13 +762,11 @@ func (s *IPService) ListIPsPaginated(ctx context.Context, limit int, cursor stri
 		if err := sonic.UnmarshalString(raw, &e); err != nil {
 			continue
 		}
-		if q != "" {
-			if !strings.Contains(strings.ToLower(ip), q) &&
-				!strings.Contains(strings.ToLower(e.Reason), q) &&
-				!strings.Contains(strings.ToLower(e.AddedBy), q) &&
-				(e.Geolocation == nil || !strings.Contains(strings.ToLower(e.Geolocation.Country), q)) {
-				continue
-			}
+		if err := ctx.Err(); err != nil {
+			return nil, "", 0, err
+		}
+		if !s.matchesFilters(ip, &e, opts) {
+			continue
 		}
 		var ts int64
 		if t, err := time.Parse("2006-01-02 15:04:05 UTC", e.Timestamp); err == nil {
@@ -851,7 +774,12 @@ func (s *IPService) ListIPsPaginated(ctx context.Context, limit int, cursor stri
 		}
 		list = append(list, pair{ip: ip, e: e, ts: ts})
 	}
-	sort.Slice(list, func(i, j int) bool { return list[i].ts > list[j].ts })
+	sort.Slice(list, func(i, j int) bool {
+		if list[i].ts == list[j].ts {
+			return list[i].ip > list[j].ip
+		}
+		return list[i].ts > list[j].ts
+	})
 	offset := 0
 	if cursor != "" {
 		if n, err := strconv.Atoi(cursor); err == nil && n > 0 {
@@ -878,8 +806,8 @@ func (s *IPService) ListIPsPaginated(ctx context.Context, limit int, cursor stri
 	return itemsOut, nextCursor, len(list), nil
 }
 
-// Stats computes counts for last hour/day/total and top countries, ASNs, and reasons.
-func (s *IPService) Stats(ctx context.Context) (hour int, day int, totalEver int, activeBlocks int, top []struct {
+// computeStats reads fresh counts and aggregates from Redis.
+func (s *IPService) computeStats(ctx context.Context) (hour int, day int, totalEver int, activeBlocks int, top []struct {
 	Country string
 	Count   int
 }, topASN []struct {
@@ -968,17 +896,18 @@ func (s *IPService) Stats(ctx context.Context) (hour int, day int, totalEver int
 		topReason = topReason[:10]
 	}
 
-	h, _ := s.redisRepo.CountLastHour()
-	d, _ := s.redisRepo.CountLastDay()
-	totalEver, _ = s.redisRepo.CountTotalEver()
-	wh, _ := s.redisRepo.CountWebhooksLastHour()
-	lb, _ := s.redisRepo.GetLastBlockTime()
-	bm, _ := s.redisRepo.CountBlocksLastMinute()
+	h, hourErr := s.redisRepo.CountLastHour()
+	d, dayErr := s.redisRepo.CountLastDay()
+	totalEver, totalErr := s.redisRepo.CountTotalEver()
+	wh, webhookErr := s.redisRepo.CountWebhooksLastHour()
+	lb, lastBlockErr := s.redisRepo.GetLastBlockTime()
+	bm, minuteErr := s.redisRepo.CountBlocksLastMinute()
 
-	wips, _ := s.redisRepo.GetWhitelistedIPs()
+	wips, whitelistErr := s.redisRepo.GetWhitelistedIPs()
 	whitelistCount = len(wips)
 
-	return h, d, totalEver, activeBlocks, top, topASN, topReason, wh, lb, bm, whitelistCount, nil
+	return h, d, totalEver, activeBlocks, top, topASN, topReason, wh, lb, bm, whitelistCount,
+		errors.Join(hourErr, dayErr, totalErr, webhookErr, lastBlockErr, minuteErr, whitelistErr)
 }
 
 // ExportIPs returns all IPs matching the filters for export purposes.
@@ -1165,6 +1094,7 @@ type filterOptions struct {
 	fromTime     time.Time
 	toTime       time.Time
 }
+
 func (s *IPService) prepareFilterOptions(query, country, addedBy, from, to string) *filterOptions {
 	opts := &filterOptions{}
 	if from != "" {
@@ -1263,80 +1193,56 @@ func (s *IPService) ListIPsPaginatedAdvanced(ctx context.Context, limit int, cur
 	if s.redisRepo == nil {
 		return nil, "", 0, nil
 	}
+	if limit <= 0 || limit > MaxPageSize {
+		limit = MaxPageSize
+	}
 	opts := s.prepareFilterOptions(query, country, addedBy, from, to)
-
-	// We'll fetch a larger batch if filtering is active to try and fulfill 'limit'
-	if limit <= 0 {
-		limit = MaxPageSize
+	total, err := s.redisRepo.GetZSetCount()
+	if err != nil {
+		return nil, "", 0, err
 	}
-	if limit > MaxPageSize {
-		limit = MaxPageSize
+	// An exhausted tuple cursor must never restart at the hash's first page.
+	if total == 0 && !strings.Contains(cursor, ":") {
+		return s.listIPsHashFallback(ctx, limit, cursor, opts)
 	}
-	fetchLimit := limit
+	fetchLimit := limit + 1
 	if query != "" || country != "" || addedBy != "" || from != "" || to != "" {
-		fetchLimit = 500 // Fetch in chunks
+		fetchLimit = 500
 	}
-
-	zs, next, zerr := s.redisRepo.ZPageByScoreDesc(fetchLimit, cursor)
-	if zerr == nil && len(zs) > 0 {
-		tot := s.GetTotalCount(ctx)
-		// Use the fixed MaxPageSize constant for capacity instead of the
-		// user-derived limit (already clamped to <= MaxPageSize above). This keeps
-		// any untrusted value out of make()'s size argument so CodeQL's allocation
-		// taint analysis (CWE-770) is satisfied; capacity is only a growth hint.
-		items := make([]map[string]interface{}, 0, MaxPageSize)
-
-		var currentCursor string
-		for {
-			ips := make([]string, len(zs))
-			for i, z := range zs {
-				ips[i] = z.Member.(string)
-			}
-			entries, err := s.redisRepo.GetIPEntries(ips)
-			if err != nil {
-				return items, currentCursor, tot, err
-			}
-
-			var lastAddedCursor string
-			for i, z := range zs {
-				if len(items) >= limit {
-					break
-				}
-
-				if !s.matchesFilters(ips[i], entries[i], opts) {
-					continue
-				}
-
-				items = append(items, map[string]interface{}{"ip": ips[i], "data": entries[i]})
-				lastAddedCursor = fmt.Sprintf("%v:%s", z.Score, z.Member.(string))
-			}
-
-			if len(items) >= limit {
-				if lastAddedCursor != "" {
-					currentCursor = lastAddedCursor
-				} else {
-					currentCursor = next
-				}
-				break
-			}
-			currentCursor = next
-			if currentCursor == "" {
-				break
-			}
-
-			zs, next, zerr = s.redisRepo.ZPageByScoreDesc(fetchLimit, currentCursor)
-			if zerr != nil {
-				return items, currentCursor, tot, zerr
-			}
-			if len(zs) == 0 {
-				break
-			}
+	items := make([]map[string]interface{}, 0, MaxPageSize)
+	lastMatch := ""
+	for {
+		if err := ctx.Err(); err != nil {
+			return nil, "", total, err
 		}
-		return items, currentCursor, tot, nil
+		zs, next, err := s.redisRepo.ZPageByScoreDesc(fetchLimit, cursor)
+		if err != nil {
+			return nil, "", total, err
+		}
+		ips := make([]string, len(zs))
+		for i, z := range zs {
+			ips[i] = z.Member.(string)
+		}
+		entries, err := s.redisRepo.GetIPEntries(ips)
+		if err != nil {
+			return nil, "", total, err
+		}
+		for i, z := range zs {
+			if !s.matchesFilters(ips[i], entries[i], opts) {
+				continue
+			}
+			// Look ahead to an actual match, so exact-sized final pages end here.
+			if len(items) == limit {
+				return items, lastMatch, total, nil
+			}
+			items = append(items, map[string]interface{}{"ip": ips[i], "data": entries[i]})
+			lastMatch = fmt.Sprintf("%v:%s", z.Score, ips[i])
+		}
+		if next == "" {
+			return items, "", total, nil
+		}
+		cursor = next
 	}
-
-	// Fallback to hash listing if ZSET is empty/failed
-	return s.ListIPsPaginated(ctx, limit, cursor, query)
 }
 
 func (s *IPService) exportFallback(ctx context.Context, opts *filterOptions) ([]map[string]interface{}, error) {

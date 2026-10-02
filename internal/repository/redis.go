@@ -4,8 +4,9 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"github.com/bytedance/sonic"
 	"fmt"
+	"github.com/bytedance/sonic"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -40,6 +41,11 @@ func NewRedisRepository(host string, port int, password string, db int) *RedisRe
 func (r *RedisRepository) HGetAllRaw(hashKey string) (map[string]string, error) {
 	defer r.trackDuration("HGetAllRaw", time.Now())
 	return r.client.HGetAll(r.ctx, hashKey).Result()
+}
+
+// Ping checks connectivity without loading application data.
+func (r *RedisRepository) Ping(ctx context.Context) error {
+	return r.client.Ping(ctx).Err()
 }
 
 func (r *RedisRepository) HDel(hashKey, field string) error {
@@ -124,51 +130,50 @@ func (r *RedisRepository) RemoveIPTimestamp(ip string) error {
 	return r.client.ZRem(r.ctx, "ips_by_ts", ip).Err()
 }
 
-// ZPageByScoreDesc paginates ips_by_ts using a stable tuple cursor (score:member).
-// Cursor format: "<score>:<member>". Empty cursor starts from +inf.
+// pageByTuple atomically finds the first tuple after the cursor in descending
+// order, even if the cursor member was deleted or its timestamp changed.
+// Binary search avoids scanning or downloading arbitrarily large timestamp ties.
+var pageByTuple = redis.NewScript(`
+local lo, hi = 0, redis.call('ZCARD', KEYS[1])
+if ARGV[1] ~= '' then
+    local score, member = tonumber(ARGV[1]), ARGV[2]
+    while lo < hi do
+        local mid = math.floor((lo + hi) / 2)
+        local item = redis.call('ZREVRANGE', KEYS[1], mid, mid, 'WITHSCORES')
+        local s = tonumber(item[2])
+        if s > score or (s == score and item[1] >= member) then
+            lo = mid + 1
+        else
+            hi = mid
+        end
+    end
+end
+return redis.call('ZREVRANGE', KEYS[1], lo, lo + tonumber(ARGV[3]), 'WITHSCORES')
+`)
+
+// ZPageByScoreDesc uses a score:member cursor and one-entry lookahead.
 func (r *RedisRepository) ZPageByScoreDesc(limit int, cursor string) ([]redis.Z, string, error) {
 	defer r.trackDuration("ZPageByScoreDesc", time.Now())
-
-	max := "+inf"
-	var lastMember string
-	if cursor != "" {
-		parts := strings.SplitN(cursor, ":", 2)
-		valid := true
-		// Validate score is float or inf
-		if parts[0] != "+inf" && parts[0] != "-inf" {
-			if _, err := strconv.ParseFloat(parts[0], 64); err != nil {
-				valid = false
-			}
-		}
-
-		if valid {
-			max = parts[0]
-			if len(parts) > 1 {
-				lastMember = parts[1]
-			}
+	if limit <= 0 {
+		return nil, "", nil
+	}
+	score, member := "", ""
+	if parts := strings.SplitN(cursor, ":", 2); len(parts) == 2 {
+		if n, err := strconv.ParseFloat(parts[0], 64); err == nil && !math.IsNaN(n) && !math.IsInf(n, 0) {
+			score, member = parts[0], parts[1]
 		}
 	}
-
-	opt := &redis.ZRangeBy{
-		Min:    "-inf",
-		Max:    max,
-		Offset: 0,
-		Count:  int64(limit + 50),
-	}
-
-	res, err := r.client.ZRevRangeByScoreWithScores(r.ctx, "ips_by_ts", opt).Result()
+	values, err := pageByTuple.Run(r.ctx, r.client, []string{"ips_by_ts"}, score, member, limit).Slice()
 	if err != nil {
 		return nil, "", err
 	}
-
-	// If we have a lastMember, we need to filter out items until we find it
-	if lastMember != "" {
-		for i, z := range res {
-			if z.Member.(string) == lastMember {
-				res = res[i+1:]
-				break
-			}
+	res := make([]redis.Z, 0, len(values)/2)
+	for i := 0; i < len(values); i += 2 {
+		n, err := strconv.ParseFloat(values[i+1].(string), 64)
+		if err != nil {
+			return nil, "", fmt.Errorf("decode pagination score: %w", err)
 		}
+		res = append(res, redis.Z{Score: n, Member: values[i].(string)})
 	}
 
 	next := ""

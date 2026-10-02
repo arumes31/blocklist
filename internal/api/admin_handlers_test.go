@@ -56,6 +56,8 @@ func TestAPIHandler_Dashboard(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Contains(t, w.Body.String(), "Dashboard")
+	rRepo.AssertNotCalled(t, "GetBlockedIPs")
+	pgRepo.AssertNotCalled(t, "GetBlockTrend")
 }
 
 func TestAPIHandler_CreateAdmin(t *testing.T) {

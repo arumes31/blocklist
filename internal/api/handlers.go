@@ -416,7 +416,7 @@ func (h *APIHandler) getCombinedIPs() map[string]models.IPEntry {
 func (h *APIHandler) Ready(c *gin.Context) {
 	dep := map[string]interface{}{"redis": true, "geoip": "unknown"}
 	if h.redisRepo != nil {
-		if _, err := h.redisRepo.HGetAllRaw("ips"); err != nil {
+		if err := h.redisRepo.Ping(c.Request.Context()); err != nil {
 			dep["redis"] = false
 		}
 	} else {
