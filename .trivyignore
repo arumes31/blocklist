@@ -5,17 +5,20 @@
 
 # CVE-2026-34040 — github.com/docker/docker (Moby authorization bypass)
 #
-# Not exploitable here and not fixable via a dependency bump:
-#   * docker/docker is a TEST-ONLY transitive dependency, pulled in by
-#     testcontainers-go (integration tests that only run under Docker and are
-#     skipped on the application build and on Windows). It is not part of the
-#     production blocklist-server binary.
-#   * The CVE is a Moby *daemon* authz-plugin bypass. This project never runs a
-#     docker daemon and uses no authz plugins; it only imports the client
-#     library transitively.
-#   * The fix (Moby 29.3.1) ships under the github.com/moby/moby module path.
-#     The legacy github.com/docker/docker import path tops out at
-#     v28.5.2+incompatible (no v29.x tag exists), and testcontainers-go v0.42.0
-#     (latest) still depends on the legacy path, so there is no version to
-#     bump to. Revisit when testcontainers-go migrates fully to moby/moby.
+# Revalidated 2026-10-03 at 78dc97bf4642c7822d737c2a126c48d792eb1ccd:
+#   * go mod why -m github.com/docker/docker traces the dependency through
+#     golang-migrate/migrate/v4/database/postgres.test -> dhui/dktest.
+#     It is retained for an upstream dependency's tests, not imported by this
+#     application's code or tests. Testcontainers v0.44.0 uses moby/moby/client.
+#   * go list -deps -test ./... finds no docker/docker packages for the release
+#     targets (linux, windows, darwin; amd64 and arm64; CGO_ENABLED=0).
+#   * This advisory concerns the Docker daemon's AuthZ request-body handling.
+#     Neither the daemon nor its authorization middleware is linked here.
+#     This exception does not establish the safety of external Docker hosts.
+#   * The Go advisory has no fixed release on the legacy docker/docker path.
+#     Its moby/moby/v2 fix is v2.0.0-beta.8, a different module, not a drop-in
+#     version bump. Even migrate v4.20.1 retains docker/docker via dktest.
+#     Revisit if the import graph changes or migrate/dktest removes the module.
+#   * Evidence: https://pkg.go.dev/vuln/GO-2026-4887
+#     https://github.com/moby/moby/security/advisories/GHSA-x744-4wpc-v9h2
 CVE-2026-34040
