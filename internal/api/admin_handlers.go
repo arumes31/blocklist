@@ -70,48 +70,82 @@ func (h *APIHandler) Dashboard(c *gin.Context) {
 }
 
 func (h *APIHandler) ThreatMap(c *gin.Context) {
-	ips := h.getCombinedIPs()
-	totalCount := len(ips)
 	username, _ := c.Get("username")
-	permissions, _ := c.Get("permissions")
+	_, hasPermissions := c.Get("permissions")
+	permissions := c.GetString("permissions")
+	statsAllowed := hasPermissions && username == h.cfg.GUIAdmin
+	for _, permission := range strings.Split(permissions, ",") {
+		if strings.TrimSpace(permission) == "view_stats" {
+			statsAllowed = true
+			break
+		}
+	}
 
-	hour, day, _, _, top, _, _, _, _, _, _, err := h.ipService.Stats(c.Request.Context())
+	// The map requires view_ips; aggregate statistics additionally require view_stats.
+	// Null values distinguish restricted statistics from a real count of zero.
+	bootstrap := gin.H{
+		"total":           nil,
+		"hour":            nil,
+		"day":             nil,
+		"blocks_minute":   nil,
+		"whitelisted":     nil,
+		"top_countries":   []gin.H{},
+		"top_reasons":     []gin.H{},
+		"trend":           []gin.H{},
+		"trend_available": false,
+		"stats_allowed":   statsAllowed,
+	}
+
+	if statsAllowed {
+		hour, day, _, activeBlocks, top, _, topReasons, _, _, blocksMinute, whitelisted, err := h.ipService.Stats(c.Request.Context())
+		if err != nil {
+			zlog.Error().Err(err).Msg("failed to fetch threat map stats")
+			c.String(http.StatusInternalServerError, "failed to fetch threat map stats")
+			return
+		}
+		bootstrap["total"] = activeBlocks
+		bootstrap["hour"] = hour
+		bootstrap["day"] = day
+		bootstrap["blocks_minute"] = blocksMinute
+		bootstrap["whitelisted"] = whitelisted
+
+		countries := make([]gin.H, 0, len(top))
+		for _, country := range top {
+			countries = append(countries, gin.H{"country": country.Country, "count": country.Count})
+		}
+		bootstrap["top_countries"] = countries
+		reasons := make([]gin.H, 0, len(topReasons))
+		for _, reason := range topReasons {
+			reasons = append(reasons, gin.H{"reason": reason.Reason, "count": reason.Count})
+		}
+		bootstrap["top_reasons"] = reasons
+
+		trend, err := h.pgRepo.GetBlockTrend()
+		if err != nil {
+			zlog.Error().Err(err).Msg("failed to get threat map block trend")
+		} else {
+			trendData := make([]gin.H, 0, len(trend))
+			for _, point := range trend {
+				trendData = append(trendData, gin.H{"x": point.Hour, "y": point.Count})
+			}
+			bootstrap["trend"] = trendData
+			bootstrap["trend_available"] = true
+		}
+	}
+
+	bootstrapJSON, err := json.Marshal(bootstrap)
 	if err != nil {
-		zlog.Error().Err(err).Msg("failed to fetch threat map stats")
-		c.String(http.StatusInternalServerError, "failed to fetch threat map stats")
+		zlog.Error().Err(err).Msg("failed to marshal threat map data")
+		c.String(http.StatusInternalServerError, "failed to render threat map")
 		return
 	}
 
-	tops := make([]map[string]interface{}, 0, len(top))
-	for _, t := range top {
-		tops = append(tops, map[string]interface{}{"Country": t.Country, "Count": t.Count})
-	}
-
-	trend, err := h.pgRepo.GetBlockTrend()
-	if err != nil {
-		zlog.Error().Err(err).Msg("failed to get block trend")
-	}
-	trendData := make([]map[string]interface{}, 0, len(trend))
-	for _, t := range trend {
-		trendData = append(trendData, map[string]interface{}{"x": t.Hour, "y": t.Count})
-	}
-	trendJSON, err := json.Marshal(trendData)
-	if err != nil {
-		zlog.Error().Err(err).Msg("failed to marshal trend data")
-		trendJSON = []byte("[]")
-	}
-
 	h.renderHTML(c, http.StatusOK, "threat_map.html", gin.H{
-		"total_ips":      totalCount,
 		"admin_username": h.cfg.GUIAdmin,
 		"username":       username,
 		"permissions":    permissions,
-		"trend_json":     template.JS(string(trendJSON)), // #nosec G203
-		"stats": gin.H{
-			"hour":          hour,
-			"day":           day,
-			"top_countries": tops,
-		},
+		// json.Marshal escapes HTML-sensitive characters before use in a script element.
+		"map_bootstrap_json": template.JS(string(bootstrapJSON)), // #nosec G203
 	})
 }
 
