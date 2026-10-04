@@ -35,6 +35,12 @@ func TestAPIHandler_ThreatMapBootstrap(t *testing.T) {
 	h.ThreatMap(c)
 
 	require.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), `src="/cd/logo.png"`)
+	for _, destination := range []string{"/dashboard", "/whitelist", "/excluded", "/audit-logs", "/settings", "/docs", "/logout"} {
+		assert.Contains(t, w.Body.String(), `href="`+destination+`"`)
+	}
+	assert.Regexp(t, `href="/threat-map"[^>]*aria-current="page"`, w.Body.String())
+	assert.Regexp(t, `id="toggle-all-blocked"[^>]*\bchecked\b`, w.Body.String())
 	bootstrap := threatMapBootstrap(t, w.Body.String())
 	assert.Equal(t, true, bootstrap["stats_allowed"])
 	assert.Equal(t, float64(50), bootstrap["total"], "active count must not use the lifetime total")

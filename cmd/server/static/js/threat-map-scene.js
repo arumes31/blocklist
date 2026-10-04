@@ -89,10 +89,35 @@
         ctx.stroke();
     }
 
-    function bezier(start, control, end, t) {
-        const u = 1 - t;
-        return {x: u * u * start.x + 2 * u * t * control.x + t * t * end.x,
-            y: u * u * start.y + 2 * u * t * control.y + t * t * end.y};
+    function routeVectors(from, to) {
+        const dot = Math.max(-1, Math.min(1, from.reduce((sum, value, index) => sum + value * to[index], 0)));
+        const angle = Math.acos(dot);
+        let tangent = to.map((value, index) => value - from[index] * dot);
+        let length = Math.hypot(...tangent);
+        if (length < 0.000001) {
+            // Antipodal endpoints have several valid arcs; choose a stable plane.
+            // The supplied endpoints remain unchanged, including coincident locations.
+            const axis = Math.abs(from[0]) < 0.8 ? [1, 0, 0] : [0, 1, 0];
+            const along = from.reduce((sum, value, index) => sum + value * axis[index], 0);
+            tangent = axis.map((value, index) => value - from[index] * along);
+            length = Math.hypot(...tangent);
+        }
+        tangent = tangent.map(value => value / length);
+        return Array.from({length: 65}, (_, index) => {
+            const t = index / 64;
+            if (index === 0) return from;
+            if (index === 64) return to;
+            const elevation = 1 + Math.sin(Math.PI * t) * Math.min(0.18, angle * 0.12);
+            return from.map((value, dimension) =>
+                (value * Math.cos(angle * t) + tangent[dimension] * Math.sin(angle * t)) * elevation);
+        });
+    }
+
+    function interpolate(start, end, fraction) {
+        return {x: start.x + (end.x - start.x) * fraction,
+            y: start.y + (end.y - start.y) * fraction,
+            z: start.z + (end.z - start.z) * fraction,
+            t: start.t + (end.t - start.t) * fraction};
     }
 
     class ThreatMapScene {
@@ -109,6 +134,10 @@
             }
             this.points = [];
             this.entries = [];
+            this.pointsVersion = 0;
+            this.markers = [];
+            this.markerViewVersion = -1;
+            this.markerPointsVersion = -1;
             this.paths = [];
             this.densitySprites = {};
             this.rings = [];
@@ -121,6 +150,7 @@
             this.elapsed = 0;
             this.lastFrame = 0;
             this.baseDirty = true;
+            this.viewVersion = 0;
             this.frameID = 0;
             this.paused = false;
             this.disposed = false;
@@ -139,7 +169,7 @@
             canvas.style.touchAction = 'pan-y';
             canvas.setAttribute('role', 'group');
             canvas.setAttribute('aria-label', (this.originalAccessibility['aria-label'] || 'Threat map.') +
-                ' Drag to rotate. Use arrow keys to inspect origins; Home and End select the first and last origin. Plus and minus zoom.');
+                ' Drag to rotate. Dense origins are grouped by status with record counts. Use arrow keys to inspect every origin; Home and End select the first and last origin. Plus and minus zoom.');
             canvas.setAttribute('aria-keyshortcuts', 'ArrowRight ArrowLeft ArrowUp ArrowDown Home End Enter + -');
             this.selectionStatus = document.createElement('span');
             this.selectionStatus.id = 'threat-map-selection-' + (++sceneCount);
@@ -202,6 +232,7 @@
             this.points = (Array.isArray(points) ? points : []).filter(point => validLocation(point) && ['block', 'whitelist'].includes(point.kind))
                 .map((point, index) => ({...point, id: point.id == null ? point.kind + ':' + (point.ip || index) : point.id}));
             this.entries = this.points.map(point => ({point, vector: vector(point.lon, point.lat)}));
+            this.pointsVersion += 1;
             this.selectedPoint = this.selectedPoint ? this.points.find(point => point.id === this.selectedPoint.id) || null : null;
             if (!this.error) this.announceSelection();
             if (this.layer === 'density') this.invalidate();
@@ -210,9 +241,18 @@
 
         setPaths(paths) {
             if (this.disposed) return;
+            const previous = new Map(this.paths.map(path => [path.cacheKey, path]));
             this.paths = (Array.isArray(paths) ? paths : []).filter(path => path && validLocation(path.from) && validLocation(path.to) && ['block', 'whitelist'].includes(path.kind))
-                .map(path => ({...path, from: {...path.from}, to: {...path.to},
-                    fromVector: vector(path.from.lon, path.from.lat), toVector: vector(path.to.lon, path.to.lat)}));
+                .map(path => {
+                    const cacheKey = [path.kind, path.from.lat, path.from.lon, path.to.lat, path.to.lon, path.createdAt].join('|');
+                    const cached = previous.get(cacheKey);
+                    const fromVector = cached ? cached.fromVector : vector(path.from.lon, path.from.lat);
+                    const toVector = cached ? cached.toVector : vector(path.to.lon, path.to.lat);
+                    return {...cached, ...path, cacheKey, from: {...path.from}, to: {...path.to}, fromVector, toVector,
+                        createdAt: Number.isFinite(path.createdAt) ? path.createdAt : cached ? cached.createdAt : Date.now(),
+                        durationMs: Number.isFinite(path.durationMs) && path.durationMs > 0 ? path.durationMs : 10000,
+                        samples: cached ? cached.samples : routeVectors(fromVector, toVector)};
+                });
             this.render();
         }
 
@@ -353,6 +393,7 @@
                 const lon = this.center.lon * RAD;
                 const lat = this.center.lat * RAD;
                 this.view = {cosLon: Math.cos(lon), sinLon: Math.sin(lon), cosLat: Math.cos(lat), sinLat: Math.sin(lat)};
+                this.viewVersion += 1;
                 this.drawBase();
                 this.baseDirty = false;
             }
@@ -371,22 +412,22 @@
             for (let i = 0; i < 92; i += 1) {
                 const x = ((i * 0.61803398875) % 1) * this.width;
                 const y = ((i * 0.41421356237) % 1) * this.height;
-                ctx.fillStyle = i % 7 === 0 ? 'rgba(242,154,145,0.29)' : 'rgba(211,181,177,0.11)';
+                ctx.fillStyle = i % 7 === 0 ? 'rgba(255,77,77,0.29)' : 'rgba(190,190,190,0.11)';
                 ctx.fillRect(x, y, i % 7 === 0 ? 1.3 : 0.7, i % 7 === 0 ? 1.3 : 0.7);
             }
             const halo = ctx.createRadialGradient(this.cx, this.cy, r * 0.83, this.cx, this.cy, r * 1.35);
-            halo.addColorStop(0, 'rgba(228,35,49,0)');
-            halo.addColorStop(0.39, 'rgba(241,54,63,0.10)');
-            halo.addColorStop(0.54, 'rgba(244,37,51,0.04)');
-            halo.addColorStop(1, 'rgba(234,41,49,0)');
+            halo.addColorStop(0, 'rgba(255,0,0,0)');
+            halo.addColorStop(0.39, 'rgba(255,0,0,0.10)');
+            halo.addColorStop(0.54, 'rgba(255,0,0,0.04)');
+            halo.addColorStop(1, 'rgba(255,0,0,0)');
             ctx.fillStyle = halo;
             circle(ctx, this.cx, this.cy, r * 1.35);
             ctx.fill();
             const ocean = ctx.createRadialGradient(this.cx - r * 0.45, this.cy - r * 0.55, 0,
                 this.cx + r * 0.15, this.cy + r * 0.25, r * 1.4);
-            ocean.addColorStop(0, '#29151b');
-            ocean.addColorStop(0.55, '#140c13');
-            ocean.addColorStop(1, '#080b0f');
+            ocean.addColorStop(0, '#180000');
+            ocean.addColorStop(0.55, '#0c0c0c');
+            ocean.addColorStop(1, '#050505');
             ctx.fillStyle = ocean;
             circle(ctx, this.cx, this.cy, r);
             ctx.fill();
@@ -396,35 +437,32 @@
             this.drawGeography(ctx);
             ctx.lineWidth = 0.6;
             GRID.forEach(grid => {
-                ctx.strokeStyle = grid.major ? 'rgba(249,112,119,0.24)' : 'rgba(224,104,116,0.13)';
+                ctx.strokeStyle = grid.major ? 'rgba(255,77,77,0.24)' : 'rgba(255,0,0,0.13)';
                 this.trace(ctx, grid.points);
                 ctx.stroke();
             });
-            ctx.fillStyle = 'rgba(255,153,153,0.10)';
+            ctx.fillStyle = 'rgba(255,77,77,0.10)';
             TEXTURE.forEach(v => {
                 const point = this.project(v);
                 if (point.z > 0.08) ctx.fillRect(point.x, point.y, 0.8, 0.8);
             });
             const shade = ctx.createLinearGradient(this.cx - r, this.cy - r, this.cx + r, this.cy + r);
-            shade.addColorStop(0, 'rgba(247,99,97,0.09)');
+            shade.addColorStop(0, 'rgba(255,77,77,0.09)');
             shade.addColorStop(0.55, 'rgba(0,0,0,0)');
-            shade.addColorStop(1, 'rgba(3,7,11,0.55)');
+            shade.addColorStop(1, 'rgba(0,0,0,0.55)');
             ctx.fillStyle = shade;
             ctx.fillRect(this.cx - r, this.cy - r, r * 2, r * 2);
             ctx.restore();
             ctx.lineWidth = 0.8;
-            ctx.strokeStyle = 'rgba(253,138,125,0.55)';
+            ctx.strokeStyle = 'rgba(255,77,77,0.55)';
             circle(ctx, this.cx, this.cy, r);
             ctx.stroke();
-            ctx.strokeStyle = 'rgba(255,73,82,0.24)';
+            ctx.strokeStyle = 'rgba(255,0,0,0.24)';
             circle(ctx, this.cx, this.cy, r + 3);
             ctx.stroke();
             // Density is a static accumulation for this data/view, not a per-frame effect.
-            if (this.layer === 'density') this.entries.forEach(entry => {
-                if (!inRegion(entry.point, this.region)) return;
-                const position = this.project(entry.vector);
-                if (position.z >= 0.03) this.drawDensity(ctx, position, entry.point.kind);
-            });
+            if (this.layer === 'density') this.markerPositions().forEach(marker =>
+                this.drawDensity(ctx, marker, marker.point.kind, marker.count));
         }
 
         trace(ctx, vectors) {
@@ -444,8 +482,8 @@
 
         drawGeography(ctx) {
             ctx.lineWidth = 0.65;
-            ctx.strokeStyle = 'rgba(239,110,110,0.57)';
-            ctx.fillStyle = 'rgba(180,47,61,0.25)';
+            ctx.strokeStyle = 'rgba(255,77,77,0.57)';
+            ctx.fillStyle = 'rgba(139,0,0,0.25)';
             this.rings.forEach(ring => {
                 const visible = this.trace(ctx, ring);
                 // Filling only complete front-facing polygons avoids lines crossing the globe's limb.
@@ -459,16 +497,16 @@
             ctx.save();
             ctx.translate(this.cx, this.cy);
             ctx.lineWidth = 0.6;
-            ctx.strokeStyle = 'rgba(196,120,121,0.24)';
+            ctx.strokeStyle = 'rgba(255,0,0,0.24)';
             [1.09, 1.19, 1.205].forEach(scale => { circle(ctx, 0, 0, r * scale); ctx.stroke(); });
             TICKS.forEach((tick, i) => {
                 const inner = r * (i % 10 === 0 ? 1.22 : i % 5 === 0 ? 1.235 : 1.25);
-                ctx.strokeStyle = i % 10 === 0 ? 'rgba(241,171,161,0.52)' : 'rgba(230,100,113,0.28)';
+                ctx.strokeStyle = i % 10 === 0 ? 'rgba(210,210,210,0.52)' : 'rgba(255,0,0,0.28)';
                 line(ctx, tick.cos * inner, tick.sin * inner, tick.cos * r * 1.265, tick.sin * r * 1.265);
             });
             for (let i = 0; i < 3; i += 1) {
                 const offset = this.elapsed * 0.008 * (i % 2 ? -1 : 1) + i * 2.07;
-                ctx.strokeStyle = i === 0 ? 'rgba(255,140,123,0.65)' : 'rgba(244,55,75,0.45)';
+                ctx.strokeStyle = i === 0 ? 'rgba(255,77,77,0.65)' : 'rgba(255,0,0,0.45)';
                 ctx.lineWidth = i === 0 ? 2.1 : 1.2;
                 ctx.beginPath();
                 ctx.arc(0, 0, r * (i % 2 ? 1.16 : 1.135), offset, offset + 0.62 + i * 0.18);
@@ -479,88 +517,248 @@
 
         drawActivity(ctx) {
             this.hitPoints = [];
+            const now = Date.now();
+            const destinations = new Map();
             if (this.layer === 'routes') this.paths.forEach((path, index) => {
                 if (!inRegion(path.from, this.region) && !inRegion(path.to, this.region)) return;
-                const start = this.project(path.fromVector);
+                const opacity = this.pathOpacity(path, now);
+                if (!opacity) return;
+                this.drawRoute(ctx, path, index, now, opacity);
                 const end = this.project(path.toVector);
-                if (start.z > 0.02 && end.z > 0.02) this.drawRoute(ctx, start, end, index, path.kind);
+                if (end.z >= 0) destinations.set([path.to.lat, path.to.lon, path.destinationKind].join('|'), {path, position: end, opacity});
             });
-            this.entries.forEach((entry, index) => {
-                const point = entry.point;
-                if (!inRegion(point, this.region)) return;
+            const markers = this.markerPositions();
+            markers.forEach((marker, index) => {
+                const point = marker.point;
+                this.hitPoints.push(marker);
+                ctx.save();
+                if (marker.count === 1 && !this.paused && !this.reducedMotion && Number.isFinite(point.visibleUntil)) {
+                    ctx.globalAlpha = Math.max(0, Math.min(1, (point.visibleUntil - now) / 2500));
+                }
+                if (marker.count > 1) this.drawCluster(ctx, marker);
+                else this.drawMarker(ctx, marker, index, point.kind);
+                ctx.restore();
+            });
+            // A selected member stays individually visible, even when its neighbors are grouped.
+            if (this.selectedPoint && inRegion(this.selectedPoint, this.region)) {
+                const position = this.project(vector(this.selectedPoint.lon, this.selectedPoint.lat));
+                if (position.z >= 0.03) {
+                    this.hitPoints.unshift({point: this.selectedPoint, ...position, count: 1});
+                    this.drawSelection(ctx, position, this.selectedPoint);
+                }
+            }
+            destinations.forEach(destination => this.drawDestination(ctx, destination));
+        }
+
+        markerPositions() {
+            if (this.markerViewVersion === this.viewVersion && this.markerPointsVersion === this.pointsVersion) return this.markers;
+            const group = this.entries.length > 1000;
+            // Bound raster work by available screen space, not by the full record count.
+            const cellSize = Math.max(32, Math.sqrt(this.width * this.height / 320));
+            const cells = new Map();
+            const markers = [];
+            this.entries.forEach(entry => {
+                if (!inRegion(entry.point, this.region)) return;
                 const position = this.project(entry.vector);
-                if (position.z < 0.03) return;
-                this.hitPoints.push({point, x: position.x, y: position.y});
-                this.drawMarker(ctx, position, index, point.kind);
-                if (this.selectedPoint && point.id === this.selectedPoint.id) this.drawSelection(ctx, position, point);
+                if (position.z < 0.03 || position.x < -10 || position.x > this.width + 10 || position.y < -10 || position.y > this.height + 10) return;
+                if (!group) { markers.push({point: entry.point, ...position, count: 1}); return; }
+                const cellX = Math.floor(position.x / cellSize);
+                const cellY = Math.floor(position.y / cellSize);
+                const cellKey = cellX + ':' + cellY;
+                const key = cellKey + ':' + entry.point.kind;
+                const existing = cells.get(key);
+                if (existing) existing.count += 1;
+                else cells.set(key, {point: entry.point, ...position, count: 1, cellKey, cellX, cellY});
+            });
+            this.markers = group ? Array.from(cells.values()) : markers;
+            if (group) this.markers.forEach(marker => {
+                if (marker.count <= 1) return;
+                const otherKind = marker.point.kind === 'block' ? 'whitelist' : 'block';
+                const offset = cells.has(marker.cellKey + ':' + otherKind) ? (marker.point.kind === 'block' ? -12 : 12) : 0;
+                // Labels represent the grid cell, with separate rows for blocked/allowed
+                // counts. Selecting one still focuses its exact underlying coordinates.
+                marker.x = (marker.cellX + 0.5) * cellSize;
+                marker.y = (marker.cellY + 0.5) * cellSize + offset;
+            });
+            this.markerViewVersion = this.viewVersion;
+            this.markerPointsVersion = this.pointsVersion;
+            return this.markers;
+        }
+
+        drawCluster(ctx, marker) {
+            const label = String(marker.count);
+            const width = Math.max(22, label.length * 7 + 10);
+            ctx.fillStyle = 'rgba(0,0,0,0.88)';
+            ctx.fillRect(marker.x - width / 2, marker.y - 11, width, 22);
+            ctx.lineWidth = 1;
+            ctx.strokeStyle = marker.point.kind === 'whitelist' ? '#f5f5f5' : '#ff0000';
+            if (marker.point.kind === 'whitelist') ctx.strokeRect(marker.x - width / 2, marker.y - 11, width, 22);
+            else {
+                ctx.beginPath();
+                ctx.ellipse(marker.x, marker.y, width / 2, 11, 0, 0, TAU);
+                ctx.stroke();
+            }
+            ctx.fillStyle = marker.point.kind === 'whitelist' ? '#f5f5f5' : '#ff4d4d';
+            ctx.font = '10px ui-monospace, monospace';
+            ctx.textAlign = 'center';
+            ctx.fillText(label, marker.x, marker.y + 3);
+        }
+
+        pathOpacity(path, now) {
+            const remaining = path.createdAt + path.durationMs - now;
+            if (remaining <= 0) return 0;
+            if (this.paused || this.reducedMotion) return 1;
+            return Math.min(1, remaining / (path.durationMs * 0.35));
+        }
+
+        routeSegments(path) {
+            if (path.projectedVersion === this.viewVersion) return path.segments;
+            path.projected = path.samples.map((sample, index) => ({...this.project(sample), t: index / (path.samples.length - 1)}));
+            path.segments = [];
+            for (let index = 1; index < path.projected.length; index += 1) {
+                let start = path.projected[index - 1];
+                let end = path.projected[index];
+                if (start.z < 0 && end.z < 0) continue;
+                if (start.z < 0 || end.z < 0) {
+                    const limb = {...interpolate(start, end, -start.z / (end.z - start.z)), z: 0};
+                    if (start.z < 0) start = limb;
+                    else end = limb;
+                }
+                path.segments.push({start, end});
+            }
+            path.projectedVersion = this.viewVersion;
+            return path.segments;
+        }
+
+        traceRoute(ctx, segments, from = 0, to = 1) {
+            ctx.beginPath();
+            segments.forEach(({start, end}) => {
+                if (end.t <= from || start.t >= to) return;
+                const span = end.t - start.t;
+                if (span <= 0) return;
+                const a = start.t < from ? interpolate(start, end, (from - start.t) / span) : start;
+                const b = end.t > to ? interpolate(start, end, (to - start.t) / span) : end;
+                ctx.moveTo(a.x, a.y);
+                ctx.lineTo(b.x, b.y);
             });
         }
 
-        drawRoute(ctx, start, end, index, kind) {
-            const dx = end.x - start.x;
-            const dy = end.y - start.y;
-            const lift = Math.min(this.radius * 0.56, Math.hypot(dx, dy) * 0.35) + 16;
-            const control = {x: (start.x + end.x) / 2 + dy * 0.1, y: (start.y + end.y) / 2 - lift};
-            ctx.beginPath();
-            ctx.moveTo(start.x, start.y);
-            ctx.quadraticCurveTo(control.x, control.y, end.x, end.y);
-            ctx.strokeStyle = kind === 'whitelist' ? 'rgba(238,218,195,0.3)' : 'rgba(253,82,101,0.30)';
-            ctx.lineWidth = 0.8;
+        drawRoute(ctx, path, index, now, opacity) {
+            const segments = this.routeSegments(path);
+            if (!segments.length) return;
+            const white = path.kind === 'whitelist';
+            ctx.save();
+            ctx.globalAlpha = opacity;
+            this.traceRoute(ctx, segments);
+            ctx.strokeStyle = white ? 'rgba(245,245,245,0.15)' : 'rgba(255,0,0,0.17)';
+            ctx.lineWidth = 4;
             ctx.stroke();
-            const phase = (this.elapsed * 0.14 + index * 0.173) % 1;
-            ctx.beginPath();
-            for (let step = 0; step <= 8; step += 1) {
-                const point = bezier(start, control, end, Math.max(0, phase - 0.1 + step * 0.0125));
-                if (!step) ctx.moveTo(point.x, point.y);
-                else ctx.lineTo(point.x, point.y);
+            ctx.strokeStyle = white ? 'rgba(245,245,245,0.75)' : 'rgba(255,77,77,0.8)';
+            ctx.lineWidth = 1.2;
+            ctx.stroke();
+            const moving = !this.paused && !this.reducedMotion;
+            const progress = moving ? Math.max(0, now - path.createdAt) / 1700 + index * 0.071 : 0.55;
+            for (let particle = 0; particle < (moving ? 3 : 1); particle += 1) {
+                const phase = (progress + particle / 3) % 1;
+                this.traceRoute(ctx, segments, Math.max(0, phase - 0.10), phase);
+                ctx.strokeStyle = white ? '#ffffff' : '#ff4d4d';
+                ctx.lineWidth = 2.2;
+                ctx.stroke();
+                const segment = segments.find(item => item.start.t <= phase && item.end.t >= phase);
+                if (!segment) continue;
+                const span = segment.end.t - segment.start.t;
+                if (!span) continue;
+                const head = interpolate(segment.start, segment.end, (phase - segment.start.t) / span);
+                const dx = segment.end.x - segment.start.x;
+                const dy = segment.end.y - segment.start.y;
+                const distance = Math.hypot(dx, dy);
+                if (distance < 0.001) continue;
+                const ux = dx / distance;
+                const uy = dy / distance;
+                ctx.fillStyle = '#ffffff';
+                ctx.beginPath();
+                ctx.moveTo(head.x + ux * 3, head.y + uy * 3);
+                ctx.lineTo(head.x - ux * 5 + uy * 2.5, head.y - uy * 5 - ux * 2.5);
+                ctx.lineTo(head.x - ux * 5 - uy * 2.5, head.y - uy * 5 + ux * 2.5);
+                ctx.closePath();
+                ctx.fill();
             }
-            ctx.strokeStyle = kind === 'whitelist' ? 'rgba(238,218,195,0.75)' : 'rgba(255,113,115,0.72)';
-            ctx.lineWidth = 1.25;
+            ctx.restore();
+        }
+
+        drawDestination(ctx, {path, position, opacity}) {
+            ctx.save();
+            ctx.globalAlpha = opacity;
+            ctx.strokeStyle = '#ffffff';
+            ctx.fillStyle = '#080808';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(position.x, position.y - 7);
+            ctx.lineTo(position.x + 7, position.y);
+            ctx.lineTo(position.x, position.y + 7);
+            ctx.lineTo(position.x - 7, position.y);
+            ctx.closePath();
+            ctx.fill();
             ctx.stroke();
+            ctx.fillStyle = '#ff0000';
+            circle(ctx, position.x, position.y, 2);
+            ctx.fill();
+            const label = path.destinationKind === 'target' ? 'TARGET' : 'REPORTER';
+            const labelX = Math.max(38, Math.min(this.width - 38, position.x));
+            const labelY = Math.max(24, position.y - 16);
+            ctx.fillStyle = 'rgba(0,0,0,0.9)';
+            ctx.fillRect(labelX - 34, labelY - 11, 68, 17);
+            ctx.font = '9px ui-monospace, monospace';
+            ctx.textAlign = 'center';
+            ctx.fillStyle = '#ffffff';
+            ctx.fillText(label, labelX, labelY);
+            ctx.restore();
         }
 
         drawMarker(ctx, position, index, kind) {
             const white = kind === 'whitelist';
             const phase = (this.elapsed * 0.30 + index * 0.137) % 1;
-            ctx.fillStyle = white ? 'rgba(238,218,195,0.08)' : 'rgba(255,73,85,0.09)';
+            ctx.fillStyle = white ? 'rgba(245,245,245,0.08)' : 'rgba(255,0,0,0.09)';
             circle(ctx, position.x, position.y, 9);
             ctx.fill();
-            ctx.strokeStyle = white ? 'rgba(238,218,195,' + (0.46 * (1 - phase)).toFixed(3) + ')' :
-                'rgba(255,106,113,' + (0.46 * (1 - phase)).toFixed(3) + ')';
+            ctx.strokeStyle = white ? 'rgba(245,245,245,' + (0.46 * (1 - phase)).toFixed(3) + ')' :
+                'rgba(255,77,77,' + (0.46 * (1 - phase)).toFixed(3) + ')';
             ctx.lineWidth = 0.8;
             if (white) {
                 const r = 4 + phase * 8;
                 ctx.strokeRect(position.x - r, position.y - r, r * 2, r * 2);
-                ctx.fillStyle = '#eedac3';
+                ctx.fillStyle = '#f5f5f5';
                 ctx.fillRect(position.x - 2.5, position.y - 2.5, 5, 5);
             } else {
                 circle(ctx, position.x, position.y, 5 + phase * 10);
                 ctx.stroke();
-                ctx.fillStyle = '#ff6671';
+                ctx.fillStyle = '#ff0000';
                 circle(ctx, position.x, position.y, 2.6);
                 ctx.fill();
             }
         }
 
-        drawDensity(ctx, position, kind) {
-            const r = 28;
+        drawDensity(ctx, position, kind, count = 1) {
+            const spriteRadius = 28;
             if (!this.densitySprites[kind]) {
                 const sprite = document.createElement('canvas');
-                sprite.width = sprite.height = Math.ceil(r * 2 * this.dpr);
+                sprite.width = sprite.height = Math.ceil(spriteRadius * 2 * this.dpr);
                 const paint = sprite.getContext('2d');
                 const center = sprite.width / 2;
                 const glow = paint.createRadialGradient(center, center, 0, center, center, center);
-                glow.addColorStop(0, kind === 'whitelist' ? 'rgba(238,218,195,0.22)' : 'rgba(255,89,81,0.31)');
-                glow.addColorStop(1, kind === 'whitelist' ? 'rgba(238,218,195,0)' : 'rgba(205,23,59,0)');
+                glow.addColorStop(0, kind === 'whitelist' ? 'rgba(245,245,245,0.22)' : 'rgba(255,0,0,0.31)');
+                glow.addColorStop(1, kind === 'whitelist' ? 'rgba(245,245,245,0)' : 'rgba(139,0,0,0)');
                 paint.fillStyle = glow;
                 paint.fillRect(0, 0, sprite.width, sprite.height);
                 this.densitySprites[kind] = sprite;
             }
+            // Glow area scales with grouped population; labels retain the exact counts.
+            const r = spriteRadius * Math.min(2.5, Math.sqrt(count));
             ctx.drawImage(this.densitySprites[kind], position.x - r, position.y - r, r * 2, r * 2);
         }
 
         drawSelection(ctx, position, point) {
-            ctx.strokeStyle = '#f4dacb';
+            ctx.strokeStyle = '#ffffff';
             ctx.lineWidth = 1;
             ctx.strokeRect(position.x - 9, position.y - 9, 18, 18);
             const label = (point.kind === 'whitelist' ? 'WHITELISTED / ' : 'BLOCKED / ') + String(point.ip || point.name || 'ORIGIN').slice(0, 60);
@@ -568,9 +766,9 @@
             const width = Math.min(ctx.measureText(label).width + 14, this.width - 16);
             const x = Math.max(8, Math.min(this.width - width - 8, position.x - width / 2));
             const y = Math.max(24, position.y - 24);
-            ctx.fillStyle = 'rgba(12,11,16,0.92)';
+            ctx.fillStyle = 'rgba(8,8,8,0.92)';
             ctx.fillRect(x, y - 13, width, 20);
-            ctx.fillStyle = '#eedac3';
+            ctx.fillStyle = '#f5f5f5';
             ctx.textAlign = 'center';
             ctx.fillText(label, x + width / 2, y, width - 10);
         }
@@ -581,9 +779,9 @@
             ctx.textAlign = 'center';
             const width = ctx.measureText(message).width;
             const y = Math.min(this.height - 24, this.cy + this.radius * 0.67);
-            ctx.fillStyle = 'rgba(15,10,15,0.95)';
+            ctx.fillStyle = 'rgba(8,8,8,0.95)';
             ctx.fillRect(this.cx - width / 2 - 12, y - 15, width + 24, 27);
-            ctx.fillStyle = '#e7b6ac';
+            ctx.fillStyle = '#dddddd';
             ctx.fillText(message, this.cx, y + 3);
         }
 

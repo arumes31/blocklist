@@ -8,6 +8,8 @@ test('valid zero coordinates survive; absent, coerced and out-of-range geography
     for (const geo of [null,{}, {latitude:null,longitude:0},{latitude:'0',longitude:10},{latitude:91,longitude:0},{latitude:0,longitude:181},{latitude:NaN,longitude:0}]) assert.equal(data.coordinates(geo),null);
     assert.equal(data.normalize(item('192.0.2.1',null),'block').lat,null);
     assert.equal(data.normalize(item('192.0.2.1'),'block').lat,0);
+    assert.equal(data.coordinates({latitude:0,longitude:0,asn:64500,city:'',country:''}),null);
+    assert.deepEqual(data.coordinates({latitude:0,longitude:0,asn:64500,city:'Located',country:'Example'}),{lat:0,lon:0});
 });
 
 test('snapshot retains unmapped records, deduplicates kinds, excludes expiry and stays bounded', () => {
@@ -35,15 +37,36 @@ test('stats use active blocks instead of cumulative historical total and preserv
 
 test('events without geolocation still produce ticker updates and unblock invalidations', () => {
     assert.equal(data.event({action:'block',data:item('192.0.2.1',null)}).point.lat,null);
-    assert.deepEqual(data.event({action:'unblock',data:{ip:'192.0.2.1'}}),{action:'unblock',ip:'192.0.2.1',point:null,path:null});
+    assert.deepEqual(data.event({action:'unblock',data:{ip:'192.0.2.1'}},100),{action:'unblock',ip:'192.0.2.1',point:null,path:null,visibleUntil:8100});
     for(const message of [null,{}, {action:'unblock',data:null},{action:'other',data:item('x')}]) assert.equal(data.event(message),null);
 });
 
 test('paths require both real endpoints and accept the equator', () => {
     const message={action:'block',data:{...item('192.0.2.1'),source_geo:{latitude:0,longitude:16}}};
-    assert.deepEqual(data.event(message,123).path,{from:{lat:0,lon:0},to:{lat:0,lon:16},kind:'block',createdAt:123});
+    assert.deepEqual(data.event(message,123).path,{from:{lat:0,lon:0},to:{lat:0,lon:16},kind:'block',createdAt:123,durationMs:10000,destinationKind:'target',originIP:'192.0.2.1'});
+    assert.equal(data.event(message,123).point.visibleUntil,8123);
     delete message.data.source_geo;
     assert.equal(data.event(message).path,null);
+});
+
+test('full-list replay retains more than one API page and applies repeated IP updates in order', () => {
+    const points=data.snapshot(Array.from({length:1200},(_,i)=>item(`ip-${i}`)),'block',Infinity);
+    const events=[data.event({action:'block',data:item('ip-0')}),data.event({action:'unblock',data:{ip:'ip-0'}}),data.event({action:'block',data:item('new')})];
+    const all=data.replay(points,events,'block',Infinity);
+    assert.equal(all.length,1200);
+    assert.equal(all[0].ip,'new');
+    assert.ok(all.some(point=>point.ip==='ip-1199'));
+    assert.ok(!all.some(point=>point.ip==='ip-0'));
+});
+
+test('routes target the reporting server and missing geography never invents a destination', () => {
+    const message={action:'block',data:{...item('192.0.2.1'),source_geo:{latitude:51,longitude:10,city:'Berlin'}}};
+    assert.deepEqual(data.event(message).path.to,{lat:51,lon:10});
+    assert.equal(data.event(message).path.destinationKind,'target');
+    assert.equal(data.event(message).point.destination.name,'Berlin');
+    message.data.source_geo=null;
+    assert.equal(data.event(message).path,null);
+    assert.equal(data.event(message).point.destination,null);
 });
 
 test('visible records respect filters and region while retaining unknown locations globally', () => {

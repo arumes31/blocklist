@@ -6,11 +6,15 @@
     'use strict';
     const text = (value, max = 2048) => typeof value === 'string' ? value.slice(0, max) : '';
     const number = value => typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
+    const EVENT_DURATION_MS = 8000;
+    const PATH_DURATION_MS = 10000;
 
     function coordinates(geo) {
         if (!geo || typeof geo.latitude !== 'number' || typeof geo.longitude !== 'number' ||
             !Number.isFinite(geo.latitude) || !Number.isFinite(geo.longitude) ||
             Math.abs(geo.latitude) > 90 || Math.abs(geo.longitude) > 180) return null;
+        // ASN-only GeoIP results have default coordinates, not a located point.
+        if (geo.latitude === 0 && geo.longitude === 0 && geo.asn && !geo.country && !geo.city) return null;
         return {lat:geo.latitude, lon:geo.longitude};
     }
 
@@ -61,13 +65,17 @@
         if (!message || !['block', 'whitelist', 'unblock'].includes(message.action) || !message.data) return null;
         const ip = text(message.data.ip, 255);
         if (!ip) return null;
-        if (message.action === 'unblock') return {action:'unblock', ip, point:null, path:null};
+        const visibleUntil = now + EVENT_DURATION_MS;
+        if (message.action === 'unblock') return {action:'unblock', ip, point:null, path:null, visibleUntil};
         const point = normalize(message.data, message.action, now);
         if (!point) return null;
+        if (point.kind === 'block') point.visibleUntil = visibleUntil;
         const from = coordinates(message.data.data && message.data.data.geolocation);
-        const to = coordinates(message.data.source_geo);
-        return {action:message.action, ip, point,
-            path:from && to ? {from, to, kind:message.action, createdAt:now} : null};
+        const destinationGeo = message.data.source_geo;
+        const to = coordinates(destinationGeo);
+        point.destination = to ? {...to,name:text(destinationGeo.city,120),country:text(destinationGeo.country,120)} : null;
+        return {action:message.action, ip, point, visibleUntil,
+            path:from && to ? {from, to, kind:message.action, createdAt:now, durationMs:PATH_DURATION_MS, destinationKind:'target', originIP:ip} : null};
     }
 
     function inRegion(point, region) {
@@ -84,13 +92,20 @@
     }
 
     function replay(points, events, kind, limit = 500) {
-        let result = points;
+        const retained = new Map(points.map(point => [point.id,point]));
+        const updates = new Map();
         for (const change of events) {
-            if (change.action === 'unblock' && kind === 'block') result = result.filter(point => point.ip !== change.ip);
-            else if (change.action === kind) result = [change.point,...result.filter(point => point.id !== change.point.id)].slice(0,limit);
+            if (change.action === 'unblock' && kind === 'block') {
+                retained.delete(`block:${change.ip}`);
+                updates.delete(`block:${change.ip}`);
+            } else if (change.action === kind) {
+                retained.delete(change.point.id);
+                updates.delete(change.point.id);
+                updates.set(change.point.id,change.point);
+            }
         }
-        return result;
+        return [...updates.values()].reverse().concat([...retained.values()]).slice(0,limit);
     }
 
-    return {coordinates, normalize, snapshot, stats, event, inRegion, visible, replay};
+    return {EVENT_DURATION_MS, PATH_DURATION_MS, coordinates, normalize, snapshot, stats, event, inRegion, visible, replay};
 });

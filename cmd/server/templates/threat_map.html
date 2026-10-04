@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="theme-color" content="#0e0d0c">
+    <meta name="theme-color" content="#000000">
     <title>Threat Map - Blocklist</title>
     <link rel="icon" href="/cd/favicon-color.png">
     <link rel="stylesheet" href="/js/leaflet.css">
@@ -20,26 +20,27 @@
 </head>
 <body>
     <a class="skip-link" href="#map-controls">Skip to map controls</a>
-    <header class="masthead">
-        <a class="brand" href="/dashboard" aria-label="Blocklist dashboard">
-            <span class="brand-mark" aria-hidden="true">B/</span>
-            <span>BLOCKLIST</span>
-            <span class="brand-sub">THREAT INTELLIGENCE</span>
-        </a>
-        <span class="page-label">THREAT MAP</span>
-        <nav class="header-actions" aria-label="Main navigation">
-            <a href="/dashboard">Dashboard <span aria-hidden="true">↗</span></a>
-            {{ if or (eq .username .admin_username) (contains .permissions "manage_admins") }}
-            <a href="/admin_management">Admins</a>
-            {{ end }}
-        </nav>
+    <header class="header-container">
+        <div class="header-main">
+            <a href="/dashboard" class="banner" aria-label="Blocklist dashboard">
+                <img src="/cd/logo.png" alt="Blocklist">
+            </a>
+            <div class="header-title-menu">
+                <h2>Threat Map</h2>
+                <nav class="header-menu" aria-label="Main navigation">
+                    <a href="/dashboard" class="btn btn-dark">Dashboard</a>
+                    {{ template "navigation_links.html" . }}
+                </nav>
+            </div>
+        </div>
+        <a href="/logout" class="btn btn-dark header-logout">Logout</a>
     </header>
 
-    <main>
+    <main class="threat-map-content">
         <h1 class="sr-only">Threat Map</h1>
         <div class="mission-bar">
             <span class="connection"><b class="status-dot" aria-hidden="true"></b><span id="live-status" role="status">CONNECTING</span></span>
-            <span id="data-status" role="status">Loading blocklist data…</span>
+            <span id="data-status" role="status">Connecting to live activity…</span>
             <div class="refresh-status"><span>Updated <time id="updated-at">—</time></span><button id="retry-data" type="button">Refresh</button></div>
         </div>
 
@@ -51,14 +52,14 @@
                     <p class="hint">Currently blocked IP addresses</p>
                 </section>
                 <section class="origins">
-                    <h2>Origins <span>SELECT AN IP</span></h2>
-                    <div id="origin-list" aria-label="IP origins"><p class="empty-state">Loading origins…</p></div>
-                    <div class="origin-pagination" aria-label="Origin list pages">
-                        <button id="origin-prev" type="button" aria-label="Previous origins" disabled>←</button>
+                    <h2>IP activity <span>SELECT AN IP</span></h2>
+                    <div id="origin-list" aria-label="Visible blocked and whitelisted IPs"><p class="empty-state">Waiting for live activity…</p></div>
+                    <div class="origin-pagination" aria-label="IP activity pages">
+                        <button id="origin-prev" type="button" aria-label="Previous activity" disabled>←</button>
                         <span id="origin-page">—</span>
-                        <button id="origin-next" type="button" aria-label="Next origins" disabled>→</button>
+                        <button id="origin-next" type="button" aria-label="Next activity" disabled>→</button>
                     </div>
-                    <p class="hint">Select an origin to inspect its details.</p>
+                    <p id="block-mode-help" class="hint">Live blocks last 8 seconds. Include existing keeps all currently blocked IPs visible. Whitelisted IPs stay on the map.</p>
                 </section>
                 <section class="countries">
                     <h2>Country distribution <span>ACTIVE</span></h2>
@@ -67,7 +68,7 @@
                 <section class="coverage">
                     <h2>Map coverage</h2>
                     <p id="coverage-status" class="hint">Waiting for geolocation data…</p>
-                    <p class="hint">Locations are approximate. Paths show the reporting source when available.</p>
+                    <p class="hint">Live paths run from the blocked IP to the reporting server for 10 seconds. Locations are approximate; both endpoints need geolocation.</p>
                 </section>
             </aside>
 
@@ -80,19 +81,22 @@
                             <button type="button" data-view="flat" aria-pressed="false">Flat map</button>
                         </div>
                         <div class="segmented-control" role="group" aria-label="Map layer">
-                            <button type="button" data-layer="routes" aria-pressed="true">Origins</button>
+                            <button type="button" data-layer="routes" aria-pressed="true">Activity</button>
                             <button type="button" data-layer="density" aria-pressed="false">Density</button>
                         </div>
                     </div>
                     <div class="filter-row" role="group" aria-label="Visible records and overlays">
-                        <label><input type="checkbox" id="toggle-blocked" checked> Blocked</label>
+                        <div class="blocked-filter">
+                            <label><input type="checkbox" id="toggle-blocked" checked> Blocked</label>
+                            <label title="Show all currently blocked IPs instead of only live events"><input type="checkbox" id="toggle-all-blocked" aria-describedby="block-mode-help" checked> Include existing</label>
+                        </div>
                         <label><input type="checkbox" id="toggle-whitelist"> Whitelisted</label>
                         <label><input type="checkbox" id="toggle-paths" checked> Paths</label>
                         <label><input type="checkbox" id="toggle-cluster" checked> Cluster <span class="dim">(flat)</span></label>
                     </div>
                 </div>
                 <div class="scene-wrap">
-                    <canvas id="scene" aria-label="Globe of geolocated IP origins. Select an origin from the adjacent list for details."></canvas>
+                    <canvas id="scene" aria-label="Blocked IP activity and whitelisted IP locations. Include existing shows all currently blocked IPs. Select an entry from IP activity for details."></canvas>
                     <div id="flat-map" role="region" aria-label="Flat threat map with zoom and pan controls" hidden></div>
                     <div class="canvas-cross cross-tl" aria-hidden="true"></div>
                     <div class="canvas-cross cross-br" aria-hidden="true"></div>
@@ -114,9 +118,9 @@
                     <button type="button" id="pause-motion" aria-pressed="false">Pause motion</button>
                 </div>
                 <div class="map-caption" aria-label="Map legend">
-                    <span><i aria-hidden="true"></i> BLOCKED</span>
+                    <span><i aria-hidden="true"></i> BLOCKED IP</span>
                     <span><i class="whitelisted" aria-hidden="true"></i> WHITELISTED</span>
-                    <span><i class="reporter" aria-hidden="true"></i> REPORTING SOURCE</span>
+                    <span><i class="reporter" aria-hidden="true"></i> TARGET / REPORTING SERVER</span>
                 </div>
             </section>
 
@@ -126,9 +130,9 @@
                     <strong id="bpm-display" class="large-number">—</strong>
                     <p class="hint">Recorded block events per minute</p>
                 </section>
-                <section class="selection" aria-label="Selected origin details">
+                <section class="selection" aria-label="Selected IP details">
                     <h2>Signal inspection <span>SELECTED</span></h2>
-                    <p id="detail-empty" class="empty-state">Select an IP on the map or in the origin list.</p>
+                    <p id="detail-empty" class="empty-state">Select an IP on the map or in IP activity.</p>
                     <div id="detail-content" hidden>
                         <div class="selected-title"><span class="target-mark" aria-hidden="true">⌖</span><div><h3 id="selected-name">—</h3><span id="selected-country">—</span></div></div>
                         <dl>
@@ -136,6 +140,7 @@
                             <div><dt>Disposition</dt><dd id="selected-kind">—</dd></div>
                             <div><dt>Reason</dt><dd id="selected-reason">—</dd></div>
                             <div><dt>Source</dt><dd id="selected-source">—</dd></div>
+                            <div><dt>Target</dt><dd id="selected-target">—</dd></div>
                             <div><dt>Recorded</dt><dd id="selected-time">—</dd></div>
                             <div><dt>Network</dt><dd id="selected-asn">—</dd></div>
                             <div><dt>Expires</dt><dd id="selected-expiry">—</dd></div>
@@ -160,7 +165,7 @@
             <section class="instrument"><h2>Blocked / 24h</h2><strong id="stat-day">—</strong><span class="dim">RECORDED EVENTS</span></section>
             <section class="instrument"><h2>Blocked / 1h</h2><strong id="stat-hour">—</strong><span class="dim">RECORDED EVENTS</span></section>
             <section class="instrument"><h2>Whitelisted</h2><strong id="stat-whitelist">—</strong><span class="dim">CURRENT ENTRIES</span></section>
-            <section class="instrument"><h2>Without location</h2><strong id="missing-geo">—</strong><span class="dim">LOADED RECORDS</span></section>
+            <section class="instrument"><h2>Without location</h2><strong id="missing-geo">—</strong><span class="dim">VISIBLE RECORDS</span></section>
         </footer>
         <noscript><p class="noscript-message">Enable JavaScript to load the interactive threat map. <a href="/dashboard">Return to the dashboard.</a></p></noscript>
     </main>

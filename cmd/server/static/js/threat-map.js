@@ -1,4 +1,4 @@
-/* Live Threat Map: bounded snapshots, event updates, and Orbital/Leaflet views. */
+/* Live Threat Map: short-lived block events, whitelist snapshots and globe/flat views. */
 (() => {
     'use strict';
     const D = window.ThreatMapData;
@@ -9,8 +9,12 @@
     let bootstrap = {};
     try { bootstrap = JSON.parse($('threat-map-bootstrap').textContent); } catch (_) { /* Fetch will report unavailable data. */ }
     let statsAllowed = bootstrap.stats_allowed === true;
-    let blocks = [], whitelists = [], records = [], paths = [];
-    let blockTotal = null, whitelistTotal = null, blocksTruncated = false;
+    let liveBlocks = [], whitelists = [], records = [], paths = [];
+    let blockSnapshot = new Map(), blockTotal = null, blockRequest, blockChanges;
+    let nextBlockExpiry = Infinity;
+    let blockVersion = 0, lastBlockSync = -Infinity, blockError = '', blockProgress = null;
+    let connectedBefore = false;
+    let whitelistTotal = null;
     let selected = null, page = 0, view = 'globe', layer = 'routes', paused = false;
     let scene, flat, pins, clusters, heat, flatPaths, trendChart;
     let worldData, worldRequest, requestErrors = [];
@@ -19,7 +23,7 @@
     let refreshQueued = false;
     let version = 0, request, pendingEvents, refreshTimer, pollTimer, pathTimer, renderTimer, reconnectTimer;
     let socket, reconnectDelay = 3000, stopped = false;
-    const filters = () => ({blocked:$('toggle-blocked').checked, whitelist:$('toggle-whitelist').checked, region:$('region').value});
+    const filters = () => ({blocked:$('toggle-blocked').checked, all:$('toggle-all-blocked').checked, whitelist:$('toggle-whitelist').checked, region:$('region').value});
     const motionPaused = () => paused || motion.matches || document.hidden;
 
     function setStatus(message, error = false) {
@@ -28,9 +32,10 @@
     }
 
     function showErrors() {
-        const errors = [...requestErrors, ...(mapErrors[view] ? [mapErrors[view]] : [])];
+        const errors = [...requestErrors, ...(filters().blocked && filters().all && blockError ? [blockError] : []), ...(mapErrors[view] ? [mapErrors[view]] : [])];
         $('retry-data').hidden = !errors.length;
-        setStatus(errors.length ? errors.join(' ') : 'Data current · refreshes automatically', errors.length > 0);
+        const loading = blockRequest && filters().blocked && filters().all;
+        setStatus(errors.length ? errors.join(' ') : loading ? 'Loading blocked IPs…' : 'Data current · refreshes automatically', errors.length > 0);
     }
 
     function displayDate(value) {
@@ -51,6 +56,7 @@
             'selected-asn':point.asn ? `AS${point.asn}${point.asnOrg ? ' · ' + point.asnOrg : ''}` : 'Not recorded',
             'selected-expiry':point.expiresAt ? displayDate(point.expiresAt) : 'No expiry recorded',
             'selected-score':point.threatScore === null ? 'Not recorded' : String(point.threatScore),
+            'selected-target':point.destination ? `Reporting server · ${point.destination.name || `${point.destination.lat}, ${point.destination.lon}`}` : 'Location not reported',
             'selected-kind':point.kind === 'whitelist' ? 'WHITELISTED' : 'BLOCKED',
         };
         Object.entries(values).forEach(([id, value]) => { $(id).textContent = value; });
@@ -88,7 +94,8 @@
         if (!records.length) {
             const empty = document.createElement('p');
             empty.className = 'empty-state';
-            empty.textContent = !filters().blocked && !filters().whitelist ? 'Enable a data filter to show IPs.' : 'No IPs in this view.';
+            const active = filters();
+            empty.textContent = !active.blocked && !active.whitelist ? 'Enable a data filter to show IPs.' : active.blocked && active.all ? (blockRequest ? 'Loading blocked IPs…' : 'No blocked IPs in this view.') : 'Waiting for live events. Blocks remain visible for 8 seconds.';
             list.append(empty);
         }
         $('origin-page').textContent = `${page + 1} / ${pages}`;
@@ -133,19 +140,93 @@
         }
         trendChart = new Chart($('trend-chart'), {
             type:'line',
-            data:{labels:values.map(p => String(p.x)),datasets:[{data:values.map(p => p.y),borderColor:'#ef6556',backgroundColor:'#ef655622',fill:true,tension:0.2,pointRadius:1,borderWidth:1.5}]},
-            options:{animation:false,responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#b7a89b',maxTicksLimit:4,font:{size:10}},grid:{display:false}},y:{beginAtZero:true,ticks:{color:'#b7a89b',maxTicksLimit:3,font:{size:10}},grid:{color:'#3d2a25'}}}},
+            data:{labels:values.map(p => String(p.x)),datasets:[{data:values.map(p => p.y),borderColor:'#ff4d4d',backgroundColor:'#ff000022',fill:true,tension:0.2,pointRadius:1,borderWidth:1.5}]},
+            options:{animation:false,responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#b3b3b3',maxTicksLimit:4,font:{size:10}},grid:{display:false}},y:{beginAtZero:true,ticks:{color:'#b3b3b3',maxTicksLimit:3,font:{size:10}},grid:{color:'#ff000033'}}}},
         });
     }
 
     async function json(url, signal) {
-        const response = await fetch(url, {signal,credentials:'same-origin',headers:{Accept:'application/json'},cache:'no-store'});
-        if (!response.ok || response.redirected) {
-            const error = new Error(response.redirected || response.status === 401 ? 'Session expired. Reload to sign in.' : `Request failed (${response.status}).`);
-            error.status = response.redirected ? 401 : response.status;
-            throw error;
+        const abort = new AbortController();
+        const cancel = () => abort.abort();
+        if (signal?.aborted) cancel();
+        else signal?.addEventListener('abort',cancel,{once:true});
+        const timeout = setTimeout(cancel,12000);
+        try {
+            const response = await fetch(url, {signal:abort.signal,credentials:'same-origin',headers:{Accept:'application/json'},cache:'no-store'});
+            if (!response.ok || response.redirected) {
+                const error = new Error(response.redirected || response.status === 401 ? 'Session expired. Reload to sign in.' : `Request failed (${response.status}).`);
+                error.status = response.redirected ? 401 : response.status;
+                throw error;
+            }
+            return await response.json();
+        } finally {
+            clearTimeout(timeout);
+            signal?.removeEventListener('abort',cancel);
         }
-        return response.json();
+    }
+
+    function cancelBlockSnapshot() {
+        blockRequest?.abort();
+        blockRequest = null;
+        blockChanges = null;
+        blockProgress = null;
+        blockVersion++;
+    }
+
+    async function refreshAllBlocks(force = false) {
+        const active = filters();
+        if (stopped || document.hidden || !active.blocked || !active.all) return;
+        if (blockRequest) {
+            if (!force) return;
+            cancelBlockSnapshot();
+        }
+        if (!force && Date.now() - lastBlockSync < 60000) return;
+        const current = ++blockVersion;
+        const abort = new AbortController();
+        const changes = new Map();
+        blockRequest = abort;
+        blockChanges = changes;
+        blockError = '';
+        blockProgress = {loaded:0,total:null};
+        render();
+        const loaded = new Map();
+        const cursors = new Set();
+        let cursor = '', total = null;
+        try {
+            do {
+                const payload = await json(`/api/v1/ips?limit=500${cursor ? '&cursor=' + encodeURIComponent(cursor) : ''}`,abort.signal);
+                if (stopped || current !== blockVersion) return;
+                if (!payload || (payload.items !== null && !Array.isArray(payload.items)) ||
+                    (payload.next != null && typeof payload.next !== 'string')) throw new Error('Invalid blocklist response');
+                if (Number.isFinite(payload.total) && payload.total >= 0) total = payload.total;
+                for (const point of D.snapshot(payload.items,'block',500,Date.now())) loaded.set(point.id,point);
+                blockProgress = {loaded:loaded.size,total};
+                renderCoverage();
+                cursor = payload.next || '';
+                if (cursor && cursors.has(cursor)) throw new Error('Repeated blocklist cursor');
+                if (cursor) cursors.add(cursor);
+            } while (cursor);
+            const replayed = D.replay([...loaded.values()],[...changes.values()],'block',Infinity);
+            blockSnapshot = new Map(replayed.map(point => [point.id,{...point,visibleUntil:undefined}]));
+            nextBlockExpiry = Infinity;
+            for (const point of blockSnapshot.values()) {
+                const expiry = Date.parse(point.expiresAt);
+                if (Number.isFinite(expiry)) nextBlockExpiry = Math.min(nextBlockExpiry,expiry);
+            }
+            blockTotal = total;
+            lastBlockSync = Date.now();
+        } catch (error) {
+            if (stopped || current !== blockVersion) return;
+            blockError = error.status === 401 ? error.message : `Blocked IPs unavailable; previous data retained. Refresh stopped at ${fmt(loaded.size)} / ${fmt(total)} records.`;
+        } finally {
+            if (current === blockVersion) {
+                blockRequest = null;
+                blockChanges = null;
+                blockProgress = null;
+                render();
+                showErrors();
+            }
+        }
     }
 
     async function refresh(supersede = false) {
@@ -160,18 +241,16 @@
         pendingEvents = changes;
         request = new AbortController();
         const abort = request;
-        const timeout = setTimeout(() => abort.abort(), 12000);
         const jobs = [];
-        if (filters().blocked) jobs.push({name:'Blocked IPs',kind:'block',promise:json('/api/v1/ips?limit=500',abort.signal)});
         if (filters().whitelist) jobs.push({name:'Whitelist',kind:'whitelist',promise:json('/api/v1/whitelists',abort.signal)});
         if (statsAllowed) jobs.push({name:'Statistics',kind:'stats',promise:json('/api/v1/stats',abort.signal)});
         setStatus('Refreshing data…');
         const results = await Promise.allSettled(jobs.map(job => job.promise));
-        clearTimeout(timeout);
         if (stopped || current !== version) return;
         request = null;
         pendingEvents = null;
         requestErrors = [];
+        let recordsChanged = false;
         results.forEach((result, index) => {
             const job = jobs[index];
             if (result.status === 'rejected') {
@@ -192,15 +271,11 @@
                 scheduleRefresh();
                 return;
             }
-            if (job.kind === 'block') {
-                if (!payload || (payload.items !== null && !Array.isArray(payload.items))) { requestErrors.push('Blocked IP response invalid; previous data retained.'); return; }
-                blocks = D.replay(D.snapshot(payload.items, 'block'),changes.events,'block');
-                blockTotal = typeof payload.total === 'number' ? payload.total : null;
-                blocksTruncated = Boolean(payload.next) || blockTotal > blocks.length;
-            } else if (job.kind === 'whitelist') {
+            if (job.kind === 'whitelist') {
                 if (payload !== null && !Array.isArray(payload)) { requestErrors.push('Whitelist response invalid; previous data retained.'); return; }
                 whitelistTotal = payload?.length || 0;
-                whitelists = D.replay(D.snapshot(payload, 'whitelist'),changes.events,'whitelist');
+                whitelists = D.replay(D.snapshot(payload, 'whitelist',500,Date.now()),changes.events,'whitelist');
+                recordsChanged = true;
             } else if (payload && typeof payload === 'object' && typeof payload.active_blocks === 'number') updateStats(payload);
             else requestErrors.push('Statistics response invalid; previous data retained.');
         });
@@ -209,7 +284,7 @@
             $('updated-at').textContent = now.toLocaleTimeString();
             $('updated-at').dateTime = now.toISOString();
         }
-        render();
+        if (recordsChanged) render();
         showErrors();
         if (refreshQueued) { refreshQueued = false; scheduleRefresh(); }
     }
@@ -222,8 +297,17 @@
     function render() {
         const active = filters();
         const now = Date.now();
-        blocks = blocks.filter(p => !p.expiresAt || !(Date.parse(p.expiresAt) <= now));
+        liveBlocks = liveBlocks.filter(p => p.visibleUntil > now && (!p.expiresAt || !(Date.parse(p.expiresAt) <= now)));
+        if (nextBlockExpiry <= now) {
+            nextBlockExpiry = Infinity;
+            for (const [id,point] of blockSnapshot) {
+                const expiry = Date.parse(point.expiresAt);
+                if (expiry <= now) blockSnapshot.delete(id);
+                else if (Number.isFinite(expiry)) nextBlockExpiry = Math.min(nextBlockExpiry,expiry);
+            }
+        }
         whitelists = whitelists.filter(p => !p.expiresAt || !(Date.parse(p.expiresAt) <= now));
+        const blocks = active.all ? [...blockSnapshot.values()] : liveBlocks;
         records = D.visible([...blocks, ...whitelists], active);
         const points = records.filter(p => p.lat !== null);
         scene?.setPoints(points);
@@ -231,17 +315,27 @@
         selectRecord(selectedRecord || null);
         renderOrigins();
         $('missing-geo').textContent = fmt(records.length - points.length);
-        const coverage = [`${fmt(points.length)} mapped / ${fmt(records.length)} loaded in view`];
-        if (active.blocked && blocksTruncated) coverage.push(`Block sample: up to 500 of ${fmt(blockTotal)}`);
-        if (active.whitelist && whitelistTotal > 500) coverage.push(`Whitelist sample: up to 500 of ${fmt(whitelistTotal)}`);
-        $('coverage-status').textContent = coverage.join(' · ');
+        renderCoverage();
         if (flat && view === 'flat') renderFlat();
         renderPaths();
     }
 
+    function renderCoverage() {
+        const active = filters();
+        const coverage = [`${fmt(records.filter(point => point.lat !== null).length)} mapped / ${fmt(records.length)} in view`];
+        if (active.blocked && active.all) {
+            coverage.push(`Blocked list: ${fmt(blockSnapshot.size)} loaded / ${fmt(blockTotal)} reported`);
+            if (blockProgress) coverage.push(`Loading ${fmt(blockProgress.loaded)} / ${fmt(blockProgress.total)}`);
+            if (blockError) coverage.push('Refresh incomplete; retained previous data');
+        } else if (active.blocked) coverage.push('Live blocks: last 8 seconds');
+        if (active.whitelist && whitelistTotal > 500) coverage.push(`Whitelist sample: up to 500 of ${fmt(whitelistTotal)}`);
+        $('coverage-status').textContent = coverage.join(' · ');
+    }
+
     function scheduleRender() {
         if (renderTimer || stopped || document.hidden) return;
-        renderTimer = setTimeout(() => { renderTimer = null; render(); }, 200);
+        const active = filters();
+        renderTimer = setTimeout(() => { renderTimer = null; render(); }, active.blocked && active.all ? 1000 : 200);
     }
 
     function popup(point) {
@@ -260,7 +354,7 @@
             flat = L.map('flat-map',{center:center.slice(0,2),zoom:center[2],minZoom:1,maxZoom:18,zoomControl:false,attributionControl:false,zoomAnimation:false,fadeAnimation:false,markerZoomAnimation:false});
             pins = L.layerGroup();
             clusters = L.markerClusterGroup({animate:false,showCoverageOnHover:false,maxClusterRadius:45,iconCreateFunction:group => L.divIcon({html:`<span>${group.getChildCount()}</span>`,className:'threat-cluster',iconSize:[34,34]})});
-            heat = L.heatLayer([],{radius:24,blur:18,minOpacity:0.3,gradient:{0.3:'#52251f',0.6:'#c64d3d',1:'#ff9980'}});
+            heat = L.heatLayer([],{radius:24,blur:18,minOpacity:0.3,gradient:{0.3:'#8b0000',0.6:'#ff0000',1:'#ff4d4d'}});
             flatPaths = L.layerGroup().addTo(flat);
         }
         flat.invalidateSize();
@@ -268,7 +362,7 @@
         if (worldData || worldRequest) return;
         worldRequest = json('/js/world.json').then(data => {
             if (stopped) return;
-            L.geoJSON(data,{interactive:false,style:{color:'#a855414f',weight:0.7,fillColor:'#50251e',fillOpacity:0.4}}).addTo(flat).bringToBack();
+            L.geoJSON(data,{interactive:false,style:{color:'#ff00004d',weight:0.7,fillColor:'#8b0000',fillOpacity:0.22}}).addTo(flat).bringToBack();
             worldData = data;
             mapErrors.flat = '';
             showErrors();
@@ -300,18 +394,24 @@
 
     function renderPaths() {
         const now = Date.now();
-        paths = paths.filter(path => now - path.createdAt < 10000).slice(-24);
+        paths = paths.filter(path => now - path.createdAt < path.durationMs).slice(-24);
         const active = filters();
         const visible = $('toggle-paths').checked ? paths.filter(path => (path.kind === 'block' ? active.blocked : active.whitelist) && D.inRegion(path.from,active.region)) : [];
         scene?.setPaths(visible);
         if (!flatPaths || view !== 'flat') return;
         flatPaths.clearLayers();
-        for (const path of visible) L.polyline([[path.from.lat,path.from.lon],[path.to.lat,path.to.lon]],{weight:1.5,color:path.kind === 'whitelist' ? '#e6dfd6' : '#ef6556',dashArray:'7 10',className:'live-route'}).addTo(flatPaths);
+        for (const path of visible) {
+            L.polyline([[path.from.lat,path.from.lon],[path.to.lat,path.to.lon]],{weight:2,color:path.kind === 'whitelist' ? '#fff' : '#ff4d4d',dashArray:'7 10',className:'live-route'}).addTo(flatPaths);
+            const label = document.createElement('span');
+            label.textContent = 'Target · Reporting server';
+            L.circleMarker([path.to.lat,path.to.lon],{radius:4,color:'#fff',weight:1.5,fillColor:'#8b0000',fillOpacity:1}).bindTooltip(label,{direction:'top'}).addTo(flatPaths);
+        }
     }
 
     function appendEvent(event) {
         const item = document.createElement('li');
         item.className = `event-${event.action}`;
+        item.dataset.visibleUntil = String(event.visibleUntil);
         const time = document.createElement('time');
         time.textContent = new Date().toLocaleTimeString();
         const text = document.createElement('div');
@@ -331,14 +431,29 @@
 
     function receive(message) {
         let event;
-        try { event = D.event(JSON.parse(message.data)); } catch (_) { return; }
+        try { event = D.event(JSON.parse(message.data),Date.now()); } catch (_) { return; }
         if (!event) return;
         if (pendingEvents) {
             if (pendingEvents.events.length < 1000) pendingEvents.events.push(event);
             else pendingEvents.overflow = true;
         }
-        if (event.action === 'unblock') blocks = blocks.filter(p => p.ip !== event.ip);
-        else if (event.action === 'block') blocks = [event.point,...blocks.filter(p => p.id !== event.point.id)].slice(0,500);
+        if (blockChanges && event.action !== 'whitelist') {
+            blockChanges.delete(event.ip);
+            blockChanges.set(event.ip,event);
+        }
+        if (event.action === 'unblock') {
+            liveBlocks = liveBlocks.filter(p => p.ip !== event.ip);
+            blockSnapshot.delete(`block:${event.ip}`);
+            paths = paths.filter(path => path.originIP !== event.ip);
+        }
+        else if (event.action === 'block') {
+            liveBlocks = [event.point,...liveBlocks.filter(p => p.id !== event.point.id)].slice(0,500);
+            if (filters().all) {
+                blockSnapshot.set(event.point.id,{...event.point,visibleUntil:undefined});
+                const expiry = Date.parse(event.point.expiresAt);
+                if (Number.isFinite(expiry)) nextBlockExpiry = Math.min(nextBlockExpiry,expiry);
+            }
+        }
         else whitelists = [event.point,...whitelists.filter(p => p.id !== event.point.id)].slice(0,500);
         if (event.path) paths = [...paths,event.path].slice(-24);
         const active = filters();
@@ -356,11 +471,38 @@
         socket = null;
     }
 
+    function expireActivity() {
+        const now = Date.now();
+        const isExpired = point => point.visibleUntil <= now || (point.expiresAt && Date.parse(point.expiresAt) <= now);
+        const liveExpired = liveBlocks.some(isExpired);
+        const all = filters().all;
+        if (all && liveExpired) liveBlocks = liveBlocks.filter(point => !isExpired(point));
+        const hadExpiredPoint = (!all && liveExpired) || nextBlockExpiry <= now ||
+            whitelists.some(point => point.expiresAt && Date.parse(point.expiresAt) <= now);
+        const hadExpiredPath = paths.some(path => now - path.createdAt >= path.durationMs);
+        const list = $('event-stream');
+        for (const item of [...list.children]) {
+            if (Number(item.dataset.visibleUntil) <= now) item.remove();
+        }
+        if (!list.children.length) {
+            const empty = document.createElement('li');
+            empty.className = 'empty-state';
+            empty.textContent = 'Waiting for new events…';
+            list.append(empty);
+        }
+        if (hadExpiredPoint) render();
+        else if (hadExpiredPath) renderPaths();
+    }
+
     function connect() {
         if (stopped || document.hidden || socket) return;
         $('live-status').textContent = 'CONNECTING';
         socket = new WebSocket(`${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/ws`);
-        socket.onopen = () => { $('live-status').textContent = 'LIVE'; reconnectDelay = 3000; scheduleRefresh(); };
+        socket.onopen = () => {
+            $('live-status').textContent = 'LIVE'; reconnectDelay = 3000; scheduleRefresh();
+            if (connectedBefore) { lastBlockSync = -Infinity; refreshAllBlocks(); }
+            connectedBefore = true;
+        };
         socket.onmessage = message => { if (typeof message.data === 'string' && message.data.length < 131072) receive(message); };
         socket.onerror = () => socket?.close();
         socket.onclose = () => {
@@ -399,24 +541,41 @@
         clearTimeout(refreshTimer); clearTimeout(renderTimer);
         pollTimer = pathTimer = refreshTimer = renderTimer = null;
         request?.abort(); request = null; pendingEvents = null; refreshQueued = false; version++;
+        cancelBlockSnapshot();
+        lastBlockSync = -Infinity;
         closeSocket();
         scene?.setPaused(true);
     }
 
     function startRuntime() {
         if (stopped || document.hidden) return;
-        if (!pollTimer) pollTimer = setInterval(refresh,30000);
-        if (!pathTimer) pathTimer = setInterval(() => { if (paths.length) renderPaths(); },1000);
+        if (!pollTimer) pollTimer = setInterval(() => { refresh(); refreshAllBlocks(); },30000);
+        if (!pathTimer) pathTimer = setInterval(expireActivity,250);
+        expireActivity();
         updateMotion();
         connect();
         refresh();
+        refreshAllBlocks();
     }
 
     try { scene = new ThreatMapScene($('scene'),{onSelect:point => selectRecord(point),onError:message => { mapErrors.globe = message; showErrors(); }}); }
     catch (_) { mapErrors.globe = 'Globe unavailable. Use the flat map to inspect locations.'; }
     updateStats(statsAllowed ? bootstrap : {},true);
     initTrend();
-    for (const id of ['toggle-blocked','toggle-whitelist']) $(id).addEventListener('change',() => { page = 0; render(); refresh(true); });
+    for (const id of ['toggle-blocked','toggle-whitelist']) $(id).addEventListener('change',() => {
+        page = 0;
+        $('toggle-all-blocked').disabled = !filters().blocked;
+        if (!filters().blocked) cancelBlockSnapshot();
+        render(); refresh(true);
+        if (id === 'toggle-blocked') refreshAllBlocks(true);
+    });
+    $('toggle-all-blocked').disabled = !filters().blocked;
+    $('toggle-all-blocked').addEventListener('change',() => {
+        page = 0; cancelBlockSnapshot();
+        if (!filters().all) { blockSnapshot.clear(); blockTotal = null; nextBlockExpiry = Infinity; lastBlockSync = -Infinity; blockError = ''; }
+        render(); showErrors();
+        if (filters().all) refreshAllBlocks(true);
+    });
     $('toggle-cluster').addEventListener('change',renderFlat);
     $('toggle-paths').addEventListener('change',renderPaths);
     $('region').addEventListener('change',() => {
@@ -447,6 +606,7 @@
         if (view === 'flat' && !worldData) initFlat();
         if (view === 'globe' && mapErrors.globe && scene) scene.retryGeography().then(ok => { if (ok) mapErrors.globe = ''; showErrors(); });
         refresh(true);
+        refreshAllBlocks(true);
     });
     motion.addEventListener('change',updateMotion);
     document.addEventListener('visibilitychange',() => { if (document.hidden) { stopRuntime(); $('live-status').textContent = 'SUSPENDED'; } else startRuntime(); });

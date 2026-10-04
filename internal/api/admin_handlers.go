@@ -146,6 +146,7 @@ func (h *APIHandler) ThreatMap(c *gin.Context) {
 		"permissions":    permissions,
 		// json.Marshal escapes HTML-sensitive characters before use in a script element.
 		"map_bootstrap_json": template.JS(string(bootstrapJSON)), // #nosec G203
+		"active_page":        "threat-map",
 	})
 }
 
