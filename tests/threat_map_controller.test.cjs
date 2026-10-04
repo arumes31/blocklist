@@ -13,7 +13,7 @@ const blocklist = items => Object.fromEntries(items.map(({ip, data}) => [ip, dat
 
 // Only the browser surfaces used by the controller are modeled here. Geography,
 // layout and painting remain covered by the renderer and real-browser checks.
-function harness({statsAllowed = false, showWhitelist = false, showAllBlocks = false} = {}) {
+function harness({statsAllowed = false, showWhitelist = false, showAllBlocks = false, reducedMotion = false} = {}) {
     class Element {
         constructor() {
             this.children = [];
@@ -112,6 +112,7 @@ function harness({statsAllowed = false, showWhitelist = false, showAllBlocks = f
         setPoints(points) { this.points = points; this.pointUpdates++; }
         setPaths(paths) { this.paths = paths; }
         setPaused(paused) { this.paused = paused; }
+        setMotionOverride(allowMotion) { this.allowMotion = allowMotion; }
         setLayer() {}
         setRegion() {}
         focusPoint() {}
@@ -121,7 +122,7 @@ function harness({statsAllowed = false, showWhitelist = false, showAllBlocks = f
         retryGeography() { this.retries++; return Promise.resolve(this.retryResult); }
     }
     const media = new Element();
-    media.matches = false;
+    media.matches = reducedMotion;
     const window = new Element();
     window.ThreatMapData = data;
     const epoch = Date.parse('2026-10-04T00:00:00Z');
@@ -140,6 +141,38 @@ function harness({statsAllowed = false, showWhitelist = false, showAllBlocks = f
         stop:() => window.emit('pagehide', {persisted:false}),
     };
 }
+
+test('reduced motion starts still but can be explicitly enabled, paused and resumed', t => {
+    const h = harness({reducedMotion:true});
+    t.after(h.stop);
+    assert.equal(h.scene.paused,true);
+    assert.equal(h.scene.allowMotion,false);
+    assert.equal(h.get('pause-motion').textContent,'Enable motion');
+    assert.notEqual(h.get('pause-motion').disabled,true);
+    h.get('pause-motion').emit('click');
+    assert.equal(h.scene.allowMotion,true);
+    assert.equal(h.scene.paused,false);
+    assert.equal(h.get('pause-motion').textContent,'Pause motion');
+    h.get('pause-motion').emit('click');
+    assert.equal(h.scene.paused,true);
+    assert.equal(h.get('pause-motion').textContent,'Resume motion');
+    h.get('pause-motion').emit('click');
+    assert.equal(h.scene.paused,false);
+    assert.equal(h.scene.allowMotion,true);
+});
+
+test('reset leaves IP inspection so the global globe can rotate again', async t => {
+    const h = harness();
+    t.after(h.stop);
+    h.sockets[0].send('block',item('192.0.2.1'));
+    await h.advance(200);
+    h.get('origin-list').children[0].emit('click');
+    assert.equal(h.get('detail-content').hidden,false);
+    h.get('reset-view').emit('click');
+    assert.equal(h.get('detail-content').hidden,true);
+    assert.equal(h.get('detail-empty').hidden,false);
+    assert.equal(h.get('origin-list').children[0].attributes.get('aria-pressed'),'false');
+});
 
 test('live blocks expire after eight seconds without loading historical block snapshots', async t => {
     const h = harness({statsAllowed:true});

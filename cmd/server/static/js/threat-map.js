@@ -15,7 +15,7 @@
     let blockVersion = 0, lastBlockSync = -Infinity, blockError = '';
     let connectedBefore = false;
     let whitelistTotal = null;
-    let selected = null, page = 0, view = 'globe', layer = 'routes', paused = false;
+    let selected = null, page = 0, view = 'globe', layer = 'routes', paused = false, allowMotion = false;
     let scene, flat, pins, clusters, heat, flatPaths, trendChart;
     let worldData, worldRequest, requestErrors = [];
     const mapErrors = {globe:'',flat:''};
@@ -24,7 +24,7 @@
     let version = 0, request, pendingEvents, refreshTimer, pollTimer, pathTimer, renderTimer, reconnectTimer;
     let socket, reconnectDelay = 3000, stopped = false;
     const filters = () => ({blocked:$('toggle-blocked').checked, all:$('toggle-all-blocked').checked, whitelist:$('toggle-whitelist').checked, region:$('region').value});
-    const motionPaused = () => paused || motion.matches || document.hidden;
+    const motionPaused = () => paused || (motion.matches && !allowMotion) || document.hidden;
 
     function setStatus(message, error = false) {
         $('data-status').textContent = message;
@@ -507,9 +507,9 @@
     function updateMotion() {
         const still = motionPaused();
         document.body.classList.toggle('is-paused', still);
-        $('pause-motion').textContent = motion.matches ? 'Reduced motion' : paused ? 'Resume motion' : 'Pause motion';
-        $('pause-motion').disabled = motion.matches;
+        $('pause-motion').textContent = motion.matches && !allowMotion ? 'Enable motion' : paused ? 'Resume motion' : 'Pause motion';
         $('pause-motion').setAttribute('aria-pressed', String(still));
+        scene?.setMotionOverride(allowMotion);
         scene?.setPaused(still || view !== 'globe');
     }
 
@@ -585,10 +585,14 @@
     $('zoom-in').addEventListener('click',() => view === 'globe' ? scene?.zoomBy(1.2) : flat?.zoomIn(1,{animate:false}));
     $('zoom-out').addEventListener('click',() => view === 'globe' ? scene?.zoomBy(1/1.2) : flat?.zoomOut(1,{animate:false}));
     $('reset-view').addEventListener('click',() => {
-        $('region').value = 'global'; page = 0; scene?.reset(); scene?.setLayer(layer);
+        $('region').value = 'global'; page = 0; selected = null; scene?.reset(); scene?.setLayer(layer);
         flat?.setView([20,0],2,{animate:false}); updateMotion(); render();
     });
-    $('pause-motion').addEventListener('click',() => { paused = !paused; updateMotion(); });
+    $('pause-motion').addEventListener('click',() => {
+        if (motion.matches && !allowMotion) { allowMotion = true; paused = false; }
+        else paused = !paused;
+        updateMotion();
+    });
     $('origin-prev').addEventListener('click',() => { page = Math.max(0,page-1); renderOrigins(); });
     $('origin-next').addEventListener('click',() => { page++; renderOrigins(); });
     $('retry-data').addEventListener('click',() => {

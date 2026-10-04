@@ -4,6 +4,8 @@
 
     const TAU = Math.PI * 2;
     const RAD = Math.PI / 180;
+    const ROTATION_INTERVAL_MS = 200;
+    const ROTATION_HOLD_MS = 8000;
     const scriptURL = document.currentScript ? document.currentScript.src : new URL('/js/threat-map-scene.js', location.href).href;
     const worldURL = new URL('world.json', scriptURL).href;
     const REGIONS = {
@@ -148,7 +150,9 @@
             this.center = {...REGIONS.global};
             this.zoom = 1;
             this.elapsed = 0;
-            this.lastFrame = 0;
+            this.lastFrame = null;
+            this.rotationTime = 0;
+            this.rotationHeldUntil = 0;
             this.baseDirty = true;
             this.viewVersion = 0;
             this.frameID = 0;
@@ -158,6 +162,7 @@
             this.error = false;
             this.drag = null;
             this.motionQuery = matchMedia('(prefers-reduced-motion: reduce)');
+            this.motionOverride = false;
             this.reducedMotion = this.motionQuery.matches;
             this.originalAccessibility = {};
             ['tabindex', 'role', 'aria-label', 'aria-describedby', 'aria-keyshortcuts'].forEach(name => {
@@ -181,13 +186,13 @@
             canvas.setAttribute('aria-describedby', [this.originalAccessibility['aria-describedby'], this.selectionStatus.id].filter(Boolean).join(' '));
             this.tick = this.tick.bind(this);
             this.onVisibility = () => this.updateActivity();
-            this.onMotion = event => { this.reducedMotion = event.matches; this.updateActivity(); };
+            this.onMotion = event => { this.reducedMotion = event.matches && !this.motionOverride; this.updateActivity(); };
             this.handlers = {
                 pointerdown: event => this.startDrag(event),
                 pointermove: event => this.movePointer(event),
                 pointerup: event => this.endDrag(event),
-                pointercancel: () => { this.drag = null; this.canvas.style.cursor = 'grab'; },
-                lostpointercapture: () => { this.drag = null; },
+                pointercancel: () => this.cancelDrag(),
+                lostpointercapture: () => this.cancelDrag(),
                 keydown: event => this.selectWithKeyboard(event),
                 wheel: event => { event.preventDefault(); this.zoomBy(Math.exp(-event.deltaY * 0.001)); },
             };
@@ -258,6 +263,12 @@
 
         setPaused(paused) { this.paused = Boolean(paused); this.updateActivity(); }
 
+        setMotionOverride(allowMotion) {
+            this.motionOverride = Boolean(allowMotion);
+            this.reducedMotion = this.motionQuery.matches && !this.motionOverride;
+            this.updateActivity();
+        }
+
         setLayer(layer) {
             if (!['routes', 'density'].includes(layer) || this.disposed) return;
             this.layer = layer;
@@ -277,8 +288,9 @@
 
         zoomBy(factor) {
             if (!Number.isFinite(factor) || factor <= 0 || this.disposed) return;
-            this.zoom = Math.max(0.8, Math.min(3, this.zoom * factor));
+            this.zoom = Math.max(0.8, Math.min(12, this.zoom * factor));
             this.radius = this.baseRadius * this.zoom;
+            this.holdRotation();
             this.invalidate();
         }
 
@@ -292,6 +304,8 @@
             this.selectedPoint = null;
             if (!this.error) this.selectionStatus.textContent = '';
             this.elapsed = 0;
+            this.rotationTime = 0;
+            this.rotationHeldUntil = 0;
             this.invalidate();
         }
 
@@ -341,6 +355,7 @@
             if (this.disposed) return;
             this.disposed = true;
             cancelAnimationFrame(this.frameID);
+            this.frameID = 0;
             this.resizeObserver.disconnect();
             this.motionQuery.removeEventListener('change', this.onMotion);
             document.removeEventListener('visibilitychange', this.onVisibility);
@@ -357,7 +372,8 @@
         updateActivity() {
             cancelAnimationFrame(this.frameID);
             this.frameID = 0;
-            this.lastFrame = 0;
+            this.lastFrame = null;
+            this.rotationTime = 0;
             if (this.disposed || document.hidden) return;
             this.draw();
             if (!this.paused && !this.reducedMotion) this.frameID = requestAnimationFrame(this.tick);
@@ -367,13 +383,24 @@
         invalidate() { this.baseDirty = true; this.render(); }
 
         tick(now) {
+            this.frameID = 0;
             if (this.disposed || this.paused || this.reducedMotion || document.hidden) return;
             this.frameID = requestAnimationFrame(this.tick);
-            if (!this.lastFrame) this.lastFrame = now;
+            if (this.lastFrame === null) this.lastFrame = now;
             const delta = now - this.lastFrame;
             if (delta < 1000 / 30) return;
-            this.elapsed += Math.min(delta, 100) / 1000;
+            const elapsed = Math.min(delta, 100);
+            this.elapsed += elapsed / 1000;
             this.lastFrame = now;
+            if (!this.drag && !this.selectedPoint && this.region === 'global' && Date.now() >= this.rotationHeldUntil) {
+                this.rotationTime += elapsed;
+                if (this.rotationTime >= ROTATION_INTERVAL_MS) {
+                    // One degree per second at overview; zoom keeps screen movement gentle.
+                    this.center.lon = (this.center.lon + this.rotationTime / 1000 / Math.max(1, this.zoom) + 540) % 360 - 180;
+                    this.rotationTime = 0;
+                    this.baseDirty = true;
+                }
+            } else this.rotationTime = 0;
             this.draw();
         }
 
@@ -387,8 +414,8 @@
 
         draw() {
             if (!this.width || this.disposed) return;
-            // Detailed coastlines rasterize only after a view change. Live activity and
-            // instrument rings animate independently, avoiding costly retina redraws.
+            // Rotation updates geography at most 5 Hz (roughly one-pixel steps at this
+            // speed); routes and instruments animate independently at up to 30 Hz.
             if (this.baseDirty) {
                 const lon = this.center.lon * RAD;
                 const lat = this.center.lat * RAD;
@@ -806,6 +833,18 @@
             this.canvas.style.cursor = 'grabbing';
         }
 
+        holdRotation() {
+            this.rotationHeldUntil = Date.now() + ROTATION_HOLD_MS;
+            this.rotationTime = 0;
+        }
+
+        cancelDrag() {
+            if (!this.drag) return;
+            this.drag = null;
+            this.holdRotation();
+            this.canvas.style.cursor = 'grab';
+        }
+
         movePointer(event) {
             if (!this.drag) { this.canvas.style.cursor = this.nearest(event) ? 'pointer' : 'grab'; return; }
             if (event.pointerId !== this.drag.id) return;
@@ -823,6 +862,7 @@
             if (!this.drag || this.drag.id !== event.pointerId) return;
             const moved = this.drag.moved;
             this.drag = null;
+            this.holdRotation();
             if (this.canvas.hasPointerCapture(event.pointerId)) this.canvas.releasePointerCapture(event.pointerId);
             this.canvas.style.cursor = 'grab';
             if (!moved) {

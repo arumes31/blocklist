@@ -5,6 +5,7 @@ const vm = require('node:vm');
 const path = require('node:path');
 
 function harness({reduced = false, failMap = false, now = Date.now()} = {}) {
+    const startTime = now;
     const frames = new Map();
     const requests = [];
     const draws = [];
@@ -56,7 +57,12 @@ function harness({reduced = false, failMap = false, now = Date.now()} = {}) {
     const selections = [];
     const errors = [];
     const scene = new window.ThreatMapScene(canvas, {onSelect: p => selections.push(p), onError: e => errors.push(e)});
-    return {scene, canvas, document, media, frames, requests, draws, selections, errors, setNow: value => { now = value; }};
+    const frame = time => {
+        now = startTime + time;
+        const queued = Array.from(frames.entries());
+        queued.forEach(([id, callback]) => { frames.delete(id); callback(time); });
+    };
+    return {scene, canvas, document, media, frames, requests, draws, selections, errors, frame, setNow: value => { now = value; }};
 }
 
 const east = {id: 'east', ip: '192.0.2.1', name: 'East', lat: 30, lon: 150, kind: 'block', count: 1};
@@ -130,7 +136,7 @@ test('zoom stays bounded and map failure is accessible while points remain selec
     assert.equal(errors.length, 1);
     assert.match(scene.selectionStatus.textContent, /unavailable/i);
     scene.zoomBy(100);
-    assert.equal(scene.zoom, 3);
+    assert.equal(scene.zoom, 12);
     scene.zoomBy(0.001);
     assert.equal(scene.zoom, 0.8);
     scene.setPoints([east]);
@@ -200,9 +206,11 @@ test('geography retry recovers without resetting records, selection, region or m
     scene.destroy();
 });
 
-test('ambient animation reuses geography until the view changes', async () => {
+test('ambient animation reuses geography while inspecting a fixed view', async () => {
     const {scene} = harness();
     await scene.ready;
+    scene.setPoints([east]);
+    scene.focusPoint(east);
     let rebuilds = 0;
     const original = scene.drawBase.bind(scene);
     scene.drawBase = () => { rebuilds += 1; original(); };
@@ -305,5 +313,170 @@ test('all twenty thousand records remain selectable while dense markers retain e
     assert.equal(scene.markers, retainedMarkers);
     scene.setPoints([east]);
     assert.equal(scene.markers.length <= 1, true);
+    scene.destroy();
+});
+
+test('wheel and keyboard reach country-level zoom and reject invalid zoom factors', async () => {
+    const {scene, canvas} = harness();
+    await scene.ready;
+    canvas.events.get('wheel')({deltaY: -10000, preventDefault() {}});
+    assert.equal(scene.zoom, 12);
+    assert.equal(scene.radius, scene.baseRadius * 12);
+    assert.equal(canvas.width, 1800, 'zoom enlarges the projection without allocating a larger bitmap');
+    key(canvas, '-');
+    assert.equal(scene.zoom, 10);
+    key(canvas, '+');
+    assert.equal(scene.zoom, 12);
+    for (const factor of [NaN, Infinity, -1, 0]) scene.zoomBy(factor);
+    assert.equal(scene.zoom, 12);
+    canvas.events.get('wheel')({deltaY: 10000, preventDefault() {}});
+    assert.equal(scene.zoom, 0.8);
+    scene.reset();
+    assert.equal(scene.zoom, 1);
+    scene.destroy();
+});
+
+test('the planet rotates by elapsed frame time, wraps longitude, and limits geography redraws', async () => {
+    for (const interval of [40, 50]) {
+        const {scene, frame, frames} = harness();
+        await scene.ready;
+        scene.center.lon = 179.5;
+        scene.invalidate();
+        let rebuilds = 0;
+        const original = scene.drawBase.bind(scene);
+        scene.drawBase = () => { rebuilds += 1; original(); };
+        frame(0);
+        for (let time = interval; time <= 1200; time += interval) frame(time);
+        assert.ok(Math.abs(scene.center.lon - -179.3) < 0.000001);
+        assert.ok(rebuilds <= 6, 'geography updates at most five times a second');
+        assert.equal(frames.size, 1, 'rotation shares the existing animation loop');
+        scene.destroy();
+    }
+});
+
+test('zoom and drag hold rotation for eight seconds then resume at a readable zoom-scaled speed', async () => {
+    const {scene, canvas, frame} = harness();
+    await scene.ready;
+    scene.zoomBy(4);
+    const start = scene.center.lon;
+    frame(0);
+    for (let time = 40; time <= 7960; time += 40) frame(time);
+    assert.equal(scene.center.lon, start);
+    for (let time = 8000; time <= 9200; time += 40) frame(time);
+    const rotation = scene.center.lon - start;
+    assert.ok(rotation > 0.25 && rotation < 0.35);
+    const pointer = {button: 0, pointerId: 1, clientX: 450, clientY: 325};
+    canvas.events.get('pointerdown')(pointer);
+    canvas.events.get('pointermove')({...pointer, clientX: 550});
+    const dragged = scene.center.lon;
+    for (let time = 9240; time <= 10000; time += 40) frame(time);
+    assert.equal(scene.center.lon, dragged);
+    canvas.events.get('pointerup')({...pointer, clientX: 550});
+    for (let time = 10040; time <= 17960; time += 40) frame(time);
+    assert.equal(scene.center.lon, dragged);
+    for (let time = 18000; time <= 18320; time += 40) frame(time);
+    assert.ok(scene.center.lon > dragged);
+    scene.destroy();
+});
+
+test('inspection and regional views stay stationary until reset restores global rotation', async () => {
+    const {scene, frame} = harness();
+    await scene.ready;
+    scene.setPoints([east]);
+    scene.focusPoint(east);
+    frame(0);
+    for (let time = 40; time <= 1000; time += 40) frame(time);
+    assert.equal(scene.center.lon, east.lon);
+    scene.setRegion('europe');
+    const regionLon = scene.center.lon;
+    for (let time = 1040; time <= 2000; time += 40) frame(time);
+    assert.equal(scene.center.lon, regionLon);
+    scene.zoomBy(2);
+    scene.reset();
+    for (let time = 2040; time <= 3000; time += 40) frame(time);
+    assert.ok(scene.center.lon > 21);
+    assert.equal(scene.selectedPoint, null);
+    assert.equal(scene.zoom, 1);
+    scene.destroy();
+});
+
+test('cancelled pointer drags release rotation after the same interaction hold', async () => {
+    for (const event of ['pointercancel', 'lostpointercapture']) {
+        const {scene, canvas, frame} = harness();
+        await scene.ready;
+        frame(0);
+        canvas.events.get('pointerdown')({button: 0, pointerId: 1, clientX: 450, clientY: 325});
+        canvas.events.get(event)();
+        assert.equal(scene.drag, null);
+        assert.equal(canvas.style.cursor, 'grab');
+        for (let time = 40; time <= 7960; time += 40) frame(time);
+        assert.equal(scene.center.lon, 21);
+        for (let time = 8000; time <= 8400; time += 40) frame(time);
+        assert.ok(scene.center.lon > 21);
+        scene.destroy();
+    }
+});
+
+test('motion and visibility changes freeze rotation without catch-up or duplicate animation loops', async () => {
+    const {scene, media, document, frames, frame} = harness();
+    await scene.ready;
+    frame(0);
+    frame(200);
+    const initial = scene.center.lon;
+    scene.setPaused(true);
+    frame(10000);
+    assert.equal(scene.center.lon, initial);
+    assert.equal(frames.size, 0);
+    scene.setPaused(false);
+    scene.setPaused(false);
+    assert.equal(frames.size, 1);
+    frame(10040);
+    assert.equal(scene.center.lon, initial);
+    frame(10140);
+    frame(10240);
+    assert.ok(scene.center.lon > initial && scene.center.lon < initial + 0.3);
+    media.events.get('change')({matches: true});
+    const stopped = scene.center.lon;
+    frame(20000);
+    assert.equal(scene.center.lon, stopped);
+    assert.equal(frames.size, 0);
+    media.events.get('change')({matches: false});
+    assert.equal(frames.size, 1);
+    document.hidden = true;
+    document.events.get('visibilitychange')();
+    frame(30000);
+    assert.equal(scene.center.lon, stopped);
+    assert.equal(frames.size, 0);
+    document.hidden = false;
+    document.events.get('visibilitychange')();
+    frame(40000);
+    assert.equal(scene.center.lon, stopped);
+    frame(40100);
+    frame(40200);
+    assert.ok(scene.center.lon > stopped && scene.center.lon < stopped + 0.3);
+    scene.destroy();
+    assert.equal(frames.size, 0);
+    frame(50000);
+    assert.equal(frames.size, 0);
+});
+
+test('an explicit motion override enables rotation while reduced motion remains the default', async () => {
+    const {scene, media, frames, frame} = harness({reduced: true});
+    await scene.ready;
+    assert.equal(frames.size, 0);
+    assert.equal(scene.reducedMotion, true);
+    scene.setMotionOverride(true);
+    assert.equal(scene.reducedMotion, false);
+    assert.equal(frames.size, 1);
+    frame(0);
+    frame(100);
+    frame(200);
+    assert.ok(scene.center.lon > 21);
+    media.events.get('change')({matches: true});
+    assert.equal(scene.reducedMotion, false);
+    assert.equal(frames.size, 1);
+    scene.setMotionOverride(false);
+    assert.equal(scene.reducedMotion, true);
+    assert.equal(frames.size, 0);
     scene.destroy();
 });
