@@ -12,7 +12,7 @@
     let liveBlocks = [], whitelists = [], records = [], paths = [];
     let blockSnapshot = new Map(), blockTotal = null, blockRequest, blockChanges;
     let nextBlockExpiry = Infinity;
-    let blockVersion = 0, lastBlockSync = -Infinity, blockError = '', blockProgress = null;
+    let blockVersion = 0, lastBlockSync = -Infinity, blockError = '';
     let connectedBefore = false;
     let whitelistTotal = null;
     let selected = null, page = 0, view = 'globe', layer = 'routes', paused = false;
@@ -169,7 +169,6 @@
         blockRequest?.abort();
         blockRequest = null;
         blockChanges = null;
-        blockProgress = null;
         blockVersion++;
     }
 
@@ -187,42 +186,32 @@
         blockRequest = abort;
         blockChanges = changes;
         blockError = '';
-        blockProgress = {loaded:0,total:null};
         render();
-        const loaded = new Map();
-        const cursors = new Set();
-        let cursor = '', total = null;
+        showErrors();
         try {
-            do {
-                const payload = await json(`/api/v1/ips?limit=500${cursor ? '&cursor=' + encodeURIComponent(cursor) : ''}`,abort.signal);
-                if (stopped || current !== blockVersion) return;
-                if (!payload || (payload.items !== null && !Array.isArray(payload.items)) ||
-                    (payload.next != null && typeof payload.next !== 'string')) throw new Error('Invalid blocklist response');
-                if (Number.isFinite(payload.total) && payload.total >= 0) total = payload.total;
-                for (const point of D.snapshot(payload.items,'block',500,Date.now())) loaded.set(point.id,point);
-                blockProgress = {loaded:loaded.size,total};
-                renderCoverage();
-                cursor = payload.next || '';
-                if (cursor && cursors.has(cursor)) throw new Error('Repeated blocklist cursor');
-                if (cursor) cursors.add(cursor);
-            } while (cursor);
-            const replayed = D.replay([...loaded.values()],[...changes.values()],'block',Infinity);
+            // The canonical list includes older blocks missing from the timestamp index.
+            const payload = await json('/api/v1/ips_list',abort.signal);
+            if (stopped || current !== blockVersion) return;
+            if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw new Error('Invalid blocklist response.');
+            const entries = Object.entries(payload);
+            if (entries.some(([ip,entry]) => !ip || !entry || typeof entry !== 'object' || Array.isArray(entry))) throw new Error('Invalid blocklist response.');
+            const loaded = D.snapshot(entries.map(([ip,data]) => ({ip,data})),'block',Infinity,Date.now());
+            const replayed = D.replay(loaded,[...changes.values()],'block',Infinity);
             blockSnapshot = new Map(replayed.map(point => [point.id,{...point,visibleUntil:undefined}]));
             nextBlockExpiry = Infinity;
             for (const point of blockSnapshot.values()) {
                 const expiry = Date.parse(point.expiresAt);
                 if (Number.isFinite(expiry)) nextBlockExpiry = Math.min(nextBlockExpiry,expiry);
             }
-            blockTotal = total;
+            blockTotal = entries.length;
             lastBlockSync = Date.now();
         } catch (error) {
             if (stopped || current !== blockVersion) return;
-            blockError = error.status === 401 ? error.message : `Blocked IPs unavailable; previous data retained. Refresh stopped at ${fmt(loaded.size)} / ${fmt(total)} records.`;
+            blockError = error.status === 401 ? error.message : `Blocked IPs unavailable; previous data retained. ${error.message}`;
         } finally {
             if (current === blockVersion) {
                 blockRequest = null;
                 blockChanges = null;
-                blockProgress = null;
                 render();
                 showErrors();
             }
@@ -325,7 +314,7 @@
         const coverage = [`${fmt(records.filter(point => point.lat !== null).length)} mapped / ${fmt(records.length)} in view`];
         if (active.blocked && active.all) {
             coverage.push(`Blocked list: ${fmt(blockSnapshot.size)} loaded / ${fmt(blockTotal)} reported`);
-            if (blockProgress) coverage.push(`Loading ${fmt(blockProgress.loaded)} / ${fmt(blockProgress.total)}`);
+            if (blockRequest) coverage.push('Loading complete blocked list…');
             if (blockError) coverage.push('Refresh incomplete; retained previous data');
         } else if (active.blocked) coverage.push('Live blocks: last 8 seconds');
         if (active.whitelist && whitelistTotal > 500) coverage.push(`Whitelist sample: up to 500 of ${fmt(whitelistTotal)}`);

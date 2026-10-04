@@ -9,6 +9,7 @@ const controller = fs.readFileSync(path.join(__dirname, '../cmd/server/static/js
 const template = fs.readFileSync(path.join(__dirname, '../cmd/server/templates/threat_map.html'), 'utf8');
 const flush = () => new Promise(resolve => setImmediate(resolve));
 const item = ip => ({ip, data:{geolocation:{latitude:48, longitude:16}, reason:'Scanner'}});
+const blocklist = items => Object.fromEntries(items.map(({ip, data}) => [ip, data]));
 
 // Only the browser surfaces used by the controller are modeled here. Geography,
 // layout and painting remain covered by the renderer and real-browser checks.
@@ -287,100 +288,108 @@ test('suspension aborts work and returning resumes one socket and a fresh snapsh
     assert.deepEqual(h.points(), ['192.0.2.2']);
 });
 
-test('all blocked follows cursors beyond 500, deduplicates pages and stays visible after live TTL', async t => {
+test('all blocked loads the canonical complete object beyond 20000 and stays visible after live TTL', async t => {
     const h = harness({showAllBlocks:true});
     t.after(h.stop);
-    const first = Array.from({length:500},(_,i)=>item(`ip-${i}`));
-    h.requests[0].respond({items:first,total:600,next:'123:ip-499?&'});
+    const blocks = Array.from({length:20001},(_,i)=>item(`198.18.${Math.floor(i / 256)}.${i % 256}`));
+    assert.equal(h.requests[0].url,'/api/v1/ips_list','the sorted timestamp index may omit older blocks');
+    assert.match(h.get('data-status').textContent,/Loading blocked IPs/);
+    h.requests[0].respond(blocklist(blocks));
     await flush();
-    assert.equal(h.requests.length,2);
-    assert.match(h.requests[1].url,/cursor=123%3Aip-499%3F%26$/);
-    assert.equal(h.points().length,0,'partial pages must not replace the committed snapshot');
-    assert.match(h.get('coverage-status').textContent,/Loading 500 \/ 600/);
-    h.requests[1].respond({items:[first[499],...Array.from({length:100},(_,i)=>item(`ip-${500+i}`))],total:600,next:''});
-    await flush();
-    assert.equal(h.points().length,600);
-    assert.ok(h.points().includes('ip-599'));
-    assert.match(h.get('coverage-status').textContent,/600 loaded \/ 600 reported/);
-    assert.equal(h.get('origin-page').textContent,'1 / 100');
+    assert.equal(h.points().length,20001);
+    assert.ok(h.points().includes(blocks.at(-1).ip));
+    assert.ok(h.get('coverage-status').textContent.includes(`${(20001).toLocaleString()} loaded / ${(20001).toLocaleString()} reported`));
+    assert.equal(h.get('origin-page').textContent,'1 / 3334');
     await h.advance(10000);
-    assert.equal(h.points().length,600);
-    assert.equal(h.requests.length,2,'live event/stat timers must not reload the complete blocklist');
+    assert.equal(h.points().length,20001);
+    assert.equal(h.requests.length,1,'live event/stat timers must not reload the complete blocklist');
 });
 
-test('slow full pagination replays block changes and does not use a whole-list timeout', async t => {
+test('slow complete snapshots replay newer block changes after live marker expiry', async t => {
     const h = harness({showAllBlocks:true});
     t.after(h.stop);
     const first = h.requests[0];
     h.sockets[0].open();
     h.sockets[0].send('unblock',{ip:'removed'});
     h.sockets[0].send('block',item('new'));
-    await h.advance(6500);
+    await h.advance(9500);
     assert.equal(first.signal.aborted,false);
-    first.respond({items:[item('removed'),item('kept')],total:3,next:'page2'});
-    await flush();
-    const second = h.requests[1];
-    await h.advance(6500);
-    assert.equal(second.signal.aborted,false,'each page has its own timeout');
-    second.respond({items:[item('last')],total:3,next:''});
+    first.respond(blocklist([item('removed'),item('kept'),item('last')]));
     await flush();
     assert.deepEqual(h.points(),['new','kept','last']);
     assert.ok(h.scene.points.every(point=>point.visibleUntil === undefined),'all-mode records must not fade as live markers');
 });
 
-test('disabling all cancels pagination and immediately returns only unexpired live events', async t => {
+test('disabling all cancels its snapshot and immediately returns only unexpired live events', async t => {
     const h = harness({showAllBlocks:true});
     t.after(h.stop);
-    h.requests[0].respond({items:[item('historical')],total:2,next:'page2'});
-    await flush();
     h.sockets[0].send('block',item('live'));
     h.get('toggle-all-blocked').checked = false;
     h.get('toggle-all-blocked').emit('change');
-    assert.equal(h.requests[1].signal.aborted,true);
-    h.requests[1].respond({items:[item('late')],total:2,next:''});
+    assert.equal(h.requests[0].signal.aborted,true);
+    h.requests[0].respond(blocklist([item('late')]));
     await flush();
     assert.deepEqual(h.points(),['live']);
     await h.advance(8000);
     assert.deepEqual(h.points(),[]);
-    assert.equal(h.requests.length,2);
+    assert.equal(h.requests.length,1);
 });
 
-test('failed later pages preserve the previous complete list and disclose incomplete refresh', async t => {
+test('failed snapshots preserve the previous complete list and disclose the HTTP status', async t => {
     const h = harness({showAllBlocks:true});
     t.after(h.stop);
-    h.requests[0].respond({items:[item('previous')],total:1,next:''});
+    h.requests[0].respond(blocklist([item('previous')]));
     await flush();
     h.get('retry-data').emit('click');
-    h.requests[1].respond({items:[item('partial')],total:2,next:'page2'});
-    await flush();
-    h.requests[2].respond({},503);
+    h.requests[1].respond({},503);
     await flush();
     assert.deepEqual(h.points(),['previous']);
     assert.match(h.get('data-status').textContent,/previous data retained/);
-    assert.match(h.get('data-status').textContent,/1 \/ 2 records/);
+    assert.match(h.get('data-status').textContent,/503/);
     assert.match(h.get('coverage-status').textContent,/Refresh incomplete/);
     assert.equal(h.get('retry-data').hidden,false);
 });
 
-test('repeated full-list cursors fail instead of fetching indefinitely', async t => {
+test('invalid full-list payloads retain data instead of silently replacing the list', async t => {
     const h = harness({showAllBlocks:true});
     t.after(h.stop);
-    h.requests[0].respond({items:[item('first')],total:3,next:'again'});
+    h.requests[0].respond(blocklist([item('previous')]));
     await flush();
-    h.requests[1].respond({items:[item('second')],total:3,next:'again'});
+    for (const invalid of [null,[],{items:[item('indexed-only')],total:1,next:''},{'192.0.2.1':null},{'192.0.2.1':'invalid'}]) {
+        h.get('retry-data').emit('click');
+        h.requests.at(-1).respond(invalid);
+        await flush();
+        assert.deepEqual(h.points(),['previous']);
+        assert.match(h.get('data-status').textContent,/Invalid blocklist response/);
+    }
+    h.get('retry-data').emit('click');
+    h.requests.at(-1).respond({});
     await flush();
-    assert.equal(h.requests.length,2);
     assert.deepEqual(h.points(),[]);
-    assert.match(h.get('data-status').textContent,/Refresh stopped at 2 \/ 3/);
+    assert.match(h.get('data-status').textContent,/Data current/);
+});
+
+test('enabling Include existing immediately shows loading and restores the complete list', async t => {
+    const h = harness();
+    t.after(h.stop);
+    await flush();
+    h.get('toggle-all-blocked').checked = true;
+    h.get('toggle-all-blocked').emit('change');
+    assert.match(h.get('data-status').textContent,/Loading blocked IPs/);
+    assert.match(h.get('origin-list').textContent,/Loading blocked IPs/);
+    h.requests[0].respond(blocklist([item('historical')]));
+    await flush();
+    assert.deepEqual(h.points(),['historical']);
+    assert.match(h.get('data-status').textContent,/Data current/);
 });
 
 test('full snapshots sync at sixty seconds and reconnect while statistics remain independent', async t => {
     const h = harness({showAllBlocks:true,statsAllowed:true});
     t.after(h.stop);
-    const blockRequests = () => h.requests.filter(request=>request.url.startsWith('/api/v1/ips?'));
+    const blockRequests = () => h.requests.filter(request=>request.url === '/api/v1/ips_list');
     const statsRequests = () => h.requests.filter(request=>request.url === '/api/v1/stats');
     statsRequests()[0].respond({active_blocks:1});
-    blockRequests()[0].respond({items:[item('old')],total:1,next:''});
+    blockRequests()[0].respond(blocklist([item('old')]));
     h.sockets[0].open();
     await flush();
     await h.advance(30000);
@@ -388,7 +397,7 @@ test('full snapshots sync at sixty seconds and reconnect while statistics remain
     assert.ok(statsRequests().length >= 2);
     await h.advance(30000);
     assert.equal(blockRequests().length,2);
-    blockRequests()[1].respond({items:[item('new')],total:1,next:''});
+    blockRequests()[1].respond(blocklist([item('new')]));
     await flush();
     assert.deepEqual(h.points(),['new']);
     h.sockets[0].close();
@@ -411,7 +420,7 @@ test('blocked filter disables the all control and cancels its active load', asyn
     assert.equal(h.requests.length,2);
 });
 
-test('a stalled full-list page times out and exposes retry without discarding live events', async t => {
+test('a stalled complete snapshot times out and exposes retry without discarding live events', async t => {
     const h = harness({showAllBlocks:true});
     t.after(h.stop);
     await h.advance(5000);
@@ -440,7 +449,7 @@ test('all mode honors actual block expiry without using the live marker deadline
     t.after(h.stop);
     const expiring = item('temporary');
     expiring.data.expires_at = '2026-10-04T00:00:01Z';
-    h.requests[0].respond({items:[expiring,item('persistent')],total:2,next:''});
+    h.requests[0].respond(blocklist([expiring,item('persistent')]));
     await flush();
     assert.equal(h.points().length,2);
     await h.advance(1000);
@@ -452,7 +461,7 @@ test('all mode honors actual block expiry without using the live marker deadline
 test('all-mode events coalesce for one second and live-buffer expiry does not redraw static records', async t => {
     const h = harness({showAllBlocks:true});
     t.after(h.stop);
-    h.requests[0].respond({items:[item('static')],total:1,next:''});
+    h.requests[0].respond(blocklist([item('static')]));
     await flush();
     const initialUpdates = h.scene.pointUpdates;
     h.sockets[0].send('block',item('first'));

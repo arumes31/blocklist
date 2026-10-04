@@ -2,17 +2,22 @@ package api
 
 import (
 	"blocklist/internal/models"
+	"blocklist/internal/repository"
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 	"time"
 
+	"github.com/alicebob/miniredis/v2"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 func TestAPIHandler_BlockIP(t *testing.T) {
@@ -248,6 +253,42 @@ func TestAPIHandler_JSONIPs(t *testing.T) {
 
 	assert.Equal(t, http.StatusInternalServerError, w2.Code)
 	assert.JSONEq(t, `{"error":"Error fetching IPs"}`, w2.Body.String())
+}
+
+func TestAPIHandler_JSONIPsIncludesAllExistingBlocks(t *testing.T) {
+	mr := miniredis.RunT(t)
+	port, err := strconv.Atoi(mr.Port())
+	require.NoError(t, err)
+	repo := repository.NewRedisRepository(mr.Host(), port, "", 0)
+	t.Cleanup(func() { require.NoError(t, repo.Close()) })
+	h := NewAPIHandler(&HandlerOptions{RedisRepo: repo})
+	ts := time.Date(2026, 10, 2, 10, 0, 0, 0, time.UTC)
+	entry := models.IPEntry{
+		Timestamp: ts.Format("2006-01-02 15:04:05 UTC"),
+		Reason:    "existing permanent block",
+		Geolocation: &models.GeoData{
+			Country: "AT", City: "Vienna", Latitude: 48.2082, Longitude: 16.3738,
+		},
+	}
+	const count = 1201
+	for i := 0; i < count; i++ {
+		require.NoError(t, repo.BlockIP(fmt.Sprintf("2001:db8::%04x", i), entry))
+	}
+	// Deployed data can contain older hash entries and only a partially
+	// populated timestamp index. The full map snapshot must include both.
+	require.NoError(t, repo.IndexIPTimestamp("2001:db8::04b0", ts))
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/ips_list", nil)
+	h.JSONIPs(c)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	var got map[string]models.IPEntry
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &got))
+	require.Len(t, got, count, "the full snapshot must not depend on the timestamp index or a page limit")
+	require.Equal(t, entry, got["2001:db8::0000"])
+	require.Equal(t, entry, got["2001:db8::04b0"])
 }
 
 func TestAPIHandler_isIPInCIDRs(t *testing.T) {
