@@ -80,8 +80,13 @@ go test -tags=integration -run '^TestAPIHandler_UpgradeTokenCompatibility$' -cou
 ## Accessibility and visual checks
 
 The browser suite runs axe WCAG 2 A/AA and 2.1 A/AA checks on all ten authenticated
-pages, login, account/role creation and the block dialog at both viewports. It
-also checks keyboard sign-in navigation. These detect automated violations;
+pages, login, account/role creation and the block dialog at both viewports.
+Desktop pages are scanned with both collapsed and expanded navigation; keyboard
+focus and exit are checked separately. Scans wait for actual sidebar transitions
+to finish, so partially faded text cannot cause timing-dependent contrast failures.
+No accessibility rules are disabled, and production animations remain unchanged.
+Failure output includes axe's contrast/violation explanation alongside each target.
+The suite also checks keyboard sign-in navigation. These detect automated violations;
 screen-reader usability and complete WCAG conformance still need human review.
 
 Ten committed screenshots cover deterministic login, role, local/Entra account
@@ -108,9 +113,14 @@ This is regression coverage, **not a guarantee that every possible button, input
 
 ## Last local verification: 2026-10-06
 
-- Full browser suite: **98 passed**, 49 desktop and 49 mobile, with screenshot
-  updates disabled. This includes 26 accessibility tests, eight visual tests
-  comparing ten reviewed PNGs, and actual login-canvas motion/pause checks.
+- Full browser suite: **99 passed**, 50 desktop and 49 mobile, with screenshot
+  updates disabled. The desktop-only hover-rail keyboard check is skipped on
+  mobile. This includes 27 accessibility tests, eight visual tests comparing ten
+  reviewed PNGs, and actual login-canvas motion/pause checks.
+- Reproduced the CI sidebar contrast failure by sampling the label fade halfway
+  through its transition; the same labels pass once fully visible. The audit-log
+  and keyboard-focus checks then passed five consecutive repetitions each after
+  adding transition-aware scanning. No application styling or behavior changed.
 - JavaScript unit suite: **99 passed**, including fail-closed production-policy,
   rollback/promotion and package-cleanup tests from both branches.
 - All Go application packages passed with both `-short -race -count=1` and
