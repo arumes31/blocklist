@@ -11,7 +11,17 @@ test('image serves minified JavaScript at the original asset URLs', async ({requ
     expect(response.headers()['content-type']).toMatch(/javascript/);
     const output = await response.text();
     expect(output).toBe(await minifyJavaScript(source, name));
-    expect(Buffer.byteLength(output)).toBeLessThan(Buffer.byteLength(source));
+    if (name === 'leaflet-heat.js') {
+      // Already minified: the builder may retain the source verbatim. Its LF
+      // and CRLF variants are both covered by the asset-build unit tests.
+      expect(Buffer.byteLength(output), `${name} must not grow`)
+        .toBeLessThanOrEqual(Buffer.byteLength(source));
+    } else {
+      // Line-ending changes alone must not satisfy first-party minification.
+      const sourceBytes = Buffer.byteLength(source.replace(/\r\n/g, '\n'));
+      const outputBytes = Buffer.byteLength(output.replace(/\r\n/g, '\n'));
+      expect(outputBytes, `${name} must be minified`).toBeLessThan(sourceBytes);
+    }
   }
 });
 

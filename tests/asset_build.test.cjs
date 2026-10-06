@@ -52,6 +52,22 @@ test('minification preserves plain third-party copyright and license notices', a
   assert.doesNotMatch(output, /Ordinary implementation note/);
 });
 
+test('already-minified Leaflet heat stays compact with Linux and Windows line endings', async () => {
+  const filename = path.join(__dirname, '../cmd/server/static/js/leaflet-heat.js');
+  const sourceLF = fs.readFileSync(filename, 'utf8').replace(/\r\n/g, '\n');
+  const outputLF = await minifyJavaScript(sourceLF, 'leaflet-heat.js');
+  // A valid build may copy an already-minified asset verbatim, including its
+  // license. Requiring a strict reduction made only the Linux CI build fail.
+  assert.equal(outputLF, sourceLF);
+  for (const source of [sourceLF, sourceLF.replace(/\n/g, '\r\n')]) {
+    const output = await minifyJavaScript(source, 'leaflet-heat.js');
+    assert.ok(Buffer.byteLength(output) <= Buffer.byteLength(source));
+    // Terser may move line breaks around the preserved license comments when
+    // the CRLF input gives it room to shrink; all other text remains intact.
+    assert.equal(output.replace(/\r?\n/g, ''), sourceLF.replace(/\n/g, ''));
+  }
+});
+
 test('minified map data module keeps its CommonJS exports and behavior', async () => {
   const filename = path.join(__dirname, '../cmd/server/static/js/threat-map-data.js');
   const source = fs.readFileSync(filename, 'utf8');

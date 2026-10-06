@@ -31,6 +31,10 @@ a { color: inherit; text-decoration: none; }
 .threat-map-content button:disabled:hover { background: transparent; }
 :where(a, button, select, input, [tabindex]):focus-visible { outline: 2px solid var(--red); outline-offset: 4px; }
 canvas:focus-visible { outline: 2px solid var(--red); outline-offset: -3px; }
+/* Keep the nested scroll region's focus ring inside its clipping parent,
+   with enough inline space that the ring never overlaps event text. */
+#event-stream { padding-inline: 4px; }
+#event-stream:focus-visible { outline-offset: -2px; }
 .threat-map-content select { min-height: 36px; padding: 8px; max-width: 130px; }
 .threat-map-content h2 { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin: 0 0 12px; color: var(--muted); font-size: 11px; font-weight: 400; letter-spacing: 1px; text-transform: uppercase; }
 .threat-map-content h2 span { color: var(--dim); font-size: 10px; letter-spacing: .4px; }

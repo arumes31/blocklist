@@ -29,7 +29,11 @@ FORM: Code-led maintenance of a user-provided surface. No concept roll or comp r
 - The list follows the selected member IDs through refreshes, updates metadata and drops removed records. New records are not silently added to that selection. Filter, region, layer, projection and reset controls clear the group scope.
 - Equal coordinates are disclosed explicitly. Zoom changes projection scale, not GeoIP coordinates, source accuracy or boundary detail. No fabricated jitter, third-party tile requests or backend changes.
 - The desktop console's minimum height follows the map content, including the group explanation, instead of a fixed-height floor. Short windows scroll the page without clipping the toolbar or legend; side panels retain their local scrolling.
+- Both named side panels and the nested event stream are keyboard-focusable, including empty states with disabled pagination. Native Page Down scrolling and the existing focus treatment remain available without changing the map layout or data flow.
+- The nested event stream insets its focus outline and reserves four pixels beside its text so the scrolling parent cannot clip the indicator.
 
 ## Verification
 
 `tests/threat_map_scene.test.cjs` covers deep zoom, bounded canvas allocation, coincident and nearby origins, complete group membership and stationary inspection, alongside the existing 20,000-record count test. `tests/threat_map_controller.test.cjs` covers pagination, selection, refreshed metadata and zoom controls. `tests/e2e/threat_map_groups.spec.cjs` uses labelled synthetic responses in the isolated test stack on desktop and mobile; it does not write sample IPs to the database.
+
+`tests/e2e/threat_map_scrolling.spec.cjs` checks keyboard entry and exit, locally scrolling desktop panels, and a populated event stream on desktop and mobile. Long details and events come only from intercepted responses and a mocked WebSocket. The regular page accessibility scan also covers the empty summary panel.

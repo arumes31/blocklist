@@ -339,3 +339,36 @@ tags passed with zero issues in a separate, concurrency-limited run. The initial
 concurrent run timed out and reported one test-style finding, which was fixed;
 the repeat used a local 10-minute timeout without changing CI configuration.
 No running development or production deployment was updated.
+
+## CI minification and threat-map accessibility follow-up
+
+The three reported CI runs shared two causes:
+
+- The empty threat-map summary could overflow without an enabled focus target.
+  Both named side panels and the nested event stream now accept keyboard focus.
+  The scrolling regression checks Tab/Shift+Tab, native Page Down scrolling,
+  long selected-record details and a populated stream on desktop/mobile.
+  It uses intercepted responses and WebSocket messages, not database writes.
+- `leaflet-heat.js` is already minified. On an LF checkout, the asset builder
+  correctly retains it unchanged when reformatting would be larger. The runtime
+  test now permits equality for that vendor file only; authored scripts must
+  still shrink, even after normalizing line endings. Every served script is
+  still compared byte-for-byte with the expected builder output. A unit test
+  covers the vendor's LF and CRLF inputs, non-expansion and preserved content.
+
+No minifier options, application JavaScript, backend behavior, accessibility
+rules or screenshot baselines were changed for these fixes.
+
+```sh
+npm test
+npm run test:ui -- runtime.spec.cjs accessibility.spec.cjs threat_map_groups.spec.cjs threat_map_scrolling.spec.cjs --grep 'image serves minified|accessibility: /threat-map|threat-map'
+npm run test:ui
+```
+
+Verified locally on 2026-10-06: **113 JavaScript unit tests passed**, all **8
+focused browser checks passed**, and the final full browser suite completed
+with **117 passed / 1 expected skip** (desktop-only hover navigation on mobile).
+The final desktop/mobile review confirmed that the nested event stream's inset
+focus ring remains visible without covering its text. No screenshot baselines
+were updated. The disposable test containers and network were removed; no
+development or production deployment was changed.
