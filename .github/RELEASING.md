@@ -51,9 +51,11 @@ migrations. The candidate runtime suite separately verifies clean startup and
 real HTTP/browser behavior. Neither is a restore rehearsal of your production
 backup or a live Fortigate/Fail2ban/Entra deployment test.
 
-Existing security findings are not waived to release an image. In particular,
-the historical credential finding documented in [SECURITY_CHECKS.md](SECURITY_CHECKS.md)
-must be investigated and resolved before that gate can pass.
+Active or unreviewed security findings must be resolved before release. The
+historical example credential documented in [SECURITY_CHECKS.md](SECURITY_CHECKS.md)
+has a fingerprint-only exception after the maintainer confirmed on 2026-10-06
+that it was a test secret and is no longer in use. Full-history secret scanning
+remains required; this exception does not waive other findings.
 
 ## Publish main to latest
 

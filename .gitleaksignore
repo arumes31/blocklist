@@ -1,0 +1,4 @@
+# Retired example/test secret; maintainer confirmed on 2026-10-06 that it is
+# no longer in use. Exempt only this historical finding, not the whole commit,
+# file, rule, or secret value in future commits. See .github/SECURITY_CHECKS.md.
+b596da9f63eb51a7e21c3638725ebb3bfb61f7b1:cmd/server/main.go:generic-api-key:127

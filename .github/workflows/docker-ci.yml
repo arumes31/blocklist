@@ -113,6 +113,8 @@ jobs:
         IMAGE: ${{ needs.candidate.outputs.image }}
         DIGEST: ${{ needs.candidate.outputs.digest }}
       run: |
+        # Markdown backticks are literal formatting, not shell substitutions.
+        # shellcheck disable=SC2016
         printf '### Tested candidate\n\nCommit: `%s`\n\nImage: `%s@%s`\n\nQuality, security, image scan and isolated runtime tests passed.\n' \
           "$GITHUB_SHA" "$IMAGE" "$DIGEST" >> "$GITHUB_STEP_SUMMARY"
 

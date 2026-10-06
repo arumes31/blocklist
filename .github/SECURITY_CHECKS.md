@@ -56,6 +56,14 @@ go run github.com/zricethezav/gitleaks/v8@v8.30.1 git --config=.gitleaks.toml --
 go test -race -tags=integration -count=1 -timeout=15m ./...
 ```
 
+Actionlint only runs its ShellCheck integration when ShellCheck is installed.
+Ubuntu GitHub runners include it; a local Go-only run may miss shell findings.
+To match CI locally, use the pinned official image, which includes ShellCheck:
+
+```sh
+docker run --rm --network none -v "$(pwd)/.github:/repo/.github:ro" --workdir /repo --entrypoint sh rhysd/actionlint:1.7.12 -c 'actionlint .github/workflows/*.yml'
+```
+
 Gitleaks scans reachable Git history, not ignored local `.env` files. Deleted
 credentials can therefore still fail the check. If a finding is real, revoke or
 rotate it first; deleting the current file does not remove historical exposure.
@@ -64,12 +72,22 @@ Do not disable a scanner or baseline all findings merely to obtain a green check
 
 `.gitleaks.toml` extends the default detection rules and allows only three exact
 dummy values in their specific documentation or test files. It does not exempt
-whole files, tests, or commits. The initial history review identified a hardcoded
-admin-token fallback in `cmd/server/main.go:127` at commit
-`b596da9f63eb51a7e21c3638725ebb3bfb61f7b1`. This finding is deliberately **not**
-suppressed. Although that fallback is absent from the current source, a maintainer
-must check whether any existing account was seeded with it and rotate/re-enroll
-that credential if necessary before accepting a historical exception.
+whole files, tests, or commits.
+
+### Reviewed historical test-secret exception
+
+The history review identified an example admin-token fallback in
+`cmd/server/main.go:127` at commit
+`b596da9f63eb51a7e21c3638725ebb3bfb61f7b1`. On 2026-10-06, the maintainer confirmed
+that this was a test secret and is no longer in use. The fallback is absent from
+the current source. This confirmation is the basis for the exception; no
+production credential inspection or rotation was performed as part of it.
+
+The root `.gitleaksignore` exempts only that finding's exact fingerprint
+(commit, path, rule and line). The secret value is not copied into the exception,
+and the full-history scan remains required. Other findings, including a secret
+reintroduced in a new commit, remain subject to scanning. Reassess this exception
+if the maintainer's confirmation changes.
 
 govulncheck fails on reachable vulnerabilities; Trivy also checks dependencies
 that may not be reachable. Existing justified Trivy exceptions remain in
