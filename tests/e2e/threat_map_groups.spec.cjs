@@ -1,5 +1,3 @@
-const fs = require('node:fs');
-const path = require('node:path');
 const AxeBuilder = require('@axe-core/playwright').default;
 const {test, expect} = require('./fixtures.cjs');
 
@@ -86,9 +84,7 @@ test('threat-map groups expose all co-located IPs at deep zoom without losing li
   const results = await new AxeBuilder({page}).include('#main-content')
     .withTags(['wcag2a','wcag2aa','wcag21a','wcag21aa']).analyze();
   expect(results.violations.map(({id,nodes}) => ({id, targets:nodes.map(node => node.target)}))).toEqual([]);
-  const reviewDir = path.resolve(__dirname, '../../.impeccable/review');
-  fs.mkdirSync(reviewDir, {recursive:true});
-  await page.screenshot({path:path.join(reviewDir, `threat-map-${info.project.name}.png`), fullPage:true});
+  await page.screenshot({path:info.outputPath('threat-map.png'), fullPage:true});
 
   await page.locator('#reset-view').click();
   await expect(page.locator('#group-summary')).toBeHidden();
