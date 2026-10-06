@@ -2,75 +2,171 @@ name: Docker Build and Check
 
 on:
   push:
-    branches:
-      - main
-      - test
-      - v2b_test
+    branches: ['*']
   workflow_dispatch:
 
 permissions: {}
 
+# Shared with package cleanup. Never interrupt a registry write with a newer push.
 concurrency:
-  group: docker-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: container-publication
+  cancel-in-progress: false
 
 jobs:
-  build-and-check:
-    name: Build and Scan Docker Image
+  quality:
+    uses: ./.github/workflows/go-ci.yml
+    permissions:
+      contents: read
+
+  security:
+    uses: ./.github/workflows/security.yml
+    permissions:
+      contents: read
+
+  candidate:
+    name: Build and scan candidate
+    needs: [quality, security]
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     permissions:
       contents: read
       packages: write
-
+      actions: read
+    outputs:
+      image: ${{ steps.meta.outputs.image }}
+      digest: ${{ steps.build.outputs.digest }}
+      publish: ${{ steps.meta.outputs.publish }}
     steps:
-      - name: Checkout code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-
-      - name: Log in to the Container registry
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Validate production protection before building
+        if: github.ref == 'refs/heads/main'
+        run: node scripts/ci/release-policy.cjs
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - name: Image identity
+        id: meta
+        shell: bash
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          publish=false
+          case "$GITHUB_REF" in
+            refs/heads/main) publish=true ;;
+          esac
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+          echo "publish=$publish" >> "$GITHUB_OUTPUT"
+          echo "tag=$image:candidate-$GITHUB_SHA-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        if: steps.meta.outputs.publish == 'true'
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
-
-      - name: Prepare image tags
-        id: image_tags
-        shell: bash
-        env:
-          IMAGE: ghcr.io/${{ github.repository }}
-          REF_NAME: ${{ github.ref_name }}
-        run: |
-          safe_ref="${REF_NAME//\//-}"
-          {
-            echo 'value<<EOF'
-            if [[ "$safe_ref" == "main" ]]; then
-              printf '%s:latest\n' "$IMAGE"
-            fi
-            printf '%s:%s\n' "$IMAGE" "$safe_ref"
-            printf '%s:%s\n' "$IMAGE" "$GITHUB_SHA"
-            echo 'EOF'
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Build and push Blocklist Image
+          password: ${{ github.token }}
+      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+      - name: Build once
+        id: build
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
           file: Dockerfile
-          push: true
+          push: ${{ steps.meta.outputs.publish == 'true' }}
+          load: ${{ steps.meta.outputs.publish != 'true' }}
+          tags: ${{ steps.meta.outputs.tag }}
+          platforms: linux/amd64
+          sbom: ${{ steps.meta.outputs.publish == 'true' }}
+          provenance: ${{ steps.meta.outputs.publish == 'true' && 'mode=max' || 'false' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          tags: ${{ steps.image_tags.outputs.value }}
-
-      - name: Run Trivy scanner
+      - name: Scan the exact candidate digest
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
-          image-ref: 'ghcr.io/${{ github.repository }}:${{ github.sha }}'
-          format: 'table'
+          image-ref: ${{ steps.meta.outputs.publish == 'true' && format('{0}@{1}', steps.meta.outputs.image, steps.build.outputs.digest) || steps.meta.outputs.tag }}
+          format: table
           exit-code: '1'
           ignore-unfixed: true
-          vuln-type: 'os,library'
-          severity: 'CRITICAL,HIGH'
+          vuln-type: os,library
+          severity: CRITICAL,HIGH
+          trivyignores: scripts/ci/trivyignore
+        env:
+          TRIVY_USERNAME: ${{ github.actor }}
+          TRIVY_PASSWORD: ${{ github.token }}
+      - name: Record candidate for review
+        env:
+          IMAGE: ${{ steps.meta.outputs.image }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+          TAG: ${{ steps.meta.outputs.tag }}
+        run: |
+          printf 'Commit: `%s`\n\nCandidate: `%s`\n\nDigest: `%s@%s`\n' "$GITHUB_SHA" "$TAG" "$IMAGE" "$DIGEST" >> "$GITHUB_STEP_SUMMARY"
+
+  runtime:
+    name: Test candidate binary, assets and migrations
+    needs: candidate
+    if: needs.candidate.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - run: npm ci --prefix tests/e2e
+      - run: npx --prefix tests/e2e playwright install --with-deps chromium
+      - name: Pull and test the scanned digest without rebuilding
+        run: bash scripts/ci/runtime-test.sh
+        env:
+          CANDIDATE_IMAGE: ${{ needs.candidate.outputs.image }}@${{ needs.candidate.outputs.digest }}
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: candidate-runtime-${{ github.run_id }}-${{ github.run_attempt }}
+          path: tests/e2e/test-results/
+          retention-days: 14
+
+  promote:
+    name: Publish tested digest
+    needs: [candidate, runtime]
+    if: needs.candidate.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: production
+    permissions:
+      contents: read
+      packages: write
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+      - name: Recheck approval policy and main head, preserve rollback, promote and verify
+        run: node scripts/ci/promote.cjs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IMAGE: ${{ needs.candidate.outputs.image }}
+          DIGEST: ${{ needs.candidate.outputs.digest }}
+      - name: Save publication record even after a partial failure
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: image-digest-${{ github.run_id }}-${{ github.run_attempt }}
+          path: publication.json
+          if-no-files-found: error
+          retention-days: 90

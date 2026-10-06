@@ -1,0 +1,39 @@
+services:
+  app:
+    image: ${CANDIDATE_IMAGE:?A tested image reference is required}
+    ports: ["127.0.0.1:5000:5000"]
+    environment:
+      POSTGRES_URL: postgres://ci:disposable-ci@postgres:5432/blocklist?sslmode=disable
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      SECRET_KEY: ${CI_SESSION_KEY:?}
+      GUIAdmin: ci-admin
+      GUIPassword: ${CI_ADMIN_PASSWORD:?}
+      GUIToken: JBSWY3DPEHPK3PXP
+      RUN_WORKER_IN_PROCESS: "false"
+      ENABLE_OUTBOUND_WEBHOOKS: "false"
+      GIN_MODE: release
+      RATE_LIMIT_LOGIN: "100"
+      LOGWEB: "false"
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ci
+      POSTGRES_PASSWORD: disposable-ci
+      POSTGRES_DB: blocklist
+    tmpfs: [/var/lib/postgresql/data]
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U ci -d blocklist"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 2s
+      timeout: 3s
+      retries: 30

@@ -6,3 +6,5 @@
 /go.sum @arumes31
 /internal/security/ @arumes31
 /internal/tasks/ @arumes31
+/scripts/ci/ @arumes31
+/tests/e2e/ @arumes31

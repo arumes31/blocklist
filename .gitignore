@@ -46,3 +46,9 @@ walkthrough.md
 coverage/
 coverage*
 docs/
+CI_RELEASE.md
+
+# Browser regression tooling
+node_modules/
+tests/e2e/test-results/
+publication.json

@@ -1,19 +1,30 @@
 name: Delete Old Packages
-
 on:
   workflow_dispatch:
-
+    inputs:
+      dry_run:
+        description: Preview deletions without changing GHCR
+        type: boolean
+        default: true
+        required: true
+permissions: {}
+concurrency:
+  group: container-publication
+  cancel-in-progress: false
 jobs:
   delete-versions:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
+      contents: read
       packages: write
     steps:
-      - name: Delete old package versions
-        uses: actions/delete-package-versions@e5bc658cc4c965c472efe991f8beea3981499c55 # v5.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          package-name: ${{ github.event.repository.name }}
-          package-type: 'container'
-          min-versions-to-keep: 10
-          ignore-versions: 'v1,v2,v2b_test,latest'
+          persist-credentials: false
+      - name: Retain candidates, aliases, rollback, releases and untagged manifests
+        run: node scripts/ci/cleanup-packages.cjs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DRY_RUN: ${{ inputs.dry_run }}

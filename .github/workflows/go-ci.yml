@@ -1,63 +1,75 @@
 name: Go CI
-
-permissions: read-all
-
 on:
+  workflow_call:
   push:
-    branches: [ main, test, v2_test, v2b_test ]
+    branches: ['*']
   pull_request:
-    branches: [ main, test, v2_test, v2b_test ]
-
-concurrency:
-  group: go-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
+    branches: ['*']
+permissions:
+  contents: read
+# No workflow concurrency here: a reusable call must not cancel its caller.
 jobs:
   frontend-tests:
-    name: Frontend regression tests
+    name: Frontend and release-policy regression tests
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-
-    - name: Set up Node.js
-      uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
-      with:
-        node-version: '24'
-        package-manager-cache: false
-
-    - name: Test frontend data and map behavior
-      run: node --test tests/*.test.cjs
-
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - run: node --test tests/*.test.cjs
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-
-    - name: Set up Go
-      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
-      with:
-        go-version: '1.27.1'
-
-    - name: Build
-      run: go build -v ./cmd/server
-
-    - name: Test
-      run: go test -race -v ./...
-
-    - name: Lint
-      uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
-      with:
-        # v2.13.0 is built with Go 1.27 and can analyze this module's target.
-        version: v2.13.0
-
-    - name: Run Gosec Security Scan
-      run: go run github.com/securego/gosec/v2/cmd/gosec@v2.29.0 ./...
-
-    - name: Run govulncheck
-      run: |
-        go install golang.org/x/vuln/cmd/govulncheck@v1.7.0
-        govulncheck ./...
-      env:
-        GOTOOLCHAIN: go1.27.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+      - run: go build -v ./cmd/server
+      - run: go test -short -race -count=1 -v ./...
+      - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: v2.13.0
+  integration:
+    name: PostgreSQL, Redis and schema-16 compatibility
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+      - run: go test -race -tags=integration -count=1 -v ./...
+  browser:
+    name: Desktop/mobile, accessibility and visual regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - run: npm ci --prefix tests/e2e
+      - run: npx --prefix tests/e2e playwright install --with-deps chromium
+      - name: Build source test image and exercise disposable stack
+        run: |
+          docker build --tag blocklist-source:ci .
+          CANDIDATE_IMAGE=blocklist-source:ci bash scripts/ci/runtime-test.sh
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: source-browser-${{ github.run_id }}-${{ github.run_attempt }}
+          path: tests/e2e/test-results/
+          retention-days: 14

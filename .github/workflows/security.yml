@@ -1,0 +1,39 @@
+name: Security
+on:
+  workflow_call:
+  push:
+    branches: ['*']
+  pull_request:
+    branches: ['*']
+permissions:
+  contents: read
+jobs:
+  go-security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+      - run: go run github.com/securego/gosec/v2/cmd/gosec@v2.29.0 ./...
+      - run: go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
+  secrets:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+      - name: Scan all fetched history with no baseline or inline waivers
+        run: |
+          go run github.com/zricethezav/gitleaks/v8@v8.24.2 git . \
+            --log-opts='--all --full-history' --redact=100 \
+            --config=scripts/ci/gitleaks.toml --gitleaks-ignore-path=/dev/null \
+            --ignore-gitleaks-allow --exit-code=1
