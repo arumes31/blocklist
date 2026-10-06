@@ -12,9 +12,7 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: security-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+# Reusable calls must not cancel their caller or an approval-gated publication.
 
 jobs:
   gosec:
@@ -80,20 +78,4 @@ jobs:
       # Use the open-source CLI directly: no license key or repository secret.
       # Full history catches credentials even if they were deleted in a later commit.
       - name: Scan Git history with Gitleaks (redacted)
-        run: go run github.com/zricethezav/gitleaks/v8@v8.30.1 git --config=.gitleaks.toml --redact --no-banner --log-opts="--all" .
-
-  dependency-review:
-    name: Dependency review
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          persist-credentials: false
-
-      - name: Reject newly introduced vulnerable dependencies
-        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
-        with:
-          fail-on-severity: moderate
-          comment-summary-in-pr: never
+        run: go run github.com/zricethezav/gitleaks/v8@v8.30.1 git --config=.gitleaks.toml --redact --no-banner --ignore-gitleaks-allow --log-opts="--all --full-history" .

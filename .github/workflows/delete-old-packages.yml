@@ -1,31 +1,30 @@
 name: Delete Old Packages
-
 on:
   workflow_dispatch:
     inputs:
       dry_run:
-        description: Preview only; do not delete packages
+        description: Preview deletions without changing GHCR
         type: boolean
         default: true
-
-permissions:
-  contents: read
-
+        required: true
+permissions: {}
+concurrency:
+  group: container-publication
+  cancel-in-progress: false
 jobs:
   delete-versions:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
+      contents: read
       packages: write
     steps:
-      - name: Delete old package versions
-        uses: dataaxiom/ghcr-cleanup-action@d52806a0dc70b430571a37da1fde39733ffd640f # v1.2.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          package-name: ${{ github.event.repository.name }}
-          package-type: 'container'
-          token: ${{ secrets.GITHUB_TOKEN }}
-          dry-run: ${{ inputs.dry_run }}
-          keep-n-tagged: 10
-          # Candidates can be awaiting approval. Explicitly retire them only
-          # after checking the workflow run, never through generic cleanup.
-          exclude-tags: ^(v1|v2|main|latest|test|v2b_test|rollback|candidate-.*)$
+          persist-credentials: false
+      - name: Retain candidates, aliases, rollback, releases and untagged manifests
+        run: node scripts/ci/cleanup-packages.cjs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DRY_RUN: ${{ inputs.dry_run }}

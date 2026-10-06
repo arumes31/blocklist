@@ -2,14 +2,15 @@ name: Docker Build and Check
 
 on:
   push:
-    branches: [main, test, v2b_test]
+    branches: ['**']
   workflow_dispatch:
 
 permissions:
   contents: read
 
+# Shared with package cleanup; do not interrupt registry writes.
 concurrency:
-  group: image-pipeline-${{ github.ref }}
+  group: container-publication
   cancel-in-progress: false
 
 jobs:
@@ -32,6 +33,7 @@ jobs:
     permissions:
       contents: read
       packages: write
+      actions: read
     outputs:
       image: ${{ steps.image.outputs.name }}
       digest: ${{ steps.build.outputs.digest }}
@@ -40,6 +42,11 @@ jobs:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       with:
         persist-credentials: false
+    - name: Validate production protection before building
+      if: github.ref == 'refs/heads/main'
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: node .github/scripts/image-policy.cjs
     - name: Select candidate (never a production alias)
       id: image
       shell: bash
@@ -47,7 +54,7 @@ jobs:
         echo "name=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
         publish=false
         case "$GITHUB_REF" in
-          refs/heads/main|refs/heads/test|refs/heads/v2b_test) publish=true ;;
+          refs/heads/main) publish=true ;;
         esac
         echo "publish=$publish" >> "$GITHUB_OUTPUT"
     - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
@@ -65,7 +72,8 @@ jobs:
         file: Dockerfile
         push: ${{ steps.image.outputs.publish == 'true' }}
         load: ${{ steps.image.outputs.publish != 'true' }}
-        provenance: ${{ steps.image.outputs.publish == 'true' }}
+        platforms: linux/amd64
+        provenance: ${{ steps.image.outputs.publish == 'true' && 'mode=max' || 'false' }}
         sbom: ${{ steps.image.outputs.publish == 'true' }}
         tags: ${{ steps.image.outputs.name }}:candidate-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
         labels: org.opencontainers.image.revision=${{ github.sha }}
@@ -74,12 +82,16 @@ jobs:
     - name: Scan exact candidate
       uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
       with:
-        image-ref: ${{ steps.image.outputs.publish == 'true' && format('{0}@{1}', steps.image.outputs.name, steps.build.outputs.digest) || steps.build.outputs.imageid }}
+        image-ref: ${{ steps.image.outputs.publish == 'true' && format('{0}@{1}', steps.image.outputs.name, steps.build.outputs.digest) || format('{0}:candidate-{1}-{2}-{3}', steps.image.outputs.name, github.sha, github.run_id, github.run_attempt) }}
         format: table
         exit-code: '1'
         ignore-unfixed: true
         vuln-type: os,library
         severity: CRITICAL,HIGH
+        trivyignores: scripts/ci/trivyignore
+      env:
+        TRIVY_USERNAME: ${{ github.actor }}
+        TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
 
   staging:
     name: Exercise exact candidate image
@@ -121,13 +133,10 @@ jobs:
   promote:
     name: Approve and promote tested digest
     needs: [candidate, staging]
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/test' || github.ref == 'refs/heads/v2b_test'
+    if: github.ref == 'refs/heads/main' && needs.candidate.outputs.publish == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    environment: ${{ github.ref == 'refs/heads/main' && 'production' || 'image-testing' }}
-    concurrency:
-      group: blocklist-image-promotion
-      cancel-in-progress: false
+    environment: production
     permissions:
       contents: read
       packages: write
@@ -149,15 +158,15 @@ jobs:
         password: ${{ secrets.GITHUB_TOKEN }}
     - name: Promote without rebuilding and verify every alias
       env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         IMAGE: ${{ needs.candidate.outputs.image }}
         DIGEST: ${{ needs.candidate.outputs.digest }}
-      shell: bash
-      run: bash .github/scripts/promote-image.sh
+      run: node scripts/ci/promote.cjs
     - name: Preserve publication record
       if: always()
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
         name: image-digest-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
-        path: image-metadata.json
-        if-no-files-found: ignore
+        path: publication.json
+        if-no-files-found: error
         retention-days: 90

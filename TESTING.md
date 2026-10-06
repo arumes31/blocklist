@@ -42,6 +42,7 @@ The runner removes its own containers/network/volumes and temporary authenticati
 | Area | Checks |
 | --- | --- |
 | Authentication | Real password/TOTP sign-in, first-time MFA enrollment during fixture setup, invalid credentials, logout, protected routes |
+| Candidate runtime | Clean current migration version, health/raw endpoints, embedded logo/OpenAPI assets, unauthenticated and scoped-token API boundaries |
 | Login design | All six background choices, pause/play even with reduced-motion settings, saved choice, raw API link target, health link |
 | Navigation | Every sidebar destination, expansion across desktop navigation, keyboard navigation, mobile layouts, page-wide overflow |
 | Dashboard | Block dialog validation/presets/cancel/submit, details, unblock, bulk selection/cancel/unblock, filters/chips/Clear All, saved views, columns/density, filtered exports, 101-record paging, failed refresh and Retry |
@@ -60,6 +61,10 @@ containers, seeds schema 16 with synthetic legacy accounts/tokens/data, and
 applies the current migrations. It verifies that token hashes, scopes, source-IP
 restrictions, expiry, password/MFA data, saved views, blocks and logs survive.
 A second migration run must be a no-op.
+
+`TestSchema16Upgrade` additionally checks the repository and authentication service
+directly against persisted schema-16 blocks and expiring/unlimited tokens after
+the current migrations run. Both upgrade suites use disposable databases.
 
 Requests then go through the real HTTP routes and repositories: Fortigate-style
 raw/JSON whitelist reads and Basic Auth; Fail2ban/Graylog-style block/unblock;
@@ -103,19 +108,27 @@ This is regression coverage, **not a guarantee that every possible button, input
 
 ## Last local verification: 2026-10-06
 
-- Full browser suite: **96 passed**, 48 desktop and 48 mobile, with screenshot
+- Full browser suite: **98 passed**, 49 desktop and 49 mobile, with screenshot
   updates disabled. This includes 26 accessibility tests, eight visual tests
   comparing ten reviewed PNGs, and actual login-canvas motion/pause checks.
-- JavaScript unit suite: **78 passed**, including fail-closed production-policy tests.
-- All Go application packages passed with `-race -tags=integration -count=1`
+- JavaScript unit suite: **99 passed**, including fail-closed production-policy,
+  rollback/promotion and package-cleanup tests from both branches.
+- All Go application packages passed with both `-short -race -count=1` and
+  `-race -tags=integration -count=1`
   in a Linux Go container, including upgrade/API-token compatibility and the
   51 added handler cases. Source was mounted read-only; databases were disposable.
   The local command used `./cmd/... ./internal/...` (all Go packages) to avoid
   walking browser report directories while the browser runner recreated them.
-- golangci-lint v2.13.0 with integration tags: zero issues; actionlint v1.7.12:
-  passed. The promotion script passed `bash -n`; no registry promotion was run.
+- Actionlint v1.7.12 with ShellCheck passed on every merged workflow. The
+  JavaScript promotion/cleanup tests passed; no registry promotion was run.
+- Linux golangci-lint v2.13.0 with integration tags passed with zero issues.
+  The initial cold-cache run timed out while other validation was running;
+  the same five-minute command passed after cache warmup and workload completion.
+- Full-history Gitleaks passed across 519 commits with inline waivers disabled
+  and the reviewed retired-test-secret fingerprint exception retained.
 - No development or production deployment was changed. GitHub-hosted release
   execution, protected-environment configuration and registry publication still
-  need to be verified after pushing; the historical Gitleaks finding is not waived.
+  need to be verified after pushing. The retired historical test-secret exception
+  is documented in [.github/SECURITY_CHECKS.md](.github/SECURITY_CHECKS.md).
 - The disposable browser containers/network and temporary authentication files
   were removed after the final successful run.

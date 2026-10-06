@@ -57,3 +57,7 @@ docs/
 node_modules/
 test-results/
 playwright-report/
+
+# Local release notes and generated publication record
+CI_RELEASE.md
+publication.json

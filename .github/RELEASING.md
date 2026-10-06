@@ -1,6 +1,6 @@
 # Approving a production image
 
-`Docker Build and Check` builds on pushes to `main`, `test`, and `v2b_test`, and
+`Docker Build and Check` builds on pushes to every branch and
 can also be started through **Actions → Docker Build and Check → Run workflow**.
 Building is automatic; publishing `latest` requires a separate human approval.
 This workflow updates GHCR image tags. It does not connect to or restart production.
@@ -72,26 +72,31 @@ Registry tag updates are not transactional. If promotion fails after a write,
 inspect the publication record and current tag digests before retrying; do not
 assume a failed job means every tag stayed unchanged.
 
-`test` and `v2b_test` publish their respective branch and full commit tags after
-the same checks, through the non-production `image-testing` environment. They
-never update `latest`. Manual runs on other branches only build/scan locally on
-the runner; they do not push an image. `v*` binary releases remain in the separate
-GoReleaser workflow and do not publish container tags.
+Only `main` can publish container images. Other branches, including `test` and
+`v2b_test`, build and scan locally on the runner without pushing any image tags.
+Manual runs follow the same restriction. `v*` binary releases remain in the
+separate GoReleaser workflow and do not publish container tags.
 
-The image pipeline and promotion steps are serialized; they are not cancelled
-mid-publication by a newer push. GitHub concurrency is not a durable FIFO queue:
-a newer pending run may supersede an older pending run. Review the actual run
-and commit rather than assuming every push will become a release.
+The image pipeline and package cleanup share one concurrency group; they cannot
+race each other and are not cancelled mid-publication by a newer push. GitHub
+concurrency is not a durable FIFO queue: a newer pending run may supersede an
+older pending run. Review the actual run and commit rather than assuming every
+push will become a release.
 
 ## Rollback and cleanup
 
 Before moving `latest`, the job copies its previous digest to `rollback` and
-records that digest in the publication artifact. Use the recorded `image@sha256:...`
-reference for a deterministic host rollback. **An image rollback does not undo
-database migrations**; check schema compatibility and keep a tested DB backup.
+records that digest in `publication.json` in the publication artifact. Retrying
+an already-published digest preserves the existing rollback target. Use the
+recorded `image@sha256:...` reference for a deterministic host rollback.
+**An image rollback does not undo database migrations**; check schema
+compatibility and keep a tested DB backup.
 
-The package-cleanup workflow defaults to dry run and protects production/test
-aliases, rollback, and all candidate tags. Candidates are intentionally retained
+The package-cleanup workflow runs only from `main`, defaults to dry run, and
+protects production/test aliases, rollback, all candidate and release tags, and
+untagged manifests that may belong to a protected image. It keeps the ten newest
+versions; other eligible tagged versions must be over 30 days old and are
+rechecked immediately before deletion. Candidates are intentionally retained
 while they might be awaiting approval. Retire obsolete candidates explicitly in
 GHCR only after checking that their runs are finished/rejected and no deployment
 or rollback depends on them. A missing candidate must be rebuilt and retested.

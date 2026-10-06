@@ -39,6 +39,15 @@ try {
   console.log(`Starting disposable UI test stack ${project}; existing dev services are not reused.`);
   if (candidate) compose(['pull', 'app']);
   compose(['up', candidate ? '--no-build' : '--build', '--detach', '--wait', '--wait-timeout', '180']);
+  const migrations = fs.readdirSync(path.join(root, 'cmd/server/migrations'))
+    .filter(name => /^\d+_.+\.up\.sql$/.test(name))
+    .map(name => Number(name.split('_')[0]));
+  if (!migrations.length) throw new Error('No source migrations found for candidate validation.');
+  const schema = compose(['exec', '-T', 'postgres', 'psql', '-U', 'e2e', '-d', 'blocklist_e2e',
+    '-Atc', 'SELECT version, dirty FROM schema_migrations'], true);
+  if (schema !== `${Math.max(...migrations)}|f`) {
+    throw new Error('The test image did not apply every source migration cleanly.');
+  }
   const address = compose(['port', 'app', '5000'], true);
   if (!/^127\.0\.0\.1:\d+$/.test(address)) throw new Error('Test app must be published on loopback only.');
   env.E2E_BASE_URL = 'http://' + address;

@@ -3,9 +3,11 @@ test.use({storageState: {cookies: [], origins: []}});
 
 test('local password and authenticator login, logout, and protected navigation', async ({page}) => {
   await login(page);
+  expect((await page.request.get('/api/v1/ips')).status()).toBe(200);
   await page.locator('.app-sidebar').hover();
   await page.getByRole('link', {name: 'Sign out', exact: true}).click();
   await expect(page).toHaveURL(/\/login$/);
+  expect((await page.request.get('/api/v1/ips')).status()).toBe(401);
   await page.goto('/roles');
   await expect(page).toHaveURL(/\/login/);
 });

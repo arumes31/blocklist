@@ -10,15 +10,13 @@ on:
   pull_request:
   workflow_dispatch:
 
-concurrency:
-  group: go-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+# Reusable calls must not cancel their caller or an approval-gated publication.
 
 jobs:
   integration:
     name: Database upgrade and API compatibility
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       with:
@@ -30,7 +28,7 @@ jobs:
       run: go test -race -tags=integration -count=1 -timeout=15m ./...
 
   frontend-tests:
-    name: Frontend regression tests
+    name: Frontend and release-policy regression tests
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -67,7 +65,7 @@ jobs:
       run: go build -v ./cmd/server
 
     - name: Test
-      run: go test -short -race -v ./...
+      run: go test -short -race -count=1 -v ./...
 
   browser-tests:
     name: Desktop and mobile UI regression tests

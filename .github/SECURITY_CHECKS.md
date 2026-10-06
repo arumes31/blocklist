@@ -8,7 +8,7 @@ other tools from reporting. They use GitHub-hosted runners and the automatic
 | --- | --- | --- |
 | Go CI | Frontend unit tests, isolated desktop/mobile interaction/accessibility/visual checks, build, unit/integration race tests, upgrade/token compatibility, module checksum verification, golangci-lint, actionlint | Branch pushes, pull requests, manual |
 | Security | gosec with code-scanning results, govulncheck, redacted Gitleaks history scan | Branch pushes, pull requests, daily, manual |
-| Security / Dependency review | Reject newly introduced dependencies with moderate-or-higher known vulnerabilities | Pull requests |
+| Dependency Review | Reject newly introduced runtime/development dependencies with low-or-higher known vulnerabilities | Pull requests |
 | CodeQL | Go and JavaScript/TypeScript analysis | Branch pushes except Dependabot, all pull requests, weekly, manual |
 | Daily Security Scan | Existing Trivy filesystem vulnerability scan | Pull requests, daily, manual |
 
@@ -52,7 +52,7 @@ golangci-lint run --build-tags integration --timeout=5m ./...
 go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
 go run github.com/securego/gosec/v2/cmd/gosec@v2.29.0 ./...
 go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
-go run github.com/zricethezav/gitleaks/v8@v8.30.1 git --config=.gitleaks.toml --redact --no-banner --log-opts="--all" .
+go run github.com/zricethezav/gitleaks/v8@v8.30.1 git --config=.gitleaks.toml --redact --no-banner --ignore-gitleaks-allow --log-opts="--all --full-history" .
 go test -race -tags=integration -count=1 -timeout=15m ./...
 ```
 
@@ -69,6 +69,8 @@ credentials can therefore still fail the check. If a finding is real, revoke or
 rotate it first; deleting the current file does not remove historical exposure.
 Review false positives individually and document any narrowly scoped exception.
 Do not disable a scanner or baseline all findings merely to obtain a green check.
+Inline `gitleaks:allow` comments are ignored. Exceptions must be reviewed in the
+central configuration or exact-fingerprint ignore file.
 
 `.gitleaks.toml` extends the default detection rules and allows only three exact
 dummy values in their specific documentation or test files. It does not exempt
