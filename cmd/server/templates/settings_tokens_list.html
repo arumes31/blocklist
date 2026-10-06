@@ -10,7 +10,7 @@
             {{ else }}
                 <span style="color: var(--secondary-color); font-size: 0.75rem;">None</span>
             {{ end }}
-            <button class="btn btn-dark" style="padding: 0.1rem 0.4rem; font-size: 0.7rem; margin-left: 5px;" onclick="editTokenPerms('{{ .ID }}', '{{ .Permissions }}')">Edit</button>
+            <button class="btn btn-dark" style="padding: 0.1rem 0.4rem; font-size: 0.75rem; margin-left: 5px;" onclick="editTokenPerms('{{ .ID }}', '{{ .Permissions }}')">Edit</button>
         </div>
         <div class="perm-edit" id="perm-edit-{{ .ID }}" style="display: none;">
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px; font-size: 0.75rem; margin-bottom: 5px;">
@@ -21,8 +21,8 @@
                 <label><input type="checkbox" class="token-edit-perm-{{ .ID }}" value="export_data"> Export</label>
             </div>
             <div style="display: flex; gap: 5px;">
-                <button class="btn btn-danger" style="padding: 0.1rem 0.4rem; font-size: 0.7rem;" onclick="saveTokenPerms('{{ .ID }}')">Save</button>
-                <button class="btn btn-dark" style="padding: 0.1rem 0.4rem; font-size: 0.7rem;" onclick="cancelEditTokenPerms('{{ .ID }}')">Cancel</button>
+                <button class="btn btn-danger" style="padding: 0.1rem 0.4rem; font-size: 0.75rem;" onclick="saveTokenPerms('{{ .ID }}')">Save</button>
+                <button class="btn btn-dark" style="padding: 0.1rem 0.4rem; font-size: 0.75rem;" onclick="cancelEditTokenPerms('{{ .ID }}')">Cancel</button>
             </div>
         </div>
     </td>

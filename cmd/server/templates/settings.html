@@ -3,269 +3,59 @@
 
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Settings - Blocklist</title>
     <link rel="icon" type="image/x-icon" href="/cd/favicon-color.png" />
     <script src="/js/htmx.min.js"></script>
-    <style nonce="{{ .nonce }}">
-        :root {
-            --primary-red: #ff0000;
-            --dark-red: #8b0000;
-            --vibrant-red: #ff4d4d;
-            --glass-bg: rgba(20, 20, 20, 0.85);
-            --border-red: rgba(255, 0, 0, 0.3);
-            --secondary-color: #b3b3b3;
-            --success-color: #28a745;
-            --danger-color: #dc3545;
-        }
-
-        body {
-            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-            margin: 0;
-            background-color: #000;
-            color: #fff;
-        }
-
-        .header-container {
-            background: var(--glass-bg);
-            padding: 1rem 2rem;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            box-shadow: 0 2px 12px rgba(255, 0, 0, 0.15);
-            position: sticky;
-            top: 0;
-            z-index: 100;
-            backdrop-filter: blur(8px);
-            border-bottom: 1px solid var(--border-red);
-        }
-
-        .header-container h2 {
-            margin: 0;
-            font-weight: 600;
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-            color: #fff;
-        }
-
-        .header-container img {
-            height: 40px;
-            filter: drop-shadow(0 0 6px rgba(255, 0, 0, 0.4));
-        }
-
-        .main-content {
-            padding: 2rem;
-        }
-
-        .card {
-            background: rgba(20, 20, 20, 0.85);
-            border: 1px solid var(--border-red);
-            border-radius: 12px;
-            padding: 1.5rem;
-            margin-bottom: 2rem;
-            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
-            backdrop-filter: blur(8px);
-        }
-
-        h3 {
-            border-bottom: 1px solid var(--border-red);
-            padding-bottom: 0.5rem;
-            margin-top: 0;
-        }
-
-        .btn {
-            padding: 0.6rem 1.2rem;
-            border: 1px solid rgba(255, 255, 255, 0.15);
-            border-radius: 6px;
-            cursor: pointer;
-            font-weight: 600;
-            transition: all 0.2s;
-            text-decoration: none;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            background: rgba(255, 255, 255, 0.05);
-            color: #fff;
-            box-shadow: 0 0 10px rgba(255, 0, 0, 0.08);
-        }
-
-        .btn-danger {
-            background: linear-gradient(45deg, var(--dark-red), var(--primary-red));
-            border-color: var(--border-red);
-        }
-
-        .btn-dark {
-            background: rgba(255, 255, 255, 0.08);
-        }
-
-        .btn:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 0 16px rgba(255, 0, 0, 0.2);
-        }
-
-        .filter-input {
-            padding: 0.8rem 1rem;
-            border: 1px solid rgba(255, 255, 255, 0.15);
-            border-radius: 8px;
-            font-size: 1rem;
-            background: rgba(255, 255, 255, 0.05);
-            color: #fff;
-            outline: none;
-        }
-
-        .filter-input:focus {
-            border-color: var(--primary-red);
-            box-shadow: 0 0 0 2px rgba(255, 0, 0, 0.2);
-        }
-
-        .form-group {
-            margin-bottom: 1rem;
-        }
-
-        label {
-            display: block;
-            margin-bottom: 0.4rem;
-            color: var(--secondary-color);
-            font-size: 0.9rem;
-        }
-
-        table {
-            border-collapse: collapse;
-            width: 100%;
-            color: #fff;
-            margin-top: 1rem;
-        }
-
-        th,
-        td {
-            text-align: left;
-            padding: 0.75rem;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-        }
-
-        th {
-            background-color: rgba(255, 255, 255, 0.04);
-            font-weight: 600;
-            color: var(--secondary-color);
-            text-transform: uppercase;
-            font-size: 0.85rem;
-            letter-spacing: 0.05em;
-        }
-
-        tr:hover {
-            background-color: rgba(255, 255, 255, 0.02);
-        }
-
-        code {
-            background: rgba(255, 255, 255, 0.1);
-            padding: 0.2rem 0.4rem;
-            border-radius: 4px;
-            font-family: monospace;
-            color: var(--vibrant-red);
-        }
-
-        pre {
-            background: rgba(0, 0, 0, 0.3);
-            padding: 1rem;
-            border-radius: 8px;
-            border: 1px solid rgba(255, 255, 255, 0.05);
-            overflow-x: auto;
-        }
-
-        /* Toast Notifications */
-        #toast-container {
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            z-index: 2000;
-        }
-
-        .toast {
-            background: #333;
-            color: white;
-            padding: 12px 24px;
-            border-radius: 8px;
-            margin-top: 10px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            animation: slideIn 0.3s ease-out;
-            transition: opacity 0.5s ease;
-        }
-
-        @keyframes slideIn {
-            from {
-                transform: translateX(100%);
-                opacity: 0;
-            }
-
-            to {
-                transform: translateX(0);
-                opacity: 1;
-            }
-        }
-
-        .toast.success {
-            border-left: 4px solid var(--success-color);
-        }
-
-        .toast.danger {
-            border-left: 4px solid var(--danger-color);
-        }
-    </style>
+    <link rel="stylesheet" href="/static/css/app.css?v=rail-continuity-1">
 </head>
 
-<body>
+<body class="app-page" data-page="settings">
+    {{ template "app_navigation.html" . }}
     <div id="toast-container"></div>
-    <div class="header-container">
-        <div style="display: flex; align-items: center; gap: 2rem;">
-            <a href="/dashboard"><img src="/cd/logo.png" alt="Logo"></a>
-            <h2>Settings & Integrations</h2>
-        </div>
-        <div style="display: flex; align-items: center; gap: 1rem;">
-            <a href="/dashboard" class="btn btn-dark" style="min-width: 150px;">Back to Dashboard</a>
-            {{ if or (eq .username .admin_username) (contains .permissions "manage_admins") }}
-            <a href="/admin_management" class="btn btn-dark" style="min-width: 120px;">Admins</a>
-            {{ end }}
-            <a href="/logout" class="btn" style="background: rgba(255,255,255,0.08);">Logout</a>
-        </div>
-    </div>
+    <header class="header-container">
+        <div class="page-heading"><h1>Settings & Integrations</h1><p class="page-description">Connect your services and manage API access.</p></div>
+    </header>
 
-    <div class="main-content">
+    <main class="main-content settings-content" id="main-content">
+        <section class="card"><div class="section-heading"><h2>Microsoft Entra sign-in</h2><span class="role-badge">{{ if .entra_ready }}Configured{{ else }}Not configured{{ end }}</span></div>
+        <p class="muted">Local sign-in remains available. Microsoft sign-in uses this workspace's tenant and the assigned Blocklist app role.</p>
+        <dl class="entra-settings"><dt>App role mapping</dt><dd>Viewer · Moderator · Editor</dd><dt>Automatic account creation</dt><dd>{{ if .entra_auto_provision }}Enabled for assigned app roles{{ else }}Disabled — pre-provision accounts using tenant and user object IDs{{ end }}</dd></dl>
+        {{ if not .entra_ready }}<p class="field-help">To enable, configure <code>ENTRA_TENANT_ID</code>, <code>ENTRA_CLIENT_ID</code>, <code>ENTRA_CLIENT_SECRET_FILE</code>, <code>ENTRA_REDIRECT_URL</code>, and <code>ENTRA_ENABLED=true</code>. See <code>ENTRA_SETUP.md</code> in the repository. No client secret is stored in this screen.</p>{{ end }}</section>
         <div class="card">
-            <h3>Outbound Webhooks</h3>
+            <h2 class="section-title">Outbound Webhooks</h2>
             <p style="color: var(--secondary-color);">Configure external services to be notified of block/unblock
                 events.</p>
-            <form hx-post="/api/v1/settings/webhooks" hx-target="#webhook-list" hx-swap="afterbegin">
-                <div style="display: grid; grid-template-columns: 1.5fr 1fr 1fr 1fr auto; gap: 10px; align-items: end;">
+            <form {{ if not .can_manage_webhooks }}hidden{{ end }} hx-post="/api/v1/settings/webhooks" hx-target="#webhook-list" hx-swap="afterbegin">
+                <div class="webhook-form-grid">
                     <div class="form-group">
-                        <label>URL</label>
-                        <input type="url" name="url" class="filter-input" style="width: 100%; box-sizing: border-box;"
+                        <label for="webhookURL">URL</label>
+                        <input id="webhookURL" type="url" name="url" class="filter-input" style="width: 100%; box-sizing: border-box;"
                             placeholder="https://example.com/webhook" required>
                     </div>
                     <div class="form-group">
-                        <label>Secret (HMAC)</label>
-                        <input type="text" name="secret" class="filter-input"
+                        <label for="webhookSecret">Secret (HMAC)</label>
+                        <input id="webhookSecret" type="text" name="secret" class="filter-input"
                             style="width: 100%; box-sizing: border-box;" placeholder="optional signature key">
                     </div>
                     <div class="form-group">
-                        <label>Events</label>
-                        <input type="text" name="events" class="filter-input"
+                        <label for="webhookEvents">Events</label>
+                        <input id="webhookEvents" type="text" name="events" class="filter-input"
                             style="width: 100%; box-sizing: border-box;" value="block,unblock,excluded_block_attempt"
                             placeholder="comma separated">
                     </div>
 
                     <div class="form-group">
-                        <label>Geo Filter</label>
-                        <input type="text" name="geo_filter" class="filter-input"
+                        <label for="webhookGeoFilter">Geo Filter</label>
+                        <input id="webhookGeoFilter" type="text" name="geo_filter" class="filter-input"
                             style="width: 100%; box-sizing: border-box;" placeholder="e.g. US,CN,RU">
                     </div>
                     <button type="submit" class="btn btn-danger" style="margin-bottom: 1rem;">Add Webhook</button>
                 </div>
             </form>
 
-            <table>
+            <div class="table-scroll" tabindex="0" role="region" aria-label="Scrollable records">
+<table>
                 <thead>
                     <tr>
                         <th>URL</th>
@@ -282,24 +72,26 @@
                         <td>{{ $w.Events }}</td>
                         <td>{{ if $w.GeoFilter }}<code>{{ $w.GeoFilter }}</code>{{ else }}ALL{{ end }}</td>
                         <td>{{ if $w.Active }}<span class="btn btn-success"
-                                style="padding: 0.2rem 0.5rem; font-size: 0.7rem; pointer-events: none;">ACTIVE</span>{{
+                                style="padding: 0.2rem 0.5rem; font-size: 0.75rem; pointer-events: none;">ACTIVE</span>{{
                             else }}<span class="btn btn-dark"
-                                style="padding: 0.2rem 0.5rem; font-size: 0.7rem; pointer-events: none;">INACTIVE</span>{{
+                                style="padding: 0.2rem 0.5rem; font-size: 0.75rem; pointer-events: none;">INACTIVE</span>{{
                             end }}</td>
                         <td>
-                            <button class="btn btn-danger" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;"
-                                hx-delete="/api/v1/settings/webhooks/{{ $w.ID }}" hx-target="closest tr"
+                            <button class="btn-destructive btn btn-danger" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;"
+                                {{ if not $.can_manage_webhooks }}hidden{{ end }} hx-delete="/api/v1/settings/webhooks/{{ $w.ID }}" hx-target="closest tr"
                                 hx-swap="outerHTML">Delete</button>
                         </td>
                     </tr>
                     {{ end }}
                 </tbody>
             </table>
+                <p class="table-empty"><strong>No records yet</strong>Records will appear here when they are added.</p>
+            </div>
         </div>
 
         <div class="card">
-            <h3>Source Adapters</h3>
-            <h4 style="color: var(--vibrant-red); margin-bottom: 0.5rem;">Fail2ban</h4>
+            <h2 class="section-title">Source Adapters</h2>
+            <h3 class="settings-subheading" style="color: var(--vibrant-red); margin-bottom: 0.5rem;">Fail2ban</h3>
             <p style="color: var(--secondary-color);">Configure Fail2ban to push bans to this app. Add an action file
                 <code>/etc/fail2ban/action.d/blocklist.conf</code>:
             </p>
@@ -311,26 +103,26 @@ actionunban = curl -X POST -H "Authorization: Bearer YOUR_TOKEN" -H "Content-Typ
                 <code>persist</code> is false and <code>ttl</code> is omitted.
             </p>
 
-            <h4 style="color: var(--vibrant-red); margin-bottom: 0.5rem; margin-top: 1.5rem;">Suricata / IDS</h4>
+            <h3 class="settings-subheading" style="color: var(--vibrant-red); margin-bottom: 0.5rem; margin-top: 1.5rem;">Suricata / IDS</h3>
             <p style="color: var(--secondary-color);">Ingest Suricata alerts via custom script or file beat pushing to
                 <code>/api/v1/webhook</code>.
             </p>
         </div>
 
         <div class="card">
-            <h3>API Access</h3>
+            <h2 class="section-title">API Access</h2>
             <p style="color: var(--secondary-color);">Your base API URL is: <code>{{ .base_url }}/api/v1</code></p>
             <p style="color: var(--secondary-color);">Use Bearer tokens for authentication. Tokens are managed below.
             </p>
 
             <div style="margin-top: 1.5rem; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 1.5rem;">
-                <h4 style="color: #fff; margin-bottom: 1rem;">My API Tokens</h4>
-                <form id="tokenForm" hx-post="/api/v1/settings/tokens" hx-target="#token-list" hx-swap="innerHTML"
+                <h3 class="settings-subheading" style="color: #fff; margin-bottom: 1rem;">My API Tokens</h3>
+                <form {{ if not .can_manage_tokens }}hidden{{ end }} id="tokenForm" hx-post="/api/v1/settings/tokens" hx-target="#token-list" hx-swap="innerHTML"
                     hx-on:htmx:config-request="prepareTokenPerms()">
-                    <div style="display: flex; gap: 10px; margin-bottom: 1rem;">
-                        <input type="text" name="name" class="filter-input" placeholder="Token Name (e.g. CI/CD)"
+                    <div class="token-form-row" style="margin-bottom: 1rem;">
+                        <input aria-label="Token Name (e.g. CI/CD)" type="text" name="name" class="filter-input" placeholder="Token Name (e.g. CI/CD)"
                             required style="flex: 1;">
-                        <input type="text" name="allowed_ips" class="filter-input"
+                        <input aria-label="Allowed Source IPs/CIDRs (comma-separated, optional)" type="text" name="allowed_ips" class="filter-input"
                             placeholder="Allowed Source IPs/CIDRs (comma-separated, optional)" style="flex: 1.5;">
                         <input type="hidden" name="permissions" id="tokenPermsInput">
                         <button type="submit" class="btn btn-danger">Create Token</button>
@@ -349,22 +141,23 @@ actionunban = curl -X POST -H "Authorization: Bearer YOUR_TOKEN" -H "Content-Typ
                         </div>
                         <div style="margin-top: 10px; display: flex; gap: 10px; flex-wrap: wrap;">
                             <button type="button" class="btn btn-dark"
-                                style="padding: 0.2rem 0.5rem; font-size: 0.7rem;"
+                                style="padding: 0.2rem 0.5rem; font-size: 0.75rem;"
                                 onclick="setTokenTemplate('fail2ban')">Fail2ban Template</button>
                             <button type="button" class="btn btn-dark"
-                                style="padding: 0.2rem 0.5rem; font-size: 0.7rem;"
+                                style="padding: 0.2rem 0.5rem; font-size: 0.75rem;"
                                 onclick="setTokenTemplate('fortigate')">Fortigate Template</button>
                             <button type="button" class="btn btn-dark"
-                                style="padding: 0.2rem 0.5rem; font-size: 0.7rem;"
+                                style="padding: 0.2rem 0.5rem; font-size: 0.75rem;"
                                 onclick="setTokenTemplate('webhook')">Webhook Template</button>
                             <button type="button" class="btn btn-dark"
-                                style="padding: 0.2rem 0.5rem; font-size: 0.7rem;"
+                                style="padding: 0.2rem 0.5rem; font-size: 0.75rem;"
                                 onclick="setTokenTemplate('auditor')">Auditor Template</button>
                         </div>
                     </div>
                 </form>
 
-                <table style="font-size: 0.9rem;">
+                <div class="table-scroll" tabindex="0" role="region" aria-label="Scrollable records">
+<table style="font-size: 0.9rem;">
                     <thead>
                         <tr>
                             <th>Name</th>
@@ -391,8 +184,8 @@ actionunban = curl -X POST -H "Authorization: Bearer YOUR_TOKEN" -H "Content-Typ
                                     <span style="color: var(--secondary-color); font-size: 0.75rem;">None</span>
                                     {{ end }}
                                     <button class="btn btn-dark"
-                                        style="padding: 0.1rem 0.4rem; font-size: 0.7rem; margin-left: 5px;"
-                                        onclick="editTokenPerms('{{ .ID }}', '{{ .Permissions }}')">Edit</button>
+                                        style="padding: 0.1rem 0.4rem; font-size: 0.75rem; margin-left: 5px;"
+                                        {{ if not $.can_manage_tokens }}hidden{{ end }} onclick="editTokenPerms('{{ .ID }}', '{{ .Permissions }}')">Edit</button>
                                 </div>
                                 <div class="perm-edit" id="perm-edit-{{ .ID }}" style="display: none;">
                                     <div
@@ -410,9 +203,9 @@ actionunban = curl -X POST -H "Authorization: Bearer YOUR_TOKEN" -H "Content-Typ
                                     </div>
                                     <div style="display: flex; gap: 5px;">
                                         <button class="btn btn-danger"
-                                            style="padding: 0.1rem 0.4rem; font-size: 0.7rem;"
+                                            style="padding: 0.1rem 0.4rem; font-size: 0.75rem;"
                                             onclick="saveTokenPerms('{{ .ID }}')">Save</button>
-                                        <button class="btn btn-dark" style="padding: 0.1rem 0.4rem; font-size: 0.7rem;"
+                                        <button class="btn btn-dark" style="padding: 0.1rem 0.4rem; font-size: 0.75rem;"
                                             onclick="cancelEditTokenPerms('{{ .ID }}')">Cancel</button>
                                     </div>
                                 </div>
@@ -428,26 +221,29 @@ actionunban = curl -X POST -H "Authorization: Bearer YOUR_TOKEN" -H "Content-Typ
                             <td>
                                 {{ if .LastUsed }}
                                 <span class="utc-timestamp">{{ .LastUsed }}</span>
-                                {{ if .LastUsedIP }}<div style="font-size: 0.7rem; color: var(--secondary-color);">from
+                                {{ if .LastUsedIP }}<div style="font-size: 0.75rem; color: var(--secondary-color);">from
                                     {{ .LastUsedIP }}</div>{{ end }}
                                 {{ else }}-{{ end }}
                             </td>
                             <td>
-                                <button class="btn btn-danger" style="padding: 0.2rem 0.6rem; font-size: 0.8rem;"
-                                    hx-delete="/api/v1/settings/tokens/{{ .ID }}" hx-target="closest tr"
+                                <button class="btn-destructive btn btn-danger" style="padding: 0.2rem 0.6rem; font-size: 0.8rem;"
+                                    {{ if not $.can_manage_tokens }}hidden{{ end }} hx-delete="/api/v1/settings/tokens/{{ .ID }}" hx-target="closest tr"
                                     hx-swap="outerHTML">Revoke</button>
                             </td>
                         </tr>
                         {{ end }}
                     </tbody>
                 </table>
+                <p class="table-empty"><strong>No records yet</strong>Records will appear here when they are added.</p>
+            </div>
             </div>
 
-            {{ if .manage_global_tokens }}
+            {{ if .show_global_tokens }}
             <div id="global-tokens"
                 style="margin-top: 2.5rem; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 1.5rem;">
-                <h4 style="color: var(--vibrant-red); margin-bottom: 1rem;">System API Tokens (Admin View)</h4>
-                <table style="font-size: 0.9rem;">
+                <h3 class="settings-subheading" style="color: var(--vibrant-red); margin-bottom: 1rem;">Workspace API tokens</h3>
+                <div class="table-scroll" tabindex="0" role="region" aria-label="Scrollable records">
+<table style="font-size: 0.9rem;">
                     <thead>
                         <tr>
                             <th>Owner</th>
@@ -466,30 +262,31 @@ actionunban = curl -X POST -H "Authorization: Bearer YOUR_TOKEN" -H "Content-Typ
                             <td>
                                 {{ if .LastUsed }}
                                 <span class="utc-timestamp">{{ .LastUsed }}</span>
-                                {{ if .LastUsedIP }}<div style="font-size: 0.7rem; color: var(--secondary-color);">from
+                                {{ if .LastUsedIP }}<div style="font-size: 0.75rem; color: var(--secondary-color);">from
                                     {{ .LastUsedIP }}</div>{{ end }}
                                 {{ else }}-{{ end }}
                             </td>
                             <td>
-                                <button class="btn btn-danger" style="padding: 0.2rem 0.6rem; font-size: 0.8rem;"
-                                    hx-delete="/api/v1/admin/tokens/{{ .ID }}" hx-target="closest tr"
+                                <button class="btn-destructive btn btn-danger" style="padding: 0.2rem 0.6rem; font-size: 0.8rem;"
+                                    {{ if not $.manage_global_tokens }}hidden{{ end }} hx-delete="/api/v1/admin/tokens/{{ .ID }}" hx-target="closest tr"
                                     hx-swap="outerHTML" hx-confirm="Revoke this user's token?">Revoke</button>
                             </td>
                         </tr>
                         {{ end }}
                     </tbody>
                 </table>
+                <p class="table-empty"><strong>No records yet</strong>Records will appear here when they are added.</p>
+            </div>
             </div>
             {{ end }}
 
-            <h4 style="color: var(--vibrant-red); margin-top: 2rem; margin-bottom: 0.5rem;">Examples</h4>
+            <h3 class="settings-subheading" style="color: var(--vibrant-red); margin-top: 2rem; margin-bottom: 0.5rem;">Examples</h3>
 
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+            <div class="examples-grid">
                 <!-- Authentication Notice -->
-                <div
-                    style="background: rgba(255, 193, 7, 0.1); border-left: 4px solid #ffc107; padding: 0.8rem; margin-bottom: 2rem; border-radius: 4px;">
-                    <p style="color: #ffc107; margin-bottom: 0.3rem; font-size: 0.9rem;"><strong>Authentication
-                            Note</strong></p>
+                <div class="authentication-note">
+                    <h4 class="example-heading" style="color: #ffc107; margin-bottom: 0.3rem;">Authentication
+                            Note</h4>
                     <p style="color: var(--secondary-color); font-size: 0.8rem; line-height: 1.4; margin: 0;">
                         Most API endpoints require <strong>Bearer Tokens</strong>. Standard <strong>Basic
                             Authentication</strong> (username:password) is supported <em>only</em> as a fallback for the
@@ -499,7 +296,7 @@ actionunban = curl -X POST -H "Authorization: Bearer YOUR_TOKEN" -H "Content-Typ
 
                 <!-- CURL Examples -->
                 <div>
-                    <p style="color: #fff; margin-bottom: 0.5rem; font-size: 0.9rem;"><strong>Curl Examples</strong></p>
+                    <h4 class="example-heading" style="color: #fff;">Curl Examples</h4>
 
                     <div style="margin-bottom: 1rem;">
                         <p style="color: var(--secondary-color); margin-bottom: 0.2rem; font-size: 0.8rem;">List Blocked
@@ -558,7 +355,7 @@ curl -u admin:password {{ .base_url }}/api/v1/whitelists-raw</code></pre>
 
                 <!-- WGET Examples -->
                 <div>
-                    <p style="color: #fff; margin-bottom: 0.5rem; font-size: 0.9rem;"><strong>Wget Examples</strong></p>
+                    <h4 class="example-heading" style="color: #fff;">Wget Examples</h4>
 
                     <div style="margin-bottom: 1rem;">
                         <p style="color: var(--secondary-color); margin-bottom: 0.2rem; font-size: 0.8rem;">Download
@@ -613,7 +410,7 @@ curl -u admin:password {{ .base_url }}/api/v1/whitelists-raw</code></pre>
                 </div>
             </div>
         </div>
-    </div>
+    </main>
 
     <script nonce="{{ .nonce }}">
         function showToast(message, type = 'success') {

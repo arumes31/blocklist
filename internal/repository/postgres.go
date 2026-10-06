@@ -58,7 +58,7 @@ func NewPostgresRepository(url string, readUrl string, auditLogLimitPerIP int) (
 
 func (p *PostgresRepository) GetAdmin(username string) (*models.AdminAccount, error) {
 	var admin models.AdminAccount
-	err := p.readDb.Get(&admin, "SELECT username, password_hash, token, role, permissions, session_version FROM admins WHERE username = $1", username)
+	err := p.db.Get(&admin, adminSelect+" WHERE a.username = $1", username)
 	if err != nil {
 		return nil, err
 	}
@@ -149,7 +149,7 @@ func (p *PostgresRepository) UpdateAdminToken(username, token string) error {
 }
 
 func (p *PostgresRepository) UpdateAdminPermissions(username, permissions string) error {
-	_, err := p.db.Exec("UPDATE admins SET permissions = $1, session_version = session_version + 1 WHERE username = $2", permissions, username)
+	_, err := p.db.Exec("UPDATE admins SET permissions = $1, role_id = NULL, session_version = session_version + 1 WHERE username = $2", permissions, username)
 	return err
 }
 
@@ -165,7 +165,7 @@ func (p *PostgresRepository) DeleteAdmin(username string) error {
 
 func (p *PostgresRepository) GetAllAdmins() ([]models.AdminAccount, error) {
 	var admins []models.AdminAccount
-	err := p.readDb.Select(&admins, "SELECT username, password_hash, token, role, permissions, session_version FROM admins")
+	err := p.db.Select(&admins, adminSelect+" ORDER BY a.username")
 	return admins, err
 }
 
@@ -177,7 +177,7 @@ func (p *PostgresRepository) CreateAPIToken(token models.APIToken) error {
 // GetAPITokenByHash lookups a token by its SHA256 hash
 func (p *PostgresRepository) GetAPITokenByHash(hash string) (*models.APIToken, error) {
 	var token models.APIToken
-	err := p.readDb.Get(&token, "SELECT id, token_hash, name, username, role, permissions, allowed_ips, created_at, expires_at, last_used, last_used_ip FROM api_tokens WHERE token_hash = $1", hash)
+	err := p.db.Get(&token, "SELECT id, token_hash, name, username, role, permissions, allowed_ips, created_at, expires_at, last_used, last_used_ip FROM api_tokens WHERE token_hash = $1", hash)
 	if err != nil {
 		return nil, err
 	}
@@ -318,20 +318,20 @@ func (p *PostgresRepository) LogAction(actor, action, target, reason string) err
 		return err
 	}
 
-	if p.auditLogLimitPerIP > 0 && target != "" {
+	if p.auditLogLimitPerIP > 0 && target != "" && models.IsEventAction(action) {
 		// Prune old entries for this target
 		// We delete entries where ID <= (at offset p.auditLogLimitPerIP-1)
 		// This keeps exactly p.auditLogLimitPerIP entries
 		query := `
 			DELETE FROM audit_logs 
-			WHERE target = $1 
+			WHERE target = $1 AND action = ANY($3::text[])
 			  AND id <= (
 				  SELECT id FROM audit_logs 
-				  WHERE target = $1 
+				  WHERE target = $1 AND action = ANY($3::text[])
 				  ORDER BY timestamp DESC, id DESC 
 				  OFFSET $2 LIMIT 1
 			  )`
-		_, err = p.db.Exec(query, target, p.auditLogLimitPerIP)
+		_, err = p.db.Exec(query, target, p.auditLogLimitPerIP, models.EventActions)
 	}
 	return err
 }
@@ -489,7 +489,7 @@ func (p *PostgresRepository) BulkLogAction(actor, action string, ips []string, r
 		return err
 	}
 
-	if p.auditLogLimitPerIP > 0 {
+	if p.auditLogLimitPerIP > 0 && models.IsEventAction(action) {
 		// Bulk prune using a single query with row_number()
 		_, err = tx.Exec(`
 			DELETE FROM audit_logs
@@ -499,11 +499,11 @@ func (p *PostgresRepository) BulkLogAction(actor, action string, ips []string, r
 					SELECT id, timestamp,
 						   row_number() OVER (PARTITION BY target ORDER BY timestamp DESC, id DESC) as rn
 					FROM audit_logs
-					WHERE target = ANY($1)
+					WHERE target = ANY($1) AND action = ANY($3::text[])
 				) t
 				WHERE rn > $2
 			)`,
-			ips, p.auditLogLimitPerIP)
+			ips, p.auditLogLimitPerIP, models.EventActions)
 		if err != nil {
 			return err
 		}

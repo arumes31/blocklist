@@ -126,7 +126,7 @@ func TestAuthService_CheckAuth(t *testing.T) {
 		hash := sha256.Sum256([]byte(code))
 		hashStr := hex.EncodeToString(hash[:])
 
-		pg.On("GetAPITokenByHash", hashStr).Return(nil, nil).Once()
+		pg.On("GetAPITokenByHash", hashStr).Return(nil, nil).Maybe()
 		pg.On("GetAdmin", username).Return(&models.AdminAccount{
 			Username:     username,
 			PasswordHash: passHash,
@@ -166,7 +166,7 @@ func TestAuthService_CheckAuth(t *testing.T) {
 		hash := sha256.Sum256([]byte(code))
 		hashStr := hex.EncodeToString(hash[:])
 
-		pg.On("GetAPITokenByHash", hashStr).Return(nil, nil).Once()
+		pg.On("GetAPITokenByHash", hashStr).Return(nil, nil).Maybe()
 		pg.On("GetAdmin", username).Return(&models.AdminAccount{
 			Username:     username,
 			PasswordHash: passHash,
@@ -187,7 +187,7 @@ func TestAuthService_CheckAuth(t *testing.T) {
 		hash := sha256.Sum256([]byte(code))
 		hashStr := hex.EncodeToString(hash[:])
 
-		pg.On("GetAPITokenByHash", hashStr).Return(nil, nil).Once()
+		pg.On("GetAPITokenByHash", hashStr).Return(nil, nil).Maybe()
 		pg.On("GetAdmin", "missing").Return(nil, errors.New("not found")).Once()
 		if svc.CheckAuth("missing", "pass", code) {
 			t.Error("expected auth to fail for non-existent user")

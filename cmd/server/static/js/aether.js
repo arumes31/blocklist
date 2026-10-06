@@ -1,21 +1,44 @@
 "use strict";
 
-const particleCount = 1000; // Balanced for performance and quality
+// The original Aether particle engine, scoped to the login canvas. Variants
+// share its noise, cursor gravity, quantum particles, ripples and scanners.
+window.createAetherScene = (() => {
+const scenes = new WeakMap();
+return function (canvas) {
+scenes.get(canvas)?.dispose();
+const { cos, sin, sqrt } = Math;
+const TAU = Math.PI * 2;
+const rand = n => Math.random() * n;
+const randIn = (min, max) => min + rand(max - min);
+const lerp = (a, b, t) => a + (b - a) * t;
+const fadeInOut = (t, life) => Math.abs((t + life / 2) % life - life / 2) / (life / 2);
+const presets = {
+    original: { hue: 690, range: 50, speed: 1 },
+    ember: { hue: 4, range: 32, speed: 0.8 },
+    vortex: { hue: 325, range: 35, speed: 1 },
+    aurora: { hue: 155, range: 65, speed: 0.65 },
+    mesh: { hue: 195, range: 30, speed: 0.3 },
+    sonar: { hue: 350, range: 30, speed: 0.75 }
+};
+let variant = 'mesh';
+let preset = presets.mesh;
+const particleCount = window.innerWidth < 650 ? 500 : 1000;
 const particlePropCount = 12;
 const particlePropsLength = particleCount * particlePropCount;
 const spawnRadius = rand(150) + 150;
 const noiseSteps = 6;
-const { buffer, ctx } = createRenderingContext()
+const ctx = canvas.getContext('2d', { alpha: false });
+const buffer = document.createElement('canvas').getContext('2d');
+if (!ctx || !buffer) return null;
+const events = new AbortController();
+let disposed = false;
 
 let center;
 let tick;
 let simplex;
 let particleProps;
-let isPaused = false;
-let lastFrameTime = 0;
-const fps = 60;
-const frameInterval = 1000 / fps;
-const dpr = window.devicePixelRatio || 1;
+let step = 1;
+let previousTick = 0;
 
 let canvasWidth, canvasHeight;
 let mouse = { x: -1000, y: -1000, active: false };
@@ -28,6 +51,7 @@ let rippleCooldown = 0;
 let meshNodes = [];
 let meshCount = 0;
 let pacmen = [];
+let fieldNodes = [];
 
 function setup() {
 	tick = 0;
@@ -41,61 +65,34 @@ function setup() {
         { x: rand(window.innerWidth), y: rand(window.innerHeight), vx: randIn(-2, 2), vy: randIn(-2, 2), mouth: 0, target: null }
     ];
 	
-	const savedTick = sessionStorage.getItem('aether_tick');
-	const savedProps = sessionStorage.getItem('aether_props');
-	
-	if (savedTick && savedProps) {
-		try {
-			tick = parseInt(savedTick);
-			const propsArray = JSON.parse(savedProps);
-            if (propsArray.length !== particlePropsLength) throw new Error();
-			particleProps = new Float32Array(propsArray);
-			simplex = new SimplexNoise();
-		} catch (e) {
-			createParticles();
-		}
-	} else {
-		createParticles();
-	}
-	
-	lastFrameTime = performance.now();
-	window.requestAnimationFrame(draw);
+    createParticles();
 }
 
 window.addEventListener("mousemove", e => {
     mouse.x = e.clientX;
     mouse.y = e.clientY;
     mouse.active = true;
-});
+}, { signal: events.signal });
 
 window.addEventListener("touchstart", e => {
     mouse.x = e.touches[0].clientX;
     mouse.y = e.touches[0].clientY;
     mouse.active = true;
-});
+}, { passive: true, signal: events.signal });
 
 window.addEventListener("touchmove", e => {
     mouse.x = e.touches[0].clientX;
     mouse.y = e.touches[0].clientY;
     mouse.active = true;
-});
+}, { passive: true, signal: events.signal });
 
 window.addEventListener("touchend", () => {
     mouse.active = false;
-});
+}, { signal: events.signal });
 
-window.addEventListener("mouseleave", () => {
+document.documentElement.addEventListener("mouseleave", () => {
     mouse.active = false;
-});
-
-window.addEventListener("pagehide", () => {
-	try {
-		sessionStorage.setItem('aether_tick', tick.toString());
-		sessionStorage.setItem('aether_props', JSON.stringify(Array.from(particleProps)));
-	} catch (e) {
-		// Storage full or quota exceeded
-	}
-});
+}, { signal: events.signal });
 
 function createParticles() {
 	simplex = new SimplexNoise();
@@ -103,6 +100,8 @@ function createParticles() {
 	
 	for (let i = 0; i < particlePropsLength; i += particlePropCount) {
 		initParticle(i);
+        // A populated field on the first frame, including when switching paused.
+        particleProps[i + 7] = rand(particleProps[i + 8]);
 	}
 }
 
@@ -118,6 +117,22 @@ function initParticle(i) {
         const sy = sin(rt);
         x = center[0] + cx * rd;
         y = center[1] + sy * rd;
+        if (variant === 'ember' || variant === 'mesh') {
+            x = rand(canvasWidth);
+            y = rand(canvasHeight);
+        } else if (variant === 'aurora') {
+            x = rand(canvasWidth);
+            const band = Math.floor(rand(3));
+            y = canvasHeight * (0.24 + band * 0.26) + sin(x * 0.004 + band) * canvasHeight * 0.12 + randIn(-35, 35);
+        } else if (variant === 'vortex') {
+            const radius = randIn(0.15, 0.85) * Math.min(canvasWidth, canvasHeight);
+            x = center[0] + cx * radius;
+            y = center[1] + sy * radius * 0.72;
+        } else if (variant === 'sonar') {
+            const radius = rand(Math.min(canvasWidth, canvasHeight) * 0.7);
+            x = center[0] + cx * radius;
+            y = center[1] + sy * radius;
+        }
         attempts++;
     } while (isInAvoidRect(x, y) && attempts < maxAttempts);
 
@@ -134,8 +149,9 @@ function initParticle(i) {
 }
 
 function updateAvoidRects() {
+    if (disposed) return;
     avoidRects = [];
-    const elements = document.querySelectorAll('.container, #loginContainer');
+    const elements = document.querySelectorAll('#loginContainer, .buttons-container');
     elements.forEach(el => {
         const rect = el.getBoundingClientRect();
         avoidRects.push({
@@ -174,11 +190,18 @@ function drawParticle(i) {
     let interactionType = particleProps[i + 10];
     let rareEffect = particleProps[i + 11]; // 0:None, 1:Tension, 2:Prism, 3:Supercharge
     
-    const n = simplex.noise3D(x * 0.0025, y * 0.0025, tick * 0.0005) * TAU * noiseSteps;
+    const noise = simplex.noise3D(x * 0.0025, y * 0.0025, tick * 0.0005);
+    let n = noise * TAU * noiseSteps;
+    const radialAngle = Math.atan2(y - center[1], x - center[0]);
+    if (variant === 'ember') n = noise * 1.4 + sin(y * 0.004 + tick * 0.002) * 0.5;
+    if (variant === 'vortex') n = radialAngle + Math.PI / 2 + 0.22 + noise * 0.65;
+    if (variant === 'aurora') n = Math.cos(x * 0.004 + tick * 0.002) * 0.7 + noise * 0.35;
+    if (variant === 'mesh') n = noise * TAU * 0.6;
+    if (variant === 'sonar') n = radialAngle + noise * 0.4;
     
     // Base animation (noise)
-    vx = lerp(vx, cos(n), 0.05);
-    vy = lerp(vy, sin(n), 0.05);
+    vx = lerp(vx, cos(n), 1 - Math.pow(0.95, step));
+    vy = lerp(vy, sin(n), 1 - Math.pow(0.95, step));
 
     let sonarFlash = 0;
     // Check Sonar Hits (Flashing red dots)
@@ -214,7 +237,7 @@ function drawParticle(i) {
         const r = prevRipples[j];
         const dx_r = x - r.x;
         const dy_r = y - r.y;
-        const dist_r = sqrt(dx_r * dx_r + dy_r * dy_r);
+        const dist_r = sqrt(dx_r * dx_r + dy_r * dy_r) || 1;
         if (r.age < 20) {
             if (dist_r < 200) {
                 const force = 0.5;
@@ -315,7 +338,7 @@ function drawParticle(i) {
             }
 
             // Ultra Rare 4: Packet Sonar (Emit Ping)
-            if (rareEffect === 4 && tick % 60 === 0) {
+            if (rareEffect === 4 && Math.floor(tick / 60) !== Math.floor(previousTick / 60)) {
                 activeSonarRings.push({x: x, y: y, radius: 0, max: 400});
             }
         } else {
@@ -343,12 +366,12 @@ function drawParticle(i) {
         }
     }
 
-    const dx = x + vx * s;
-    const dy = y + vy * s;
+    const dx = x + vx * s * step * preset.speed;
+    const dy = y + vy * s * step * preset.speed;
     let dl = fadeInOut(l, ttl);
     if (whiteState > 0) dl = lerp(dl, 1, whiteState);
 
-    let hue = lerp(690, 740, dl);
+    let hue = preset.hue + preset.range * dl;
     let sat = 100;
     let light = 50;
     if (sonarFlash > 0) light = 90;
@@ -380,7 +403,7 @@ function drawParticle(i) {
     buffer.lineTo(dx, dy);
     buffer.stroke();
     
-    l++;
+    l += step;
     particleProps[i] = dx;
     particleProps[i + 1] = dy;
     particleProps[i + 2] = vx;
@@ -392,6 +415,10 @@ function drawParticle(i) {
 
     if (interactionType === 2) {
         meshNodes.push({x: dx, y: dy, effect: rareEffect});
+    }
+    // A small, bounded sample avoids an all-particle quadratic connection pass.
+    if (variant === 'mesh' && i % (particlePropCount * 18) === 0) {
+        fieldNodes.push({ x: dx, y: dy, alpha: dl });
     }
 
     (checkBounds(dx, dy) || l > ttl) && initParticle(i);
@@ -407,8 +434,10 @@ function checkBounds(x, y) {
 }
 
 function resize() {
+    if (disposed) return;
 	canvasWidth = window.innerWidth;
 	canvasHeight = window.innerHeight;
+    const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
 
 	buffer.canvas.width = canvasWidth * dpr;
 	buffer.canvas.height = canvasHeight * dpr;
@@ -425,18 +454,14 @@ function resize() {
     updateAvoidRects();
 }
 
-function draw(currentTime) {
-	if (isPaused) return;
-
-	window.requestAnimationFrame(draw);
-
-	const deltaTime = currentTime - lastFrameTime;
-	if (deltaTime < frameInterval) return;
-
-	lastFrameTime = currentTime - (deltaTime % frameInterval);
-
-	tick++;
+function draw(elapsed = 1000 / 60) {
+    if (disposed) return;
+    // Preserve the original 60 Hz movement at a bounded 30 Hz paint rate.
+    step = Math.min(Math.max(elapsed / (1000 / 60), 0.1), 4);
+    previousTick = tick;
+	tick += step;
 	meshNodes = [];
+    fieldNodes = [];
     
     // Count active mesh nodes for behavior logic
     meshCount = 0;
@@ -444,14 +469,17 @@ function draw(currentTime) {
         if (particleProps[i + 10] === 2) meshCount++;
     }
 	
-    if (rippleCooldown > 0) rippleCooldown--;
+    if (rippleCooldown > 0) rippleCooldown = Math.max(0, rippleCooldown - step);
+    if (variant === 'sonar' && Math.floor(tick / 100) !== Math.floor(previousTick / 100)) {
+        activeSonarRings.push({ x: center[0], y: center[1], radius: 0, max: Math.max(canvasWidth, canvasHeight) * 0.7 });
+    }
 
     // Manage Sonar Rings
     prevSonarRings = activeSonarRings;
     activeSonarRings = [];
     for (let s of prevSonarRings) {
         if (s.radius < s.max) {
-            s.radius += 8;
+            s.radius += (variant === 'sonar' ? 3 : 8) * step;
             activeSonarRings.push(s);
         }
     }
@@ -461,23 +489,23 @@ function draw(currentTime) {
     activeRipples = [];
     for (let r of prevRipples) {
         if (r.delay > 0) {
-            r.delay--;
+            r.delay -= step;
             activeRipples.push(r);
             continue;
         }
         
-        r.age++;
+        r.age += step;
         if (r.age < 20) {
             // Implosion: Shrink radius, Spin Fast
-            r.radius = lerp(r.radius, 0, 0.15);
-            r.angle += 0.25;
+            r.radius = lerp(r.radius, 0, 1 - Math.pow(0.85, step));
+            r.angle += 0.25 * step;
             r.vel = 30; // Reduced initial velocity for smaller feel
             activeRipples.push(r);
         } else {
             // Explosion: Elastic physics (burst then slow)
-            r.radius += r.vel;
-            r.vel *= 0.94; // Friction
-            r.angle += r.vel * 0.001; 
+            r.radius += r.vel * step;
+            r.vel *= Math.pow(0.94, step); // Friction
+            r.angle += r.vel * 0.001 * step;
             if (r.radius < 800 && r.vel > 0.5) { // Reduced max radius to 800
                 activeRipples.push(r);
             }
@@ -528,7 +556,7 @@ function draw(currentTime) {
         const op = (1 - s.radius / s.max) * 0.3;
         if (op > 0) {
             ctx.beginPath();
-            ctx.strokeStyle = `rgba(255, 255, 255, ${op})`;
+            ctx.strokeStyle = variant === 'sonar' ? `rgba(255, 108, 100, ${op})` : `rgba(255, 255, 255, ${op})`;
             ctx.lineWidth = 1;
             ctx.arc(s.x, s.y, s.radius, 0, TAU);
             ctx.stroke();
@@ -539,6 +567,20 @@ function draw(currentTime) {
 	for (let i = 0; i < particlePropsLength; i += particlePropCount) {
 		drawParticle(i);
 	}
+    for (let i = 0; i < fieldNodes.length; i++) {
+        const a = fieldNodes[i];
+        for (let j = i + 1; j < fieldNodes.length; j++) {
+            const b = fieldNodes[j];
+            const distance = Math.hypot(a.x - b.x, a.y - b.y);
+            if (distance > 190) continue;
+            buffer.strokeStyle = `rgba(97, 183, 230, ${(1 - distance / 190) * Math.min(a.alpha, b.alpha) * 0.65})`;
+            buffer.lineWidth = 0.7;
+            buffer.beginPath();
+            buffer.moveTo(a.x, a.y);
+            buffer.lineTo(b.x, b.y);
+            buffer.stroke();
+        }
+    }
 
     // Draw Neural Mesh Connections
     if (meshNodes.length > 1) {
@@ -644,8 +686,8 @@ function draw(currentTime) {
             p.vy += (dy_c / d_c) * force * 2;
         }
 
-        p.x += p.vx;
-        p.y += p.vy;
+        p.x += p.vx * step;
+        p.y += p.vy * step;
         if (p.x < 0 || p.x > canvasWidth) p.vx *= -1;
         if (p.y < 0 || p.y > canvasHeight) p.vy *= -1;
 
@@ -726,5 +768,37 @@ function drawAdvancedHexagon(ctx, x, y, r, angle, age) {
     }
 }
 
-window.addEventListener("load", setup);
-window.addEventListener("resize", debounce(resize, 150));
+setup();
+const scene = {
+    render: draw,
+    resize,
+    updateAvoidRects,
+    dispose() {
+        disposed = true;
+        events.abort();
+        mouse.active = false;
+        if (scenes.get(canvas) === scene) scenes.delete(canvas);
+    },
+    setVariant(name) {
+        if (disposed) return variant;
+        variant = Object.hasOwn(presets, name) ? name : 'mesh';
+        preset = presets[variant];
+        tick = 0;
+        previousTick = 0;
+        activeRipples = [];
+        prevRipples = [];
+        activeSonarRings = variant === 'sonar' ? [{ x: center[0], y: center[1], radius: 30, max: Math.max(canvasWidth, canvasHeight) * 0.7 }] : [];
+        prevSonarRings = [];
+        rippleCooldown = 0;
+        meshCount = 0;
+        mouse.active = false;
+        createParticles();
+        canvas.dataset.background = variant;
+        draw();
+        return variant;
+    }
+};
+scenes.set(canvas, scene);
+return scene;
+};
+})();

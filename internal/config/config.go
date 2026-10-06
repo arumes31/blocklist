@@ -7,6 +7,15 @@ import (
 )
 
 type Config struct {
+	EntraEnabled           bool
+	EntraTenantID          string
+	EntraClientID          string
+	EntraClientSecretFile  string
+	EntraRedirectURL       string
+	EntraAutoProvision     bool
+	EntraViewerAppRole     string
+	EntraModeratorAppRole  string
+	EntraEditorAppRole     string
 	SecretKey              string
 	RedisHost              string
 	RedisPort              int
@@ -48,6 +57,15 @@ type Config struct {
 
 func Load() *Config {
 	return &Config{
+		EntraEnabled:           getEnvBool("ENTRA_ENABLED", false),
+		EntraTenantID:          getEnv("ENTRA_TENANT_ID", ""),
+		EntraClientID:          getEnv("ENTRA_CLIENT_ID", ""),
+		EntraClientSecretFile:  getEnv("ENTRA_CLIENT_SECRET_FILE", ""),
+		EntraRedirectURL:       getEnv("ENTRA_REDIRECT_URL", ""),
+		EntraAutoProvision:     getEnvBool("ENTRA_AUTO_PROVISION", false),
+		EntraViewerAppRole:     getEnv("ENTRA_VIEWER_APP_ROLE", "Blocklist.Viewer"),
+		EntraModeratorAppRole:  getEnv("ENTRA_MODERATOR_APP_ROLE", "Blocklist.Moderator"),
+		EntraEditorAppRole:     getEnv("ENTRA_EDITOR_APP_ROLE", "Blocklist.Editor"),
 		SecretKey:              getEnv("SECRET_KEY", "change-me"),
 		RedisHost:              getEnv("REDIS_HOST", "localhost"),
 		RedisPort:              getEnvInt("REDIS_PORT", 6379),

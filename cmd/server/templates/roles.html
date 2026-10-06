@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Roles - Blocklist</title><link rel="stylesheet" href="/static/css/app.css?v=rail-continuity-1"></head>
+<body class="app-page" data-page="roles" data-can-manage="{{ .can_manage_roles }}">
+{{ template "app_navigation.html" . }}
+<header class="header-container header"><div class="page-heading"><h1>Roles</h1><p class="page-description">Define what people can see and change in your workspace.</p></div>{{ if .can_manage_roles }}<button class="btn btn-primary" id="newRole">Create role</button>{{ end }}</header>
+<main class="main-content" id="main-content">
+<p id="identityStatus" class="identity-status" role="status" aria-live="polite"></p>
+<div class="role-workspace">
+    <section class="role-list" aria-label="Available roles">
+    {{ range .roles }}<button type="button" class="role-option" data-role-id="{{ .ID }}" data-name="{{ .Name }}" data-description="{{ .Description }}" data-permissions="{{ .Permissions }}" data-revision="{{ .Revision }}" data-builtin="{{ .IsBuiltin }}" data-members="{{ .MemberCount }}"><span><strong>{{ .Name }}</strong>{{ if .IsBuiltin }}<span class="role-badge">Built-in</span>{{ end }}</span><small>{{ .Description }}</small><span class="role-member-count">{{ .MemberCount }} assigned accounts</span></button>{{ end }}
+    </section>
+    <section class="card role-editor" aria-labelledby="roleEditorTitle">
+        <div class="section-heading"><h2 id="roleEditorTitle">Role permissions</h2><span id="roleKind" class="role-badge"></span></div>
+        <form id="roleForm">
+            <input type="hidden" id="roleRevision"><input type="hidden" id="roleExisting">
+            <div class="identity-grid"><div class="form-group"><label for="roleName">Role name</label><input id="roleName" required maxlength="80" {{ if not .can_manage_roles }}disabled{{ end }}></div><div class="form-group"><label for="roleKey">Role key</label><input id="roleKey" required pattern="[a-z][a-z0-9_-]{0,63}" maxlength="64" placeholder="e.g. incident-reviewer" {{ if not .can_manage_roles }}disabled{{ end }}></div></div>
+            <div class="form-group"><label for="roleDescription">Description</label><textarea id="roleDescription" maxlength="500" rows="2" {{ if not .can_manage_roles }}disabled{{ end }}></textarea></div>
+            <div class="permission-heading"><h3>Permissions</h3><span id="permissionCount"></span></div>
+            {{ $group := "" }}{{ range .permission_catalog }}{{ if ne .Group $group }}{{ if ne $group "" }}</div></fieldset>{{ end }}<fieldset class="permission-group"><legend>{{ .Group }}</legend><div class="role-permission-grid">{{ $group = .Group }}{{ end }}
+                <label class="permission-choice"><input type="checkbox" name="permission" value="{{ .Key }}" {{ if not $.can_manage_roles }}disabled{{ end }}><span><strong>{{ .Label }}</strong><small>{{ .Description }}</small></span></label>
+            {{ end }}</div></fieldset>
+            <div class="identity-actions">{{ if .can_manage_roles }}<button type="submit" class="btn btn-primary" id="saveRole">Save changes</button><button type="button" class="btn btn-dark" id="resetRole">Discard changes</button><button type="button" class="btn btn-danger btn-destructive" id="deleteRole">Delete role</button>{{ else }}<p class="muted">Your role has read-only access to role definitions.</p>{{ end }}</div>
+            <p class="field-help">Changes apply on the next request. Existing API tokens cannot exceed their owner's current permissions.</p>
+        </form>
+    </section>
+</div>
+</main><script src="/static/js/identity.js?v=identity-fields-2" defer></script></body></html>

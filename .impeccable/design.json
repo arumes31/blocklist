@@ -1,0 +1,662 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-05T15:36:52.711Z",
+  "title": "Design System: Blocklist",
+  "extensions": {
+    "colorMeta": {
+      "canvas": {
+        "role": "neutral",
+        "displayName": "Charcoal canvas",
+        "tonalRamp": [
+          "oklch(15.00% 0.0069 258.37)",
+          "oklch(26.43% 0.0069 258.37)",
+          "oklch(37.86% 0.0069 258.37)",
+          "oklch(49.29% 0.0069 258.37)",
+          "oklch(60.71% 0.0069 258.37)",
+          "oklch(72.14% 0.0069 258.37)",
+          "oklch(83.57% 0.0069 258.37)",
+          "oklch(95.00% 0.0069 258.37)"
+        ]
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "Charcoal surface",
+        "tonalRamp": [
+          "oklch(15.00% 0.0090 255.61)",
+          "oklch(26.43% 0.0090 255.61)",
+          "oklch(37.86% 0.0090 255.61)",
+          "oklch(49.29% 0.0090 255.61)",
+          "oklch(60.71% 0.0090 255.61)",
+          "oklch(72.14% 0.0090 255.61)",
+          "oklch(83.57% 0.0090 255.61)",
+          "oklch(95.00% 0.0090 255.61)"
+        ]
+      },
+      "surface-raised": {
+        "role": "neutral",
+        "displayName": "Raised slate",
+        "tonalRamp": [
+          "oklch(15.00% 0.0110 254.03)",
+          "oklch(26.43% 0.0110 254.03)",
+          "oklch(37.86% 0.0110 254.03)",
+          "oklch(49.29% 0.0110 254.03)",
+          "oklch(60.71% 0.0110 254.03)",
+          "oklch(72.14% 0.0110 254.03)",
+          "oklch(83.57% 0.0110 254.03)",
+          "oklch(95.00% 0.0110 254.03)"
+        ]
+      },
+      "surface-hover": {
+        "role": "neutral",
+        "displayName": "Hover slate",
+        "tonalRamp": [
+          "oklch(15.00% 0.0144 256.78)",
+          "oklch(26.43% 0.0144 256.78)",
+          "oklch(37.86% 0.0144 256.78)",
+          "oklch(49.29% 0.0144 256.78)",
+          "oklch(60.71% 0.0144 256.78)",
+          "oklch(72.14% 0.0144 256.78)",
+          "oklch(83.57% 0.0144 256.78)",
+          "oklch(95.00% 0.0144 256.78)"
+        ]
+      },
+      "ink": {
+        "role": "primary",
+        "displayName": "Off-white ink",
+        "tonalRamp": [
+          "oklch(15.00% 0.0046 258.32)",
+          "oklch(26.43% 0.0046 258.32)",
+          "oklch(37.86% 0.0046 258.32)",
+          "oklch(49.29% 0.0046 258.32)",
+          "oklch(60.71% 0.0046 258.32)",
+          "oklch(72.14% 0.0046 258.32)",
+          "oklch(83.57% 0.0046 258.32)",
+          "oklch(95.00% 0.0046 258.32)"
+        ]
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "Supporting gray",
+        "tonalRamp": [
+          "oklch(15.00% 0.0182 256.30)",
+          "oklch(26.43% 0.0182 256.30)",
+          "oklch(37.86% 0.0182 256.30)",
+          "oklch(49.29% 0.0182 256.30)",
+          "oklch(60.71% 0.0182 256.30)",
+          "oklch(72.14% 0.0182 256.30)",
+          "oklch(83.57% 0.0182 256.30)",
+          "oklch(95.00% 0.0182 256.30)"
+        ]
+      },
+      "subtle": {
+        "role": "neutral",
+        "displayName": "Context gray",
+        "tonalRamp": [
+          "oklch(15.00% 0.0223 254.96)",
+          "oklch(26.43% 0.0223 254.96)",
+          "oklch(37.86% 0.0223 254.96)",
+          "oklch(49.29% 0.0223 254.96)",
+          "oklch(60.71% 0.0223 254.96)",
+          "oklch(72.14% 0.0223 254.96)",
+          "oklch(83.57% 0.0223 254.96)",
+          "oklch(95.00% 0.0223 254.96)"
+        ]
+      },
+      "rule": {
+        "role": "neutral",
+        "displayName": "Cool neutral rule",
+        "tonalRamp": [
+          "oklch(15.00% 0.0164 255.63)",
+          "oklch(26.43% 0.0164 255.63)",
+          "oklch(37.86% 0.0164 255.63)",
+          "oklch(49.29% 0.0164 255.63)",
+          "oklch(60.71% 0.0164 255.63)",
+          "oklch(72.14% 0.0164 255.63)",
+          "oklch(83.57% 0.0164 255.63)",
+          "oklch(95.00% 0.0164 255.63)"
+        ]
+      },
+      "accent": {
+        "role": "primary",
+        "displayName": "Soft accent red",
+        "tonalRamp": [
+          "oklch(15.00% 0.1496 19.41)",
+          "oklch(26.43% 0.1496 19.41)",
+          "oklch(37.86% 0.1496 19.41)",
+          "oklch(49.29% 0.1496 19.41)",
+          "oklch(60.71% 0.1496 19.41)",
+          "oklch(72.14% 0.1496 19.41)",
+          "oklch(83.57% 0.1496 19.41)",
+          "oklch(95.00% 0.1496 19.41)"
+        ]
+      },
+      "accent-soft": {
+        "role": "primary",
+        "displayName": "Dark accent wash",
+        "tonalRamp": [
+          "oklch(15.00% 0.0298 5.29)",
+          "oklch(26.43% 0.0298 5.29)",
+          "oklch(37.86% 0.0298 5.29)",
+          "oklch(49.29% 0.0298 5.29)",
+          "oklch(60.71% 0.0298 5.29)",
+          "oklch(72.14% 0.0298 5.29)",
+          "oklch(83.57% 0.0298 5.29)",
+          "oklch(95.00% 0.0298 5.29)"
+        ]
+      },
+      "positive": {
+        "role": "secondary",
+        "displayName": "Live green",
+        "tonalRamp": [
+          "oklch(15.00% 0.0968 163.84)",
+          "oklch(26.43% 0.0968 163.84)",
+          "oklch(37.86% 0.0968 163.84)",
+          "oklch(49.29% 0.0968 163.84)",
+          "oklch(60.71% 0.0968 163.84)",
+          "oklch(72.14% 0.0968 163.84)",
+          "oklch(83.57% 0.0968 163.84)",
+          "oklch(95.00% 0.0968 163.84)"
+        ]
+      },
+      "warning": {
+        "role": "secondary",
+        "displayName": "Caution amber",
+        "tonalRamp": [
+          "oklch(15.00% 0.0945 82.29)",
+          "oklch(26.43% 0.0945 82.29)",
+          "oklch(37.86% 0.0945 82.29)",
+          "oklch(49.29% 0.0945 82.29)",
+          "oklch(60.71% 0.0945 82.29)",
+          "oklch(72.14% 0.0945 82.29)",
+          "oklch(83.57% 0.0945 82.29)",
+          "oklch(95.00% 0.0945 82.29)"
+        ]
+      },
+      "negative": {
+        "role": "secondary",
+        "displayName": "Failure pink-red",
+        "tonalRamp": [
+          "oklch(15.00% 0.1198 18.19)",
+          "oklch(26.43% 0.1198 18.19)",
+          "oklch(37.86% 0.1198 18.19)",
+          "oklch(49.29% 0.1198 18.19)",
+          "oklch(60.71% 0.1198 18.19)",
+          "oklch(72.14% 0.1198 18.19)",
+          "oklch(83.57% 0.1198 18.19)",
+          "oklch(95.00% 0.1198 18.19)"
+        ]
+      },
+      "focus": {
+        "role": "neutral",
+        "displayName": "Focus blue",
+        "tonalRamp": [
+          "oklch(15.00% 0.0565 262.73)",
+          "oklch(26.43% 0.0565 262.73)",
+          "oklch(37.86% 0.0565 262.73)",
+          "oklch(49.29% 0.0565 262.73)",
+          "oklch(60.71% 0.0565 262.73)",
+          "oklch(72.14% 0.0565 262.73)",
+          "oklch(83.57% 0.0565 262.73)",
+          "oklch(95.00% 0.0565 262.73)"
+        ]
+      },
+      "primary-red": {
+        "role": "primary",
+        "displayName": "Enforcement red",
+        "tonalRamp": [
+          "oklch(15.00% 0.1537 19.13)",
+          "oklch(26.43% 0.1537 19.13)",
+          "oklch(37.86% 0.1537 19.13)",
+          "oklch(49.29% 0.1537 19.13)",
+          "oklch(60.71% 0.1537 19.13)",
+          "oklch(72.14% 0.1537 19.13)",
+          "oklch(83.57% 0.1537 19.13)",
+          "oklch(95.00% 0.1537 19.13)"
+        ]
+      },
+      "primary-red-hover": {
+        "role": "primary",
+        "displayName": "Enforcement hover red",
+        "tonalRamp": [
+          "oklch(15.00% 0.1595 18.68)",
+          "oklch(26.43% 0.1595 18.68)",
+          "oklch(37.86% 0.1595 18.68)",
+          "oklch(49.29% 0.1595 18.68)",
+          "oklch(60.71% 0.1595 18.68)",
+          "oklch(72.14% 0.1595 18.68)",
+          "oklch(83.57% 0.1595 18.68)",
+          "oklch(95.00% 0.1595 18.68)"
+        ]
+      },
+      "primary-ink": {
+        "role": "primary",
+        "displayName": "Deep primary text",
+        "tonalRamp": [
+          "oklch(15.00% 0.0085 264.38)",
+          "oklch(26.43% 0.0085 264.38)",
+          "oklch(37.86% 0.0085 264.38)",
+          "oklch(49.29% 0.0085 264.38)",
+          "oklch(60.71% 0.0085 264.38)",
+          "oklch(72.14% 0.0085 264.38)",
+          "oklch(83.57% 0.0085 264.38)",
+          "oklch(95.00% 0.0085 264.38)"
+        ]
+      },
+      "primary-hover": {
+        "role": "primary",
+        "displayName": "Off-white hover",
+        "tonalRamp": [
+          "oklch(15.00% 0.0140 258.35)",
+          "oklch(26.43% 0.0140 258.35)",
+          "oklch(37.86% 0.0140 258.35)",
+          "oklch(49.29% 0.0140 258.35)",
+          "oklch(60.71% 0.0140 258.35)",
+          "oklch(72.14% 0.0140 258.35)",
+          "oklch(83.57% 0.0140 258.35)",
+          "oklch(95.00% 0.0140 258.35)"
+        ]
+      },
+      "white": {
+        "role": "primary",
+        "displayName": "White action text",
+        "tonalRamp": [
+          "oklch(15.00% 0.0000 0)",
+          "oklch(26.43% 0.0000 0)",
+          "oklch(37.86% 0.0000 0)",
+          "oklch(49.29% 0.0000 0)",
+          "oklch(60.71% 0.0000 0)",
+          "oklch(72.14% 0.0000 0)",
+          "oklch(83.57% 0.0000 0)",
+          "oklch(95.00% 0.0000 0)"
+        ]
+      },
+      "input-background": {
+        "role": "neutral",
+        "displayName": "Inset charcoal",
+        "tonalRamp": [
+          "oklch(15.00% 0.0093 255.62)",
+          "oklch(26.43% 0.0093 255.62)",
+          "oklch(37.86% 0.0093 255.62)",
+          "oklch(49.29% 0.0093 255.62)",
+          "oklch(60.71% 0.0093 255.62)",
+          "oklch(72.14% 0.0093 255.62)",
+          "oklch(83.57% 0.0093 255.62)",
+          "oklch(95.00% 0.0093 255.62)"
+        ]
+      },
+      "input-border": {
+        "role": "neutral",
+        "displayName": "Field rule",
+        "tonalRamp": [
+          "oklch(15.00% 0.0195 257.26)",
+          "oklch(26.43% 0.0195 257.26)",
+          "oklch(37.86% 0.0195 257.26)",
+          "oklch(49.29% 0.0195 257.26)",
+          "oklch(60.71% 0.0195 257.26)",
+          "oklch(72.14% 0.0195 257.26)",
+          "oklch(83.57% 0.0195 257.26)",
+          "oklch(95.00% 0.0195 257.26)"
+        ]
+      },
+      "destructive-background": {
+        "role": "secondary",
+        "displayName": "Muted destructive red",
+        "tonalRamp": [
+          "oklch(15.00% 0.0299 1.83)",
+          "oklch(26.43% 0.0299 1.83)",
+          "oklch(37.86% 0.0299 1.83)",
+          "oklch(49.29% 0.0299 1.83)",
+          "oklch(60.71% 0.0299 1.83)",
+          "oklch(72.14% 0.0299 1.83)",
+          "oklch(83.57% 0.0299 1.83)",
+          "oklch(95.00% 0.0299 1.83)"
+        ]
+      },
+      "destructive-ink": {
+        "role": "secondary",
+        "displayName": "Pale destructive red",
+        "tonalRamp": [
+          "oklch(15.00% 0.0979 16.24)",
+          "oklch(26.43% 0.0979 16.24)",
+          "oklch(37.86% 0.0979 16.24)",
+          "oklch(49.29% 0.0979 16.24)",
+          "oklch(60.71% 0.0979 16.24)",
+          "oklch(72.14% 0.0979 16.24)",
+          "oklch(83.57% 0.0979 16.24)",
+          "oklch(95.00% 0.0979 16.24)"
+        ]
+      },
+      "destructive-hover": {
+        "role": "secondary",
+        "displayName": "Destructive hover red",
+        "tonalRamp": [
+          "oklch(15.00% 0.0516 5.09)",
+          "oklch(26.43% 0.0516 5.09)",
+          "oklch(37.86% 0.0516 5.09)",
+          "oklch(49.29% 0.0516 5.09)",
+          "oklch(60.71% 0.0516 5.09)",
+          "oklch(72.14% 0.0516 5.09)",
+          "oklch(83.57% 0.0516 5.09)",
+          "oklch(95.00% 0.0516 5.09)"
+        ]
+      },
+      "live-background": {
+        "role": "secondary",
+        "displayName": "Dark live green",
+        "tonalRamp": [
+          "oklch(15.00% 0.0334 167.55)",
+          "oklch(26.43% 0.0334 167.55)",
+          "oklch(37.86% 0.0334 167.55)",
+          "oklch(49.29% 0.0334 167.55)",
+          "oklch(60.71% 0.0334 167.55)",
+          "oklch(72.14% 0.0334 167.55)",
+          "oklch(83.57% 0.0334 167.55)",
+          "oklch(95.00% 0.0334 167.55)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "headline": {
+        "displayName": "Page heading",
+        "purpose": "Page title; mobile size is 23px."
+      },
+      "heading": {
+        "displayName": "Secondary heading",
+        "purpose": "General secondary heading scale."
+      },
+      "title": {
+        "displayName": "Section title",
+        "purpose": "Compact form and content section headings."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Operational UI; prose increases line-height to 1.65."
+      },
+      "control": {
+        "displayName": "Control label",
+        "purpose": "Compact action buttons."
+      },
+      "label": {
+        "displayName": "Small label",
+        "purpose": "Metadata and status chips."
+      },
+      "code": {
+        "displayName": "Code",
+        "purpose": "Code blocks; inline code and addresses use the same family."
+      }
+    },
+    "shadows": [
+      {
+        "name": "workspace",
+        "value": "none",
+        "purpose": "Ordinary cards and controls stay flat."
+      },
+      {
+        "name": "input-focus",
+        "value": "0 0 0 3px #b5c9ee1a",
+        "purpose": "Focused input ring."
+      },
+      {
+        "name": "toast",
+        "value": "0 12px 40px #0005",
+        "purpose": "Transient feedback above content."
+      },
+      {
+        "name": "authentication",
+        "value": "0 24px 80px #0006",
+        "purpose": "Sign-in panel above the radial particle field; setup panels retain the centered treatment."
+      }
+    ],
+    "motion": [
+      {
+        "name": "rail-open",
+        "value": "260ms cubic-bezier(.4,0,.2,1) 70ms",
+        "purpose": "Desktop hover or focus within reveals the 214px panel over a reserved 68px rail. The panel and inner navigation counter-translate from -146px and 146px to zero while labels unclip; icons and page content stay stationary."
+      },
+      {
+        "name": "rail-close",
+        "value": "240ms cubic-bezier(.4,0,.2,1) 80ms",
+        "purpose": "Closes only when both hover and keyboard focus leave. Matches Hookwise, including its user-triggered rail transition exception under reduced motion in Windows/RDP; decorative logo motion remains reduced."
+      },
+      {
+        "name": "control-state",
+        "value": "160ms ease",
+        "purpose": "Button fill, text and border changes."
+      },
+      {
+        "name": "field-focus",
+        "value": "150ms ease",
+        "purpose": "Input border and focus-ring changes."
+      },
+      {
+        "name": "row-hover",
+        "value": "120ms ease",
+        "purpose": "Data row hover fill."
+      },
+      {
+        "name": "drawer",
+        "value": "220ms cubic-bezier(.22,1,.36,1)",
+        "purpose": "Right drawer entry and exit."
+      },
+      {
+        "name": "toast-entry",
+        "value": "200ms cubic-bezier(.22,1,.36,1)",
+        "purpose": "Toast translates from 8px below."
+      },
+      {
+        "name": "toast-fade",
+        "value": "300ms ease",
+        "purpose": "Toast opacity transition."
+      },
+      {
+        "name": "row-entry",
+        "value": "180ms ease-out",
+        "purpose": "Existing row enters from -4px."
+      },
+      {
+        "name": "row-highlight",
+        "value": "1.2s ease-out",
+        "purpose": "New-row highlight fades from its tinted state."
+      },
+      {
+        "name": "spinner",
+        "value": ".8s linear infinite",
+        "purpose": "Existing loading spinner."
+      },
+      {
+        "name": "reduced-motion",
+        "value": ".01ms",
+        "purpose": "CSS animations and transitions shorten and animations use one iteration; scrolling is immediate. User-triggered desktop rail transitions retain their own timing. The sign-in particle loop starts paused and animated wordmarks use runtime canvas posters. The visible animation control can resume sign-in motion."
+      },
+      {
+        "name": "login-particle-loop",
+        "value": "32ms minimum paint interval",
+        "purpose": "Quiet radial particle current, paused while the document is hidden or animation is paused; the form remains visible."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "intermediate",
+        "value": "1200px"
+      },
+      {
+        "name": "top-navigation",
+        "value": "991px"
+      },
+      {
+        "name": "content-and-sign-in-stack",
+        "value": "900px"
+      },
+      {
+        "name": "mobile",
+        "value": "600px"
+      },
+      {
+        "name": "wide-header-alignment",
+        "value": "1800px"
+      }
+    ],
+    "focus": {
+      "outline": "2px solid var(--focus, #b5c9ee)",
+      "outlineOffset": "3px",
+      "purpose": "Shared keyboard focus for interactive elements; inset fields use their dedicated ring. Desktop rail links use an inset 0 0 0 2px focus-color shadow so focus remains visible inside the label clip."
+    },
+    "backdropFilters": [
+      {
+        "name": "modal-scrim",
+        "value": "blur(3px)"
+      },
+      {
+        "name": "authentication-panel",
+        "value": "blur(16px)"
+      }
+    ],
+    "tonalRampNote": "Ramps are synthesized OKLCH preview strips, not additional normative application colors.",
+    "sourceFiles": [
+      "cmd/server/static/css/app.css",
+      "cmd/server/templates/app_navigation.html",
+      "cmd/server/templates/dashboard.html",
+      "cmd/server/templates/settings.html",
+      "cmd/server/templates/login.html",
+      "cmd/server/templates/docs.html",
+      "cmd/server/static/css/docs-fields.css",
+      "cmd/server/static/js/login-scene.js",
+      "cmd/server/static/js/brand-motion.js",
+      "cmd/server/templates/roles.html",
+      "cmd/server/templates/admin_management.html"
+    ]
+  },
+  "components": [
+    {
+      "name": "Routine primary button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Create Token uses the shared control geometry and its existing semantic variant.",
+      "html": "<button type=\"button\" class=\"ds-button-primary\">Create Token</button>",
+      "css": ".ds-button-primary { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 38px; padding: 8px 14px; border: 1px solid var(--ink, #eef0f3); border-radius: var(--control-radius, 7px); background: var(--ink, #eef0f3); color: #17191d; font: 500 13px/1.4 var(--ui-font, -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif); cursor: pointer; white-space: nowrap; transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease; } .ds-button-primary:hover { background: #cfd5de; border-color: #cfd5de; color: #17191d; } .ds-button-primary:active { background: #cfd5de; } .ds-button-primary:focus-visible { outline: 2px solid var(--focus, #b5c9ee); outline-offset: 3px; } .ds-button-primary:disabled { opacity: .45; cursor: not-allowed; } @media (max-width: 600px) { .ds-button-primary { min-height: 42px; } } @media (prefers-reduced-motion: reduce) { .ds-button-primary { transition-duration: .01ms; } }"
+    },
+    {
+      "name": "Secondary button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Refresh uses the shared control geometry and its existing semantic variant.",
+      "html": "<button type=\"button\" class=\"ds-button-secondary\">Refresh</button>",
+      "css": ".ds-button-secondary { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 38px; padding: 8px 14px; border: 1px solid var(--rule, #30363e); border-radius: var(--control-radius, 7px); background: var(--surface-raised, #22262b); color: var(--ink, #eef0f3); font: 500 13px/1.4 var(--ui-font, -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif); cursor: pointer; white-space: nowrap; transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease; } .ds-button-secondary:hover { background: var(--surface-hover, #2c3138); border-color: #535c69; color: var(--ink, #eef0f3); } .ds-button-secondary:active { background: #363c45; } .ds-button-secondary:focus-visible { outline: 2px solid var(--focus, #b5c9ee); outline-offset: 3px; } .ds-button-secondary:disabled { opacity: .45; cursor: not-allowed; } @media (max-width: 600px) { .ds-button-secondary { min-height: 42px; } } @media (prefers-reduced-motion: reduce) { .ds-button-secondary { transition-duration: .01ms; } }"
+    },
+    {
+      "name": "Enforcement button",
+      "kind": "button",
+      "refersTo": "button-enforce",
+      "description": "Block IP uses the shared control geometry and its existing semantic variant.",
+      "html": "<button type=\"button\" class=\"ds-button-enforce\">Block IP</button>",
+      "css": ".ds-button-enforce { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 38px; padding: 8px 14px; border: 1px solid var(--primary-red, #b63f49); border-radius: var(--control-radius, 7px); background: var(--primary-red, #b63f49); color: #fff; font: 500 13px/1.4 var(--ui-font, -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif); cursor: pointer; white-space: nowrap; transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease; } .ds-button-enforce:hover { background: #c34651; border-color: #c34651; color: #fff; } .ds-button-enforce:active { background: #c34651; } .ds-button-enforce:focus-visible { outline: 2px solid var(--focus, #b5c9ee); outline-offset: 3px; } .ds-button-enforce:disabled { opacity: .45; cursor: not-allowed; } @media (max-width: 600px) { .ds-button-enforce { min-height: 42px; } } @media (prefers-reduced-motion: reduce) { .ds-button-enforce { transition-duration: .01ms; } }"
+    },
+    {
+      "name": "Destructive button",
+      "kind": "button",
+      "refersTo": "button-destructive",
+      "description": "Delete uses the shared control geometry and its existing semantic variant.",
+      "html": "<button type=\"button\" class=\"ds-button-destructive\">Delete</button>",
+      "css": ".ds-button-destructive { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 38px; padding: 8px 14px; border: 1px solid #653c44; border-radius: var(--control-radius, 7px); background: #38252a; color: #ffacb0; font: 500 13px/1.4 var(--ui-font, -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif); cursor: pointer; white-space: nowrap; transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease; } .ds-button-destructive:hover { background: #4c2a32; border-color: #a15a63; color: #ffd0d3; } .ds-button-destructive:active { background: #4c2a32; } .ds-button-destructive:focus-visible { outline: 2px solid var(--focus, #b5c9ee); outline-offset: 3px; } .ds-button-destructive:disabled { opacity: .45; cursor: not-allowed; } @media (max-width: 600px) { .ds-button-destructive { min-height: 42px; } } @media (prefers-reduced-motion: reduce) { .ds-button-destructive { transition-duration: .01ms; } }"
+    },
+    {
+      "name": "Success button",
+      "kind": "button",
+      "refersTo": "button-success",
+      "description": "Unblock uses the shared control geometry and its existing semantic variant.",
+      "html": "<button type=\"button\" class=\"ds-button-success\">Unblock</button>",
+      "css": ".ds-button-success { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 38px; padding: 8px 14px; border: 1px solid #365749; border-radius: var(--control-radius, 7px); background: #21362e; color: var(--positive, #84d6b1); font: 500 13px/1.4 var(--ui-font, -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif); cursor: pointer; white-space: nowrap; transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease; } .ds-button-success:hover { background: #2b453a; border-color: #5b8e76; color: var(--positive, #84d6b1); } .ds-button-success:active { background: #2b453a; } .ds-button-success:focus-visible { outline: 2px solid var(--focus, #b5c9ee); outline-offset: 3px; } .ds-button-success:disabled { opacity: .45; cursor: not-allowed; } @media (max-width: 600px) { .ds-button-success { min-height: 42px; } } @media (prefers-reduced-motion: reduce) { .ds-button-success { transition-duration: .01ms; } }"
+    },
+    {
+      "name": "Labeled text field",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Shared inset treatment for text-like inputs, including untyped inputs, selects and textareas; the documentation shadow-root stylesheet uses the same field geometry.",
+      "html": "<label class=\"ds-field\">URL<input class=\"ds-input\" type=\"url\" placeholder=\"https://example.com/webhook\"></label>",
+      "css": ".ds-field { display: block; color: #cad0d9; font: 500 13px/1.5 var(--ui-font, -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif); } .ds-input { display: block; box-sizing: border-box; margin-top: 7px; width: 100%; min-width: 0; min-height: 42px; padding: 10px 12px; color: var(--ink, #eef0f3); background: #14171b; border: 1px solid #3b424c; border-radius: var(--control-radius, 7px); font: 400 14px/1.4 var(--ui-font, -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif); outline: none; transition: border-color 150ms ease, box-shadow 150ms ease; } .ds-input::placeholder { color: var(--subtle, #909aa7); opacity: 1; } .ds-input:not(:disabled):not([readonly]):hover { border-color: #596373; } .ds-input:focus-visible { border-color: var(--focus, #b5c9ee); box-shadow: 0 0 0 3px #b5c9ee1a; } .ds-input[readonly] { color: var(--muted, #a5adb8); background-color: var(--canvas, #111316); } .ds-input[aria-invalid=\"true\"], .ds-input:user-invalid { border-color: var(--negative, #ff9b9e); } .ds-input:disabled { opacity: .45; cursor: not-allowed; } @media (max-width: 600px) { .ds-input { font-size: 16px; min-height: 44px; } } @media (prefers-reduced-motion: reduce) { .ds-input { transition-duration: .01ms; } }"
+    },
+    {
+      "name": "Hover and focus navigation rail",
+      "kind": "nav",
+      "refersTo": "navigation-item",
+      "description": "Interactive desktop specimen: hover or tab into the 68px rail to reveal the 214px panel, then leave both to close it. Icons and workspace stay fixed. Below 992px the app retains its labeled top navigation grid. Ten permission-aware destinations retain their existing routes.",
+      "html": "<div class=\"ds-nav-preview\"><div class=\"ds-nav-workspace\">Workspace</div><aside class=\"ds-rail\" aria-label=\"Desktop navigation preview\"><nav class=\"ds-navigation\" aria-label=\"Preview navigation\"><a class=\"ds-nav-link ds-nav-current\" href=\"#dashboard\" aria-current=\"page\"><svg class=\"ds-nav-icon\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><rect x=\"3\" y=\"3\" width=\"7\" height=\"7\" rx=\"1.5\"/><rect x=\"14\" y=\"3\" width=\"7\" height=\"7\" rx=\"1.5\"/><rect x=\"3\" y=\"14\" width=\"7\" height=\"7\" rx=\"1.5\"/><rect x=\"14\" y=\"14\" width=\"7\" height=\"7\" rx=\"1.5\"/></svg>Dashboard</a><a class=\"ds-nav-link\" href=\"#settings\"><svg class=\"ds-nav-icon\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M4 7h16M4 17h16\"/><circle cx=\"9\" cy=\"7\" r=\"3\"/><circle cx=\"15\" cy=\"17\" r=\"3\"/></svg>Settings</a></nav></aside></div>",
+      "css": ".ds-nav-preview { position: relative; width: 100%; min-height: 132px; overflow: hidden; background: var(--canvas, #111316); color: var(--muted, #a5adb8); font: 500 13px/1.4 var(--ui-font, -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif); } .ds-nav-workspace { margin-left: 68px; padding: 22px 20px; } .ds-rail { --ds-rail-duration: 240ms; --ds-rail-delay: 80ms; --ds-rail-ease: cubic-bezier(.4,0,.2,1); --ds-panel-shift: -146px; --ds-inner-shift: 146px; --ds-link-clip: 146px; position: absolute; inset: 0 auto 0 0; width: 214px; padding: 12px 0; box-sizing: border-box; background: #16191d; border-right: 1px solid var(--rule, #30363e); transform: translate3d(var(--ds-panel-shift),0,0); transition: transform var(--ds-rail-duration) var(--ds-rail-ease) var(--ds-rail-delay); } .ds-rail:hover, .ds-rail:focus-within { --ds-rail-duration: 260ms; --ds-rail-delay: 70ms; --ds-panel-shift: 0px; --ds-inner-shift: 0px; --ds-link-clip: 0px; } .ds-navigation { display: flex; flex-direction: column; gap: 5px; width: 214px; padding: 0 13px; box-sizing: border-box; transform: translate3d(var(--ds-inner-shift),0,0); transition: transform var(--ds-rail-duration) var(--ds-rail-ease) var(--ds-rail-delay); pointer-events: none; } .ds-nav-link { display: flex; align-items: center; gap: 12px; flex-shrink: 0; width: 188px; min-height: 42px; padding: 10px 12px; box-sizing: border-box; border: 1px solid transparent; border-radius: var(--control-radius, 7px); color: var(--muted, #a5adb8); font: 500 13px/1.4 var(--ui-font, -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif); text-decoration: none; white-space: nowrap; clip-path: inset(0 var(--ds-link-clip) 0 0); pointer-events: auto; transition: clip-path var(--ds-rail-duration) var(--ds-rail-ease) var(--ds-rail-delay), background-color 160ms ease, border-color 160ms ease, color 160ms ease; } .ds-nav-current { color: var(--ink, #eef0f3); background: #2a252b; border-color: #443037; } .ds-nav-link:hover { background: var(--surface-raised, #22262b); color: var(--ink, #eef0f3); } .ds-nav-link:active { background: #363c45; } .ds-nav-link:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--focus, #b5c9ee); } .ds-nav-icon { width: 18px; height: 18px; flex: 0 0 18px; fill: none; stroke: currentColor; stroke-width: 1.65; stroke-linecap: round; stroke-linejoin: round; } .ds-nav-current .ds-nav-icon { color: var(--accent, #e36b70); } @media (prefers-reduced-motion: reduce) { .ds-rail, .ds-navigation, .ds-nav-link { transition-duration: var(--ds-rail-duration) !important; } }"
+    },
+    {
+      "name": "Live status chip",
+      "kind": "chip",
+      "refersTo": "chip-live",
+      "description": "A non-interactive state label with green fill and text.",
+      "html": "<span class=\"ds-chip-live\">LIVE</span>",
+      "css": ".ds-chip-live { display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px; border: 1px solid #355747; border-radius: 5px; color: var(--positive, #84d6b1); background: #20372e; font: 500 12px/1.5 var(--ui-font, -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif); }"
+    },
+    {
+      "name": "Operational card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "Flat, bordered grouping for a form or related operational content.",
+      "html": "<section class=\"ds-card\"><h2 class=\"ds-card-title\">Outbound Webhooks</h2><p class=\"ds-card-description\">Configure external services to be notified of block/unblock events.</p></section>",
+      "css": ".ds-card { padding: 24px; color: var(--ink, #eef0f3); background: var(--surface, #191c20); border: 1px solid var(--rule, #30363e); border-radius: var(--radius, 12px); font: 400 14px/1.5 var(--ui-font, -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif); } .ds-card-title { margin: 0 0 12px; color: var(--ink, #eef0f3); font: 600 17px/1.3 var(--ui-font, -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif); letter-spacing: -.01em; } .ds-card-description { max-width: 75ch; margin: 0; color: var(--muted, #a5adb8); line-height: 1.65; } @media (max-width: 600px) { .ds-card { padding: 18px; } }"
+    },
+    {
+      "name": "Authentication panel",
+      "kind": "custom",
+      "refersTo": "auth-login-panel",
+      "description": "Always-visible, left-aligned sign-in form: a 420px desktop column beside the original 270px wordmark, stacking below 900px. The particle field and APNG share a visible pause control.",
+      "html": "<section class=\"ds-auth-panel\"><h1 class=\"ds-auth-title\">Sign in</h1><p class=\"ds-auth-intro\">Welcome back to your workspace.</p><label class=\"ds-auth-label\">Username<input class=\"ds-auth-input\" type=\"text\" autocomplete=\"username\" placeholder=\"Your username\"></label><button type=\"button\" class=\"ds-auth-button\">Continue</button><p class=\"ds-auth-footer\">Local accounts are protected with two-factor authentication.</p></section>",
+      "css": ".ds-auth-panel { box-sizing: border-box; width: 100%; max-width: 420px; padding: 36px; background: #191c20f2; color: var(--ink, #eef0f3); border: 0; border-radius: 16px; box-shadow: 0 24px 80px #0006; backdrop-filter: blur(16px); font: 400 14px/1.5 var(--ui-font, -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif); } .ds-auth-title { margin: 0; text-align: left; font: 600 24px/1.3 var(--ui-font, -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif); letter-spacing: -.025em; } .ds-auth-intro { margin: 10px 0 28px; text-align: left; color: var(--muted, #a5adb8); line-height: 1.65; } .ds-auth-label { display: block; margin-bottom: 18px; color: #cbd2dd; font-size: 13px; font-weight: 500; } .ds-auth-input { display: block; box-sizing: border-box; width: 100%; min-height: 46px; margin-top: 8px; padding: 10px 12px; border: 1px solid #3b424c; border-radius: var(--control-radius, 7px); background: #14171b; color: var(--ink, #eef0f3); font: 400 14px/1.4 var(--ui-font, -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif); outline: none; transition: border-color 150ms ease, box-shadow 150ms ease; } .ds-auth-input::placeholder { color: var(--subtle, #909aa7); opacity: 1; } .ds-auth-input:not(:disabled):not([readonly]):hover { border-color: #596373; } .ds-auth-input:focus-visible { border-color: var(--focus, #b5c9ee); box-shadow: 0 0 0 3px #b5c9ee1a; } .ds-auth-button { width: 100%; min-height: 46px; margin-top: 10px; padding: 8px 14px; border: 1px solid #b63f49; border-radius: var(--control-radius, 7px); background: #b63f49; color: #fff; font: 600 14px/1.4 var(--ui-font, -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif); cursor: pointer; transition: background-color 160ms ease, border-color 160ms ease; } .ds-auth-button:hover, .ds-auth-button:active { background: #c34651; border-color: #c34651; } .ds-auth-button:focus-visible { outline: 2px solid var(--focus, #b5c9ee); outline-offset: 3px; } .ds-auth-footer { margin: 26px 0 0; padding-top: 20px; border-top: 1px solid var(--rule, #30363e); color: var(--subtle, #909aa7); text-align: center; font-size: 12px; line-height: 1.6; } @media (max-width: 900px) { .ds-auth-panel { max-width: 430px; } } @media (max-width: 600px) { .ds-auth-panel { padding: 28px; } .ds-auth-input { font-size: 16px; min-height: 44px; } } @media (prefers-reduced-motion: reduce) { .ds-auth-input, .ds-auth-button { transition-duration: .01ms; } }"
+    }
+  ],
+  "narrative": {
+    "northStar": "A calm, precise workspace",
+    "overview": "Blocklist uses charcoal surfaces, restrained color, and familiar controls to make network access records easy to scan and act on. The visual voice is contemporary, neutral, and exact. Shared navigation, quiet borders, and compact typography give dense operational screens a consistent rhythm.\n\nThe original animated APNG wordmark anchors the shared shell and sign-in screen. Sign-in pairs the wordmark with a stable translucent form and a quiet radial particle field; decorative motion can be paused and responds to reduced-motion preferences. The system records the presentation implemented in `cmd/server/static/css/app.css` and the API documentation field stylesheet; workflow and content decisions remain in PRODUCT.md and the application surface brief.",
+    "keyCharacteristics": [
+      "Neutral surfaces with clear text and subtle dividing rules.",
+      "Color distinguishes routine actions, enforcement, destructive intent, and state.",
+      "Compact data layouts adapt to narrow screens without hiding permitted routes.",
+      "Motion supports feedback; decorative sign-in motion is pausable and reduced-motion aware."
+    ],
+    "rules": [
+      {
+        "name": "The Semantic Action Rule",
+        "body": "Routine primary actions use off-white; enforcement and sign-in use solid red; destructive actions use muted red; green communicates live or successful state.",
+        "section": "colors"
+      },
+      {
+        "name": "The Local Overflow Rule",
+        "body": "Wide tables and code scroll inside their own region; they must not widen the page.",
+        "section": "layout"
+      },
+      {
+        "name": "The Stationary Workspace Rule",
+        "body": "Desktop navigation reveals its labels over the page while icons and the main content stay in place; hover and keyboard focus share the same open state.",
+        "section": "layout"
+      },
+      {
+        "name": "The Quiet Surface Rule",
+        "body": "Keep ordinary workspace surfaces flat; reserve shadow and blur for transient feedback and the authentication panel.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Presentation Boundary Rule",
+        "body": "Visual changes preserve application requests, state, permissions, element IDs, event attributes, and script-owned behavior.",
+        "section": "components"
+      }
+    ],
+    "dos": [
+      "Do reuse the shared shell, tokens, and control geometry.",
+      "Do keep action and status colors tied to their documented meaning.",
+      "Do keep forms readable and permitted navigation visible at narrow widths.",
+      "Do preserve keyboard focus and local scrolling for wide records and code.",
+      "Do keep desktop icons and content stationary as navigation opens on hover or keyboard focus.",
+      "Do retain the original animated wordmark and the sign-in particle character, with pause and reduced-motion behavior."
+    ],
+    "donts": [
+      "Don't turn routine actions red because a legacy class name contains danger.",
+      "Don't add decorative elevation or blur to ordinary workspace panels.",
+      "Don't use the logo lettering as a general interface font.",
+      "Don't change workflows, requests, permissions, or script behavior during presentation work."
+    ]
+  }
+}

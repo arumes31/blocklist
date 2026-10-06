@@ -140,6 +140,7 @@ func TestAPIHandler_Stats(t *testing.T) {
 
 func TestAPIHandler_Settings(t *testing.T) {
 	h, _, pgRepo, _, _ := setupTest()
+	pgRepo.On("GetAllAPITokens").Return([]models.APIToken{}, nil)
 
 	pgRepo.On("GetSavedViews", "admin").Return([]models.SavedView{}, nil)
 	pgRepo.On("GetAPITokens", "admin").Return([]models.APIToken{}, nil)

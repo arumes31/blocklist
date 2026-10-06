@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="theme-color" content="#000000">
+    <meta name="theme-color" content="#111316">
     <title>Threat Map - Blocklist</title>
     <link rel="icon" href="/cd/favicon-color.png">
     <link rel="stylesheet" href="/js/leaflet.css">
@@ -17,27 +17,14 @@
     <script src="/js/threat-map-data.js" defer></script>
     <script src="/js/threat-map-scene.js" defer></script>
     <script src="/js/threat-map.js" defer></script>
+    <link rel="stylesheet" href="/static/css/app.css?v=rail-continuity-1">
 </head>
-<body>
+<body class="app-page" data-page="threat-map">
+    {{ template "app_navigation.html" . }}
     <a class="skip-link" href="#map-controls">Skip to map controls</a>
-    <header class="header-container">
-        <div class="header-main">
-            <a href="/dashboard" class="banner" aria-label="Blocklist dashboard">
-                <img src="/cd/logo.png" alt="Blocklist">
-            </a>
-            <div class="header-title-menu">
-                <h2>Threat Map</h2>
-                <nav class="header-menu" aria-label="Main navigation">
-                    <a href="/dashboard" class="btn btn-dark">Dashboard</a>
-                    {{ template "navigation_links.html" . }}
-                </nav>
-            </div>
-        </div>
-        <a href="/logout" class="btn btn-dark header-logout">Logout</a>
-    </header>
+    <header class="header-container"><div class="page-heading"><h1>Threat Map</h1><p class="page-description">Explore global activity and inspect individual addresses.</p></div></header>
 
-    <main class="threat-map-content">
-        <h1 class="sr-only">Threat Map</h1>
+    <main class="threat-map-content" id="main-content">
         <div class="mission-bar">
             <span class="connection"><b class="status-dot" aria-hidden="true"></b><span id="live-status" role="status">CONNECTING</span></span>
             <span id="data-status" role="status">Connecting to live activity…</span>
@@ -73,7 +60,7 @@
             </aside>
 
             <section class="viewport" aria-label="Interactive global threat visualization">
-                <div class="viewport-heading"><span>GEOSPATIAL ARRAY <b>/ EARTH</b></span><span class="dim">WGS 84</span></div>
+                <div class="viewport-heading"><span>Global activity <b>/ Earth</b></span><span class="dim">WGS 84</span></div>
                 <div id="map-controls" class="map-controls" tabindex="-1">
                     <div class="control-row">
                         <div class="segmented-control" role="group" aria-label="Map projection">
@@ -161,7 +148,7 @@
         </div>
 
         <footer class="instrument-strip" aria-label="Blocklist statistics">
-            <div class="strip-title">NETWORK<br>INSTRUMENTATION <small>LIVE BLOCKLIST DATA</small></div>
+            <div class="strip-title">Network statistics <small>Live blocklist data</small></div>
             <section class="instrument"><h2>Blocked / 24h</h2><strong id="stat-day">—</strong><span class="dim">RECORDED EVENTS</span></section>
             <section class="instrument"><h2>Blocked / 1h</h2><strong id="stat-hour">—</strong><span class="dim">RECORDED EVENTS</span></section>
             <section class="instrument"><h2>Whitelisted</h2><strong id="stat-whitelist">—</strong><span class="dim">CURRENT ENTRIES</span></section>

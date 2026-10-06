@@ -16,6 +16,8 @@ postgres_data/
 
 # Environment
 .env
+secrets/
+backups/
 
 # Go
 vendor/
@@ -46,3 +48,7 @@ walkthrough.md
 coverage/
 coverage*
 docs/
+
+# Local visual QA artifacts (design documentation remains versioned)
+.impeccable/review/
+.impeccable/critique/*-detector.json

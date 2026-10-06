@@ -31,6 +31,7 @@ func (h *APIHandler) AuthMiddleware() gin.HandlerFunc {
 		// Check for Bearer token first
 		authHeader := c.GetHeader("Authorization")
 		if strings.HasPrefix(authHeader, "Bearer ") {
+			c.Set("token_auth", true)
 			tokenStr := strings.TrimPrefix(authHeader, "Bearer ")
 
 			// In test mode with no DB, allow a special test token
@@ -78,9 +79,22 @@ func (h *APIHandler) AuthMiddleware() gin.HandlerFunc {
 					if err := h.pgRepo.UpdateTokenLastUsed(token.ID, c.ClientIP()); err != nil {
 						zlog.Error().Err(err).Int("token_id", token.ID).Msg("Failed to update token last_used")
 					}
+					permissions := token.Permissions
+					if h.identityRepo != nil {
+						owner, err := h.pgRepo.GetAdmin(token.Username)
+						if err != nil || owner == nil {
+							c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Token owner is unavailable"})
+							return
+						}
+						ownerPermissions := owner.Permissions
+						if owner.Username == h.cfg.GUIAdmin {
+							ownerPermissions = models.AllPermissions()
+						}
+						permissions = models.IntersectPermissions(permissions, ownerPermissions)
+					}
 					c.Set("username", token.Username)
 					c.Set("role", token.Role)
-					c.Set("permissions", token.Permissions)
+					c.Set("permissions", permissions)
 					c.Next()
 					return
 				}
@@ -91,7 +105,7 @@ func (h *APIHandler) AuthMiddleware() gin.HandlerFunc {
 		username, password, ok := c.Request.BasicAuth()
 		if ok && h.pgRepo != nil && (c.Request.URL.Path == "/api/v1/whitelists" || c.Request.URL.Path == "/api/v1/whitelists-raw") {
 			admin, err := h.pgRepo.GetAdmin(username)
-			if err == nil && admin != nil {
+			if err == nil && admin != nil && admin.AuthSource != "entra" {
 				if bcrypt.CompareHashAndPassword([]byte(admin.PasswordHash), []byte(password)) == nil {
 					c.Set("username", username)
 					c.Set("role", admin.Role)
@@ -153,18 +167,19 @@ func (h *APIHandler) AuthMiddleware() gin.HandlerFunc {
 
 		c.Set("username", username)
 
-		// Get role and permissions from DB or session
-		role := session.Get("role")
-		perms := session.Get("permissions")
-		if role == nil || perms == nil {
-			role = admin.Role
-			perms = admin.Permissions
-			session.Set("role", role)
-			session.Set("permissions", perms)
-			_ = session.Save()
+		// Resolve from the primary database on every request; role revocation
+		// must not wait for a session cache or a read replica to catch up.
+		permissions := models.WorkspacePermissions(*admin)
+		if username == h.cfg.GUIAdmin {
+			permissions = models.AllPermissions()
 		}
-		c.Set("role", role.(string))
-		c.Set("permissions", perms.(string))
+		c.Set("role", admin.Role)
+		c.Set("permissions", permissions)
+		c.Set("auth_source", admin.AuthSource)
+		if h.identityRepo != nil && !models.HasPermission(permissions, "gui_read") {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "This account does not have workspace access."})
+			return
+		}
 
 		c.Next()
 	}
@@ -249,9 +264,9 @@ func (h *APIHandler) PermissionMiddleware(requiredPerms ...string) gin.HandlerFu
 
 		permStr := perms.(string)
 
-		// System admin bypass
+		// Never promote a limited API token merely because its owner is GUIAdmin.
 		username, _ := c.Get("username")
-		if username == h.cfg.GUIAdmin {
+		if h.cfg != nil && username == h.cfg.GUIAdmin && !c.GetBool("token_auth") {
 			// To match previous logic, admin bypasses everything except whitelist_ips restriction
 			bypass := true
 			for _, rp := range requiredPerms {
@@ -398,7 +413,7 @@ func (h *APIHandler) VerifyFirstFactor(c *gin.Context) {
 	}
 
 	admin, err := h.pgRepo.GetAdmin(username)
-	if err != nil {
+	if err != nil || admin == nil || admin.AuthSource == "entra" {
 		// Run a dummy bcrypt comparison (same cost as real hashes) so the
 		// response time for unknown usernames matches that of a wrong password,
 		// preventing username enumeration via timing.
@@ -523,6 +538,10 @@ func (h *APIHandler) Login(c *gin.Context) {
 		admin, _ := h.pgRepo.GetAdmin(username)
 
 		// Prevent overwriting existing token via this flow
+		if admin == nil || admin.AuthSource == "entra" {
+			h.renderHTML(c, http.StatusUnauthorized, "login.html", gin.H{"error": "Restart sign-in using this account's configured authentication method."})
+			return
+		}
 		if admin != nil && admin.Token != "" {
 			zlog.Warn().Str("username", username).Msg("Attempt to overwrite existing TOTP token")
 			_ = h.pgRepo.LogAction(username, "SECURITY_WARNING", c.ClientIP(), "Attempt to overwrite existing TOTP token")
@@ -570,6 +589,7 @@ func (h *APIHandler) Login(c *gin.Context) {
 		session.Delete("pending_totp_secret")
 		session.Set("logged_in", true)
 		session.Set("username", username)
+		session.Set("auth_source", "local")
 		session.Set("client_ip", c.ClientIP())
 		session.Set("login_time", time.Now().UTC().Format(time.RFC3339))
 		session.Set("sudo_time", time.Now().Unix()) // Initial sudo mode
@@ -606,6 +626,10 @@ func (h *APIHandler) Login(c *gin.Context) {
 
 func (h *APIHandler) SudoMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if c.GetBool("token_auth") {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Use an authenticated browser session for this sensitive action."})
+			return
+		}
 		session := sessions.Default(c)
 		sudoTime := session.Get("sudo_time")
 
@@ -618,6 +642,10 @@ func (h *APIHandler) SudoMiddleware() gin.HandlerFunc {
 		}
 
 		if !isFresh {
+			if strings.Contains(c.GetHeader("Accept"), "application/json") {
+				c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Verify your identity before making this change.", "reauth_url": "/sudo?next=/admin_management"})
+				return
+			}
 			if c.GetHeader("HX-Request") != "" {
 				// For HTMX, trigger a modal or redirect
 				c.Header("HX-Trigger", "openSudoModal")
@@ -634,7 +662,11 @@ func (h *APIHandler) SudoMiddleware() gin.HandlerFunc {
 }
 
 func (h *APIHandler) ShowSudo(c *gin.Context) {
-	h.renderHTML(c, http.StatusOK, "login.html", gin.H{"step": "totp", "is_sudo": true, "next": c.Query("next"), "username": c.GetString("username")})
+	next := c.Query("next")
+	if !h.isValidRedirect(next) {
+		next = "/dashboard"
+	}
+	h.renderHTML(c, http.StatusOK, "login.html", gin.H{"step": "totp", "is_sudo": true, "entra_sudo": c.GetString("auth_source") == "entra", "next": next, "username": c.GetString("username")})
 }
 
 func (h *APIHandler) VerifySudo(c *gin.Context) {
@@ -731,8 +763,8 @@ func (h *APIHandler) CreateAPIToken(c *gin.Context) {
 	// Validate permissions
 	finalPerms := ""
 	if requestedPerms != "" {
-		if username == h.cfg.GUIAdmin {
-			// Superuser can grant any permissions to a token
+		if username == h.cfg.GUIAdmin && !c.GetBool("token_auth") {
+			// The recovery browser session has the full permission catalog.
 			finalPerms = requestedPerms
 		} else {
 			var err error
@@ -812,7 +844,7 @@ func (h *APIHandler) UpdateAPITokenPermissions(c *gin.Context) {
 	// Validate permissions
 	finalPerms := ""
 	if req.Permissions != "" {
-		if username == h.cfg.GUIAdmin {
+		if username == h.cfg.GUIAdmin && !c.GetBool("token_auth") {
 			finalPerms = req.Permissions
 		} else {
 			var err error

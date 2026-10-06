@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"blocklist/internal/models"
+	"blocklist/internal/service"
 
 	"github.com/gin-gonic/gin"
 	zlog "github.com/rs/zerolog/log"
@@ -244,17 +245,99 @@ func (h *APIHandler) Health(c *gin.Context) {
 }
 
 func (h *APIHandler) CreateAdmin(c *gin.Context) {
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 16384)
 	var req struct {
-		Username    string `json:"username"`
-		Password    string `json:"password"`
-		Role        string `json:"role"`
-		Permissions string `json:"permissions"`
+		Username      string `json:"username"`
+		Password      string `json:"password"`
+		Role          string `json:"role"`
+		Permissions   string `json:"permissions"`
+		AuthSource    string `json:"auth_source"`
+		EntraUPN      string `json:"entra_upn"`
+		EntraTenantID string `json:"entra_tenant_id"`
+		EntraObjectID string `json:"entra_object_id"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(400, gin.H{"error": "invalid request"})
 		return
 	}
 
+	if h.identityRepo != nil {
+		// The original API had no auth_source and accepted individual permissions.
+		// New role-managed UI requests explicitly send local or entra.
+		if req.AuthSource == "" {
+			identityFields := req.EntraUPN != "" || req.EntraTenantID != "" || req.EntraObjectID != ""
+			if identityFields {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Specify auth_source for Microsoft accounts."})
+				return
+			}
+			h.createLegacyAdmin(c, models.AdminAccount{
+				Username: req.Username, Role: req.Role, Permissions: req.Permissions,
+			}, req.Password)
+			return
+		}
+		if req.Role == "" {
+			req.Role = "viewer"
+		}
+		if req.AuthSource == "" {
+			req.AuthSource = "local"
+		}
+		prebound := req.EntraTenantID != "" || req.EntraObjectID != ""
+		if req.AuthSource == "entra" && !prebound {
+			upn, err := models.NormalizeEntraUPN(req.EntraUPN)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{
+					"error": "Enter the exact Microsoft sign-in UPN, such as user@company.com.",
+				})
+				return
+			}
+			req.EntraUPN, req.Username = upn, upn
+		}
+		req.Username = strings.TrimSpace(req.Username)
+		validName := req.Username != "" && len(req.Username) <= 255 && !strings.HasPrefix(req.Username, "entra:")
+		validSource := req.AuthSource == "local" || req.AuthSource == "entra"
+		if !validName || !validSource || req.Username == h.cfg.GUIAdmin {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Enter a valid username and authentication source."})
+			return
+		}
+		role, err := h.identityRepo.GetRole(c.Request.Context(), req.Role)
+		if err != nil {
+			h.identityFailure(c, err)
+			return
+		}
+		if _, err := h.validatePermissionSubset(role.Permissions, c.GetString("permissions")); err != nil {
+			c.JSON(http.StatusForbidden, gin.H{"error": "You cannot assign permissions you do not hold."})
+			return
+		}
+		admin := models.AdminAccount{Username: req.Username, Role: role.ID, AuthSource: req.AuthSource, EntraUPN: strings.TrimSpace(req.EntraUPN)}
+		if req.AuthSource == "local" {
+			if len(req.Password) < 12 || len(req.Password) > 72 {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Use a password between 12 and 72 bytes."})
+				return
+			}
+			admin.PasswordHash, err = h.authService.HashPassword(req.Password)
+			if err != nil {
+				h.identityFailure(c, err)
+				return
+			}
+			admin.EntraUPN = ""
+		} else if prebound {
+			if !service.ValidEntraID(req.EntraTenantID) || !service.ValidEntraID(req.EntraObjectID) || len(admin.EntraUPN) > 255 {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Enter the account's immutable Microsoft tenant ID and user object ID."})
+				return
+			}
+			if h.cfg.EntraTenantID != "" && !strings.EqualFold(req.EntraTenantID, h.cfg.EntraTenantID) {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "The tenant ID must match this workspace's Entra tenant."})
+				return
+			}
+			admin.EntraTenantID, admin.EntraObjectID = &req.EntraTenantID, &req.EntraObjectID
+		}
+		if err := h.identityRepo.CreateManagedAdmin(c.Request.Context(), admin, c.GetString("username")); err != nil {
+			h.identityFailure(c, err)
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"status": "success", "username": admin.Username})
+		return
+	}
 	if req.Role == "" {
 		req.Role = "operator"
 	}
@@ -278,6 +361,7 @@ func (h *APIHandler) CreateAdmin(c *gin.Context) {
 }
 
 func (h *APIHandler) ChangeAdminPermissions(c *gin.Context) {
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 16384)
 	actor := c.GetString("username")
 
 	var req struct {
@@ -291,6 +375,10 @@ func (h *APIHandler) ChangeAdminPermissions(c *gin.Context) {
 
 	if req.Username == h.cfg.GUIAdmin {
 		c.JSON(400, gin.H{"error": "cannot change main admin permissions"})
+		return
+	}
+	if h.identityRepo != nil {
+		h.changeLegacyAdminPermissions(c, req.Username, req.Permissions)
 		return
 	}
 
@@ -323,11 +411,23 @@ func (h *APIHandler) AdminManagement(c *gin.Context) {
 		adminMap[a.Username] = a
 	}
 
-	logs, _ := h.pgRepo.GetAuditLogs(100)
+	logs := []models.AuditLog{}
+	roles := []models.AccessRole{}
+	if h.identityRepo != nil {
+		var err error
+		roles, err = h.identityRepo.ListRoles(c.Request.Context())
+		if err != nil {
+			h.identityFailure(c, err)
+			return
+		}
+	} else {
+		logs, _ = h.pgRepo.GetAuditLogs(100)
+	}
 	userPerms, _ := c.Get("permissions")
 
 	h.renderHTML(c, http.StatusOK, "admin_management.html", gin.H{
 		"admins":         adminMap,
+		"roles":          roles,
 		"audit_logs":     logs,
 		"permissions":    userPerms.(string),
 		"username":       username.(string),
@@ -346,6 +446,9 @@ func (h *APIHandler) DeleteAdmin(c *gin.Context) {
 
 	if req.Username == h.cfg.GUIAdmin {
 		c.JSON(400, gin.H{"error": "cannot delete main admin"})
+		return
+	}
+	if !h.canManageAccount(c, req.Username) {
 		return
 	}
 
@@ -378,9 +481,31 @@ func (h *APIHandler) ChangeAdminPassword(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Password for GUIAdmin cannot be changed via UI"})
 		return
 	}
+	if !h.canManageAccount(c, req.Username) {
+		return
+	}
+	if h.identityRepo != nil {
+		admin, err := h.pgRepo.GetAdmin(req.Username)
+		if err != nil || admin == nil {
+			c.Status(http.StatusNotFound)
+			return
+		}
+		if admin.AuthSource == "entra" {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Microsoft manages this account's password."})
+			return
+		}
+		if len(req.NewPassword) < 12 || len(req.NewPassword) > 72 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Use a password between 12 and 72 bytes."})
+			return
+		}
+	}
 
-	hash, _ := h.authService.HashPassword(req.NewPassword)
-	err := h.pgRepo.UpdateAdminPassword(req.Username, hash)
+	hash, err := h.authService.HashPassword(req.NewPassword)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Password could not be saved."})
+		return
+	}
+	err = h.pgRepo.UpdateAdminPassword(req.Username, hash)
 	if err != nil {
 		c.JSON(500, gin.H{"error": "database error"})
 		return
@@ -411,8 +536,22 @@ func (h *APIHandler) ChangeAdminTOTP(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "TOTP for GUIAdmin cannot be reset via UI"})
 		return
 	}
+	if !h.canManageAccount(c, req.Username) {
+		return
+	}
 
 	// Clear TOTP secret to force re-setup on next login.
+	if h.identityRepo != nil {
+		admin, err := h.pgRepo.GetAdmin(req.Username)
+		if err != nil || admin == nil {
+			c.Status(http.StatusNotFound)
+			return
+		}
+		if admin.AuthSource == "entra" {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Microsoft manages this account's authentication."})
+			return
+		}
+	}
 	if err := h.pgRepo.UpdateAdminToken(req.Username, ""); err != nil {
 		zlog.Error().Err(err).Str("target", req.Username).Msg("Failed to clear admin TOTP")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
@@ -522,7 +661,7 @@ func (h *APIHandler) Settings(c *gin.Context) {
 	tokens, _ := h.pgRepo.GetAPITokens(username.(string))
 
 	userPerms, _ := c.Get("permissions")
-	hasGlobalTokensPerm := false
+	hasGlobalTokensPerm := h.can(c, "manage_global_tokens")
 	for _, p := range strings.Split(userPerms.(string), ",") {
 		if strings.TrimSpace(p) == "manage_global_tokens" {
 			hasGlobalTokensPerm = true
@@ -531,7 +670,7 @@ func (h *APIHandler) Settings(c *gin.Context) {
 	}
 
 	var allTokens []models.APIToken
-	if hasGlobalTokensPerm {
+	if hasGlobalTokensPerm || h.can(c, "view_api_tokens") {
 		allTokens, _ = h.pgRepo.GetAllAPITokens()
 	}
 
@@ -551,39 +690,73 @@ func (h *APIHandler) Settings(c *gin.Context) {
 		"username":             username,
 		"permissions":          userPerms,
 		"manage_global_tokens": hasGlobalTokensPerm,
+		"show_global_tokens":   hasGlobalTokensPerm || h.can(c, "view_api_tokens"),
+		"can_manage_webhooks":  h.can(c, "manage_webhooks"),
+		"can_manage_tokens":    h.can(c, "manage_api_tokens"),
+		"entra_auto_provision": h.cfg.EntraAutoProvision,
 	})
 }
 
 func (h *APIHandler) AuditLogExplorer(c *gin.Context) {
+	h.logExplorer(c, "system")
+}
+
+func (h *APIHandler) EventLogExplorer(c *gin.Context) {
+	h.logExplorer(c, "events")
+}
+
+func (h *APIHandler) logExplorer(c *gin.Context, category string) {
 	username, _ := c.Get("username")
 	actor := c.Query("actor")
 	action := c.Query("action")
 	query := c.Query("query")
 	pageStr := c.DefaultQuery("page", "1")
 	page, err := strconv.Atoi(pageStr)
-	if err != nil || page < 1 {
+	if err != nil || page < 1 || page > 1000000 {
 		page = 1
 	}
 	limit := 50
 	offset := (page - 1) * limit
 
-	logs, total, err := h.pgRepo.GetAuditLogsPaginated(limit, offset, actor, action, query)
+	var logs []models.AuditLog
+	var total int
+	if h.identityRepo != nil {
+		logs, total, err = h.identityRepo.ListLogs(c.Request.Context(), models.LogFilter{
+			Category: category, Actor: actor, Action: action, Query: query, Limit: limit, Offset: offset,
+		})
+	} else {
+		logs, total, err = h.pgRepo.GetAuditLogsPaginated(limit, offset, actor, action, query)
+	}
 	if err != nil {
 		c.String(http.StatusInternalServerError, "failed to fetch audit logs")
 		return
 	}
 
 	totalPages := (total + limit - 1) / limit
+	if totalPages == 0 {
+		totalPages = 1
+	}
+	title, description, path := "System audit logs", "Sign-ins, account access, roles, and configuration changes.", "/audit-logs"
+	actions := []string{"LOGIN_SUCCESS", "LOGIN_FAILURE", "ENTRA_LOGIN_SUCCESS", "ENTRA_LOGIN_FAILURE", "TOTP_SETUP", "CREATE_ADMIN", "DELETE_ADMIN", "CHANGE_PASSWORD", "RESET_TOTP", "CHANGE_PERMISSIONS", "CREATE_ROLE", "UPDATE_ROLE", "DELETE_ROLE", "ASSIGN_ROLE", "CREATE_TOKEN", "DELETE_TOKEN", "UPDATE_TOKEN_PERMS", "ADMIN_REVOKE_TOKEN", "ADD_EXTERNAL_SOURCE", "DELETE_EXTERNAL_SOURCE"}
+	if category == "events" {
+		title, description, path = "Event logs", "Blocking, unblocking, whitelist, and exclusion activity.", "/event-logs"
+		actions = models.EventActions
+	}
 	permissions, _ := c.Get("permissions")
 
 	h.renderHTML(c, http.StatusOK, "audit_logs.html", gin.H{
-		"logs":           logs,
-		"total":          total,
-		"page":           page,
-		"total_pages":    totalPages,
-		"username":       username,
-		"admin_username": h.cfg.GUIAdmin,
-		"permissions":    permissions,
+		"logs":            logs,
+		"log_title":       title,
+		"log_description": description,
+		"log_path":        path,
+		"active_page":     strings.TrimPrefix(path, "/"),
+		"log_actions":     actions,
+		"total":           total,
+		"page":            page,
+		"total_pages":     totalPages,
+		"username":        username,
+		"admin_username":  h.cfg.GUIAdmin,
+		"permissions":     permissions,
 		"filters": gin.H{
 			"actor":  actor,
 			"action": action,

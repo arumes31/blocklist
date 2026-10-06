@@ -2,9 +2,13 @@ package api
 
 import (
 	"bytes"
+	"html"
+	"html/template"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -21,6 +25,56 @@ import (
 func setupAuthTest() (*APIHandler, *MockAuthService, *MockPostgresRepo) {
 	h, _, pg, auth, _ := setupTest()
 	return h, auth, pg
+}
+
+func TestLoginTemplatePreservesNextQueryComponent(t *testing.T) {
+	login, err := template.ParseFiles("../../cmd/server/templates/login.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	attributes := regexp.MustCompile(`(?:href|action)="([^"]*)"`)
+	tests := []struct {
+		name string
+		next string
+	}{
+		{name: "simple path", next: "/settings"},
+		{name: "query and fragment", next: "/settings?tab=webhooks&sort=desc#keys"},
+		{name: "reserved and unicode", next: "/dashboard?q=Grüße + %26&next=/roles#details"},
+	}
+	for _, tt := range tests {
+		for _, method := range []string{"local", "entra"} {
+			t.Run(tt.name+"/"+method, func(t *testing.T) {
+				var rendered bytes.Buffer
+				err := login.Execute(&rendered, gin.H{
+					"is_sudo": true, "entra_sudo": method == "entra", "step": "totp", "next": tt.next,
+				})
+				if err != nil {
+					t.Fatal(err)
+				}
+				found := false
+				for _, attribute := range attributes.FindAllStringSubmatch(rendered.String(), -1) {
+					location, err := url.Parse(html.UnescapeString(attribute[1]))
+					if err != nil {
+						t.Fatal(err)
+					}
+					if location.Path != "/sudo" && location.Path != "/auth/entra/login" {
+						continue
+					}
+					found = true
+					query := location.Query()
+					if query.Get("next") != tt.next || len(query["next"]) != 1 || location.Fragment != "" {
+						t.Fatalf("next did not round-trip: %s", location)
+					}
+					if strings.Contains(location.RawQuery, "&sort=") {
+						t.Fatalf("next escaped its query component: %s", location)
+					}
+				}
+				if !found {
+					t.Fatal("missing reauthentication destination")
+				}
+			})
+		}
+	}
 }
 
 func TestAPIHandler_Login_Success(t *testing.T) {
