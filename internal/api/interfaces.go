@@ -54,6 +54,7 @@ type RedisRepositoryProvider interface {
 	HGetAllRaw(hashKey string) (map[string]string, error)
 	GetWhitelistedIPs() (map[string]models.WhitelistEntry, error)
 	GetBlockedIPs() (map[string]models.IPEntry, error)
+	GetBlockedIPKeys() ([]string, error)
 	IndexWebhookHit(ts time.Time) error
 	ExecBlockAtomic(ip string, entry models.IPEntry, ts time.Time) error
 	ExecUnblockAtomic(ip string) error

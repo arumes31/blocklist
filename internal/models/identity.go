@@ -61,6 +61,26 @@ type EntraIdentity struct {
 	RoleID   string
 }
 
+// AdminStatusChange carries the authorized snapshot so concurrent permission or
+// identity changes can be rejected before access is changed.
+type AdminStatusChange struct {
+	Expected      AdminAccount
+	Disabled      bool
+	Actor         string
+	RecoveryAdmin string
+}
+
+// DisplayName returns the Entra UPN when available, otherwise the account name.
+// Use Username, not this label, for authentication and account mutations.
+func (a AdminAccount) DisplayName() string {
+	if a.AuthSource == "entra" {
+		if upn := strings.TrimSpace(a.EntraUPN); upn != "" {
+			return upn
+		}
+	}
+	return a.Username
+}
+
 // NormalizeEntraUPN validates a single sign-in name for an unbound invitation.
 // Once bound, the tenant/object pair, not this mutable name, identifies an account.
 func NormalizeEntraUPN(value string) (string, error) {
@@ -103,6 +123,24 @@ func WorkspacePermissions(account AdminAccount) string {
 		}
 	}
 	return permissions
+}
+
+// PermissionsCoverAccount checks authority over a target account, including its
+// legacy workspace aliases. Only retired, unenforced keys in local legacy
+// snapshots are ignored; unknown keys still fail closed. This is not a token
+// scope calculation and must not be used to grant or expand permissions.
+func PermissionsCoverAccount(permissions string, account AdminAccount) bool {
+	legacy := account.RoleID == nil && (account.AuthSource == "" || account.AuthSource == "local")
+	for _, key := range strings.Split(WorkspacePermissions(account), ",") {
+		key = strings.TrimSpace(key)
+		if key == "" || (legacy && (key == "gui_write" || key == "webhook_access")) {
+			continue
+		}
+		if !HasPermission(permissions, key) {
+			return false
+		}
+	}
+	return true
 }
 
 func AllPermissions() string {

@@ -240,6 +240,11 @@ pre code { background: transparent; padding: 0; color: inherit; overflow-wrap: n
 .insights { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; margin: 0 0 24px; }
 .insights > .table-card { padding: 0 !important; background: transparent; border: 0; border-radius: 0; }
 .insights .insight-title { color: var(--muted); font-size: 12px; margin-bottom: 10px; font-weight: 500; }
+.insight-list { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 8px; }
+.insight-chip { display: inline-flex; align-items: baseline; gap: 6px; min-width: 0; max-width: 100%; padding: 4px 10px; color: var(--muted); background: var(--surface); border: 1px solid var(--rule); border-radius: var(--control-radius); font-size: 13px; }
+.insight-label { min-width: 0; overflow-wrap: anywhere; white-space: normal; }
+.insight-count { flex-shrink: 0; color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.insight-chip .flag-icon { flex-shrink: 0; }
 .insights :is(#stat-countries, #stat-asns, #stat-reasons):not(:has(*))::after { content: "No activity recorded"; color: var(--subtle); font-size: 13px; }
 #ipTable { min-width: 960px; }
 #ipTable .col-ip { width: 150px; }
@@ -396,6 +401,15 @@ body.app-page[data-page="docs"] { height: 100dvh; display: flex; flex-direction:
 .threat-map-content .connection { letter-spacing: .02em; }
 .threat-map-content .scene-wrap { min-height: 360px; }
 .threat-map-content .map-toolbar { gap: 8px; margin-inline: 12px; }
+.threat-map-content #zoom-level { min-width: 48px; align-self: center; text-align: center; font-size: 12px; font-variant-numeric: tabular-nums; color: var(--ink); }
+.threat-map-content .group-summary { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin: 0 16px 12px; padding-top: 12px; border-top: 1px solid var(--rule); }
+.threat-map-content .group-summary[hidden] { display: none; }
+.threat-map-content .group-summary > div:first-child { flex: 1 1 220px; min-width: 0; }
+.threat-map-content .group-summary strong { color: var(--ink); font-size: 13px; font-weight: 550; }
+.threat-map-content .group-summary .hint { margin: 4px 0 0; }
+.threat-map-content .group-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.threat-map-content .group-actions button { min-height: 44px; padding-inline: 12px; }
+.threat-map-content .map-help { margin: 0 16px 12px; text-align: center; }
 .threat-map-content .map-caption { font-size: 11px; letter-spacing: 0; }
 .threat-map-content .origin-row, .threat-map-content #origin-list button { font-size: 12px; }
 .threat-map-content #origin-list button { background: transparent; }
@@ -420,9 +434,12 @@ body.app-page[data-page="docs"] { height: 100dvh; display: flex; flex-direction:
     .threat-map-content .mission-bar, .threat-map-content .instrument-strip { flex-shrink: 0; }
     .threat-map-content .console {
         flex: 1; grid-template-columns: clamp(200px, 10vw, 280px) minmax(0, 1fr) clamp(220px, 11vw, 320px);
-        grid-template-rows: minmax(0, 1fr);
+        grid-template-rows: minmax(auto, 1fr); min-height: min-content;
     }
-    .threat-map-content .viewport, .threat-map-content .left-rail, .threat-map-content .right-rail { min-height: 0; }
+    .threat-map-content .left-rail, .threat-map-content .right-rail { min-height: 0; contain: size; }
+    /* Let inspection copy and wrapped controls determine the scrolling floor. */
+    .threat-map-content .viewport { min-height: min-content; }
+    .threat-map-content .viewport > :not(.scene-wrap) { flex-shrink: 0; }
 }
 
 /* Hookwise's auto-closing rail: the panel moves, icons and page content stay put. */
@@ -636,6 +653,24 @@ body.app-page[data-page="docs"] { height: 100dvh; display: flex; flex-direction:
 .account-create form { padding-top: 26px; }
 .account-table > .section-heading { padding: 24px 24px 0; }
 .account-table > .section-heading .muted { font-size: 12px; }
+.account-table .account-name { display: block; min-width: 12ch; max-width: 32ch; overflow-wrap: anywhere; white-space: normal; }
+.account-table .binding-details { max-width: 34ch; }
+.account-filters { display: grid; grid-template-columns: minmax(200px, 2fr) repeat(2, minmax(130px, 1fr)) auto; align-items: end; gap: 12px; padding: 0 24px 24px; }
+.account-filters .form-group { margin: 0; min-width: 0; }
+.account-state { display: inline-block; padding: 3px 8px; border: 1px solid var(--rule); border-radius: 4px; font-size: 12px; font-weight: 500; white-space: nowrap; }
+.account-state.is-active { color: var(--positive); background: #20372e; }
+.account-state.is-disabled { color: var(--warning); background: #3c3323; }
+.account-status-toggle { display: block; margin-top: 10px; }
+.account-status-toggle[data-disabled=false] { color: var(--warning); }
+.account-table .account-empty { padding: 32px 24px; text-align: center; white-space: normal; color: var(--muted); }
+@media (max-width: 900px) {
+    .account-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .account-search { grid-column: 1 / -1; }
+    .account-filters > button { justify-self: start; }
+}
+@media (max-width: 600px) {
+    .account-filters { padding-inline: 16px; }
+}
 .table-note { display: block; font-size: 12px; color: var(--muted); margin-top: 6px; }
 .account-role-controls { display: flex; gap: 8px; }
 .account-role-controls select { min-width: 150px; max-width: 240px; }

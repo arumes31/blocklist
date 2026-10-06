@@ -25,7 +25,7 @@ var (
 const adminSelect = `SELECT a.username, a.password_hash, a.token,
 	COALESCE(r.id, a.role) AS role, COALESCE(r.permissions, a.permissions) AS permissions,
 	a.session_version, a.role_id, a.auth_source, a.entra_tenant_id, a.entra_object_id,
-	a.entra_upn, a.entra_role_override
+	a.entra_upn, a.entra_role_override, a.disabled
 	FROM admins a LEFT JOIN access_roles r ON r.id = a.role_id`
 
 func rollbackIdentity(tx *sqlx.Tx) {
@@ -287,6 +287,9 @@ func (p *PostgresRepository) SignInEntra(ctx context.Context, identity models.En
 	}
 	if err != nil {
 		return nil, fmt.Errorf("resolving entra account: %w", identityError(err))
+	}
+	if admin.Disabled {
+		return nil, ErrIdentityDenied
 	}
 	if admin.EntraRoleOverride && admin.RoleID != nil {
 		identity.RoleID = *admin.RoleID

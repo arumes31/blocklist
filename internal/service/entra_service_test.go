@@ -94,11 +94,12 @@ func TestEntraVerifiedFlow(t *testing.T) {
 	service.oauth.Endpoint.TokenURL = server.URL + "/token"
 	service.verifier = oidc.NewVerifier(issuer, oidc.NewRemoteKeySet(ctx, server.URL+"/keys"), &oidc.Config{ClientID: testEntraClient, SupportedSigningAlgs: []string{oidc.RS256}})
 	for _, tc := range []struct {
-		name   string
-		reauth bool
-		mutate func(map[string]any)
-		denied bool
-		fresh  bool
+		name    string
+		reauth  bool
+		mutate  func(map[string]any)
+		denied  bool
+		fresh   bool
+		wantErr error
 	}{
 		{name: "verified SSO has no sudo"},
 		{name: "fresh authentication", mutate: func(c map[string]any) { c["auth_time"] = time.Now().Unix() }, fresh: true},
@@ -110,7 +111,23 @@ func TestEntraVerifiedFlow(t *testing.T) {
 		{name: "expired", mutate: func(c map[string]any) { c["exp"] = time.Now().Add(-time.Hour).Unix() }, denied: true},
 		{name: "future activation", mutate: func(c map[string]any) { c["nbf"] = time.Now().Add(time.Hour).Unix() }, denied: true},
 		{name: "missing role", mutate: func(c map[string]any) { delete(c, "roles") }, denied: true},
-		{name: "sudo requires auth time", reauth: true, denied: true},
+		{name: "sudo requires auth time", reauth: true, denied: true, wantErr: ErrEntraAuthTimeMissing},
+		{
+			name: "sudo rejects old auth time despite fresh iat", reauth: true, denied: true, wantErr: ErrEntraAuthTimeStale,
+			mutate: func(c map[string]any) { c["auth_time"] = time.Now().Add(-5 * time.Minute).Unix() },
+		},
+		{
+			name: "sudo rejects future auth time", reauth: true, denied: true, wantErr: ErrEntraAuthTimeStale,
+			mutate: func(c map[string]any) { c["auth_time"] = time.Now().Add(5 * time.Minute).Unix() },
+		},
+		{
+			name: "untrusted token cannot trigger configuration error", reauth: true, denied: true,
+			mutate: func(c map[string]any) { c["nonce"] = "wrong" },
+		},
+		{
+			name:   "ordinary SSO with old authentication is not sudo",
+			mutate: func(c map[string]any) { c["auth_time"] = time.Now().Add(-time.Hour).Unix() },
+		},
 		{name: "sudo accepts fresh auth", reauth: true, mutate: func(c map[string]any) { c["auth_time"] = time.Now().Unix() }, fresh: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -127,6 +144,10 @@ func TestEntraVerifiedFlow(t *testing.T) {
 			if tc.reauth {
 				require.Equal(t, "0", parsed.Query().Get("max_age"))
 				require.Equal(t, "login", parsed.Query().Get("prompt"))
+				require.JSONEq(t, `{"id_token":{"auth_time":{"essential":true}}}`, parsed.Query().Get("claims"))
+			} else {
+				require.Empty(t, parsed.Query().Get("claims"))
+				require.Empty(t, parsed.Query().Get("prompt"))
 			}
 			var flow entraFlow
 			data, err := cache.Get(ctx, "entra:flow:"+state).Bytes()
@@ -150,6 +171,13 @@ func TestEntraVerifiedFlow(t *testing.T) {
 			result, err := service.Finish(ctx, state, state, "code")
 			if tc.denied {
 				require.ErrorIs(t, err, ErrEntraSignIn)
+				require.Nil(t, result)
+				if tc.wantErr != nil {
+					require.ErrorIs(t, err, tc.wantErr)
+				} else {
+					require.NotErrorIs(t, err, ErrEntraAuthTimeMissing)
+					require.NotErrorIs(t, err, ErrEntraAuthTimeStale)
+				}
 			} else {
 				require.NoError(t, err)
 				require.Equal(t, "viewer", result.Identity.RoleID)

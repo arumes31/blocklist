@@ -2,9 +2,12 @@ package api
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 	"time"
+
+	"blocklist/internal/service"
 
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
@@ -13,6 +16,11 @@ import (
 )
 
 const entraFlowCookie = "blocklist_entra_flow"
+
+type entraFlowProvider interface {
+	Start(context.Context, string, string) (string, string, error)
+	Finish(context.Context, string, string, string) (*service.EntraResult, error)
+}
 
 func (h *APIHandler) EntraLogin(c *gin.Context) {
 	if h.entraService == nil || h.identityRepo == nil {
@@ -67,14 +75,14 @@ func (h *APIHandler) EntraCallback(c *gin.Context) {
 	defer cancel()
 	result, err := h.entraService.Finish(ctx, c.Query("state"), cookie, c.Query("code"))
 	if err != nil {
-		h.entraFailure(c)
+		h.entraVerificationFailure(c, err)
 		return
 	}
 	// A sudo flow must return the same immutable identity, not merely another
 	// authenticated Microsoft account with similar permissions.
 	if result.Username != "" {
 		current, err := h.pgRepo.GetAdmin(result.Username)
-		if err != nil || current == nil || current.EntraTenantID == nil || current.EntraObjectID == nil {
+		if err != nil || current == nil || current.Disabled || current.EntraTenantID == nil || current.EntraObjectID == nil {
 			h.entraFailure(c)
 			return
 		}
@@ -84,7 +92,7 @@ func (h *APIHandler) EntraCallback(c *gin.Context) {
 		}
 	}
 	admin, err := h.identityRepo.SignInEntra(ctx, result.Identity, h.cfg.EntraAutoProvision)
-	if err != nil || admin == nil || admin.Username == h.cfg.GUIAdmin {
+	if err != nil || admin == nil || admin.Disabled || admin.Username == h.cfg.GUIAdmin {
 		h.entraFailure(c)
 		return
 	}
@@ -132,12 +140,34 @@ func (h *APIHandler) EntraCallback(c *gin.Context) {
 }
 
 func (h *APIHandler) entraFailure(c *gin.Context) {
+	h.entraVerificationFailure(c, service.ErrEntraSignIn)
+}
+
+func (h *APIHandler) entraVerificationFailure(c *gin.Context, failure error) {
+	message := "Microsoft sign-in could not be verified. Try again or contact an administrator."
+	reason := "Sign-in could not be verified"
+	data := gin.H{}
+	switch {
+	case errors.Is(failure, service.ErrEntraAuthTimeMissing):
+		message = "Microsoft did not provide the authentication time needed to verify your identity. " +
+			"Ask an administrator to add the auth_time optional claim to ID tokens in the Blocklist Entra app registration, then verify again."
+		reason = "Reauthentication denied: auth_time_missing; configure the ID token optional claim"
+	case errors.Is(failure, service.ErrEntraAuthTimeStale):
+		message = "Microsoft did not confirm a fresh sign-in. Start identity verification again and sign in with the same account. " +
+			"If this continues, ask an administrator to check the server clock and Entra sign-in policy."
+		reason = "Reauthentication denied: auth_time_not_fresh"
+	}
+	if errors.Is(failure, service.ErrEntraAuthTimeMissing) || errors.Is(failure, service.ErrEntraAuthTimeStale) {
+		// Retrying ordinary SSO would lose the sensitive-action verification flow.
+		data["is_sudo"] = true
+		data["entra_sudo"] = true
+		data["next"] = "/admin_management"
+	}
 	if h.pgRepo != nil {
-		if err := h.pgRepo.LogAction("system", "ENTRA_LOGIN_FAILURE", "REDACTED", "Sign-in could not be verified"); err != nil {
+		if err := h.pgRepo.LogAction("system", "ENTRA_LOGIN_FAILURE", "REDACTED", reason); err != nil {
 			zlog.Error().Err(err).Msg("Failed to record Entra sign-in denial")
 		}
 	}
-	h.renderHTML(c, http.StatusUnauthorized, "login.html", gin.H{
-		"error": "Microsoft sign-in could not be verified. Try again or contact an administrator.",
-	})
+	data["error"] = message
+	h.renderHTML(c, http.StatusUnauthorized, "login.html", data)
 }

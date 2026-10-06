@@ -16,6 +16,7 @@
     let connectedBefore = false;
     let whitelistTotal = null;
     let selected = null, page = 0, view = 'globe', layer = 'routes', paused = false, allowMotion = false;
+    let groupIDs = null;
     let scene, flat, pins, clusters, heat, flatPaths, trendChart;
     let worldData, worldRequest, requestErrors = [];
     const mapErrors = {globe:'',flat:''};
@@ -71,9 +72,19 @@
     function renderOrigins() {
         const list = $('origin-list');
         list.replaceChildren();
-        const pages = Math.max(1, Math.ceil(records.length / PAGE_SIZE));
+        const visible = groupIDs ? records.filter(point => groupIDs.has(point.id)) : records;
+        $('origin-scope').textContent = groupIDs ? `${visible.length} IN GROUP` : 'SELECT AN IP';
+        $('group-summary').hidden = !groupIDs;
+        if (groupIDs) {
+            const sameLocation = visible.length > 1 && visible.every(point => point.lat === visible[0].lat && point.lon === visible[0].lon);
+            $('group-label').textContent = visible.length ? `${visible.length} IP${visible.length === 1 ? '' : 's'} ${sameLocation ? 'share this GeoIP location' : 'in the selected group'}.` : 'No IPs remain in this group.';
+            $('group-help').textContent = sameLocation ? 'Zoom cannot separate identical coordinates. Select an IP to inspect its details.' : 'Zoom in to separate nearby locations, or inspect each IP in IP activity.';
+            $('inspect-group').textContent = `View ${visible.length} IP${visible.length === 1 ? '' : 's'}`;
+            $('inspect-group').disabled = !visible.length;
+        }
+        const pages = Math.max(1, Math.ceil(visible.length / PAGE_SIZE));
         page = Math.min(page, pages - 1);
-        for (const point of records.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)) {
+        for (const point of visible.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)) {
             const button = document.createElement('button');
             button.type = 'button';
             button.className = 'origin-row';
@@ -91,16 +102,38 @@
             button.addEventListener('click', () => selectRecord(point, true));
             list.append(button);
         }
-        if (!records.length) {
+        if (!visible.length) {
             const empty = document.createElement('p');
             empty.className = 'empty-state';
             const active = filters();
             empty.textContent = !active.blocked && !active.whitelist ? 'Enable a data filter to show IPs.' : active.blocked && active.all ? (blockRequest ? 'Loading blocked IPs…' : 'No blocked IPs in this view.') : 'Waiting for live events. Blocks remain visible for 8 seconds.';
+            if (groupIDs) empty.textContent = 'These IPs are no longer in this view. Choose All IPs to continue.';
             list.append(empty);
         }
         $('origin-page').textContent = `${page + 1} / ${pages}`;
         $('origin-prev').disabled = page === 0;
         $('origin-next').disabled = page + 1 >= pages;
+    }
+
+    function clearGroup() {
+        groupIDs = null;
+        page = 0;
+        scene?.clearGroup();
+    }
+
+    function selectGroup(points) {
+        groupIDs = new Set(points.map(point => point.id));
+        page = 0;
+        selectRecord(null);
+        renderOrigins();
+    }
+
+    function updateZoom() {
+        const zoom = view === 'flat' && flat ? {value:flat.getZoom(), min:flat.getMinZoom(), max:flat.getMaxZoom()} : scene?.getZoomState();
+        $('zoom-in').disabled = !zoom || zoom.value >= zoom.max;
+        $('zoom-out').disabled = !zoom || zoom.value <= zoom.min;
+        $('zoom-level').textContent = zoom ? (view === 'globe' ? `${Number(zoom.value.toFixed(1))}×` : `Z ${zoom.value}`) : '—';
+        $('zoom-level').title = view === 'globe' ? 'Globe magnification (0.8–128×)' : 'Flat-map zoom level (1–18)';
     }
 
     function updateStats(payload, initial = false) {
@@ -341,6 +374,7 @@
         if (!flat) {
             const center = centers[$('region').value];
             flat = L.map('flat-map',{center:center.slice(0,2),zoom:center[2],minZoom:1,maxZoom:18,zoomControl:false,attributionControl:false,zoomAnimation:false,fadeAnimation:false,markerZoomAnimation:false});
+            flat.on('zoomend',updateZoom);
             pins = L.layerGroup();
             clusters = L.markerClusterGroup({animate:false,showCoverageOnHover:false,maxClusterRadius:45,iconCreateFunction:group => L.divIcon({html:`<span>${group.getChildCount()}</span>`,className:'threat-cluster',iconSize:[34,34]})});
             heat = L.heatLayer([],{radius:24,blur:18,minOpacity:0.3,gradient:{0.3:'#8b0000',0.6:'#ff0000',1:'#ff4d4d'}});
@@ -514,6 +548,7 @@
     }
 
     function setView(next) {
+        clearGroup();
         view = next;
         $('scene').hidden = next !== 'globe';
         $('flat-map').hidden = next !== 'flat';
@@ -521,6 +556,8 @@
         document.querySelectorAll('[data-view]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.view === next)));
         updateMotion();
         if (next === 'flat') initFlat();
+        updateZoom();
+        renderOrigins();
         showErrors();
         renderPaths();
     }
@@ -547,12 +584,20 @@
         refreshAllBlocks();
     }
 
-    try { scene = new ThreatMapScene($('scene'),{onSelect:point => selectRecord(point),onError:message => { mapErrors.globe = message; showErrors(); }}); }
+    try { scene = new ThreatMapScene($('scene'),{
+        onSelect:point => {
+            if (groupIDs && !groupIDs.has(point.id)) { clearGroup(); renderOrigins(); }
+            selectRecord(point);
+        },
+        onCluster:selectGroup,
+        onZoomChange:updateZoom,
+        onError:message => { mapErrors.globe = message; showErrors(); },
+    }); }
     catch (_) { mapErrors.globe = 'Globe unavailable. Use the flat map to inspect locations.'; }
     updateStats(statsAllowed ? bootstrap : {},true);
     initTrend();
     for (const id of ['toggle-blocked','toggle-whitelist']) $(id).addEventListener('change',() => {
-        page = 0;
+        clearGroup();
         $('toggle-all-blocked').disabled = !filters().blocked;
         if (!filters().blocked) cancelBlockSnapshot();
         render(); refresh(true);
@@ -560,7 +605,7 @@
     });
     $('toggle-all-blocked').disabled = !filters().blocked;
     $('toggle-all-blocked').addEventListener('change',() => {
-        page = 0; cancelBlockSnapshot();
+        clearGroup(); cancelBlockSnapshot();
         if (!filters().all) { blockSnapshot.clear(); blockTotal = null; nextBlockExpiry = Infinity; lastBlockSync = -Infinity; blockError = ''; }
         render(); showErrors();
         if (filters().all) refreshAllBlocks(true);
@@ -568,7 +613,7 @@
     $('toggle-cluster').addEventListener('change',renderFlat);
     $('toggle-paths').addEventListener('change',renderPaths);
     $('region').addEventListener('change',() => {
-        page = 0;
+        clearGroup();
         scene?.setRegion($('region').value);
         const center = centers[$('region').value];
         flat?.setView(center.slice(0,2),center[2],{animate:false});
@@ -576,6 +621,7 @@
     });
     document.querySelectorAll('[data-view]').forEach(button => button.addEventListener('click',() => setView(button.dataset.view)));
     document.querySelectorAll('[data-layer]').forEach(button => button.addEventListener('click',() => {
+        clearGroup(); renderOrigins();
         layer = button.dataset.layer;
         document.querySelectorAll('[data-layer]').forEach(item => item.setAttribute('aria-pressed', String(item === button)));
         scene?.setLayer(layer);
@@ -585,6 +631,7 @@
     $('zoom-in').addEventListener('click',() => view === 'globe' ? scene?.zoomBy(1.2) : flat?.zoomIn(1,{animate:false}));
     $('zoom-out').addEventListener('click',() => view === 'globe' ? scene?.zoomBy(1/1.2) : flat?.zoomOut(1,{animate:false}));
     $('reset-view').addEventListener('click',() => {
+        clearGroup();
         $('region').value = 'global'; page = 0; selected = null; scene?.reset(); scene?.setLayer(layer);
         flat?.setView([20,0],2,{animate:false}); updateMotion(); render();
     });
@@ -595,6 +642,14 @@
     });
     $('origin-prev').addEventListener('click',() => { page = Math.max(0,page-1); renderOrigins(); });
     $('origin-next').addEventListener('click',() => { page++; renderOrigins(); });
+    $('clear-group').addEventListener('click',() => {
+        clearGroup(); renderOrigins();
+        $('scene').focus({preventScroll:true});
+    });
+    $('inspect-group').addEventListener('click',() => {
+        const first = $('origin-list').querySelector('.origin-row');
+        first?.focus();
+    });
     $('retry-data').addEventListener('click',() => {
         if (view === 'flat' && !worldData) initFlat();
         if (view === 'globe' && mapErrors.globe && scene) scene.retryGeography().then(ok => { if (ok) mapErrors.globe = ''; showErrors(); });

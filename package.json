@@ -2,12 +2,14 @@
   "name": "blocklist-ui-regression",
   "private": true,
   "scripts": {
+    "build:assets": "node scripts/build-assets.cjs",
     "test": "node --test tests/*.test.cjs",
     "test:ui": "node tests/e2e/run.cjs",
     "test:ui:report": "playwright show-report"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.13.0",
-    "@playwright/test": "1.63.0"
+    "@playwright/test": "1.63.0",
+    "terser": "5.51.2"
   }
 }

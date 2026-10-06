@@ -435,6 +435,52 @@ func (h *APIHandler) AdminManagement(c *gin.Context) {
 	})
 }
 
+// ChangeAdminStatus preserves account data while toggling access. Its route requires
+// account management permission and a recently verified browser session.
+func (h *APIHandler) ChangeAdminStatus(c *gin.Context) {
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 4096)
+	var req struct {
+		Username string `json:"username"`
+		Disabled *bool  `json:"disabled"`
+	}
+	err := c.ShouldBindJSON(&req)
+	invalidName := strings.TrimSpace(req.Username) == "" || len(req.Username) > 255
+	if err != nil || invalidName || req.Disabled == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Enter an account and an explicit enabled or disabled status."})
+		return
+	}
+	actor := c.GetString("username")
+	if req.Username == h.cfg.GUIAdmin || req.Username == actor {
+		c.JSON(http.StatusForbidden, gin.H{"error": "You cannot change your own status or disable the recovery administrator."})
+		return
+	}
+	if h.identityRepo == nil || !h.can(c, "manage_admins") {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Account management permission is required."})
+		return
+	}
+	account, err := h.pgRepo.GetAdmin(req.Username)
+	if err != nil {
+		h.identityFailure(c, err)
+		return
+	}
+	if account == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Account not found."})
+		return
+	}
+	if !h.hasAccountAuthority(c, *account) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "You cannot manage an account with permissions you do not hold."})
+		return
+	}
+	change := models.AdminStatusChange{
+		Expected: *account, Disabled: *req.Disabled, Actor: actor, RecoveryAdmin: h.cfg.GUIAdmin,
+	}
+	if err := h.identityRepo.SetAdminDisabled(c.Request.Context(), change); err != nil {
+		h.identityFailure(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "success", "disabled": *req.Disabled})
+}
+
 func (h *APIHandler) DeleteAdmin(c *gin.Context) {
 	var req struct {
 		Username string `json:"username"`
@@ -737,7 +783,12 @@ func (h *APIHandler) logExplorer(c *gin.Context, category string) {
 		totalPages = 1
 	}
 	title, description, path := "System audit logs", "Sign-ins, account access, roles, and configuration changes.", "/audit-logs"
-	actions := []string{"LOGIN_SUCCESS", "LOGIN_FAILURE", "ENTRA_LOGIN_SUCCESS", "ENTRA_LOGIN_FAILURE", "TOTP_SETUP", "CREATE_ADMIN", "DELETE_ADMIN", "CHANGE_PASSWORD", "RESET_TOTP", "CHANGE_PERMISSIONS", "CREATE_ROLE", "UPDATE_ROLE", "DELETE_ROLE", "ASSIGN_ROLE", "CREATE_TOKEN", "DELETE_TOKEN", "UPDATE_TOKEN_PERMS", "ADMIN_REVOKE_TOKEN", "ADD_EXTERNAL_SOURCE", "DELETE_EXTERNAL_SOURCE"}
+	actions := []string{
+		"LOGIN_SUCCESS", "LOGIN_FAILURE", "ENTRA_LOGIN_SUCCESS", "ENTRA_LOGIN_FAILURE", "TOTP_SETUP",
+		"CREATE_ADMIN", "DELETE_ADMIN", "DISABLE_ADMIN", "ENABLE_ADMIN", "CHANGE_PASSWORD", "RESET_TOTP",
+		"CHANGE_PERMISSIONS", "CREATE_ROLE", "UPDATE_ROLE", "DELETE_ROLE", "ASSIGN_ROLE", "CREATE_TOKEN",
+		"DELETE_TOKEN", "UPDATE_TOKEN_PERMS", "ADMIN_REVOKE_TOKEN", "ADD_EXTERNAL_SOURCE", "DELETE_EXTERNAL_SOURCE",
+	}
 	if category == "events" {
 		title, description, path = "Event logs", "Blocking, unblocking, whitelist, and exclusion activity.", "/event-logs"
 		actions = models.EventActions

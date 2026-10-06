@@ -19,6 +19,8 @@ type SchedulerService struct {
 	externalSourceService *ExternalSourceService
 	stop                  chan struct{}
 	stopOnce              sync.Once
+	retentionContext      context.Context
+	cancelRetention       context.CancelFunc
 }
 
 // SetIPService attaches an IPService so the scheduler can run excluded-list FQDN
@@ -28,11 +30,14 @@ func (s *SchedulerService) SetIPService(svc *IPService) {
 }
 
 func NewSchedulerService(r *repository.RedisRepository, p *repository.PostgresRepository, cfg *config.Config) *SchedulerService {
+	ctx, cancel := context.WithCancel(context.Background())
 	return &SchedulerService{
-		redisRepo: r,
-		pgRepo:    p,
-		cfg:       cfg,
-		stop:      make(chan struct{}),
+		redisRepo:        r,
+		pgRepo:           p,
+		cfg:              cfg,
+		stop:             make(chan struct{}),
+		retentionContext: ctx,
+		cancelRetention:  cancel,
 	}
 }
 
@@ -41,6 +46,11 @@ func (s *SchedulerService) SetExternalSourceService(svc *ExternalSourceService) 
 }
 
 func (s *SchedulerService) Start() {
+	// Retention has its own bounded loop. Partition creation or external DNS/feed
+	// failures must not prevent expiring old rows in the DEFAULT partition.
+	if s.pgRepo != nil && s.redisRepo != nil {
+		go s.runLogRetention()
+	}
 	// Warm the local FQDN-exclusion cache once at startup so the first block
 	// check after boot does not pay a DNS round-trip.
 	if s.ipService != nil {
@@ -107,6 +117,7 @@ func (s *SchedulerService) Start() {
 
 func (s *SchedulerService) Stop() {
 	s.stopOnce.Do(func() {
+		s.cancelRetention()
 		close(s.stop)
 	})
 }

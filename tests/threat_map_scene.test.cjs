@@ -55,14 +55,16 @@ function harness({reduced = false, failMap = false, now = Date.now()} = {}) {
     vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../cmd/server/static/js/threat-map-scene.js'), 'utf8'), context);
     const canvas = new Canvas();
     const selections = [];
+    const groups = [];
+    const zoomChanges = [];
     const errors = [];
-    const scene = new window.ThreatMapScene(canvas, {onSelect: p => selections.push(p), onError: e => errors.push(e)});
+    const scene = new window.ThreatMapScene(canvas, {onSelect: p => selections.push(p), onCluster: p => groups.push(p), onZoomChange: () => zoomChanges.push(scene.zoom), onError: e => errors.push(e)});
     const frame = time => {
         now = startTime + time;
         const queued = Array.from(frames.entries());
         queued.forEach(([id, callback]) => { frames.delete(id); callback(time); });
     };
-    return {scene, canvas, document, media, frames, requests, draws, selections, errors, frame, setNow: value => { now = value; }};
+    return {scene, canvas, document, media, frames, requests, draws, selections, groups, zoomChanges, errors, frame, setNow: value => { now = value; }};
 }
 
 const east = {id: 'east', ip: '192.0.2.1', name: 'East', lat: 30, lon: 150, kind: 'block', count: 1};
@@ -135,8 +137,8 @@ test('zoom stays bounded and map failure is accessible while points remain selec
     await scene.ready;
     assert.equal(errors.length, 1);
     assert.match(scene.selectionStatus.textContent, /unavailable/i);
-    scene.zoomBy(100);
-    assert.equal(scene.zoom, 12);
+    scene.zoomBy(1000);
+    assert.equal(scene.zoom, 128);
     scene.zoomBy(0.001);
     assert.equal(scene.zoom, 0.8);
     scene.setPoints([east]);
@@ -316,23 +318,78 @@ test('all twenty thousand records remain selectable while dense markers retain e
     scene.destroy();
 });
 
-test('wheel and keyboard reach country-level zoom and reject invalid zoom factors', async () => {
+test('wheel and keyboard reach local zoom without allocating larger bitmaps and reject invalid factors', async () => {
     const {scene, canvas} = harness();
     await scene.ready;
     canvas.events.get('wheel')({deltaY: -10000, preventDefault() {}});
-    assert.equal(scene.zoom, 12);
-    assert.equal(scene.radius, scene.baseRadius * 12);
+    assert.equal(scene.zoom, 128);
+    assert.equal(scene.radius, scene.baseRadius * 128);
     assert.equal(canvas.width, 1800, 'zoom enlarges the projection without allocating a larger bitmap');
     key(canvas, '-');
-    assert.equal(scene.zoom, 10);
+    assert.equal(scene.zoom, 128 / 1.2);
     key(canvas, '+');
-    assert.equal(scene.zoom, 12);
+    assert.equal(scene.zoom, 128);
     for (const factor of [NaN, Infinity, -1, 0]) scene.zoomBy(factor);
-    assert.equal(scene.zoom, 12);
+    assert.equal(scene.zoom, 128);
     canvas.events.get('wheel')({deltaY: 10000, preventDefault() {}});
     assert.equal(scene.zoom, 0.8);
     scene.reset();
     assert.equal(scene.zoom, 1);
+    scene.destroy();
+});
+
+test('29 co-located IPs stay counted and all members can be inspected even at maximum zoom', async () => {
+    const {scene, canvas, groups, selections, zoomChanges} = harness({reduced: true});
+    await scene.ready;
+    const points = Array.from({length:29}, (_, i) => ({...east, id:`at-${i}`, ip:`192.0.2.${i + 1}`, lat:47, lon:17}));
+    scene.setRegion('europe');
+    scene.setPoints(points);
+    const clickGroup = () => {
+        const marker = scene.hitPoints.find(point => point.count === 29);
+        assert.ok(marker);
+        const pointer = {button:0, pointerId:1, clientX:marker.x, clientY:marker.y};
+        canvas.events.get('pointerdown')(pointer);
+        canvas.events.get('pointerup')(pointer);
+    };
+    clickGroup();
+    assert.equal(groups[0].length, 29);
+    assert.equal(selections.length, 0, 'clicking a count does not arbitrarily select its first IP');
+    assert.equal(scene.zoom, 2);
+    assert.equal(scene.groupSelected, true);
+    scene.zoomBy(1000);
+    assert.equal(scene.getZoomState().max, 128);
+    clickGroup();
+    assert.equal(groups.at(-1).length, 29);
+    assert.ok(groups.at(-1).every(point => point.lat === 47 && point.lon === 17));
+    key(canvas, 'End');
+    assert.equal(selections.at(-1).id, 'at-28');
+    clickGroup();
+    assert.equal(groups.length, 3, 'selected marker overlay must not hide its group');
+    scene.setPoints(points.map(point => ({...point, reason:'Updated'})));
+    clickGroup();
+    assert.ok(groups.at(-1).every(point => point.reason === 'Updated'));
+    scene.reset();
+    assert.equal(scene.groupSelected, false);
+    assert.equal(zoomChanges.at(-1), 1);
+    scene.destroy();
+});
+
+test('nearby coordinates separate at deep zoom and group inspection prevents ambient drift', async () => {
+    const {scene, frame} = harness();
+    await scene.ready;
+    scene.setPoints([{...east, id:'a', lat:22, lon:21}, {...east, id:'b', lat:22, lon:21.1}]);
+    const marker = scene.markerPositions()[0];
+    assert.equal(marker.count, 2);
+    scene.activateMarker(marker);
+    frame(0);
+    frame(9000);
+    frame(10000);
+    assert.equal(scene.center.lon, 21);
+    scene.zoomBy(1000);
+    assert.equal(scene.markerPositions().length, 2);
+    assert.ok(scene.markerPositions().every(point => point.count === 1));
+    scene.clearGroup();
+    assert.equal(scene.groupSelected, false);
     scene.destroy();
 });
 

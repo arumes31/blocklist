@@ -42,7 +42,10 @@ jobs:
         node-version: '24'
         package-manager-cache: false
 
-    - name: Test frontend data and map behavior
+    - name: Install locked frontend build and test dependencies
+      run: npm ci --ignore-scripts
+
+    - name: Test frontend data, map behavior and JavaScript minification
       run: node --test tests/*.test.cjs
 
   build:

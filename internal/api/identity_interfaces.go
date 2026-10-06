@@ -15,6 +15,7 @@ type IdentityRepositoryProvider interface {
 	CreateLegacyAdmin(context.Context, models.AdminAccount, string) error
 	UpdateLegacyAdminPermissions(context.Context, models.AdminAccount, string, string) error
 	AssignAdminRole(context.Context, models.AdminAccount, string) error
+	SetAdminDisabled(context.Context, models.AdminStatusChange) error
 	SignInEntra(context.Context, models.EntraIdentity, bool) (*models.AdminAccount, error)
 	ListLogs(context.Context, models.LogFilter) ([]models.AuditLog, int, error)
 }

@@ -36,6 +36,7 @@ function harness({statsAllowed = false, showWhitelist = false, showAllBlocks = f
         setAttribute(name, value) { this.attributes.set(name, value); }
         addEventListener(name, callback) { this.events.set(name, callback); }
         emit(name, event = {}) { return this.events.get(name)?.(event); }
+        focus() { this.focused = true; }
     }
 
     const elements = new Map(Array.from(template.matchAll(/\bid="([^"]+)"/g), match => [match[1], new Element()]));
@@ -118,6 +119,8 @@ function harness({statsAllowed = false, showWhitelist = false, showAllBlocks = f
         focusPoint() {}
         reset() {}
         zoomBy() {}
+        getZoomState() { return this.zoomState || {value:1, min:0.8, max:128}; }
+        clearGroup() {}
         destroy() { this.destroyed = true; }
         retryGeography() { this.retries++; return Promise.resolve(this.retryResult); }
     }
@@ -141,6 +144,72 @@ function harness({statsAllowed = false, showWhitelist = false, showAllBlocks = f
         stop:() => window.emit('pagehide', {persisted:false}),
     };
 }
+
+test('group inspection lists all 29 IPs, keeps live metadata current and clears on filter changes', async t => {
+    const h = harness({showAllBlocks:true});
+    t.after(h.stop);
+    const items = Array.from({length:29}, (_, i) => item(`192.0.2.${i + 1}`));
+    h.requests[0].respond(blocklist([...items, item('198.51.100.1')]));
+    await flush();
+    h.scene.options.onCluster(h.scene.points.slice(0, 29));
+    assert.equal(h.get('group-summary').hidden, false);
+    assert.match(h.get('group-label').textContent, /29 IPs share this GeoIP location/);
+    assert.equal(h.get('origin-page').textContent, '1 / 5');
+    assert.equal(h.get('origin-list').children.length, 6);
+    h.get('inspect-group').emit('click');
+    assert.equal(h.get('origin-list').children[0].focused, true);
+    for (let i = 0; i < 4; i++) h.get('origin-next').emit('click');
+    assert.equal(h.get('origin-list').children.length, 5);
+    assert.equal(h.get('origin-next').disabled, true);
+    h.get('origin-list').children[4].emit('click');
+    assert.equal(h.get('selected-ip').textContent, '192.0.2.29');
+    h.sockets[0].send('block', {ip:'192.0.2.29', data:{...items[28].data, reason:'Updated while inspecting'}});
+    await h.advance(1200);
+    assert.equal(h.get('selected-reason').textContent, 'Updated while inspecting');
+    assert.match(h.get('group-label').textContent, /29 IPs/);
+    h.sockets[0].send('unblock', {ip:'192.0.2.1'});
+    await h.advance(1200);
+    assert.match(h.get('group-label').textContent, /28 IPs/);
+    h.get('clear-group').emit('click');
+    assert.equal(h.get('group-summary').hidden, true);
+    assert.equal(h.get('origin-scope').textContent, 'SELECT AN IP');
+    h.scene.options.onCluster(h.scene.points.slice(0, 2));
+    h.get('region').value = 'asia';
+    h.get('region').emit('change');
+    assert.equal(h.get('group-summary').hidden, true);
+});
+
+test('zoom indicator reports real magnification and disables controls at their bounds', t => {
+    const h = harness();
+    t.after(h.stop);
+    assert.equal(h.get('zoom-level').textContent, '1×');
+    h.scene.zoomState = {value:128, min:0.8, max:128};
+    h.scene.options.onZoomChange();
+    assert.equal(h.get('zoom-level').textContent, '128×');
+    assert.equal(h.get('zoom-in').disabled, true);
+    assert.equal(h.get('zoom-out').disabled, false);
+    h.scene.zoomState.value = 0.8;
+    h.scene.options.onZoomChange();
+    assert.equal(h.get('zoom-out').disabled, true);
+    assert.equal(h.get('zoom-in').disabled, false);
+});
+
+test('an expired live group explains the empty state and can return to all IPs', async t => {
+    const h = harness();
+    t.after(h.stop);
+    h.sockets[0].send('block', item('192.0.2.1'));
+    h.sockets[0].send('block', item('192.0.2.2'));
+    await h.advance(200);
+    h.scene.options.onCluster(h.scene.points);
+    assert.match(h.get('group-label').textContent, /2 IPs/);
+    await h.advance(8000);
+    assert.equal(h.get('group-label').textContent, 'No IPs remain in this group.');
+    assert.equal(h.get('inspect-group').disabled, true);
+    assert.match(h.get('origin-list').textContent, /Choose All IPs/);
+    h.get('clear-group').emit('click');
+    assert.equal(h.get('group-summary').hidden, true);
+    assert.equal(h.get('scene').focused, true);
+});
 
 test('reduced motion starts still but can be explicitly enabled, paused and resumed', t => {
     const h = harness({reducedMotion:true});

@@ -39,7 +39,7 @@
                     <p class="hint">Currently blocked IP addresses</p>
                 </section>
                 <section class="origins">
-                    <h2>IP activity <span>SELECT AN IP</span></h2>
+                    <h2>IP activity <span id="origin-scope">SELECT AN IP</span></h2>
                     <div id="origin-list" aria-label="Visible blocked and whitelisted IPs"><p class="empty-state">Waiting for live activity…</p></div>
                     <div class="origin-pagination" aria-label="IP activity pages">
                         <button id="origin-prev" type="button" aria-label="Previous activity" disabled>←</button>
@@ -99,11 +99,17 @@
                     </label>
                     <div class="zoom-control" role="group" aria-label="Map zoom">
                         <button type="button" id="zoom-out" aria-label="Zoom out">−</button>
+                        <output id="zoom-level" aria-label="Zoom level">1×</output>
                         <button type="button" id="zoom-in" aria-label="Zoom in">+</button>
                     </div>
                     <button type="button" id="reset-view" class="reset">Reset view</button>
                     <button type="button" id="pause-motion" aria-pressed="false">Pause motion</button>
                 </div>
+                <div id="group-summary" class="group-summary" hidden>
+                    <div><strong id="group-label" role="status"></strong><p id="group-help" class="hint"></p></div>
+                    <div class="group-actions"><button id="inspect-group" type="button" aria-controls="origin-list">View IPs</button><button id="clear-group" type="button">All IPs</button></div>
+                </div>
+                <p class="map-help hint">Click a count to zoom and inspect its IPs. GeoIP locations are approximate.</p>
                 <div class="map-caption" aria-label="Map legend">
                     <span><i aria-hidden="true"></i> BLOCKED IP</span>
                     <span><i class="whitelisted" aria-hidden="true"></i> WHITELISTED</span>

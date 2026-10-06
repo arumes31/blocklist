@@ -78,7 +78,8 @@ func TestAuthService_CheckAuth(t *testing.T) {
 		token := "bl_test_token"
 		hash := sha256.Sum256([]byte(token))
 		hashStr := hex.EncodeToString(hash[:])
-		pg.On("GetAPITokenByHash", hashStr).Return(&models.APIToken{Name: "test"}, nil).Once()
+		pg.On("GetAPITokenByHash", hashStr).Return(&models.APIToken{Name: "test", Username: "owner"}, nil).Once()
+		pg.On("GetAdmin", "owner").Return(&models.AdminAccount{Username: "owner"}, nil).Once()
 
 		if !svc.CheckAuth("", "", token) {
 			t.Error("expected token auth to succeed")

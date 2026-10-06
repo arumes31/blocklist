@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"blocklist/internal/models"
 )
@@ -18,6 +19,12 @@ func (p *PostgresRepository) ListLogs(ctx context.Context, filter models.LogFilt
 		return nil, 0, fmt.Errorf("invalid log category")
 	}
 	clauses := []string{where}
+	cutoff, err := p.logRetention.Cutoff(filter.Category, time.Now())
+	if err != nil {
+		return nil, 0, fmt.Errorf("resolving log retention: %w", err)
+	}
+	args = append(args, cutoff)
+	clauses = append(clauses, " AND timestamp >= $2")
 	for _, item := range []struct{ column, value string }{
 		{column: "actor", value: filter.Actor}, {column: "action", value: filter.Action},
 	} {

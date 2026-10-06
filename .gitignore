@@ -55,6 +55,7 @@ docs/
 
 # Reproducible browser tests; generated reports can contain disposable test sessions.
 node_modules/
+.build/
 test-results/
 playwright-report/
 

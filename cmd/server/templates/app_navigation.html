@@ -26,7 +26,7 @@
     </nav>
     <div class="sidebar-footer">
         <span class="account-label">Signed in as</span>
-        <strong>{{ .username }}</strong>
+        {{ $accountName := or .display_username .username }}<strong title="{{ $accountName }}">{{ $accountName }}</strong>
         <a href="/logout"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4H4v16h5M9 12h12m-4-4 4 4-4 4"/></svg>Sign out</a>
     </div>
     </div>

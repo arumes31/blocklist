@@ -1,4 +1,14 @@
-# Stage 1: Build
+# Stage 1: Minify embedded JavaScript without modifying tracked source files.
+FROM node:24.21.0-alpine3.23@sha256:9ec4a2e289874ed0d722e1772ec2de45d2801541db8612f3638b26f128c69ac2 AS assets
+
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci --ignore-scripts --no-audit --no-fund
+COPY scripts/build-assets.cjs ./scripts/build-assets.cjs
+COPY cmd/server/static/js ./cmd/server/static/js
+RUN npm run build:assets
+
+# Stage 2: Build
 FROM golang:1.27.1-alpine@sha256:cf6fca6641884b8433441b2b0652976f975e1d0fdd26d177eaaf8596087f3125 AS builder
 
 WORKDIR /app
@@ -13,10 +23,13 @@ RUN go mod download
 # Copy source code
 COPY . .
 
+# Overlay generated assets before go:embed runs. URLs and load order stay intact.
+COPY --from=assets /app/.build/js/ ./cmd/server/static/js/
+
 # Build the application
 RUN CGO_ENABLED=0 GOOS=linux go build -o blocklist-server ./cmd/server/main.go
 
-# Stage 2: Final Image
+# Stage 3: Final Image (no Node.js or npm dependencies)
 FROM alpine:3.24.1@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
 LABEL maintainer="arumes31 <https://github.com/arumes31>"
 LABEL org.opencontainers.image.source="https://github.com/arumes31"

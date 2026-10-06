@@ -39,6 +39,30 @@ graph LR
 
 For Microsoft sign-in, Entra group-to-role assignment, and automatic account provisioning, see the [Entra setup guide](ENTRA_SETUP.md).
 
+### Account search and access status
+
+In **Accounts**, search by account name or UPN and combine the **Sign-in source**
+and **Status** filters. Filters remain selected after account changes or reloads.
+
+Account managers can use **Disable** / **Enable** in the Status column after
+identity verification. You cannot disable yourself, the configured recovery
+administrator, or an account with permissions you do not hold.
+
+- Disable rejects local/Entra sign-in, browser sessions, Basic authentication,
+  and all API tokens owned by that account. Existing live connections close at
+  their next authorization check, within 30 seconds; already-authorized requests
+  may finish. Public endpoints remain public.
+- Data, roles, passwords, MFA enrollment and tokens are retained. Enable allows
+  sign-in again and restores otherwise-valid tokens; old browser sessions stay
+  invalid. Disabling an integration account interrupts clients using its tokens.
+- Entra auto-provisioning does not reactivate a disabled account. Status changes
+  appear in **System audit logs**.
+
+Migration `000018_account_status` is additive and defaults every existing account
+to enabled. It runs on application startup when this version is deployed. An older
+application version does not enforce disabled status; rolling back the migration
+also removes that status. Treat either rollback as restoring account access.
+
 For unit and real-browser regression checks, see [Testing](TESTING.md).
 
 For approval-gated publication of the tested main image to `latest`, see
@@ -177,8 +201,55 @@ The application is configured via environment variables:
 | `SMTP_PASS` | SMTP password | `""` |
 | `SMTP_FROM` | Sender address for alerts | `""` |
 | `SMTP_TO` | Recipient address for alerts | `""` |
-| `AUDIT_LOG_LIMIT_PER_IP` | Max audit trail entries kept per IP | `100` |
-| `LOG_RETENTION_MONTHS` | Number of months to retain logs | `6` |
+| `AUDIT_LOG_LIMIT_PER_IP` | Maximum event entries per IP; does not prune system audit actions | `100` |
+| `EVENT_LOG_RETENTION_MONTHS` | Event-log age limit, integer from `1` to `3` calendar months | `3` |
+| `AUDIT_LOG_RETENTION_MONTHS` | System-audit-log age limit, integer from `1` to `12` calendar months | `12` |
+| `LOG_RETENTION_MONTHS` | Legacy webhook-payload partition retention only; no longer expires audit/event partitions | `6` |
+
+### Event and system-audit retention
+
+Set these variables on **every server and standalone worker**, then recreate/restart
+those processes with the new configuration:
+
+```env
+EVENT_LOG_RETENTION_MONTHS=3
+AUDIT_LOG_RETENTION_MONTHS=12
+```
+
+These are environment-managed settings, not editable fields in the Settings page.
+No additional database migration is required for this retention feature. Values
+outside the ranges above, including `0`, negative numbers and non-integers, fail
+startup validation; there is no unlimited-retention value.
+
+Event logs cover block/unblock, whitelist and exclusion actions. System audit logs
+cover sign-ins, accounts, roles and configuration; unknown or missing actions are
+also treated as system history. Cutoffs use UTC calendar months, clamped at month
+ends. The two log explorers apply their cutoff to both records and page counts
+immediately, even while physical cleanup is still catching up.
+
+**Expired history is permanently deleted after deployment. Back up/export anything
+you need before starting the updated application.** The maintenance scheduler runs
+on startup and every 15 minutes, coordinated across replicas through Redis. Each
+category gets a separate 30-second budget and up to 100 batches of 1,000 rows, with
+a 50 ms pause between full batches and a 5-second SQL timeout. A large backlog can
+take several cycles; failures/timeouts are logged and retried next cycle. Regular
+and DEFAULT partitions are included. Run either the in-process worker (the default)
+or the standalone worker; disabling the former without running the latter leaves
+physical cleanup inactive.
+
+Retention never changes active blocks, whitelist/exclusion entries, accounts or
+API tokens. It removes their old **history**, including old IP activity details.
+The existing per-IP event cap may remove event history earlier. Increasing a
+retention value later, or rolling back the image, cannot recover deleted records.
+Backups and external log copies have their own retention policies.
+
+This bounds retained history, not the number of entries: a busy three-month window
+can still contain many pages. Exact counts and cleanup scans still depend on database
+size and indexes. No index is silently created on a live multi-million-row table.
+Repeated query-budget warnings can mean cleanup is making no progress; investigate
+the query plan and review a suitable index/maintenance change before increasing load.
+Monitor cleanup progress and autovacuum; ordinary deletion does not immediately
+return the table's allocated disk space to the operating system.
 
 ## Testing
 Comprehensive unit, functional, and integration tests using `miniredis` and `testcontainers-go`.

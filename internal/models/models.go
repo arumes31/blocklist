@@ -67,6 +67,7 @@ type AuditLog struct {
 }
 
 type AdminAccount struct {
+	Disabled          bool    `json:"disabled" db:"disabled"`
 	RoleID            *string `json:"role_id" db:"role_id"`
 	AuthSource        string  `json:"auth_source" db:"auth_source"`
 	EntraTenantID     *string `json:"entra_tenant_id,omitempty" db:"entra_tenant_id"`

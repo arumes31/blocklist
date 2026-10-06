@@ -220,6 +220,8 @@ Threat Map is a display-filling exception: its header and content have no maximu
 
 Dashboard summaries use seven desktop columns, four at the intermediate breakpoint, and three on mobile with the final statistic spanning the row. Detailed tables preserve their columns in local scrolling containers (680px minimum table width; dashboard 960px). Code examples scroll locally. The API documentation uses its exported CSS parts to wrap request action buttons on mobile. The map places the viewport first, then stacks its supporting regions on small screens.
 
+Dashboard rankings retain all server-provided top-ten entries on initial load and live refresh. Countries, ASNs and reasons share compact neutral chips; long labels wrap within their column while tabular counts never shrink or truncate. The three ranking columns stack below 600px. Refreshes preserve the same presentation, and a failed refresh keeps the previous entries visible.
+
 Desktop sign-in uses a two-column composition capped at 1040px: a 270px wordmark in the flexible identity column and a 420px form, separated by 100px (48px below 1200px). Below 900px the composition stacks within 430px, with a 230px wordmark and no introductory identity copy. The form remains visible throughout interaction. Roles use a 280px list beside a flexible editor (230px below 1200px); the list becomes three columns below 900px and one column below 600px. Grouped permission choices and account form fields use two columns before stacking on mobile.
 
 **The Local Overflow Rule.** Wide tables and code scroll inside their own region; they must not widen the page.
@@ -275,6 +277,14 @@ Cards group forms or related content with a flat surface and thin rule. Tables u
 ### Identity and activity
 
 Roles use a compact selectable list and one editor, with capabilities grouped by named fieldset legends and explanatory text. Selected roles gain a raised fill and visible border. Accounts pair a collapsible creation form with a metadata table. Microsoft Entra creation asks for UPN and role; local name/password fields are hidden and disabled for that method. Help text explains automatic first-sign-in binding and app-role synchronization. Unbound accounts show “Pending first sign-in”; after binding, immutable IDs remain available in the row's secondary details rather than in the creation form. Row actions wrap within the available width. Read-only views omit write controls. System audit and event logs retain the common table and filter vocabulary while separating their activity categories.
+
+Entra account labels use the stored UPN in the account table, navigation footer,
+role-field labels and confirmation dialogs. Local accounts keep their account
+name; Entra accounts without a UPN fall back to their existing name. Account
+labels wrap within a bounded table column, while the compact navigation footer
+retains its ellipsis and exposes the full label in its title. Immutable account,
+tenant and object keys remain under Identity binding; action payloads and
+authorization continue to use the original account key.
 
 ### Dialogs and authentication
 
