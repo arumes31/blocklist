@@ -1,3 +1,0 @@
-title = "Release gate: built-in Gitleaks rules, no historical baseline"
-[extend]
-useDefault = true

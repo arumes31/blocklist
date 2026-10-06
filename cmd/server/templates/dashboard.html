@@ -10,596 +10,79 @@
     <script src="/js/htmx.min.js"></script>
     <script src="/js/json-enc.js"></script>
     <script src="/js/blocklist-pager.js"></script>
-    <style nonce="{{ .nonce }}">
-        :root {
-            --primary-red: #ff0000;
-            --dark-red: #8b0000;
-            --vibrant-red: #ff4d4d;
-            --glass-bg: rgba(20, 20, 20, 0.85);
-            --border-red: rgba(255, 0, 0, 0.3);
-            --secondary-color: #b3b3b3;
-            --success-color: #28a745;
-            --danger-color: #dc3545;
-        }
-
-        body {
-            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-            margin: 0;
-            background-color: #000;
-            color: #fff;
-        }
-
-        .header-container {
-            background: var(--glass-bg);
-            padding: 1rem 2rem;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            box-shadow: 0 2px 12px rgba(255, 0, 0, 0.15);
-            position: sticky;
-            top: 0;
-            z-index: 100;
-            backdrop-filter: blur(8px);
-            border-bottom: 1px solid var(--border-red);
-        }
-
-        .header-container h2 {
-            margin: 0;
-            font-weight: 600;
-            color: #fff;
-        }
-
-        .banner img {
-            height: 40px;
-            filter: drop-shadow(0 0 6px rgba(255, 0, 0, 0.4));
-        }
-
-        .main-content {
-            padding: 2rem;
-        }
-
-        .btn {
-            padding: 0.6rem 1.2rem;
-            border: 1px solid rgba(255, 255, 255, 0.15);
-            border-radius: 6px;
-            cursor: pointer;
-            font-weight: 600;
-            transition: all 0.2s;
-            text-decoration: none;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            background: rgba(255, 255, 255, 0.05);
-            color: #fff;
-            box-shadow: 0 0 10px rgba(255, 0, 0, 0.08);
-        }
-
-        .btn-danger {
-            background: linear-gradient(45deg, var(--dark-red), var(--primary-red));
-            border-color: var(--border-red);
-        }
-
-        .btn-success {
-            background: rgba(40, 167, 69, 0.2);
-        }
-
-        .btn-dark {
-            background: rgba(255, 255, 255, 0.08);
-        }
-
-        .btn:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 0 16px rgba(255, 0, 0, 0.2);
-        }
-
-        .search-container {
-            margin-bottom: 1.5rem;
-            position: relative;
-        }
-
-        .filter-input {
-            width: 100%;
-            padding: 0.8rem 1rem;
-            border: 1px solid rgba(255, 255, 255, 0.15);
-            border-radius: 8px;
-            font-size: 1rem;
-            background: rgba(255, 255, 255, 0.05);
-            color: #fff;
-            outline: none;
-            appearance: none;
-            /* Reset for custom styling if needed */
-        }
-
-        select.filter-input[multiple] {
-            height: 120px;
-            padding: 5px;
-        }
-
-        select.filter-input option {
-            background-color: #1a1a1a;
-            color: #fff;
-        }
-
-        .filter-input:focus {
-            border-color: var(--primary-red);
-            box-shadow: 0 0 0 2px rgba(255, 0, 0, 0.2);
-        }
-
-        .table-card {
-            background: rgba(20, 20, 20, 0.85);
-            border: 1px solid var(--border-red);
-            border-radius: 12px;
-            overflow: hidden;
-            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
-            backdrop-filter: blur(8px);
-        }
-
-        table {
-            border-collapse: collapse;
-            width: 100%;
-            color: #fff;
-            table-layout: fixed;
-        }
-
-        th,
-        td {
-            text-align: left;
-            padding: 0.5rem;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-        }
-
-        th {
-            background-color: rgba(255, 255, 255, 0.04);
-            font-weight: 600;
-            color: var(--secondary-color);
-            text-transform: uppercase;
-            font-size: 0.85rem;
-            letter-spacing: 0.05em;
-        }
-
-        tr:hover {
-            background-color: rgba(255, 255, 255, 0.02);
-        }
-
-        /* Modal Styles */
-        .modal {
-            display: none;
-            position: fixed;
-            z-index: 1000;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.5);
-            backdrop-filter: blur(4px);
-        }
-
-        .modal-content {
-            background: rgba(20, 20, 20, 0.95);
-            margin: 10% auto;
-            padding: 2rem;
-            border-radius: 12px;
-            width: 420px;
-            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.6);
-            border: 1px solid var(--border-red);
-            color: #fff;
-        }
-
-        .modal h3 {
-            margin-top: 0;
-        }
-
-        .form-group {
-            margin-bottom: 1rem;
-        }
-
-        .form-group label {
-            display: block;
-            margin-bottom: 0.5rem;
-            font-weight: 500;
-        }
-
-        .form-control {
-            width: 100%;
-            padding: 0.6rem;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            box-sizing: border-box;
-        }
-
-        /* Toast Notifications */
-        #toast-container {
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            z-index: 2000;
-        }
-
-        .toast {
-            background: #333;
-            color: white;
-            padding: 12px 24px;
-            border-radius: 8px;
-            margin-top: 10px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            animation: slideIn 0.3s ease-out;
-        }
-
-        @keyframes slideIn {
-            from {
-                transform: translateX(100%);
-                opacity: 0;
-            }
-
-            to {
-                transform: translateX(0);
-                opacity: 1;
-            }
-        }
-
-        .toast.success {
-            border-left: 4px solid var(--success-color);
-        }
-
-        .toast.danger {
-            border-left: 4px solid var(--danger-color);
-        }
-
-        .loading-row {
-            opacity: 0.5;
-            pointer-events: none;
-        }
-
-        tr.new-row {
-            animation: highlight 2s ease-out;
-        }
-
-        @keyframes highlight {
-            0% {
-                background-color: #fff3cd;
-            }
-
-            100% {
-                background-color: transparent;
-            }
-        }
-
-        /* New entry pulse animation */
-        .pulse-start {
-            position: relative;
-        }
-
-        .pulse-start::after {
-            content: '';
-            position: absolute;
-            left: -8px;
-            top: 50%;
-            transform: translateY(-50%);
-            width: 6px;
-            height: 6px;
-            background: var(--vibrant-red);
-            border-radius: 50%;
-            box-shadow: 0 0 0 0 rgba(255, 77, 77, 0.7);
-            animation: pulse 1.8s ease-out 2;
-        }
-
-        @keyframes pulse {
-            0% {
-                box-shadow: 0 0 0 0 rgba(255, 77, 77, 0.7);
-                opacity: 1;
-            }
-
-            70% {
-                box-shadow: 0 0 0 10px rgba(255, 77, 77, 0);
-                opacity: 1;
-            }
-
-            100% {
-                box-shadow: 0 0 0 0 rgba(255, 77, 77, 0);
-                opacity: 0.6;
-            }
-        }
-
-        .slide-in {
-            animation: slideInRow 300ms ease-out;
-        }
-
-        @keyframes slideInRow {
-            from {
-                transform: translateY(-8px);
-                opacity: 0;
-            }
-
-            to {
-                transform: translateY(0);
-                opacity: 1;
-            }
-        }
-
-        /* Dashboard enhancements */
-        .status-chip {
-            padding: 0.2rem 0.6rem;
-            border-radius: 999px;
-            font-size: 0.75rem;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-        }
-
-        .status-chip.live {
-            background: rgba(40, 167, 69, 0.2);
-            border-color: rgba(40, 167, 69, 0.4);
-        }
-
-        .status-chip.paused {
-            background: rgba(255, 193, 7, 0.2);
-            border-color: rgba(255, 193, 7, 0.5);
-        }
-
-        .status-chip.offline {
-            background: rgba(220, 53, 69, 0.2);
-            border-color: rgba(220, 53, 69, 0.5);
-        }
-
-        .clear-btn {
-            position: absolute;
-            right: 10px;
-            top: 50%;
-            transform: translateY(-50%);
-            background: transparent;
-            border: 1px solid rgba(255, 255, 255, 0.15);
-            color: #fff;
-            padding: 2px 8px;
-            border-radius: 4px;
-            cursor: pointer;
-        }
-
-        .spinner {
-            width: 14px;
-            height: 14px;
-            border: 2px solid rgba(255, 255, 255, 0.3);
-            border-top-color: #fff;
-            border-radius: 50%;
-            display: inline-block;
-            animation: spin 0.8s linear infinite;
-            margin-right: 8px;
-        }
-
-        @keyframes spin {
-            to {
-                transform: rotate(360deg);
-            }
-        }
-
-        .loading {
-            text-align: center;
-            color: #ccc;
-            padding: 1rem;
-        }
-
-        /* Compact density */
-        .compact td,
-        .compact th {
-            padding: 0.25rem 0.5rem !important;
-            font-size: 0.85rem;
-        }
-
-        .compact .btn {
-            padding: 0.2rem 0.5rem !important;
-            font-size: 0.75rem !important;
-        }
-
-        /* Compact Country Dropdown */
-        .country-dropdown {
-            position: relative;
-            flex: 1;
-            min-width: 150px;
-        }
-
-        .country-popup {
-            display: none;
-            position: absolute;
-            top: 100%;
-            left: 0;
-            width: 250px;
-            max-height: 400px;
-            background: #1a1a1a;
-            border: 1px solid var(--border-red);
-            border-radius: 8px;
-            z-index: 1000;
-            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
-            padding: 10px;
-            margin-top: 5px;
-        }
-
-        .country-popup.active {
-            display: block;
-        }
-
-        .country-list {
-            max-height: 300px;
-            overflow-y: auto;
-            margin-top: 10px;
-        }
-
-        .country-option {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            padding: 8px;
-            cursor: pointer;
-            border-radius: 4px;
-            transition: background 0.2s;
-        }
-
-        .country-option:hover {
-            background: rgba(255, 255, 255, 0.05);
-        }
-
-        .country-option input {
-            cursor: pointer;
-        }
-
-        .country-search {
-            width: 100%;
-            padding: 8px;
-            background: #000;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            color: #fff;
-            border-radius: 4px;
-            box-sizing: border-box;
-        }
-
-        /* Side Panel (Detail Drawer) */
-        .side-panel {
-            position: fixed;
-            top: 0;
-            right: -500px;
-            width: 450px;
-            height: 100%;
-            background: rgba(15, 15, 15, 0.98);
-            border-left: 1px solid var(--border-red);
-            z-index: 1500;
-            transition: right 0.3s ease-out;
-            box-shadow: -10px 0 30px rgba(0, 0, 0, 0.5);
-            backdrop-filter: blur(10px);
-            padding: 2rem;
-            overflow-y: auto;
-            color: #fff;
-        }
-
-        .side-panel.active {
-            right: 0;
-        }
-
-        .side-panel-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-            padding-bottom: 1rem;
-            margin-bottom: 1.5rem;
-        }
-
-        .side-panel-close {
-            background: transparent;
-            border: none;
-            color: var(--secondary-color);
-            font-size: 1.5rem;
-            cursor: pointer;
-        }
-
-        .history-item {
-            padding: 10px;
-            border-left: 2px solid var(--vibrant-red);
-            background: rgba(255, 255, 255, 0.03);
-            margin-bottom: 10px;
-            border-radius: 0 4px 4px 0;
-        }
-
-        .history-item .ts {
-            font-size: 0.75rem;
-            color: var(--secondary-color);
-        }
-
-        .history-item .actor {
-            font-size: 0.85rem;
-            font-weight: bold;
-            margin: 4px 0;
-        }
-
-        .loading-panel-msg {
-            text-align: center;
-            padding: 2rem;
-        }
-
-        .modal-footer {
-            display: flex;
-            gap: 10px;
-            margin-top: 2rem;
-        }
-
-        .btn-cancel {
-            flex: 1;
-            background: #eee;
-            color: #333;
-        }
-
-        .m-0 {
-            margin: 0;
-        }
-
-        /* Reason Presets */
-        .reason-presets {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-            margin-top: 10px;
-        }
-
-        .reason-chip {
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            padding: 4px 10px;
-            border-radius: 4px;
-            font-size: 0.75rem;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-
-        .reason-chip:hover {
-            background: rgba(255, 0, 0, 0.1);
-            border-color: var(--vibrant-red);
-        }
-    </style>
+    <link rel="stylesheet" href="/static/css/app.css?v=rail-continuity-1">
 </head>
 
-<body>
+<body class="app-page" data-page="dashboard">
+    {{ template "app_navigation.html" . }}
 
     <div id="toast-container"></div>
 
-    <div class="header-container">
-        <div style="display: flex; align-items: center; gap: 2rem;">
-            <a href="/dashboard" class="banner">
-                <img src="/cd/logo.png" alt="logo">
-            </a>
-            <div style="display: flex; align-items: center; gap: 1.5rem;">
-                <h2 class="m-0">Dashboard</h2>
-                <div style="display: flex; gap: 0.8rem;">
-                    <button onclick="openModal('blockModal')" class="btn btn-danger">Block IP</button>
-                    {{ template "navigation_links.html" . }}
-                </div>
-            </div>
-        </div>
-        <div style="display: flex; align-items: center; gap: 1rem;">
-            <div class="controls" style="display:flex; align-items:center; gap:0.5rem;">
-                <button id="togglePause" class="btn" aria-label="Toggle live update pause">Pause</button>
-                <span id="live-status" class="status-chip live">LIVE</span>
-            </div>
-            <div style="text-align: right;">
-                <div style="font-weight: 700; color: var(--vibrant-red);">
-                    Total IPs: <span id="total-ips-count">{{ .total_ips }}</span>
-                    <span id="stat-day-delta" style="font-size: 0.8rem; color: var(--success-color); margin-left: 4px;"
-                        title="Last 24h">+{{ .stats.day }}</span>
-                </div>
-                <div
-                    style="font-size: 0.75rem; color: var(--secondary-color); display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 2px;">
-                    <span id="bpm-display" title="Blocks Per Minute">{{ .stats.blocks_minute }} BPM</span>
-                    <span id="last-block-display">Last: never</span>
-                    <span id="health-dot"
-                        style="width: 8px; height: 8px; background: var(--success-color); border-radius: 50%; display: inline-block;"
-                        title="System Health: OK"></span>
-                </div>
-            </div>
-            <a href="/logout" class="btn" style="background: rgba(255,255,255,0.08);">Logout</a>
-        </div>
-    </div>
+    <header class="header-container">
+        <div class="page-heading"><h1>Dashboard</h1><p class="page-description">Monitor activity and manage your IP blocklist.</p></div>
+        <div class="page-actions"><button onclick="openModal('blockModal')" class="btn btn-danger btn-enforce">Block IP</button></div>
+    </header>
 
-    <div class="main-content">
+    <main class="main-content " id="main-content">
+        <div class="overview-meta">
+            <span><strong>Total IPs: <span id="total-ips-count">{{ .total_ips }}</span></strong> <span id="stat-day-delta" title="Last 24h">+{{ .stats.day }}</span></span>
+            <span id="bpm-display" title="Blocks Per Minute">{{ .stats.blocks_minute }} BPM</span>
+            <span id="last-block-display">Last: never</span>
+            <span id="health-dot" style="width: 7px; height: 7px; background: var(--success-color); border-radius: 50%; display: inline-block;" title="System Health: OK"></span>
+            <div class="controls"><span id="live-status" class="status-chip live">LIVE</span><button id="togglePause" class="btn" aria-label="Toggle live update pause">Pause</button></div>
+        </div>
+        <dl class="summary-strip">
+            <div class="summary-stat"><dt>Active blocks</dt><dd><span id="stat-active">{{ .total_ips }}</span></dd></div>
+            <div class="summary-stat"><dt>Total banned</dt><dd><span id="stat-total">{{ .stats.total }}</span></dd></div>
+            <div class="summary-stat"><dt>Last 24 hours</dt><dd><span id="stat-day">{{ .stats.day }}</span></dd></div>
+            <div class="summary-stat"><dt>Last hour</dt><dd><span id="stat-hour">{{ .stats.hour }}</span></dd></div>
+            <div class="summary-stat"><dt>Whitelisted</dt><dd><span id="stat-whitelisted">{{ .stats.whitelisted }}</span></dd></div>
+            <div class="summary-stat"><dt>Excluded</dt><dd><span id="stat-excluded">{{ .stats.excluded }}</span></dd></div>
+            <div class="summary-stat"><dt>Webhooks / hour</dt><dd><span id="stat-webhooks">{{ .stats.webhooks_hour }}</span></dd></div>
+        </dl>
+        <!-- Top Stats Row -->
+        <div class="insights">
+            <div class="table-card" style="padding: 1rem;">
+                <div class="insight-title">Top Countries
+                </div>
+                <div id="stat-countries" style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+                    {{ range $i, $c := .stats.top_countries }}
+                    <span title="{{ $c.Country }}"
+                        style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; background: rgba(255,255,255,0.05); border-radius: 12px; border: 1px solid rgba(255,255,255,0.1);">
+                        <span class="flag-icon flag-icon-{{ lower $c.Country }}"></span>
+                        <span style="color: #fff; font-weight: 600; font-size: 0.9rem;">{{ $c.Count }}</span>
+                    </span>
+                    {{ end }}
+                </div>
+            </div>
+            <div class="table-card" style="padding: 1rem;">
+                <div class="insight-title">Top ASNs</div>
+                <div id="stat-asns" style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                    {{ range $i, $a := .stats.top_asns }}
+                    <span title="{{ $a.ASNOrg }}"
+                        style="display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; background: rgba(255,255,255,0.05); border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); font-size: 0.85rem;">
+                        <span style="color: var(--secondary-color);">{{ $a.ASN }}:</span>
+                        <span style="color: #fff; font-weight: 600;">{{ $a.Count }}</span>
+                    </span>
+                    {{ end }}
+                </div>
+            </div>
+            <div class="table-card" style="padding: 1rem;">
+                <div class="insight-title">Top Reasons</div>
+                <div id="stat-reasons" style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                    {{ range $i, $r := .stats.top_reasons }}
+                    <span title="{{ $r.Reason }}"
+                        style="display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; background: rgba(255,255,255,0.05); border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); font-size: 0.85rem; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                        <span style="color: var(--secondary-color);">{{ $r.Reason }}:</span>
+                        <span style="color: #fff; font-weight: 600;">{{ $r.Count }}</span>
+                    </span>
+                    {{ end }}
+                </div>
+            </div>
+        </div>
         <div class="search-container">
-            <div style="display: flex; gap: 10px; margin-bottom: 10px; flex-wrap: wrap;">
-                <input type="text" id="filterInput" class="filter-input" style="flex: 2; min-width: 200px;"
+            <div class="filter-grid">
+                <input aria-label="Quick Search (IP, Reason...)" type="text" id="filterInput" class="filter-input" style="flex: 2; min-width: 200px;"
                     placeholder="Quick Search (IP, Reason...)" oninput="debouncedFilterTable()">
 
                 <div class="country-dropdown">
@@ -607,10 +90,10 @@
                         style="width: 100%; text-align: left; display: flex; justify-content: space-between; align-items: center;"
                         onclick="toggleCountryDropdown()">
                         <span id="countryLabel">All Countries</span>
-                        <span>▼</span>
+                        <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg>
                     </button>
                     <div class="country-popup" id="countryPopup">
-                        <input type="text" id="countrySearch" class="country-search" placeholder="Search countries..."
+                        <input aria-label="Search countries..." type="text" id="countrySearch" class="country-search" placeholder="Search countries..."
                             oninput="filterCountryList()">
                         <div class="country-list" id="countryList">
                             <label class="country-option"><input type="checkbox" value="AF"
@@ -1116,21 +599,25 @@
                         </div>
                     </div>
                 </div>
-                <input type="text" id="addedByFilter" class="filter-input" style="flex: 1; min-width: 120px;"
+                <input aria-label="Added By..." type="text" id="addedByFilter" class="filter-input" style="flex: 1; min-width: 120px;"
                     placeholder="Added By..." oninput="debouncedFilterTable()">
-                <input type="datetime-local" id="fromDateFilter" class="filter-input" style="flex: 1; min-width: 160px;"
-                    onchange="applyServerSearch()" title="From Date">
-                <input type="datetime-local" id="toDateFilter" class="filter-input" style="flex: 1; min-width: 160px;"
-                    onchange="applyServerSearch()" title="To Date">
+                <div class="filter-dates">
+                <label><span class="input-label">From date</span><input type="datetime-local" id="fromDateFilter" class="filter-input" style="flex: 1; min-width: 160px;"
+                    onchange="applyServerSearch()" title="From Date"></label>
+                <label><span class="input-label">To date</span><input type="datetime-local" id="toDateFilter" class="filter-input" style="flex: 1; min-width: 160px;"
+                    onchange="applyServerSearch()" title="To Date"></label>
                 <button id="clearFilter" class="btn btn-dark" style="height: 42px;"
                     title="Clear All Filters">Clear</button>
-                <div style="display: flex; gap: 5px;">
+                </div>
+            </div>
+            <div class="filter-utilities">
+                <div class="utility-export">
                     <button onclick="exportData('csv')" class="btn btn-dark" style="height: 42px;"
                         title="Export CSV">CSV</button>
                     <button onclick="exportData('ndjson')" class="btn btn-dark" style="height: 42px;"
                         title="Export NDJSON">JSON</button>
                 </div>
-                <select id="savedViews" class="filter-input" style="flex: 1; min-width: 150px;"
+                <select id="savedViews" aria-label="Saved views" class="filter-input" style="flex: 1; min-width: 150px;"
                     onchange="loadView(this.value)">
                     <option value="">Saved Views</option>
                     {{ range $i, $v := .views }}
@@ -1138,14 +625,14 @@
                     {{ end }}
                 </select>
                 <button onclick="saveCurrentView()" class="btn btn-dark" style="height: 42px;"
-                    title="Save Current Filters as View">Save View</button>
+                    {{ if not (or (eq .username .admin_username) (contains .permissions "manage_views")) }}hidden{{ end }} title="Save Current Filters as View">Save View</button>
 
                 <div class="country-dropdown" style="min-width: 180px;">
                     <button type="button" class="filter-input"
                         style="width: 100%; text-align: left; display: flex; justify-content: space-between; align-items: center;"
                         onclick="toggleViewOptions()">
                         <span>View Options</span>
-                        <span>⚙️</span>
+                        <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="3" fill="var(--surface)"/><circle cx="15" cy="17" r="3" fill="var(--surface)"/></svg>
                     </button>
                     <div class="country-popup" id="viewOptionsPopup" style="width: 200px;">
                         <div
@@ -1178,99 +665,9 @@
 
 
 
-        <div class="table-card" style="padding: 1rem; margin-bottom: 1rem;">
-            <div style="display: flex; align-items: center; gap: 1.5rem; flex-wrap: wrap;">
-                <div style="font-size: 0.85rem; color: var(--secondary-color);">IPs Banned:</div>
-                <div style="display: flex; align-items: baseline; gap: 0.5rem;">
-                    <span id="stat-total" style="font-size: 1.8rem; font-weight: 700; color: #fff;">{{ .stats.total
-                        }}</span>
-                    <span style="font-size: 0.85rem; color: var(--secondary-color);">total</span>
-                </div>
-                <div style="height: 24px; width: 1px; background: rgba(255,255,255,0.1);"></div>
-                <div style="display: flex; align-items: baseline; gap: 0.5rem;">
-                    <span id="stat-active" style="font-size: 1.3rem; font-weight: 600; color: #fff;">{{ .total_ips
-                        }}</span>
-                    <span style="font-size: 0.85rem; color: var(--secondary-color);">active</span>
-                </div>
-                <div style="height: 24px; width: 1px; background: rgba(255,255,255,0.1);"></div>
-                <div style="display: flex; align-items: baseline; gap: 0.5rem;">
-                    <span style="font-size: 0.85rem; color: var(--secondary-color);">+</span>
-                    <span id="stat-day" style="font-size: 1.3rem; font-weight: 600; color: var(--vibrant-red);">{{
-                        .stats.day }}</span>
-                    <span style="font-size: 0.85rem; color: var(--secondary-color);">(24h)</span>
-                </div>
-                <div style="height: 24px; width: 1px; background: rgba(255,255,255,0.1);"></div>
-                <div style="display: flex; align-items: baseline; gap: 0.5rem;">
-                    <span style="font-size: 0.85rem; color: var(--secondary-color);">+</span>
-                    <span id="stat-hour" style="font-size: 1.3rem; font-weight: 600; color: var(--vibrant-red);">{{
-                        .stats.hour }}</span>
-                    <span style="font-size: 0.85rem; color: var(--secondary-color);">(1h)</span>
-                </div>
-                <div style="height: 24px; width: 1px; background: rgba(255,255,255,0.1);"></div>
-                <div style="display: flex; align-items: baseline; gap: 0.5rem;">
-                    <span id="stat-whitelisted" style="font-size: 1.3rem; font-weight: 600; color: #2ecc71;">{{
-                        .stats.whitelisted }}</span>
-                    <span style="font-size: 0.85rem; color: var(--secondary-color);">Whitelisted</span>
-                </div>
-                <div style="height: 24px; width: 1px; background: rgba(255,255,255,0.1);"></div>
-                <div style="display: flex; align-items: baseline; gap: 0.5rem;">
-                    <span id="stat-excluded" style="font-size: 1.3rem; font-weight: 600; color: #3498db;">{{
-                        .stats.excluded }}</span>
-                    <span style="font-size: 0.85rem; color: var(--secondary-color);">Excluded</span>
-                </div>
-                <div style="height: 24px; width: 1px; background: rgba(255,255,255,0.1);"></div>
-                <div style="display: flex; align-items: baseline; gap: 0.5rem;">
-                    <span id="stat-webhooks" style="font-size: 1.3rem; font-weight: 600; color: #fff;">{{
-                        .stats.webhooks_hour }}</span>
-                    <span style="font-size: 0.85rem; color: var(--secondary-color);">Webhooks 1/h</span>
-                </div>
-            </div>
-        </div>
-
-        <!-- Top Stats Row -->
-        <div
-            style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
-            <div class="table-card" style="padding: 1rem;">
-                <div style="font-size: 0.85rem; color: var(--secondary-color); margin-bottom: 0.5rem;">Top Countries
-                </div>
-                <div id="stat-countries" style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
-                    {{ range $i, $c := .stats.top_countries }}
-                    <span title="{{ $c.Country }}"
-                        style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; background: rgba(255,255,255,0.05); border-radius: 12px; border: 1px solid rgba(255,255,255,0.1);">
-                        <span class="flag-icon flag-icon-{{ lower $c.Country }}"></span>
-                        <span style="color: #fff; font-weight: 600; font-size: 0.9rem;">{{ $c.Count }}</span>
-                    </span>
-                    {{ end }}
-                </div>
-            </div>
-            <div class="table-card" style="padding: 1rem;">
-                <div style="font-size: 0.85rem; color: var(--secondary-color); margin-bottom: 0.5rem;">Top ASNs</div>
-                <div id="stat-asns" style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-                    {{ range $i, $a := .stats.top_asns }}
-                    <span title="{{ $a.ASNOrg }}"
-                        style="display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; background: rgba(255,255,255,0.05); border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); font-size: 0.85rem;">
-                        <span style="color: var(--secondary-color);">{{ $a.ASN }}:</span>
-                        <span style="color: #fff; font-weight: 600;">{{ $a.Count }}</span>
-                    </span>
-                    {{ end }}
-                </div>
-            </div>
-            <div class="table-card" style="padding: 1rem;">
-                <div style="font-size: 0.85rem; color: var(--secondary-color); margin-bottom: 0.5rem;">Top Reasons</div>
-                <div id="stat-reasons" style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-                    {{ range $i, $r := .stats.top_reasons }}
-                    <span title="{{ $r.Reason }}"
-                        style="display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; background: rgba(255,255,255,0.05); border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); font-size: 0.85rem; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                        <span style="color: var(--secondary-color);">{{ $r.Reason }}:</span>
-                        <span style="color: #fff; font-weight: 600;">{{ $r.Count }}</span>
-                    </span>
-                    {{ end }}
-                </div>
-            </div>
-        </div>
-
         <div class="table-card">
-            <table id="ipTable">
+            <div class="table-scroll" tabindex="0" role="region" aria-label="Scrollable records">
+<table id="ipTable">
                 <thead>
                     <tr>
                         <th style="width: 40px;"><input type="checkbox" id="selectAll" aria-label="Select all IPs on this page" onclick="toggleSelectAll(this)">
@@ -1287,14 +684,17 @@
                 </thead>
                 <tbody id="ipTableBody"></tbody>
             </table>
+                <p class="table-empty"><strong>No records yet</strong>Records will appear here when they are added.</p>
+            </div>
         </div>
-        <nav aria-label="Blocklist pages" style="display:flex; gap:1rem; align-items:center; justify-content:center; flex-wrap:wrap; padding:1rem;">
+        <nav class="table-pagination" aria-label="Blocklist pages">
             <button id="previousPage" class="btn btn-dark" type="button" disabled>Previous</button>
             <span id="pageStatus" role="status" aria-live="polite">Loading results…</span>
             <button id="nextPage" class="btn btn-dark" type="button" disabled>Next</button>
             <button id="refreshPage" class="btn btn-dark" type="button">Refresh</button>
         </nav>
-    </div>
+
+    </main>
 
     <div id="bulkActionBar"
         style="display: none; margin: 0 auto 1.5rem; width: fit-content; max-width: calc(100% - 2rem); flex-wrap: wrap; justify-content: center; background: rgba(20,20,20,0.95); border: 1px solid var(--border-red); border-radius: 12px; padding: 1rem 2rem; align-items: center; gap: 2rem;">
@@ -1307,24 +707,24 @@
 
     <div id="blockModal" class="modal">
         <div class="modal-content">
-            <h3>Block New IP</h3>
+            <h2 class="section-title">Block New IP</h2>
             <div class="form-group">
-                <label>IP Address</label>
+                <label for="ipToBlock">IP Address</label>
                 <input type="text" id="ipToBlock" class="form-control" placeholder="e.g. 1.2.3.4">
             </div>
             <div class="form-group">
-                <label>Reason</label>
+                <label for="blockReason">Reason</label>
                 <input type="text" id="blockReason" class="form-control" placeholder="e.g. Brute force">
                 <div class="reason-presets">
-                    <div class="reason-chip" onclick="setReason('Brute Force')">Brute Force</div>
-                    <div class="reason-chip" onclick="setReason('Scraping')">Scraping</div>
-                    <div class="reason-chip" onclick="setReason('DDoS')">DDoS</div>
-                    <div class="reason-chip" onclick="setReason('Vulnerability Scan')">Vulnerability Scan</div>
-                    <div class="reason-chip" onclick="setReason('Spam')">Spam</div>
+                    <button type="button" class="reason-chip" onclick="setReason('Brute Force')">Brute Force</button>
+                    <button type="button" class="reason-chip" onclick="setReason('Scraping')">Scraping</button>
+                    <button type="button" class="reason-chip" onclick="setReason('DDoS')">DDoS</button>
+                    <button type="button" class="reason-chip" onclick="setReason('Vulnerability Scan')">Vulnerability Scan</button>
+                    <button type="button" class="reason-chip" onclick="setReason('Spam')">Spam</button>
                 </div>
             </div>
             <div class="form-group">
-                <label>TTL (seconds, default 86400)</label>
+                <label for="blockTTL">TTL (seconds, default 86400)</label>
                 <input type="number" id="blockTTL" class="form-control" placeholder="86400">
             </div>
             <div class="form-group">
@@ -1342,8 +742,8 @@
     <!-- IP Detail Side Panel -->
     <div id="sidePanel" class="side-panel">
         <div class="side-panel-header">
-            <h3 class="m-0">IP Details</h3>
-            <button class="side-panel-close" id="closePanelBtn">×</button>
+            <h2 class="section-title m-0">IP Details</h2>
+            <button class="side-panel-close" id="closePanelBtn" aria-label="Close IP details"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
         </div>
         <div id="sidePanelContent">
             <div class="loading-panel-msg">
@@ -1879,6 +1279,18 @@
             await loadTablePage(0, true);
         }
 
+        function clearFilters() {
+            clearTimeout(debounceTimeout);
+            ['filterInput', 'addedByFilter', 'fromDateFilter', 'toDateFilter', 'countrySearch', 'savedViews'].forEach(id => {
+                document.getElementById(id).value = '';
+            });
+            document.querySelectorAll('#countryList input[type="checkbox"]').forEach(checkbox => {
+                checkbox.checked = false;
+            });
+            filterCountryList();
+            return applyServerSearch();
+        }
+
         function updateURL() {
             const params = new URLSearchParams();
             Object.entries(currentFilters).forEach(([key, val]) => {
@@ -2037,7 +1449,7 @@
                     if (key === 'from' || key === 'to') {
                         params.append(key, new Date(val).toISOString());
                     } else {
-                        params.append(key, val);
+                        params.append(key === 'addedBy' ? 'added_by' : key, val);
                     }
                 }
             });
@@ -2185,11 +1597,7 @@
             }
         });
 
-        document.getElementById('clearFilter').addEventListener('click', () => {
-            const input = document.getElementById('filterInput');
-            input.value = '';
-            debouncedFilterTable();
-        });
+        document.getElementById('clearFilter').addEventListener('click', clearFilters);
 
         setTimeout(() => { convertTimestamps(); init(); }, 100);
         document.body.addEventListener('htmx:afterOnLoad', () => convertTimestamps());
@@ -2206,20 +1614,21 @@
             const ttl = parseInt(document.getElementById('blockTTL').value) || 0;
             if (!ip) return showToast('Enter an IP', 'danger');
 
-            fetch('/block', {
+            return fetch('/block', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ ip, reason, persist, ttl })
-            }).then(r => r.json()).then(data => {
-                if (data.status === 'success') {
+            }).then(async response => {
+                const data = await response.json();
+                if (response.ok && (data.status === 'blocked' || data.status === 'success')) {
                     closeModal('blockModal');
                     document.getElementById('ipToBlock').value = '';
                     document.getElementById('blockReason').value = '';
                     document.getElementById('blockTTL').value = '';
                 } else {
-                    showToast(data.status || 'Failed to block', 'danger');
+                    showToast(data.error || 'Failed to block the IP. Please try again.', 'danger');
                 }
-            });
+            }).catch(() => showToast('Could not block the IP. Please try again.', 'danger'));
         }
     </script>
 

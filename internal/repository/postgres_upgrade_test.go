@@ -25,8 +25,8 @@ import (
 )
 
 // TestSchema16Upgrade seeds the old schema before applying current migrations.
-// Until migration 17 exists, Up returns ErrNoChange; this still exercises the
-// current repository and authentication service against persisted schema-16 data.
+// Repository and authentication checks run against the same persisted records
+// after the current role and identity migrations have been applied.
 func TestSchema16Upgrade(t *testing.T) {
 	ctx := context.Background()
 	container, err := tcpostgres.Run(ctx, "postgres:16-alpine",

@@ -21,6 +21,7 @@ import (
 )
 
 type HandlerOptions struct {
+	EntraService          *service.EntraService
 	Config                *config.Config
 	RedisRepo             RedisRepositoryProvider
 	PgRepo                PostgresRepositoryProvider
@@ -35,6 +36,8 @@ type HandlerOptions struct {
 }
 
 type APIHandler struct {
+	identityRepo          IdentityRepositoryProvider
+	entraService          *service.EntraService
 	cfg                   *config.Config
 	redisRepo             RedisRepositoryProvider
 	pgRepo                PostgresRepositoryProvider
@@ -75,6 +78,7 @@ func NewAPIHandler(opts *HandlerOptions) *APIHandler {
 	}
 
 	h := &APIHandler{
+		entraService:          opts.EntraService,
 		cfg:                   opts.Config,
 		redisRepo:             opts.RedisRepo,
 		pgRepo:                opts.PgRepo,
@@ -87,6 +91,9 @@ func NewAPIHandler(opts *HandlerOptions) *APIHandler {
 		loginLimiter:          opts.LoginLimiter,
 		webhookLimiter:        opts.WebhookLimiter,
 		trustedProxies:        prefixes,
+	}
+	if identity, ok := opts.PgRepo.(IdentityRepositoryProvider); ok {
+		h.identityRepo = identity
 	}
 
 	h.upgrader = websocket.Upgrader{
@@ -136,6 +143,15 @@ func (h *APIHandler) renderHTML(c *gin.Context, status int, name string, data gi
 	if nonce, exists := c.Get("nonce"); exists {
 		data["nonce"] = nonce
 	}
+	data["entra_ready"] = h.entraService != nil
+	if h.cfg != nil {
+		data["entra_enabled"] = h.cfg.EntraEnabled
+	}
+	if _, ok := data["permissions"]; !ok {
+		data["permissions"] = c.GetString("permissions")
+	}
+	data["can_manage_roles"] = h.can(c, "manage_roles")
+	data["can_manage_admins"] = h.can(c, "manage_admins")
 	c.HTML(status, name, data)
 }
 
@@ -158,6 +174,9 @@ func (h *APIHandler) WS(c *gin.Context) {
 	// keep-alive pings below) serialize on a single per-connection mutex;
 	// gorilla/websocket does not allow concurrent writers.
 	client := &wsClient{conn: conn}
+	username, _ := session.Get("username").(string)
+	version, _ := session.Get("session_version").(int)
+	defer func() { _ = conn.Close() }()
 	h.hub.register <- client
 
 	// Keep-alive setup
@@ -189,6 +208,15 @@ func (h *APIHandler) WS(c *gin.Context) {
 	for {
 		select {
 		case <-pingTicker.C:
+			if h.pgRepo != nil {
+				account, err := h.pgRepo.GetAdmin(username)
+				if err != nil || account == nil || account.SessionVersion != version {
+					return
+				}
+				if username != h.cfg.GUIAdmin && (!models.HasPermission(account.Permissions, "view_ips") || !models.HasPermission(account.Permissions, "gui_read")) {
+					return
+				}
+			}
 			if err := client.writeMessage(websocket.PingMessage, nil); err != nil {
 				return
 			}
@@ -267,9 +295,11 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 	}
 
 	r.GET("/logout", h.Logout)
-	r.GET("/ws", h.WS)
-	r.GET("/sudo", h.AuthMiddleware(), h.loginLimiter, h.ShowSudo)
-	r.POST("/sudo", h.AuthMiddleware(), h.loginLimiter, h.VerifySudo)
+	r.GET("/auth/entra/login", h.loginLimiter, h.EntraLogin)
+	r.GET("/auth/entra/callback", h.loginLimiter, h.EntraCallback)
+	r.GET("/ws", h.AuthMiddleware(), h.SessionCheckMiddleware(), h.PermissionMiddleware("view_ips"), h.WS)
+	r.GET("/sudo", h.AuthMiddleware(), h.SessionCheckMiddleware(), h.loginLimiter, h.ShowSudo)
+	r.POST("/sudo", h.AuthMiddleware(), h.SessionCheckMiddleware(), h.loginLimiter, h.VerifySudo)
 
 	// API Versioning (Improvement 5)
 	v1 := r.Group("/api/v1")
@@ -318,15 +348,21 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 	{
 		// Dashboard requires view_ips and view_stats
 		auth.GET("/dashboard", h.PermissionMiddleware("view_ips"), h.Dashboard)
-		auth.GET("/audit-logs", h.PermissionMiddleware("view_ips"), h.AuditLogExplorer)
+		auth.GET("/audit-logs", h.PermissionMiddleware("view_audit_logs"), h.AuditLogExplorer)
+		auth.GET("/event-logs", h.PermissionMiddleware("view_event_logs", "view_ips"), h.EventLogExplorer)
+		auth.GET("/roles", h.PermissionMiddleware("view_roles", "manage_roles"), h.RoleManagement)
+		auth.GET("/api/v1/roles", h.PermissionMiddleware("view_roles", "manage_roles"), h.ListRoles)
+		auth.POST("/api/v1/roles", h.PermissionMiddleware("manage_roles"), h.SudoMiddleware(), h.SaveRole)
+		auth.PUT("/api/v1/roles/:id", h.PermissionMiddleware("manage_roles"), h.SudoMiddleware(), h.SaveRole)
+		auth.DELETE("/api/v1/roles/:id", h.PermissionMiddleware("manage_roles"), h.SudoMiddleware(), h.DeleteRole)
 		auth.GET("/threat-map", h.PermissionMiddleware("view_ips"), h.ThreatMap)
 		auth.GET("/dashboard/table", h.PermissionMiddleware("view_ips"), h.DashboardTable) // For HTMX polling
 
 		auth.GET("/api/v1/views", h.PermissionMiddleware("view_ips"), h.GetSavedViews)
-		auth.POST("/api/v1/views", h.PermissionMiddleware("view_ips"), h.CreateSavedView)
-		auth.DELETE("/api/v1/views/:id", h.PermissionMiddleware("view_ips"), h.DeleteSavedView)
+		auth.POST("/api/v1/views", h.PermissionMiddleware("manage_views"), h.CreateSavedView)
+		auth.DELETE("/api/v1/views/:id", h.PermissionMiddleware("manage_views"), h.DeleteSavedView)
 
-		auth.GET("/settings", h.PermissionMiddleware("manage_webhooks"), h.Settings)
+		auth.GET("/settings", h.PermissionMiddleware("view_settings", "manage_webhooks", "manage_api_tokens"), h.Settings)
 		auth.POST("/api/v1/settings/webhooks", h.PermissionMiddleware("manage_webhooks"), h.AddOutboundWebhook)
 		auth.DELETE("/api/v1/settings/webhooks/:id", h.PermissionMiddleware("manage_webhooks"), h.DeleteOutboundWebhook)
 
@@ -343,14 +379,14 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 		auth.POST("/bulk_unblock", h.PermissionMiddleware("unblock_ips"), h.BulkUnblock)
 
 		// Whitelist management
-		auth.GET("/whitelist", h.PermissionMiddleware("manage_whitelist", "whitelist_ips"), h.Whitelist)
+		auth.GET("/whitelist", h.PermissionMiddleware("view_whitelist", "manage_whitelist", "whitelist_ips"), h.Whitelist)
 		auth.POST("/add_whitelist", h.PermissionMiddleware("manage_whitelist", "whitelist_ips"), h.AddWhitelist)
 		auth.POST("/remove_whitelist", h.PermissionMiddleware("manage_whitelist"), h.RemoveWhitelist)
 
 		// Excluded list management (IPs, subnets, or FQDNs that can never be blocked)
-		auth.GET("/excluded", h.PermissionMiddleware("manage_excluded"), h.Excluded)
-		auth.GET("/api/v1/excluded", h.PermissionMiddleware("manage_excluded"), h.JSONExcluded)
-		auth.POST("/add_excluded", h.PermissionMiddleware("manage_excluded"), h.AddExcluded)
+		auth.GET("/excluded", h.PermissionMiddleware("view_excluded", "manage_excluded", "exclude_ips"), h.Excluded)
+		auth.GET("/api/v1/excluded", h.PermissionMiddleware("view_excluded", "manage_excluded", "exclude_ips"), h.JSONExcluded)
+		auth.POST("/add_excluded", h.PermissionMiddleware("manage_excluded", "exclude_ips"), h.AddExcluded)
 		auth.POST("/remove_excluded", h.PermissionMiddleware("manage_excluded"), h.RemoveExcluded)
 
 		// External sources
@@ -359,10 +395,11 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 		auth.POST("/api/v1/excluded/sources/refresh", h.PermissionMiddleware("manage_excluded"), h.RefreshExternalSource)
 
 		// Admin management
+		auth.GET("/admin_management", h.PermissionMiddleware("view_admins", "manage_admins"), h.AdminManagement)
 		admin := auth.Group("/admin_management")
 		admin.Use(h.PermissionMiddleware("manage_admins"))
 		{
-			admin.GET("", h.AdminManagement)
+			admin.POST("/change_role", h.SudoMiddleware(), h.ChangeAdminRole)
 			admin.POST("/create", h.SudoMiddleware(), h.CreateAdmin)
 			admin.POST("/delete", h.SudoMiddleware(), h.DeleteAdmin)
 			admin.POST("/change_password", h.SudoMiddleware(), h.ChangeAdminPassword)

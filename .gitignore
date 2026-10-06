@@ -16,6 +16,8 @@ postgres_data/
 
 # Environment
 .env
+secrets/
+backups/
 
 # Go
 vendor/
@@ -46,9 +48,16 @@ walkthrough.md
 coverage/
 coverage*
 docs/
-CI_RELEASE.md
 
-# Browser regression tooling
+# Local visual QA artifacts (design documentation remains versioned)
+.impeccable/review/
+.impeccable/critique/*-detector.json
+
+# Reproducible browser tests; generated reports can contain disposable test sessions.
 node_modules/
-tests/e2e/test-results/
+test-results/
+playwright-report/
+
+# Local release notes and generated publication record
+CI_RELEASE.md
 publication.json

@@ -67,12 +67,18 @@ type AuditLog struct {
 }
 
 type AdminAccount struct {
-	Username       string `json:"username" db:"username"`
-	PasswordHash   string `json:"password_hash" db:"password_hash"`
-	Token          string `json:"token" db:"token"`
-	Role           string `json:"role" db:"role"`
-	Permissions    string `json:"permissions" db:"permissions"`
-	SessionVersion int    `json:"session_version" db:"session_version"`
+	RoleID            *string `json:"role_id" db:"role_id"`
+	AuthSource        string  `json:"auth_source" db:"auth_source"`
+	EntraTenantID     *string `json:"entra_tenant_id,omitempty" db:"entra_tenant_id"`
+	EntraObjectID     *string `json:"entra_object_id,omitempty" db:"entra_object_id"`
+	EntraUPN          string  `json:"entra_upn" db:"entra_upn"`
+	EntraRoleOverride bool    `json:"entra_role_override" db:"entra_role_override"`
+	Username          string  `json:"username" db:"username"`
+	PasswordHash      string  `json:"password_hash" db:"password_hash"`
+	Token             string  `json:"token" db:"token"`
+	Role              string  `json:"role" db:"role"`
+	Permissions       string  `json:"permissions" db:"permissions"`
+	SessionVersion    int     `json:"session_version" db:"session_version"`
 }
 
 type APIToken struct {

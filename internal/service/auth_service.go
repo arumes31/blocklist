@@ -38,8 +38,9 @@ func (s *AuthService) CheckAuth(username, password, token string) bool {
 		return false
 	}
 
-	// API Token Auth
-	if token != "" {
+	// Token-only callers may validate an API credential, but a token must never
+	// substitute for TOTP in a named user's password login.
+	if token != "" && username == "" && password == "" {
 		hash := sha256.Sum256([]byte(token))
 		hashStr := hex.EncodeToString(hash[:])
 		t, err := s.pg.GetAPITokenByHash(hashStr)
@@ -62,7 +63,7 @@ func (s *AuthService) CheckAuth(username, password, token string) bool {
 	}
 
 	admin, err := s.pg.GetAdmin(username)
-	if err != nil {
+	if err != nil || admin == nil || admin.AuthSource == "entra" {
 		return false
 	}
 
@@ -87,7 +88,7 @@ func (s *AuthService) VerifyTOTP(username, token string) bool {
 		return false
 	}
 	admin, err := s.pg.GetAdmin(username)
-	if err != nil {
+	if err != nil || admin == nil || admin.AuthSource == "entra" {
 		return false
 	}
 	// Reject accounts with no enrolled TOTP secret: validating against an empty

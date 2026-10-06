@@ -1,0 +1,34 @@
+<script src="/static/js/sidebar-navigation.js?v=continuity-1"></script>
+<a class="skip-link" href="#main-content">Skip to content</a>
+<aside class="app-sidebar" aria-label="Application navigation">
+    <div class="sidebar-inner">
+    <a href="/dashboard" class="app-brand banner" aria-label="Blocklist dashboard">
+        <img src="/cd/logo.png" alt="Blocklist" width="1000" height="173" class="brand-wordmark">
+    </a>
+    <p class="brand-caption">IP management</p>
+    <nav class="app-navigation" aria-label="Main navigation">
+        <a href="/dashboard" class="btn btn-dark nav-link nav-dashboard"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>Dashboard</a>
+        <a href="/threat-map" class="btn btn-dark nav-link nav-threat-map"{{ if eq .active_page "threat-map" }} aria-current="page"{{ end }}><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><path d="M3 12h18"/></svg>Threat Map</a>
+        <a href="/whitelist" class="btn btn-dark nav-link nav-whitelist"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 8 3v6c0 4-4 7-8 9-4-2-8-5-8-9V6l8-3Z"/><path d="m8 12 3 3 5-6"/></svg>Whitelist</a>
+        <a href="/excluded" class="btn btn-dark nav-link nav-excluded"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8 12h8"/></svg>Excluded</a>
+        {{ if or (eq .username .admin_username) (contains .permissions "view_event_logs") (contains .permissions "view_ips") }}
+        <a href="/event-logs" class="btn btn-dark nav-link nav-event-logs"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l3-7 4 14 3-7h4"/></svg>Event logs</a>{{ end }}
+        {{ if or (eq .username .admin_username) (contains .permissions "view_audit_logs") }}
+        <a href="/audit-logs" class="btn btn-dark nav-link nav-audit-logs"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H5v18h14V8l-5-5Z"/><path d="M14 3v5h5M8 12h8M8 16h6"/></svg>System audit logs</a>{{ end }}
+        <span class="nav-divider" aria-hidden="true"></span>
+        <a href="/settings" class="btn btn-dark nav-link nav-settings"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="3" fill="var(--surface)"/><circle cx="15" cy="17" r="3" fill="var(--surface)"/></svg>Settings</a>
+        {{ if or (eq .username .admin_username) (contains .permissions "manage_admins") (contains .permissions "view_admins") }}
+        <a href="/admin_management" class="btn btn-dark nav-link nav-admin_management"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3 21v-3a6 6 0 0 1 12 0v3M16 5a3 3 0 0 1 0 6M21 21v-3a6 6 0 0 0-3-5"/></svg>Accounts</a>
+        {{ end }}
+        {{ if or (eq .username .admin_username) (contains .permissions "manage_roles") (contains .permissions "view_roles") }}
+        <a href="/roles" class="btn btn-dark nav-link nav-roles"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 8 3v6c0 4-4 7-8 9-4-2-8-5-8-9V6l8-3Z"/><circle cx="12" cy="10" r="2"/><path d="M12 12v4"/></svg>Roles</a>{{ end }}
+        <a href="/docs" class="btn btn-dark nav-link nav-docs"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m8 7-5 5 5 5m8-10 5 5-5 5m-3-13-2 20"/></svg>API Docs</a>
+    </nav>
+    <div class="sidebar-footer">
+        <span class="account-label">Signed in as</span>
+        <strong>{{ .username }}</strong>
+        <a href="/logout"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4H4v16h5M9 12h12m-4-4 4 4-4 4"/></svg>Sign out</a>
+    </div>
+    </div>
+</aside>
+<script src="/static/js/brand-motion.js?v=autoplay-1" defer></script>

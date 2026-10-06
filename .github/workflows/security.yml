@@ -1,26 +1,68 @@
 name: Security
+
 on:
   workflow_call:
   push:
-    branches: ['*']
+    branches: ['**']
   pull_request:
-    branches: ['*']
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+
 permissions:
   contents: read
+
+# Reusable calls must not cancel their caller or an approval-gated publication.
+
 jobs:
-  go-security:
+  gosec:
+    name: Go security analysis
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      security-events: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
+
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
-      - run: go run github.com/securego/gosec/v2/cmd/gosec@v2.29.0 ./...
-      - run: go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
+
+      # Do not use -no-fail: findings must fail this check, even when SARIF uploads.
+      - name: Run gosec
+        run: go run github.com/securego/gosec/v2/cmd/gosec@v2.29.0 -fmt=sarif -out=gosec.sarif ./...
+
+      - name: Publish gosec findings to code scanning
+        # Dependabot push tokens cannot upload SARIF; PR uploads remain supported.
+        if: >-
+          ${{ !cancelled() && hashFiles('gosec.sarif') != '' &&
+              (github.event_name != 'push' || github.actor != 'dependabot[bot]') }}
+        uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4
+        with:
+          sarif_file: gosec.sarif
+          category: gosec
+
+  govulncheck:
+    name: Go dependency vulnerabilities
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+
+      - name: Check reachable dependency vulnerabilities
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
+
   secrets:
+    name: Secret scanning
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -28,12 +70,12 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
-      - name: Scan all fetched history with no baseline or inline waivers
-        run: |
-          go run github.com/zricethezav/gitleaks/v8@v8.24.2 git . \
-            --log-opts='--all --full-history' --redact=100 \
-            --config=scripts/ci/gitleaks.toml --gitleaks-ignore-path=/dev/null \
-            --ignore-gitleaks-allow --exit-code=1
+
+      # Use the open-source CLI directly: no license key or repository secret.
+      # Full history catches credentials even if they were deleted in a later commit.
+      - name: Scan Git history with Gitleaks (redacted)
+        run: go run github.com/zricethezav/gitleaks/v8@v8.30.1 git --config=.gitleaks.toml --redact --no-banner --ignore-gitleaks-allow --log-opts="--all --full-history" .

@@ -37,6 +37,14 @@ graph LR
 
 ## Key Features
 
+For Microsoft sign-in, Entra group-to-role assignment, and automatic account provisioning, see the [Entra setup guide](ENTRA_SETUP.md).
+
+For unit and real-browser regression checks, see [Testing](TESTING.md).
+
+For approval-gated publication of the tested main image to `latest`, see
+[Releasing images](.github/RELEASING.md). Configure the GitHub production
+environment before merging; no production credentials are required by CI.
+
 - **Advanced Filtering**: Server-side filtering by IP, Reason, Country, Added By, and Date Range (ISO8601).
   The dashboard renders at most 100 rows with Previous/Next navigation; searches and filters still cover the entire blocklist. Selections persist across pages of the same search, and select-all selects the current page. Live events coalesce into server-filtered refreshes; paused or selected views show an updates-available button instead of accumulating rows. Display statistics share a five-second snapshot per application process; search and enforcement never use that snapshot.
 - **Real-time Updates**: Live dashboard updates via WebSockets, now scaled with **Redis Pub/Sub** for multi-instance support.

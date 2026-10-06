@@ -234,7 +234,7 @@ func TestPostgresRepository_Integration(t *testing.T) {
 		pruneIP := "9.9.9.9"
 		pruneIPs := []string{pruneIP}
 		for i := 0; i < 5; i++ {
-			_ = repoLimit.BulkLogAction("admin", "TEST", pruneIPs, fmt.Sprintf("bulk prune %d", i))
+			_ = repoLimit.BulkLogAction("admin", "BLOCK", pruneIPs, fmt.Sprintf("bulk prune %d", i))
 		}
 
 		history, _ := repoLimit.GetIPHistory(pruneIP)

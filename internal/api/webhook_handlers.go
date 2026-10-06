@@ -120,7 +120,7 @@ func (h *APIHandler) getRequiredPermissionForAction(act string) (string, error) 
 }
 
 func (h *APIHandler) checkWebhookPermissions(c *gin.Context, username string, requiredPerm string) bool {
-	if username == h.cfg.GUIAdmin {
+	if username == h.cfg.GUIAdmin && !c.GetBool("token_auth") {
 		return true
 	}
 

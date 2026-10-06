@@ -1,11 +1,17 @@
 name: Daily Security Scan
 
-permissions: read-all
+permissions:
+  contents: read
 
 on:
+  pull_request:
   schedule:
     - cron: '0 0 * * *'
   workflow_dispatch:
+
+concurrency:
+  group: trivy-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   fs-scan:

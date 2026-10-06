@@ -24,6 +24,8 @@ blocklist-server
 
 # Local Environment & Data
 .env
+secrets/
+backups/
 geoip_data/
 postgres_data/
 out.log
@@ -40,3 +42,19 @@ Thumbs.db
 vendor/
 **/*_test.go
 **/testdata/
+
+# Local design review artifacts and design documentation
+.impeccable/
+PRODUCT.md
+DESIGN.md
+
+# Browser test dependencies and reports are not application assets.
+node_modules/
+test-results/
+playwright-report/
+tests/
+package.json
+package-lock.json
+playwright.config.cjs
+TESTING.md
+ENTRA_SETUP.md

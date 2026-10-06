@@ -30,6 +30,7 @@ import (
 	"blocklist/internal/app"
 	"blocklist/internal/config"
 	"blocklist/internal/models"
+	"blocklist/internal/service"
 	"blocklist/internal/tasks"
 
 	"github.com/gin-contrib/sessions"
@@ -317,7 +318,9 @@ func setupRouter(cfg *config.Config, a *app.App, hub *api.Hub, authKey, blockKey
 	if !cfg.LogWeb {
 		gin.SetMode(gin.ReleaseMode)
 	}
-	r := gin.Default()
+	r := gin.New()
+	// OAuth authorization codes must never enter HTTP access logs.
+	r.Use(gin.LoggerWithConfig(gin.LoggerConfig{SkipPaths: []string{"/auth/entra/callback"}}), gin.Recovery())
 
 	// Configure Trusted Proxies
 	setupTrustedProxies(r, cfg)
@@ -349,7 +352,12 @@ func setupRouter(cfg *config.Config, a *app.App, hub *api.Hub, authKey, blockKey
 	setupFavicon(r)
 
 	// Initialize API Handler
+	entraService, err := service.NewEntraService(cfg, a.RedisRepo.GetClient())
+	if err != nil {
+		zlog.Error().Err(err).Msg("Entra is not ready; local sign-in remains available")
+	}
 	handler := api.NewAPIHandler(&api.HandlerOptions{
+		EntraService:          entraService,
 		Config:                cfg,
 		RedisRepo:             a.RedisRepo,
 		PgRepo:                a.PgRepo,
@@ -568,7 +576,7 @@ func embeddedAssetCache(files fs.FS) gin.HandlerFunc {
 	etags := make(map[string]string)
 	_ = fs.WalkDir(files, ".", func(name string, entry fs.DirEntry, err error) error {
 		if err != nil || entry.IsDir() {
-			return nil
+			return nil //nolint:nilerr // ETags are best-effort; skip unreadable entries and keep serving assets.
 		}
 		if data, err := fs.ReadFile(files, name); err == nil {
 			sum := sha256.Sum256(data)
