@@ -2,75 +2,160 @@ name: Docker Build and Check
 
 on:
   push:
-    branches:
-      - main
-      - test
-      - v2b_test
+    branches: [main, test, v2b_test]
   workflow_dispatch:
 
-permissions: {}
+permissions:
+  contents: read
 
 concurrency:
-  group: docker-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: image-pipeline-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  build-and-check:
-    name: Build and Scan Docker Image
+  quality:
+    name: Required quality gates
+    uses: ./.github/workflows/go-ci.yml
+
+  security:
+    name: Required security gates
+    permissions:
+      contents: read
+      security-events: write
+    uses: ./.github/workflows/security.yml
+
+  candidate:
+    name: Build and scan candidate
+    needs: [quality, security]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
       contents: read
       packages: write
-
+    outputs:
+      image: ${{ steps.image.outputs.name }}
+      digest: ${{ steps.build.outputs.digest }}
+      publish: ${{ steps.image.outputs.publish }}
     steps:
-      - name: Checkout code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      with:
+        persist-credentials: false
+    - name: Select candidate (never a production alias)
+      id: image
+      shell: bash
+      run: |
+        echo "name=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+        publish=false
+        case "$GITHUB_REF" in
+          refs/heads/main|refs/heads/test|refs/heads/v2b_test) publish=true ;;
+        esac
+        echo "publish=$publish" >> "$GITHUB_OUTPUT"
+    - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+    - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+      if: steps.image.outputs.publish == 'true'
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    - name: Build candidate
+      id: build
+      uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+      with:
+        context: .
+        file: Dockerfile
+        push: ${{ steps.image.outputs.publish == 'true' }}
+        load: ${{ steps.image.outputs.publish != 'true' }}
+        provenance: ${{ steps.image.outputs.publish == 'true' }}
+        sbom: ${{ steps.image.outputs.publish == 'true' }}
+        tags: ${{ steps.image.outputs.name }}:candidate-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+        labels: org.opencontainers.image.revision=${{ github.sha }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+    - name: Scan exact candidate
+      uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+      with:
+        image-ref: ${{ steps.image.outputs.publish == 'true' && format('{0}@{1}', steps.image.outputs.name, steps.build.outputs.digest) || steps.build.outputs.imageid }}
+        format: table
+        exit-code: '1'
+        ignore-unfixed: true
+        vuln-type: os,library
+        severity: CRITICAL,HIGH
 
-      - name: Log in to the Container registry
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+  staging:
+    name: Exercise exact candidate image
+    needs: candidate
+    if: needs.candidate.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: read
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      with:
+        persist-credentials: false
+    - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+      with:
+        node-version: '24'
+        cache: npm
+    - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    - run: npm ci --ignore-scripts
+    - name: Test migrations, login, API and desktop/mobile UI against digest
+      env:
+        E2E_IMAGE: ${{ needs.candidate.outputs.image }}@${{ needs.candidate.outputs.digest }}
+      run: npm run test:ui
+    - name: Summarize candidate for approval
+      env:
+        IMAGE: ${{ needs.candidate.outputs.image }}
+        DIGEST: ${{ needs.candidate.outputs.digest }}
+      run: |
+        printf '### Tested candidate\n\nCommit: `%s`\n\nImage: `%s@%s`\n\nQuality, security, image scan and isolated runtime tests passed.\n' \
+          "$GITHUB_SHA" "$IMAGE" "$DIGEST" >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
-
-      - name: Prepare image tags
-        id: image_tags
-        shell: bash
-        env:
-          IMAGE: ghcr.io/${{ github.repository }}
-          REF_NAME: ${{ github.ref_name }}
-        run: |
-          safe_ref="${REF_NAME//\//-}"
-          {
-            echo 'value<<EOF'
-            if [[ "$safe_ref" == "main" ]]; then
-              printf '%s:latest\n' "$IMAGE"
-            fi
-            printf '%s:%s\n' "$IMAGE" "$safe_ref"
-            printf '%s:%s\n' "$IMAGE" "$GITHUB_SHA"
-            echo 'EOF'
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Build and push Blocklist Image
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
-        with:
-          context: .
-          file: Dockerfile
-          push: true
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          tags: ${{ steps.image_tags.outputs.value }}
-
-      - name: Run Trivy scanner
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          image-ref: 'ghcr.io/${{ github.repository }}:${{ github.sha }}'
-          format: 'table'
-          exit-code: '1'
-          ignore-unfixed: true
-          vuln-type: 'os,library'
-          severity: 'CRITICAL,HIGH'
+  promote:
+    name: Approve and promote tested digest
+    needs: [candidate, staging]
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/test' || github.ref == 'refs/heads/v2b_test'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: ${{ github.ref == 'refs/heads/main' && 'production' || 'image-testing' }}
+    concurrency:
+      group: blocklist-image-promotion
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: write
+      actions: read
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      with:
+        persist-credentials: false
+    - name: Refuse unprotected or stale production publication
+      if: github.ref == 'refs/heads/main'
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: node .github/scripts/image-policy.cjs
+    - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+    - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    - name: Promote without rebuilding and verify every alias
+      env:
+        IMAGE: ${{ needs.candidate.outputs.image }}
+        DIGEST: ${{ needs.candidate.outputs.digest }}
+      shell: bash
+      run: bash .github/scripts/promote-image.sh
+    - name: Preserve publication record
+      if: always()
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: image-digest-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+        path: image-metadata.json
+        if-no-files-found: ignore
+        retention-days: 90

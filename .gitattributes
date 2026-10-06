@@ -1,0 +1,2 @@
+# Release scripts must stay executable by Bash after a Windows checkout.
+.github/scripts/*.sh text eol=lf

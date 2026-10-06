@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -102,6 +103,8 @@ func (m *mockIPService) ReloadReaders() {
 }
 
 func TestGeoIPTaskHandler_ProcessTask_Success(t *testing.T) {
+	workDir := t.TempDir()
+	t.Chdir(workDir)
 	edition := "GeoLite2-City"
 	expectedContent := "mock mmdb content for success"
 	tarData := createTestTarGz(t, edition, expectedContent)
@@ -130,9 +133,10 @@ func TestGeoIPTaskHandler_ProcessTask_Success(t *testing.T) {
 	handler.testURL = server.URL
 	handler.validate = func(string) error { return nil }
 
-	// Ensure cleanup of the downloaded file
+	// Downloads stay inside this test's temporary working directory.
 	dbPath := handler.getDBPath(edition)
-	defer func() { _ = os.Remove(dbPath) }()
+	require.Equal(t, filepath.Join(workDir, "geoip_data", edition+".mmdb"), dbPath,
+		"test must never write to a service data directory")
 
 	task, err := NewGeoIPUpdateTask(edition)
 	require.NoError(t, err)
@@ -206,6 +210,8 @@ func TestGeoIPTaskHandler_Download_HTTPError(t *testing.T) {
 }
 
 func TestGeoIPTaskHandler_Download_ValidResponse(t *testing.T) {
+	workDir := t.TempDir()
+	t.Chdir(workDir)
 	edition := "GeoLite2-City"
 	expectedContent := "mock mmdb content for download"
 	tarData := createTestTarGz(t, edition, expectedContent)
@@ -226,7 +232,8 @@ func TestGeoIPTaskHandler_Download_ValidResponse(t *testing.T) {
 	handler.validate = func(string) error { return nil }
 
 	dbPath := handler.getDBPath(edition)
-	defer func() { _ = os.Remove(dbPath) }()
+	require.Equal(t, filepath.Join(workDir, "geoip_data", edition+".mmdb"), dbPath,
+		"test must never write to a service data directory")
 
 	err := handler.Download(context.Background(), edition)
 	assert.NoError(t, err)

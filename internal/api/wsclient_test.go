@@ -33,7 +33,12 @@ func TestWSClient_ConcurrentWrites(t *testing.T) {
 	defer srv.Close()
 
 	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http")
-	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	conn, response, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if response != nil && response.Body != nil {
+		if closeErr := response.Body.Close(); closeErr != nil {
+			t.Errorf("close handshake response: %v", closeErr)
+		}
+	}
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}

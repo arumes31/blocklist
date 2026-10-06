@@ -1,0 +1,30 @@
+title = "Blocklist secret scanning"
+
+[extend]
+useDefault = true
+
+# Only the literal documentation placeholder in these two files is exempt.
+# Different credentials in the same files must still fail the scan.
+[[allowlists]]
+description = "Bearer-token placeholder in documented curl examples"
+targetRules = ["curl-auth-header"]
+condition = "AND"
+paths = ['''^README\.md$''', '''^cmd/server/templates/settings\.html$''']
+regexTarget = "secret"
+regexes = ['''^YOUR_TOKEN$''']
+
+[[allowlists]]
+description = "Exact dummy value used to test log redaction"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = ['''^cmd/server/main_test\.go$''']
+regexTarget = "secret"
+regexes = ['''^abcdef123456$''']
+
+[[allowlists]]
+description = "Exact dummy value used to test API-token hashing"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = ['''^internal/api/api_token_test\.go$''']
+regexTarget = "secret"
+regexes = ['''^bl_abcdef1234567890$''']

@@ -45,7 +45,7 @@
         <div class="table-card entry-panel form-row" {{ if not (or (eq .username .admin_username) (contains .permissions "manage_excluded") (contains .permissions "exclude_ips")) }}hidden{{ end }}>
             <input aria-label="IP, subnet, or FQDN" type="text" id="excludedValue" class="filter-input" style="flex: 1; max-width: 300px;" placeholder="IP, subnet, or FQDN">
             <input aria-label="Description / reason" type="text" id="excludedReason" class="filter-input" style="flex: 1; max-width: 400px;" placeholder="Description / reason">
-            <select id="expiryType" class="filter-input" style="max-width: 140px;" onchange="toggleExpiryInput()">
+            <select id="expiryType" aria-label="Exclusion expiry" class="filter-input" style="max-width: 140px;" onchange="toggleExpiryInput()">
                 <option value="never">Never</option>
                 <option value="custom">Custom</option>
             </select>
@@ -139,7 +139,7 @@
         <div class="table-card entry-panel form-row" {{ if not (or (eq .username .admin_username) (contains .permissions "manage_excluded")) }}hidden{{ end }}>
             <input aria-label="Source Name (e.g. M365)" type="text" id="sourceName" class="filter-input" style="flex: 1; max-width: 250px;" placeholder="Source Name (e.g. M365)">
             <input aria-label="URL (JSON or Plaintext list)" type="text" id="sourceURL" class="filter-input" style="flex: 2; max-width: 500px;" placeholder="URL (JSON or Plaintext list)">
-            <select id="sourceType" class="filter-input" style="max-width: 180px;">
+            <select id="sourceType" aria-label="External source type" class="filter-input" style="max-width: 180px;">
                 <option value="plaintext">Plaintext / CIDR List</option>
                 <option value="microsoft_365">Microsoft 365 JSON</option>
                 <option value="json_cidr">JSON Array of CIDRs</option>

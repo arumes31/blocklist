@@ -576,7 +576,7 @@ func embeddedAssetCache(files fs.FS) gin.HandlerFunc {
 	etags := make(map[string]string)
 	_ = fs.WalkDir(files, ".", func(name string, entry fs.DirEntry, err error) error {
 		if err != nil || entry.IsDir() {
-			return nil
+			return nil //nolint:nilerr // ETags are best-effort; skip unreadable entries and keep serving assets.
 		}
 		if data, err := fs.ReadFile(files, name); err == nil {
 			sum := sha256.Sum256(data)

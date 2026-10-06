@@ -18,6 +18,7 @@ import (
 	"github.com/pquerna/otp/totp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -120,16 +121,20 @@ func TestAuthService_CheckAuth(t *testing.T) {
 		username := "admin"
 		password := "password123"
 		totpSecret := "JBSWY3DPEHPK3PXP"
-		passHash, _ := svc.HashPassword(password)
+		// This tests authentication, not password work-factor performance. A
+		// production-cost hash under -race can outlive the TOTP validity window.
+		passHash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.MinCost)
+		require.NoError(t, err)
 
-		code, _ := totp.GenerateCode(totpSecret, time.Now())
+		code, err := totp.GenerateCode(totpSecret, time.Now())
+		require.NoError(t, err)
 		hash := sha256.Sum256([]byte(code))
 		hashStr := hex.EncodeToString(hash[:])
 
 		pg.On("GetAPITokenByHash", hashStr).Return(nil, nil).Maybe()
 		pg.On("GetAdmin", username).Return(&models.AdminAccount{
 			Username:     username,
-			PasswordHash: passHash,
+			PasswordHash: string(passHash),
 			Token:        totpSecret,
 		}, nil).Once()
 

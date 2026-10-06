@@ -21,7 +21,7 @@
         <div class="table-card entry-panel form-row" {{ if not (or (eq .username .admin_username) (contains .permissions "manage_whitelist") (contains .permissions "whitelist_ips")) }}hidden{{ end }}>
             <input aria-label="Enter IP to whitelist" type="text" id="whitelistIP" class="filter-input" style="flex: 1; max-width: 300px;" placeholder="Enter IP to whitelist">
             <input aria-label="Enter Reason" type="text" id="whitelistReason" class="filter-input" style="flex: 1; max-width: 400px;" placeholder="Enter Reason">
-            <select id="expiryType" class="filter-input" style="max-width: 140px;" onchange="toggleExpiryInput()">
+            <select id="expiryType" aria-label="Whitelist expiry" class="filter-input" style="max-width: 140px;" onchange="toggleExpiryInput()">
                 <option value="never">Never</option>
                 <option value="custom">Custom</option>
             </select>

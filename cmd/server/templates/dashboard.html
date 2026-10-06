@@ -617,7 +617,7 @@
                     <button onclick="exportData('ndjson')" class="btn btn-dark" style="height: 42px;"
                         title="Export NDJSON">JSON</button>
                 </div>
-                <select id="savedViews" class="filter-input" style="flex: 1; min-width: 150px;"
+                <select id="savedViews" aria-label="Saved views" class="filter-input" style="flex: 1; min-width: 150px;"
                     onchange="loadView(this.value)">
                     <option value="">Saved Views</option>
                     {{ range $i, $v := .views }}
@@ -1279,6 +1279,18 @@
             await loadTablePage(0, true);
         }
 
+        function clearFilters() {
+            clearTimeout(debounceTimeout);
+            ['filterInput', 'addedByFilter', 'fromDateFilter', 'toDateFilter', 'countrySearch', 'savedViews'].forEach(id => {
+                document.getElementById(id).value = '';
+            });
+            document.querySelectorAll('#countryList input[type="checkbox"]').forEach(checkbox => {
+                checkbox.checked = false;
+            });
+            filterCountryList();
+            return applyServerSearch();
+        }
+
         function updateURL() {
             const params = new URLSearchParams();
             Object.entries(currentFilters).forEach(([key, val]) => {
@@ -1437,7 +1449,7 @@
                     if (key === 'from' || key === 'to') {
                         params.append(key, new Date(val).toISOString());
                     } else {
-                        params.append(key, val);
+                        params.append(key === 'addedBy' ? 'added_by' : key, val);
                     }
                 }
             });
@@ -1585,11 +1597,7 @@
             }
         });
 
-        document.getElementById('clearFilter').addEventListener('click', () => {
-            const input = document.getElementById('filterInput');
-            input.value = '';
-            debouncedFilterTable();
-        });
+        document.getElementById('clearFilter').addEventListener('click', clearFilters);
 
         setTimeout(() => { convertTimestamps(); init(); }, 100);
         document.body.addEventListener('htmx:afterOnLoad', () => convertTimestamps());
@@ -1606,20 +1614,21 @@
             const ttl = parseInt(document.getElementById('blockTTL').value) || 0;
             if (!ip) return showToast('Enter an IP', 'danger');
 
-            fetch('/block', {
+            return fetch('/block', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ ip, reason, persist, ttl })
-            }).then(r => r.json()).then(data => {
-                if (data.status === 'success') {
+            }).then(async response => {
+                const data = await response.json();
+                if (response.ok && (data.status === 'blocked' || data.status === 'success')) {
                     closeModal('blockModal');
                     document.getElementById('ipToBlock').value = '';
                     document.getElementById('blockReason').value = '';
                     document.getElementById('blockTTL').value = '';
                 } else {
-                    showToast(data.status || 'Failed to block', 'danger');
+                    showToast(data.error || 'Failed to block the IP. Please try again.', 'danger');
                 }
-            });
+            }).catch(() => showToast('Could not block the IP. Please try again.', 'danger'));
         }
     </script>
 

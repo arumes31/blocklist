@@ -2,6 +2,14 @@ name: Delete Old Packages
 
 on:
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Preview only; do not delete packages
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
 
 jobs:
   delete-versions:
@@ -11,9 +19,13 @@ jobs:
       packages: write
     steps:
       - name: Delete old package versions
-        uses: actions/delete-package-versions@e5bc658cc4c965c472efe991f8beea3981499c55 # v5.0.0
+        uses: dataaxiom/ghcr-cleanup-action@d52806a0dc70b430571a37da1fde39733ffd640f # v1.2.2
         with:
           package-name: ${{ github.event.repository.name }}
           package-type: 'container'
-          min-versions-to-keep: 10
-          ignore-versions: 'v1,v2,v2b_test,latest'
+          token: ${{ secrets.GITHUB_TOKEN }}
+          dry-run: ${{ inputs.dry_run }}
+          keep-n-tagged: 10
+          # Candidates can be awaiting approval. Explicitly retire them only
+          # after checking the workflow run, never through generic cleanup.
+          exclude-tags: ^(v1|v2|main|latest|test|v2b_test|rollback|candidate-.*)$

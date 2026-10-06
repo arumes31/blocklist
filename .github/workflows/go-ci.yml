@@ -1,24 +1,42 @@
 name: Go CI
 
-permissions: read-all
+permissions:
+  contents: read
 
 on:
+  workflow_call:
   push:
-    branches: [ main, test, v2_test, v2b_test ]
+    branches: ['**']
   pull_request:
-    branches: [ main, test, v2_test, v2b_test ]
+  workflow_dispatch:
 
 concurrency:
   group: go-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  integration:
+    name: Database upgrade and API compatibility
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      with:
+        persist-credentials: false
+    - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+      with:
+        go-version-file: go.mod
+    - name: Run integration-tagged tests with disposable testcontainers
+      run: go test -race -tags=integration -count=1 -timeout=15m ./...
+
   frontend-tests:
     name: Frontend regression tests
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      with:
+        persist-credentials: false
 
     - name: Set up Node.js
       uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
@@ -34,30 +52,75 @@ jobs:
     timeout-minutes: 20
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      with:
+        persist-credentials: false
 
     - name: Set up Go
       uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
       with:
-        go-version: '1.27.1'
+        go-version-file: go.mod
+
+    - name: Verify module checksums
+      run: go mod verify
 
     - name: Build
       run: go build -v ./cmd/server
 
     - name: Test
-      run: go test -race -v ./...
+      run: go test -short -race -v ./...
 
-    - name: Lint
+  browser-tests:
+    name: Desktop and mobile UI regression tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      with:
+        persist-credentials: false
+
+    - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+      with:
+        node-version: '24'
+        cache: npm
+
+    - name: Install locked browser-test dependencies
+      run: npm ci --ignore-scripts
+
+    - name: Exercise the real app in an isolated disposable stack
+      run: npm run test:ui
+
+  lint:
+    name: Go lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      with:
+        persist-credentials: false
+
+    - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+      with:
+        go-version-file: go.mod
+
+    - name: Run golangci-lint
       uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
       with:
         # v2.13.0 is built with Go 1.27 and can analyze this module's target.
         version: v2.13.0
+        args: --build-tags integration --timeout=5m
 
-    - name: Run Gosec Security Scan
-      run: go run github.com/securego/gosec/v2/cmd/gosec@v2.29.0 ./...
+  workflow-lint:
+    name: GitHub Actions lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      with:
+        persist-credentials: false
 
-    - name: Run govulncheck
-      run: |
-        go install golang.org/x/vuln/cmd/govulncheck@v1.7.0
-        govulncheck ./...
-      env:
-        GOTOOLCHAIN: go1.27.1
+    - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+      with:
+        go-version-file: go.mod
+
+    - name: Validate workflow syntax, expressions, and shell scripts
+      run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -color

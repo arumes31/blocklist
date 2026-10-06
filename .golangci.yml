@@ -1,0 +1,13 @@
+version: '2'
+
+run:
+  timeout: 5m
+  modules-download-mode: readonly
+
+linters:
+  # Keep the existing default checks explicit; gosec runs independently.
+  default: standard
+  enable:
+    - bodyclose
+    - nilerr
+    - sqlclosecheck
