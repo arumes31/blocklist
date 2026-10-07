@@ -70,7 +70,7 @@ The three app-role names already have the defaults shown above; no extra mapping
    Return to Accounts and apply the role again; the original mutation is not
    automatically replayed. Recent verification lasts five minutes.
 
-**Removal is not immediate deprovisioning.** Entra membership is checked at Microsoft sign-in, not continuously for existing Blocklist sessions or API tokens. Removing a group assignment does not instantly revoke those credentials. For urgent removal, also revoke the user's Blocklist tokens and remove/restrict their local account with your recovery administrator. Remove the Entra app-role assignment first: with auto-provisioning enabled, deleting only the Blocklist account allows it to be recreated at the next eligible sign-in.
+**Removal is not immediate deprovisioning.** Entra membership is checked at Microsoft sign-in, not continuously for existing Blocklist sessions or API tokens. Removing a group assignment does not instantly revoke those credentials. For urgent removal, also **Disable** the account in Blocklist to reject sign-in, existing sessions and owned API tokens; see [account status](README.md#account-search-and-access-status) for timing and re-enable behavior. Auto-provisioning cannot reactivate a disabled account. Remove the Entra app-role assignment too: with auto-provisioning enabled, deleting only the Blocklist account allows it to be recreated at the next eligible sign-in.
 
 If login fails, check the exact redirect URI, secret value/file permissions/expiry, tenant/client IDs, role values, direct group membership, and Redis availability. **Settings** shows integration readiness, not proof of a successful Microsoft login. Callback errors are deliberately generic; do not paste OAuth codes or tokens into support logs.
 
@@ -104,7 +104,7 @@ Entra app roles map to these built-in role IDs. An explicitly selected **Keep lo
 
 Sensitive account/role actions require recent verification in a browser session; bearer tokens cannot perform them. An existing Microsoft SSO session without a recent `auth_time` does not grant elevated verification; the verification flow requests fresh authentication. The returned tenant/object identity must match the initiating account. Delegated account managers cannot alter accounts whose permissions exceed their own. Live WebSocket connections recheck access every 30 seconds and close when access is revoked.
 
-The configured recovery administrator (`GUI_ADMIN`, normally `admin`) retains all
+The configured recovery administrator (`GUIAdmin`, normally `admin`) retains all
 current workspace permissions independently of editable roles. It can manage
 legacy accounts even if their snapshots contain obsolete permission names, but
 still requires local TOTP verification for sensitive actions. Its own role and

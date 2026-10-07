@@ -1112,6 +1112,8 @@ func (s *IPService) BulkUnblock(ctx context.Context, ips []string, actor string)
 
 type filterOptions struct {
 	query        string
+	queryField   string
+	queryASN     uint64
 	queryNetwork *net.IPNet
 	countryList  []string
 	addedBy      string
@@ -1128,6 +1130,15 @@ func (s *IPService) prepareFilterOptions(query, country, addedBy, from, to strin
 		opts.toTime, _ = time.Parse(time.RFC3339, to)
 	}
 	opts.query = strings.ToLower(strings.TrimSpace(query))
+	if field, value, ok := strings.Cut(opts.query, ":"); ok && (field == "asn" || field == "reason") {
+		opts.queryField = field
+		opts.query = strings.TrimSpace(value)
+		if field == "asn" {
+			if asn, err := strconv.ParseUint(opts.query, 10, 32); err == nil {
+				opts.queryASN = asn
+			}
+		}
+	}
 	if country != "" {
 		for _, c := range strings.Split(country, ",") {
 			if trimmed := strings.TrimSpace(c); trimmed != "" {
@@ -1136,7 +1147,7 @@ func (s *IPService) prepareFilterOptions(query, country, addedBy, from, to strin
 		}
 	}
 	opts.addedBy = strings.ToLower(strings.TrimSpace(addedBy))
-	if opts.query != "" {
+	if opts.query != "" && opts.queryField == "" {
 		if _, network, err := net.ParseCIDR(opts.query); err == nil {
 			opts.queryNetwork = network
 		}
@@ -1149,8 +1160,17 @@ func (s *IPService) matchesFilters(ip string, entry *models.IPEntry, opts *filte
 		return false
 	}
 
-	// 1. Query filter (text match and CIDR)
-	if opts.query != "" {
+	// Ranking shortcuts use exact fields; ordinary searches retain text/CIDR matching.
+	switch {
+	case opts.queryField == "asn":
+		if opts.queryASN == 0 || entry.Geolocation == nil || uint64(entry.Geolocation.ASN) != opts.queryASN {
+			return false
+		}
+	case opts.queryField == "reason":
+		if opts.query == "" || strings.ToLower(entry.Reason) != opts.query {
+			return false
+		}
+	case opts.query != "":
 		matches := false
 		// Text match on fields
 		if strings.Contains(strings.ToLower(ip), opts.query) ||

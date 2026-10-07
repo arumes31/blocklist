@@ -222,6 +222,8 @@ Dashboard summaries use seven desktop columns, four at the intermediate breakpoi
 
 Dashboard rankings retain all server-provided top-ten entries on initial load and live refresh. Countries, ASNs and reasons share compact neutral chips; long labels wrap within their column while tabular counts never shrink or truncate. The three ranking columns stack below 600px. Refreshes preserve the same presentation, and a failed refresh keeps the previous entries visible.
 
+Ranking chips are keyboard-accessible filter buttons with the shared focus ring, a tinted pressed state, and 44px minimum touch targets on mobile widths and coarse pointers. Country buttons select that country in the existing selector; ASN and reason buttons replace Quick Search with `asn:<number>` or `reason:<text>` (exact, case-insensitive reason matching, with literal punctuation). Clicking the same sole selection again clears it. Country filters combine with ASN/reason search; dates and Added by remain unchanged. Filtering resets table pagination, persists through URL/saved views, and applies to exports. Live ranking refreshes preserve the pressed state and focus on a surviving button; aggregate counts remain global.
+
 Desktop sign-in uses a two-column composition capped at 1040px: a 270px wordmark in the flexible identity column and a 420px form, separated by 100px (48px below 1200px). Below 900px the composition stacks within 430px, with a 230px wordmark and no introductory identity copy. The form remains visible throughout interaction. Roles use a 280px list beside a flexible editor (230px below 1200px); the list becomes three columns below 900px and one column below 600px. Grouped permission choices and account form fields use two columns before stacking on mobile.
 
 **The Local Overflow Rule.** Wide tables and code scroll inside their own region; they must not widen the page.
@@ -285,6 +287,14 @@ labels wrap within a bounded table column, while the compact navigation footer
 retains its ellipsis and exposes the full label in its title. Immutable account,
 tenant and object keys remain under Identity binding; action payloads and
 authorization continue to use the original account key.
+
+Account rows keep role selection and Apply on the primary line. For Entra accounts,
+the local-override checkbox and an Access details disclosure share the secondary
+line; synchronization help and effective permissions expand only when requested.
+Status badges sit beside Enable/Disable, with wrapping when needed. Row heights
+remain content-driven, long UPNs stay readable, and the five-column table scrolls
+locally on narrow screens. Account actions, checkboxes and disclosure targets
+retain a 44px minimum height on phones and coarse pointers.
 
 ### Dialogs and authentication
 

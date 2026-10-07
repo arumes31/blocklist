@@ -117,7 +117,7 @@ test('recovery account has no destructive controls', async ({page}) => {
   await expect(row.locator('button')).toHaveCount(0);
 });
 
-test('bound Entra accounts display UPN but role and delete actions keep the account key', async ({page, api}, info) => {
+test('bound Entra rows stay compact with accessible details and preserve account action keys', async ({page, api}, info) => {
   const username = unique('legacy-entra-binding');
   const upn = unique('long.account.name.for.responsive.display') + '@example.invalid';
   const created = await api.post('/admin_management/create', {data: {
@@ -127,6 +127,18 @@ test('bound Entra accounts display UPN but role and delete actions keep the acco
   expect(created.ok()).toBeTruthy();
   await page.goto('/admin_management');
   await page.mouse.move(page.viewportSize().width - 4, 4);
+  async function capture(name) {
+    await page.mouse.move(page.viewportSize().width - 4, 4);
+    if (page.viewportSize().width >= 992) {
+      await expect.poll(async () => {
+        const bounds = await page.locator('.app-sidebar').boundingBox();
+        return bounds.x + bounds.width;
+      }).toBeLessThan(100);
+    }
+    await expect.poll(() => page.locator('.app-sidebar').evaluate(el => el.getAnimations({subtree: true})
+      .filter(animation => animation instanceof CSSTransition && animation.playState !== 'finished').length)).toBe(0);
+    await page.screenshot({path: info.outputPath(name), fullPage: true, animations: 'disabled', caret: 'hide'});
+  }
   const row = page.locator('tbody tr').filter({has: page.locator('.account-name', {hasText: upn})});
   await expect(row.locator('.account-name')).toHaveText(upn);
   await expect(row.getByLabel('Role for ' + upn, {exact: true})).toHaveValue('viewer');
@@ -134,13 +146,49 @@ test('bound Entra accounts display UPN but role and delete actions keep the acco
   await row.getByText('Identity binding', {exact: true}).click();
   await expect(row.getByText(username, {exact: true})).toBeVisible();
   await row.getByText('Identity binding', {exact: true}).click();
+  const access = row.locator('.account-access-details');
+  const summary = access.locator('summary');
+  const override = row.getByLabel('Keep local role override', {exact: true});
+  await expect(override).toBeVisible();
+  await expect(access).not.toHaveAttribute('open');
+  await expect(access.locator('.field-help')).toBeHidden();
+  await expect(access.locator('.permission-snapshot')).toBeHidden();
+  const collapsedHeight = (await row.boundingBox()).height;
+  expect(collapsedHeight).toBeLessThanOrEqual(info.project.name === 'mobile' ? 132 : 108);
+  await summary.focus();
+  await page.keyboard.press('Enter');
+  await expect(access).toHaveAttribute('open', '');
+  await expect(access.locator('.field-help')).toContainText("Microsoft's app role is applied at the next sign-in.");
+  await expect(access.locator('.permission-snapshot')).toContainText('gui_read');
+  expect((await row.boundingBox()).height).toBeGreaterThan(collapsedHeight);
+  expect(await access.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+  await capture('entra-access-details.png');
+  await summary.focus();
+  await page.keyboard.press('Space');
+  await expect(access).not.toHaveAttribute('open');
+  expect((await row.boundingBox()).height).toBeLessThanOrEqual(collapsedHeight + 1);
+  if (info.project.name === 'mobile') {
+    for (const control of [summary, override.locator('..'), row.getByRole('button', {name: 'Apply', exact: true}), row.getByRole('button', {name: 'Disable', exact: true})]) {
+      expect((await control.boundingBox()).height).toBeGreaterThanOrEqual(44);
+    }
+  } else {
+    const state = await row.locator('.account-state').boundingBox();
+    const toggle = await row.getByRole('button', {name: 'Disable', exact: true}).boundingBox();
+    expect(Math.abs((state.y + state.height / 2) - (toggle.y + toggle.height / 2))).toBeLessThanOrEqual(1);
+  }
+  await info.attach('account-row-density', {body: JSON.stringify({collapsedHeight, viewport: page.viewportSize()}), contentType: 'application/json'});
+  await page.locator('.account-table .table-scroll').evaluate(el => { el.scrollLeft = 0; });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 2)).toBe(true);
   expect(await row.locator('.account-name').evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
-  await page.screenshot({path: info.outputPath('entra-account-upn.png'), fullPage: true});
+  await capture('entra-account-upn.png');
+  if (info.project.name === 'mobile') {
+    await summary.scrollIntoViewIfNeeded();
+    await capture('entra-access-controls.png');
+  }
   await row.getByLabel('Role for ' + upn, {exact: true}).selectOption('moderator');
   const roleRequest = page.waitForRequest(request => request.url().endsWith('/admin_management/change_role') && request.method() === 'POST');
   await Promise.all([page.waitForEvent('load'), row.getByRole('button', {name: 'Apply', exact: true}).click()]);
-  expect((await roleRequest).postDataJSON().username).toBe(username);
+  expect((await roleRequest).postDataJSON()).toEqual({username, role: 'moderator', entra_role_override: false});
   await expect(row.getByLabel('Role for ' + upn, {exact: true})).toHaveValue('moderator');
   const confirmation = page.waitForEvent('dialog');
   const clickDelete = row.getByRole('button', {name: 'Delete', exact: true}).click();

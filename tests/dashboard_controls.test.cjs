@@ -143,6 +143,7 @@ function statsHarness() {
             return {ok: true, json: async () => state.payload};
         },
         updateLastBlockDisplay: () => {},
+        syncInsightFilters: () => {},
         console: {error: (...args) => errors.push(args)},
     });
     vm.runInContext(handlerSource('function escapeHTML(str)', '// UI Event Listeners'), context);
@@ -164,6 +165,8 @@ test('each stats refresh retains every top entry and the initial chip presentati
             const html = fields[id].innerHTML;
             assert.equal((html.match(/title="/g) || []).length, 10, 'No client-only top-three limit');
             assert.equal((html.match(/class="insight-chip"/g) || []).length, 10, id);
+            assert.equal((html.match(/<button type="button"/g) || []).length, 10, 'Native keyboard controls');
+            assert.equal((html.match(/data-insight-value="/g) || []).length, 10, 'Refreshed chips keep their filter value');
             assert.equal((html.match(/class="insight-count"/g) || []).length, 10, id);
             assert.ok(html.includes(`>${91 + increment}</span>`), 'The tenth entry updates too');
             assert.doesNotMatch(html, /style=/, 'Use the same shared classes as initial rendering');
@@ -203,4 +206,87 @@ test('stats preserve previous entries on absent fields or failure, clear empty l
     await context.refreshStats();
     for (const id of ['stat-countries', 'stat-asns', 'stat-reasons']) assert.equal(fields[id].innerHTML, '');
     assert.equal(fields['health-dot'].title, 'System Health: OK');
+});
+
+function insightHarness() {
+    const input = {value: ''};
+    const countries = ['US', 'AT', 'DE'].map(value => ({value, checked: false}));
+    const chips = [['country', 'US'], ['asn', '396982'], ['reason', 'ISDB-*-Scanner']].map(([field, value]) => ({
+        dataset: {insightFilter: field, insightValue: value},
+        setAttribute(name, value) { this[name] = value; },
+    }));
+    const filters = {query: '', country: '', addedBy: 'operator', from: '2026-01-01T00:00', to: '2026-10-01T00:00'};
+    const searches = [];
+    const messages = [];
+    const context = vm.createContext({
+        currentFilters: filters,
+        document: {
+            getElementById: id => {
+                assert.equal(id, 'filterInput');
+                return input;
+            },
+            querySelectorAll: selector => selector === '.insight-chip' ? chips : countries,
+        },
+        showToast: (...args) => messages.push(args),
+        applyServerSearch: async () => {
+            filters.query = input.value.trim();
+            filters.country = countries.filter(cb => cb.checked).map(cb => cb.value).join(',');
+            searches.push({...filters});
+            context.syncInsightFilters();
+        },
+    });
+    vm.runInContext(handlerSource('function syncInsightFilters()', 'function clearFilters()'), context);
+    return {context, input, countries, chips, filters, searches, messages};
+}
+
+test('country ranking selects one country, toggles off, and preserves the other search fields', async () => {
+    const state = insightHarness();
+    state.input.value = 'asn:396982';
+    state.countries[1].checked = true;
+    state.countries[2].checked = true;
+    await state.context.applyInsightFilter('country', 'US');
+    assert.deepEqual(state.searches[0], {
+        query: 'asn:396982', country: 'US', addedBy: 'operator', from: '2026-01-01T00:00', to: '2026-10-01T00:00',
+    });
+    assert.deepEqual(state.countries.map(cb => cb.checked), [true, false, false]);
+    assert.equal(state.chips[0]['aria-pressed'], 'true');
+    await state.context.applyInsightFilter('country', 'us');
+    assert.equal(state.searches[1].country, '');
+    assert.equal(state.searches[1].query, 'asn:396982');
+    assert.equal(state.chips[0]['aria-pressed'], 'false');
+    await state.context.applyInsightFilter('country', 'unknown');
+    assert.equal(state.searches.length, 2, 'Unknown country does not clear existing filters');
+    assert.equal(state.messages.length, 1);
+});
+
+test('ASN and reason rankings set literal exact-field queries and toggle without clearing country', async () => {
+    const state = insightHarness();
+    state.countries[0].checked = true;
+    await state.context.applyInsightFilter('asn', '396982');
+    assert.equal(state.input.value, 'asn:396982');
+    assert.equal(state.chips[1]['aria-pressed'], 'true');
+    await state.context.applyInsightFilter('reason', 'ISDB-*-Scanner');
+    assert.equal(state.input.value, 'reason:ISDB-*-Scanner');
+    assert.equal(state.chips[1]['aria-pressed'], 'false');
+    assert.equal(state.chips[2]['aria-pressed'], 'true');
+    await state.context.applyInsightFilter('reason', 'isdb-*-scanner');
+    assert.equal(state.input.value, '');
+    assert.equal(state.chips[2]['aria-pressed'], 'false');
+    await state.context.applyInsightFilter('reason', 'A:"B" & <test> / + *');
+    assert.equal(state.input.value, 'reason:A:"B" & <test> / + *');
+    assert.ok(state.searches.every(filters => filters.country === 'US' && filters.addedBy === 'operator'));
+    await state.context.applyInsightFilter('unexpected', 'value');
+    assert.equal(state.searches.length, 4);
+});
+
+test('ranking selection can be restored from saved or URL filters and cleared', () => {
+    const {context, filters, chips} = insightHarness();
+    filters.country = 'US,DE';
+    filters.query = 'ASN:396982';
+    context.syncInsightFilters();
+    assert.deepEqual(chips.map(chip => chip['aria-pressed']), ['true', 'true', 'false']);
+    filters.country = '';
+    filters.query = '';
+    context.syncInsightFilters();
+    assert.deepEqual(chips.map(chip => chip['aria-pressed']), ['false', 'false', 'false']);
 });

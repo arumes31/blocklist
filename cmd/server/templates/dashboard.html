@@ -10,7 +10,7 @@
     <script src="/js/htmx.min.js"></script>
     <script src="/js/json-enc.js"></script>
     <script src="/js/blocklist-pager.js"></script>
-    <link rel="stylesheet" href="/static/css/app.css?v=dashboard-insights-1">
+    <link rel="stylesheet" href="/static/css/app.css?v=dashboard-insights-2">
 </head>
 
 <body class="app-page" data-page="dashboard">
@@ -47,10 +47,10 @@
                 </div>
                 <div id="stat-countries" class="insight-list">
                     {{ range $i, $c := .stats.top_countries }}
-                    <span class="insight-chip" title="{{ $c.Country }}">
+                    <button type="button" class="insight-chip" title="{{ $c.Country }}" data-insight-filter="country" data-insight-value="{{ $c.Country }}" aria-label="Filter by country {{ $c.Country }}" aria-pressed="false">
                         <span class="flag-icon flag-icon-{{ lower $c.Country }}"></span>
                         <span class="insight-count">{{ $c.Count }}</span>
-                    </span>
+                    </button>
                     {{ end }}
                 </div>
             </div>
@@ -58,10 +58,10 @@
                 <div class="insight-title">Top ASNs</div>
                 <div id="stat-asns" class="insight-list">
                     {{ range $i, $a := .stats.top_asns }}
-                    <span class="insight-chip" title="{{ $a.ASNOrg }}">
+                    <button type="button" class="insight-chip" title="{{ $a.ASNOrg }}" data-insight-filter="asn" data-insight-value="{{ $a.ASN }}" aria-label="Filter by ASN {{ $a.ASN }}" aria-pressed="false">
                         <span class="insight-label">{{ $a.ASN }}:</span>
                         <span class="insight-count">{{ $a.Count }}</span>
-                    </span>
+                    </button>
                     {{ end }}
                 </div>
             </div>
@@ -69,10 +69,10 @@
                 <div class="insight-title">Top Reasons</div>
                 <div id="stat-reasons" class="insight-list">
                     {{ range $i, $r := .stats.top_reasons }}
-                    <span class="insight-chip" title="{{ $r.Reason }}">
+                    <button type="button" class="insight-chip" title="{{ $r.Reason }}" data-insight-filter="reason" data-insight-value="{{ $r.Reason }}" aria-label="Filter by reason {{ $r.Reason }}" aria-pressed="false">
                         <span class="insight-label">{{ $r.Reason }}:</span>
                         <span class="insight-count">{{ $r.Count }}</span>
-                    </span>
+                    </button>
                     {{ end }}
                 </div>
             </div>
@@ -80,7 +80,7 @@
         <div class="search-container">
             <div class="filter-grid">
                 <input aria-label="Quick Search (IP, Reason...)" type="text" id="filterInput" class="filter-input" style="flex: 2; min-width: 200px;"
-                    placeholder="Quick Search (IP, Reason...)" oninput="debouncedFilterTable()">
+                    placeholder="Quick Search (IP, Reason...)" title="Search IP, text or CIDR. Exact filters: asn:396982 or reason:Scanner" oninput="debouncedFilterTable()">
 
                 <div class="country-dropdown">
                     <button type="button" class="filter-input"
@@ -1160,6 +1160,7 @@
 
                 updateLastBlockDisplay();
 
+                const focusedInsight = document.activeElement?.closest('.insight-chip');
                 if (Array.isArray(s.top_countries)) {
                     const wrap = document.getElementById('stat-countries');
                     wrap.innerHTML = s.top_countries.map(c => {
@@ -1167,10 +1168,10 @@
                         const escapedClass = escapeHTML((c.country || '').toLowerCase());
                         const escapedCount = escapeHTML(c.count || 0);
                         return `
-                        <span class="insight-chip" title="${escapedCountry}">
+                        <button type="button" class="insight-chip" title="${escapedCountry}" data-insight-filter="country" data-insight-value="${escapedCountry}" aria-label="Filter by country ${escapedCountry}" aria-pressed="false">
                             <span class="flag-icon flag-icon-${escapedClass}"></span>
                             <span class="insight-count">${escapedCount}</span>
-                        </span>
+                        </button>
                         `;
                     }).join('');
                 }
@@ -1181,10 +1182,10 @@
                         const escapedAsn = escapeHTML(a.asn || '');
                         const escapedCount = escapeHTML(a.count || 0);
                         return `
-                        <span class="insight-chip" title="${escapedAsnOrg}">
+                        <button type="button" class="insight-chip" title="${escapedAsnOrg}" data-insight-filter="asn" data-insight-value="${escapedAsn}" aria-label="Filter by ASN ${escapedAsn}" aria-pressed="false">
                             <span class="insight-label">${escapedAsn}:</span>
                             <span class="insight-count">${escapedCount}</span>
-                        </span>
+                        </button>
                         `;
                     }).join('');
                 }
@@ -1194,12 +1195,19 @@
                         const escapedReason = escapeHTML(r.reason || '');
                         const escapedCount = escapeHTML(r.count || 0);
                         return `
-                        <span class="insight-chip" title="${escapedReason}">
+                        <button type="button" class="insight-chip" title="${escapedReason}" data-insight-filter="reason" data-insight-value="${escapedReason}" aria-label="Filter by reason ${escapedReason}" aria-pressed="false">
                             <span class="insight-label">${escapedReason}:</span>
                             <span class="insight-count">${escapedCount}</span>
-                        </span>
+                        </button>
                         `;
                     }).join('');
+                }
+                syncInsightFilters();
+                if (focusedInsight) {
+                    const replacement = Array.from(document.querySelectorAll('.insight-chip')).find(chip =>
+                        chip.dataset.insightFilter === focusedInsight.dataset.insightFilter &&
+                        chip.dataset.insightValue === focusedInsight.dataset.insightValue);
+                    replacement?.focus({preventScroll: true});
                 }
             } catch (err) {
                 console.error("refreshStats error:", err);
@@ -1254,6 +1262,7 @@
         }
 
         async function applyServerSearch() {
+            clearTimeout(debounceTimeout);
             const countrySelect = document.getElementById('countryPopup');
             const checkboxes = countrySelect.querySelectorAll('input[type="checkbox"]:checked');
             const selectedCountries = Array.from(checkboxes).map(cb => cb.value);
@@ -1277,6 +1286,37 @@
             selectedIPs.clear();
             updateBulkUI();
             await loadTablePage(0, true);
+        }
+
+        function syncInsightFilters() {
+            const countries = (currentFilters.country || '').toLowerCase().split(',');
+            const query = (currentFilters.query || '').trim().toLowerCase();
+            document.querySelectorAll('.insight-chip').forEach(chip => {
+                const {insightFilter: field, insightValue: value} = chip.dataset;
+                const active = field === 'country' ? countries.includes(value.toLowerCase()) :
+                    query === `${field}:${value}`.trim().toLowerCase();
+                chip.setAttribute('aria-pressed', String(active));
+            });
+        }
+
+        function applyInsightFilter(field, value) {
+            if (field === 'country') {
+                const checkboxes = Array.from(document.querySelectorAll('#countryList input[type="checkbox"]'));
+                const match = checkboxes.find(cb => cb.value.toLowerCase() === value.toLowerCase());
+                if (!match) {
+                    showToast('This country is not available in the country filter.', 'warning');
+                    return;
+                }
+                const clear = match.checked && checkboxes.filter(cb => cb.checked).length === 1;
+                checkboxes.forEach(cb => { cb.checked = !clear && cb === match; });
+            } else if (field === 'asn' || field === 'reason') {
+                const input = document.getElementById('filterInput');
+                const query = `${field}:${value}`.trim();
+                input.value = input.value.trim().toLowerCase() === query.toLowerCase() ? '' : query;
+            } else {
+                return;
+            }
+            return applyServerSearch();
         }
 
         function clearFilters() {
@@ -1378,6 +1418,7 @@
         }
 
         function renderChips() {
+            syncInsightFilters();
             const container = document.getElementById('filter-chips');
             container.innerHTML = "";
             Object.entries(currentFilters).forEach(([key, val]) => {
@@ -1549,6 +1590,10 @@
         }
 
         // Wire controls
+        document.querySelector('.insights').addEventListener('click', event => {
+            const chip = event.target.closest('button[data-insight-filter]');
+            if (chip) applyInsightFilter(chip.dataset.insightFilter, chip.dataset.insightValue);
+        });
         document.getElementById('ipTable')?.addEventListener('click', function (event) {
             const link = event.target.closest('.ip-details-link');
             if (link) {

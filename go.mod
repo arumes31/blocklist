@@ -9,7 +9,7 @@ require (
 	github.com/coreos/go-oidc/v3 v3.21.0
 	github.com/gin-contrib/sessions v1.1.2
 	github.com/gin-gonic/gin v1.12.0
-	github.com/go-jose/go-jose/v4 v4.1.4
+	github.com/go-jose/go-jose/v4 v4.1.5
 	github.com/golang-migrate/migrate/v4 v4.20.1
 	github.com/gorilla/sessions v1.4.0
 	github.com/gorilla/websocket v1.5.3
