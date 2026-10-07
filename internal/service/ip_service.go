@@ -830,7 +830,9 @@ func (s *IPService) listIPsHashFallback(ctx context.Context, limit int, cursor s
 	return itemsOut, nextCursor, len(list), nil
 }
 
-// computeStats reads fresh counts and aggregates from Redis.
+// computeStats reads uncached counters and top-ten rankings from Redis. Reason
+// rankings group trimmed, case-insensitive values while retaining a stable display
+// label. A missing repository returns zero values; Redis failures are returned.
 func (s *IPService) computeStats(ctx context.Context) (hour int, day int, totalEver int, activeBlocks int, top []struct {
 	Country string
 	Count   int
@@ -859,7 +861,7 @@ func (s *IPService) computeStats(ctx context.Context) (hour int, day int, totalE
 		ASNOrg string
 		Count  int
 	})
-	reasonMap := make(map[string]int)
+	reasonMap := make(map[string]reasonStat)
 
 	for _, entry := range ips {
 		if entry.Geolocation != nil {
@@ -880,8 +882,15 @@ func (s *IPService) computeStats(ctx context.Context) (hour int, day int, totalE
 				}
 			}
 		}
-		if entry.Reason != "" {
-			reasonMap[entry.Reason]++
+		if reason := strings.TrimSpace(entry.Reason); reason != "" {
+			key := strings.ToLower(reason)
+			stat := reasonMap[key]
+			stat.Count++
+			// Keep a stable original-cased label regardless of Redis map iteration.
+			if stat.Reason == "" || reason < stat.Reason {
+				stat.Reason = reason
+			}
+			reasonMap[key] = stat
 		}
 	}
 
@@ -909,11 +918,8 @@ func (s *IPService) computeStats(ctx context.Context) (hour int, day int, totalE
 		topASN = topASN[:10]
 	}
 
-	for r, count := range reasonMap {
-		topReason = append(topReason, struct {
-			Reason string
-			Count  int
-		}{r, count})
+	for _, stat := range reasonMap {
+		topReason = append(topReason, stat)
 	}
 	sort.Slice(topReason, func(i, j int) bool { return topReason[i].Count > topReason[j].Count })
 	if len(topReason) > 10 {
@@ -1112,6 +1118,8 @@ func (s *IPService) BulkUnblock(ctx context.Context, ips []string, actor string)
 
 type filterOptions struct {
 	query        string
+	queryField   string
+	queryASN     uint64
 	queryNetwork *net.IPNet
 	countryList  []string
 	addedBy      string
@@ -1119,6 +1127,10 @@ type filterOptions struct {
 	toTime       time.Time
 }
 
+// prepareFilterOptions normalizes filters shared by pagination and exports.
+// Qualified asn: and reason: queries use exact matching; other queries retain
+// text and CIDR matching. Invalid dates leave their bounds unset, while invalid
+// or zero ASNs remain non-matching qualified queries.
 func (s *IPService) prepareFilterOptions(query, country, addedBy, from, to string) *filterOptions {
 	opts := &filterOptions{}
 	if from != "" {
@@ -1128,6 +1140,18 @@ func (s *IPService) prepareFilterOptions(query, country, addedBy, from, to strin
 		opts.toTime, _ = time.Parse(time.RFC3339, to)
 	}
 	opts.query = strings.ToLower(strings.TrimSpace(query))
+	field, value, qualified := strings.Cut(opts.query, ":")
+	field = strings.TrimSpace(field)
+	insightField := field == "asn" || field == "reason"
+	if qualified && insightField {
+		opts.queryField = field
+		opts.query = strings.TrimSpace(value)
+		if field == "asn" {
+			if asn, err := strconv.ParseUint(opts.query, 10, 32); err == nil {
+				opts.queryASN = asn
+			}
+		}
+	}
 	if country != "" {
 		for _, c := range strings.Split(country, ",") {
 			if trimmed := strings.TrimSpace(c); trimmed != "" {
@@ -1136,7 +1160,7 @@ func (s *IPService) prepareFilterOptions(query, country, addedBy, from, to strin
 		}
 	}
 	opts.addedBy = strings.ToLower(strings.TrimSpace(addedBy))
-	if opts.query != "" {
+	if opts.query != "" && opts.queryField == "" {
 		if _, network, err := net.ParseCIDR(opts.query); err == nil {
 			opts.queryNetwork = network
 		}
@@ -1144,13 +1168,26 @@ func (s *IPService) prepareFilterOptions(query, country, addedBy, from, to strin
 	return opts
 }
 
+// matchesFilters applies all constraints from non-nil, prepared filter options
+// without modifying the entry. Exact reasons ignore case and surrounding space;
+// ordinary queries match text or CIDR. Nil entries never match, and entries with
+// unparseable timestamps are not rejected by date bounds.
 func (s *IPService) matchesFilters(ip string, entry *models.IPEntry, opts *filterOptions) bool {
 	if entry == nil {
 		return false
 	}
 
-	// 1. Query filter (text match and CIDR)
-	if opts.query != "" {
+	// Ranking shortcuts use exact fields; ordinary searches retain text/CIDR matching.
+	switch {
+	case opts.queryField == "asn":
+		if opts.queryASN == 0 || entry.Geolocation == nil || uint64(entry.Geolocation.ASN) != opts.queryASN {
+			return false
+		}
+	case opts.queryField == "reason":
+		if opts.query == "" || strings.ToLower(strings.TrimSpace(entry.Reason)) != opts.query {
+			return false
+		}
+	case opts.query != "":
 		matches := false
 		// Text match on fields
 		if strings.Contains(strings.ToLower(ip), opts.query) ||
