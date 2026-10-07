@@ -49,6 +49,7 @@ func TestAPIHandler_RegisterRoutes_RequiresSudoForSensitiveAdminActions(t *testi
 		{name: "change password", method: http.MethodPost, path: "/admin_management/change_password"},
 		{name: "reset TOTP", method: http.MethodPost, path: "/admin_management/change_totp"},
 		{name: "change permissions", method: http.MethodPost, path: "/admin_management/change_permissions"},
+		{name: "change status", method: http.MethodPost, path: "/admin_management/change_status"},
 		{name: "disclose TOTP QR", method: http.MethodGet, path: "/admin_management/get_qr/target"},
 	}
 

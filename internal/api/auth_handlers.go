@@ -76,16 +76,16 @@ func (h *APIHandler) AuthMiddleware() gin.HandlerFunc {
 						return
 					}
 
+					owner, err := h.pgRepo.GetAdmin(token.Username)
+					if err != nil || owner == nil || owner.Disabled {
+						c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Token owner is unavailable"})
+						return
+					}
 					if err := h.pgRepo.UpdateTokenLastUsed(token.ID, c.ClientIP()); err != nil {
 						zlog.Error().Err(err).Int("token_id", token.ID).Msg("Failed to update token last_used")
 					}
 					permissions := token.Permissions
 					if h.identityRepo != nil {
-						owner, err := h.pgRepo.GetAdmin(token.Username)
-						if err != nil || owner == nil {
-							c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Token owner is unavailable"})
-							return
-						}
 						ownerPermissions := owner.Permissions
 						if owner.Username == h.cfg.GUIAdmin {
 							ownerPermissions = models.AllPermissions()
@@ -105,7 +105,11 @@ func (h *APIHandler) AuthMiddleware() gin.HandlerFunc {
 		username, password, ok := c.Request.BasicAuth()
 		if ok && h.pgRepo != nil && (c.Request.URL.Path == "/api/v1/whitelists" || c.Request.URL.Path == "/api/v1/whitelists-raw") {
 			admin, err := h.pgRepo.GetAdmin(username)
-			if err == nil && admin != nil && admin.AuthSource != "entra" {
+			if err == nil && admin != nil && admin.Disabled {
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+				return
+			}
+			if err == nil && admin != nil && !admin.Disabled && admin.AuthSource != "entra" {
 				if bcrypt.CompareHashAndPassword([]byte(admin.PasswordHash), []byte(password)) == nil {
 					c.Set("username", username)
 					c.Set("role", admin.Role)
@@ -156,8 +160,8 @@ func (h *APIHandler) AuthMiddleware() gin.HandlerFunc {
 
 		// Verify user still exists in database
 		admin, err := h.pgRepo.GetAdmin(username)
-		if err != nil || admin == nil {
-			zlog.Warn().Str("username", username).Msg("Session active for non-existent user")
+		if err != nil || admin == nil || admin.Disabled {
+			zlog.Warn().Str("username", username).Msg("Session account unavailable")
 			session.Clear()
 			_ = session.Save()
 			c.Redirect(http.StatusFound, "/login")
@@ -176,6 +180,7 @@ func (h *APIHandler) AuthMiddleware() gin.HandlerFunc {
 		c.Set("role", admin.Role)
 		c.Set("permissions", permissions)
 		c.Set("auth_source", admin.AuthSource)
+		c.Set("display_username", admin.DisplayName())
 		if h.identityRepo != nil && !models.HasPermission(permissions, "gui_read") {
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "This account does not have workspace access."})
 			return
@@ -227,7 +232,7 @@ func (h *APIHandler) SessionCheckMiddleware() gin.HandlerFunc {
 		}
 
 		admin, err := h.pgRepo.GetAdmin(username.(string))
-		if err != nil || admin == nil {
+		if err != nil || admin == nil || admin.Disabled {
 			session.Clear()
 			_ = session.Save()
 			c.Redirect(http.StatusFound, "/login")
@@ -413,7 +418,7 @@ func (h *APIHandler) VerifyFirstFactor(c *gin.Context) {
 	}
 
 	admin, err := h.pgRepo.GetAdmin(username)
-	if err != nil || admin == nil || admin.AuthSource == "entra" {
+	if err != nil || admin == nil || admin.Disabled || admin.AuthSource == "entra" {
 		// Run a dummy bcrypt comparison (same cost as real hashes) so the
 		// response time for unknown usernames matches that of a wrong password,
 		// preventing username enumeration via timing.
@@ -538,7 +543,7 @@ func (h *APIHandler) Login(c *gin.Context) {
 		admin, _ := h.pgRepo.GetAdmin(username)
 
 		// Prevent overwriting existing token via this flow
-		if admin == nil || admin.AuthSource == "entra" {
+		if admin == nil || admin.Disabled || admin.AuthSource == "entra" {
 			h.renderHTML(c, http.StatusUnauthorized, "login.html", gin.H{"error": "Restart sign-in using this account's configured authentication method."})
 			return
 		}
@@ -554,7 +559,11 @@ func (h *APIHandler) Login(c *gin.Context) {
 
 		if totp.Validate(totpCode, setupSecret) {
 			// Save the secret to the user
-			_ = h.pgRepo.UpdateAdminToken(username, setupSecret)
+			if err := h.pgRepo.UpdateAdminToken(username, setupSecret); err != nil {
+				zlog.Error().Err(err).Msg("Failed to complete authenticator enrollment")
+				h.renderHTML(c, http.StatusUnauthorized, "login.html", gin.H{"error": "Sign-in could not be completed. Please restart sign-in."})
+				return
+			}
 			_ = h.pgRepo.LogAction(username, "TOTP_SETUP", c.ClientIP(), "Successful 2FA setup")
 			// Clear setup secret from session immediately
 			session.Delete("pending_totp_secret")
@@ -584,6 +593,15 @@ func (h *APIHandler) Login(c *gin.Context) {
 	}
 
 	if authenticated {
+		admin, err := h.pgRepo.GetAdmin(username)
+		if err != nil || admin == nil || admin.Disabled {
+			session.Clear()
+			if err := session.Save(); err != nil {
+				zlog.Error().Err(err).Msg("Failed to clear rejected sign-in session")
+			}
+			h.renderHTML(c, http.StatusUnauthorized, "login.html", gin.H{"error": "Sign-in could not be completed. Please restart sign-in."})
+			return
+		}
 		session.Delete("pending_auth_user")
 		session.Delete("pending_auth_verified")
 		session.Delete("pending_totp_secret")
@@ -593,12 +611,9 @@ func (h *APIHandler) Login(c *gin.Context) {
 		session.Set("client_ip", c.ClientIP())
 		session.Set("login_time", time.Now().UTC().Format(time.RFC3339))
 		session.Set("sudo_time", time.Now().Unix()) // Initial sudo mode
-		admin, _ := h.pgRepo.GetAdmin(username)
-		if admin != nil {
-			session.Set("role", admin.Role)
-			session.Set("permissions", admin.Permissions)
-			session.Set("session_version", admin.SessionVersion)
-		}
+		session.Set("role", admin.Role)
+		session.Set("permissions", admin.Permissions)
+		session.Set("session_version", admin.SessionVersion)
 		if err := session.Save(); err != nil {
 			zlog.Error().Err(err).Msg("Failed to save session during login")
 		}
@@ -686,7 +701,7 @@ func (h *APIHandler) VerifySudo(c *gin.Context) {
 	admin, _ := h.pgRepo.GetAdmin(username)
 	// admin.Token must be non-empty: an empty secret would accept the
 	// attacker-computable empty-key code, allowing sudo elevation without 2FA.
-	if admin != nil && admin.Token != "" && totp.Validate(totpCode, admin.Token) {
+	if admin != nil && !admin.Disabled && admin.Token != "" && totp.Validate(totpCode, admin.Token) {
 		session.Set("sudo_time", time.Now().Unix())
 		_ = session.Save()
 

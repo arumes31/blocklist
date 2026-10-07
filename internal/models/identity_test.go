@@ -7,6 +7,35 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestAdminAccountDisplayName(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name, source, upn, want string
+	}{
+		{name: "entra", source: "entra", upn: "person@example.test", want: "person@example.test"},
+		{
+			name: "trimmed entra upn", source: "entra",
+			upn: " Person@Example.test ", want: "Person@Example.test",
+		},
+		{name: "missing entra upn", source: "entra", want: "stable-key"},
+		{name: "blank entra upn", source: "entra", upn: "  ", want: "stable-key"},
+		{name: "local ignores upn", source: "local", upn: "person@example.test", want: "stable-key"},
+		{name: "legacy local", upn: "person@example.test", want: "stable-key"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			account := AdminAccount{Username: "stable-key", AuthSource: tc.source, EntraUPN: tc.upn}
+			before := account
+			if got := account.DisplayName(); got != tc.want {
+				t.Errorf("DisplayName() = %q, want %q", got, tc.want)
+			}
+			if account != before {
+				t.Fatal("display label changed the stored identity")
+			}
+		})
+	}
+}
+
 func TestNormalizeEntraUPN(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -54,6 +83,57 @@ func TestPermissionCatalog(t *testing.T) {
 	require.Error(t, err)
 	require.False(t, HasPermission("preview_ips", "view_ips"))
 	require.Equal(t, "view_ips", IntersectPermissions("view_ips,block_ips", "view_ips"))
+}
+
+func TestPermissionsCoverAccount(t *testing.T) {
+	t.Parallel()
+	role := "custom"
+	for _, tc := range []struct {
+		name        string
+		account     AdminAccount
+		permissions string
+		allowed     bool
+	}{
+		{
+			name: "legacy retired keys", account: AdminAccount{Permissions: "gui_read, gui_write,webhook_access,"},
+			permissions: "gui_read", allowed: true,
+		},
+		{
+			name: "local legacy retired keys", account: AdminAccount{AuthSource: "local", Permissions: "gui_write,webhook_access"},
+			allowed: true,
+		},
+		{
+			name: "live permissions still required", account: AdminAccount{Permissions: "gui_write,manage_roles"},
+			permissions: "gui_read,manage_admins",
+		},
+		{
+			name: "workspace aliases still required", account: AdminAccount{Permissions: "view_ips"},
+			permissions: "view_ips",
+		},
+		{
+			name: "editor covers legacy aliases", account: AdminAccount{Permissions: "view_ips,gui_write"},
+			permissions: AllPermissions(), allowed: true,
+		},
+		{
+			name: "unknown key fails closed", account: AdminAccount{Permissions: "unknown"},
+			permissions: AllPermissions(),
+		},
+		{
+			name: "managed role is explicit", account: AdminAccount{RoleID: &role, Permissions: "gui_write"},
+			permissions: AllPermissions(),
+		},
+		{
+			name: "Entra is explicit", account: AdminAccount{AuthSource: "entra", Permissions: "webhook_access"},
+			permissions: AllPermissions(),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			before := tc.account
+			require.Equal(t, tc.allowed, PermissionsCoverAccount(tc.permissions, tc.account))
+			require.Equal(t, before, tc.account, "stored permissions must not be rewritten")
+		})
+	}
 }
 
 func TestLogCategoriesFailTowardSystem(t *testing.T) {

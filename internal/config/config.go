@@ -1,6 +1,7 @@
 package config
 
 import (
+	"blocklist/internal/models"
 	"os"
 	"strconv"
 	"strings"
@@ -42,6 +43,7 @@ type Config struct {
 	RateLimitLogin         int
 	RateLimitWebhook       int
 	LogRetentionMonths     int
+	LogRetention           *models.LogRetention
 	CookieSecure           bool
 	SameSiteStrict         bool
 	ForceHTTPS             bool
@@ -92,18 +94,39 @@ func Load() *Config {
 		RateLimitLogin:         getEnvInt("RATE_LIMIT_LOGIN", 10),
 		RateLimitWebhook:       getEnvInt("RATE_LIMIT_WEBHOOK", 100),
 		LogRetentionMonths:     getEnvInt("LOG_RETENTION_MONTHS", 6),
-		CookieSecure:           getEnvBool("COOKIE_SECURE", false),
-		SameSiteStrict:         getEnvBool("COOKIE_SAMESITE_STRICT", false),
-		ForceHTTPS:             getEnvBool("FORCE_HTTPS", false),
-		RunWorkerInProcess:     getEnvBool("RUN_WORKER_IN_PROCESS", true),
-		AuditLogLimitPerIP:     getEnvInt("AUDIT_LOG_LIMIT_PER_IP", 100),
-		SMTPHost:               getEnv("SMTP_HOST", ""),
-		SMTPPort:               getEnvInt("SMTP_PORT", 587),
-		SMTPUser:               getEnv("SMTP_USER", ""),
-		SMTPPass:               getEnv("SMTP_PASS", ""),
-		SMTPFrom:               getEnv("SMTP_FROM", ""),
-		SMTPTo:                 getEnv("SMTP_TO", ""),
+		LogRetention: &models.LogRetention{
+			EventMonths: getRetentionMonths("EVENT_LOG_RETENTION_MONTHS", models.MaxEventLogRetentionMonths),
+			AuditMonths: getRetentionMonths("AUDIT_LOG_RETENTION_MONTHS", models.MaxAuditLogRetentionMonths),
+		},
+		CookieSecure:       getEnvBool("COOKIE_SECURE", false),
+		SameSiteStrict:     getEnvBool("COOKIE_SAMESITE_STRICT", false),
+		ForceHTTPS:         getEnvBool("FORCE_HTTPS", false),
+		RunWorkerInProcess: getEnvBool("RUN_WORKER_IN_PROCESS", true),
+		AuditLogLimitPerIP: getEnvInt("AUDIT_LOG_LIMIT_PER_IP", 100),
+		SMTPHost:           getEnv("SMTP_HOST", ""),
+		SMTPPort:           getEnvInt("SMTP_PORT", 587),
+		SMTPUser:           getEnv("SMTP_USER", ""),
+		SMTPPass:           getEnv("SMTP_PASS", ""),
+		SMTPFrom:           getEnv("SMTP_FROM", ""),
+		SMTPTo:             getEnv("SMTP_TO", ""),
 	}
+}
+
+// LogRetentionPolicy supplies defaults for programmatically constructed configs.
+// Bootstrap validates it before connecting to storage or starting any jobs.
+func (c *Config) LogRetentionPolicy() models.LogRetention {
+	if c == nil || c.LogRetention == nil {
+		return models.DefaultLogRetention()
+	}
+	return *c.LogRetention
+}
+
+func getRetentionMonths(key string, fallback int) int {
+	months, err := strconv.Atoi(getEnv(key, strconv.Itoa(fallback)))
+	if err != nil {
+		return 0 // Invalid, not unlimited; rejected by LogRetention.Validate.
+	}
+	return months
 }
 
 func getEnv(key, fallback string) string {

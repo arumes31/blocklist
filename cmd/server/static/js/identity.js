@@ -67,6 +67,41 @@
     });
     edit(document.querySelector('.role-option'));
   }
+  const accountFilters = $('accountFilters');
+  if (accountFilters) {
+    const rows = [...document.querySelectorAll('[data-account-row]')];
+    const fields = {q: $('accountSearch'), source: $('accountSource'), status: $('accountState')};
+    const parameters = new URLSearchParams(location.search);
+    for (const [key, field] of Object.entries(fields)) field.value = parameters.get(key) || '';
+    function filterAccounts() {
+      const query = fields.q.value.trim().toLowerCase();
+      let visible = 0, active = 0;
+      for (const row of rows) {
+        const matches = row.dataset.accountSearch.toLowerCase().includes(query) &&
+          (!fields.source.value || row.dataset.accountSource === fields.source.value) &&
+          (!fields.status.value || row.dataset.accountState === fields.status.value);
+        row.hidden = !matches;
+        if (matches) { visible++; if (row.dataset.accountState === 'active') active++; }
+      }
+      $('accountCount').textContent = visible + ' of ' + rows.length + ' accounts · ' + active + ' active';
+      $('accountEmpty').hidden = visible > 0;
+      $('clearAccountFilters').disabled = !query && !fields.source.value && !fields.status.value;
+      const url = new URL(location.href);
+      for (const [key, field] of Object.entries(fields)) {
+        if (field.value) url.searchParams.set(key, field.value); else url.searchParams.delete(key);
+      }
+      history.replaceState(null, '', url);
+    }
+    accountFilters.addEventListener('submit', event => event.preventDefault());
+    fields.q.addEventListener('input', filterAccounts);
+    fields.source.addEventListener('change', filterAccounts);
+    fields.status.addEventListener('change', filterAccounts);
+    $('clearAccountFilters').addEventListener('click', () => {
+      for (const field of Object.values(fields)) field.value = '';
+      filterAccounts(); fields.q.focus();
+    });
+    filterAccounts();
+  }
   const accountForm = $('accountForm');
   if (accountForm) {
     function syncAccountFields() {
@@ -86,9 +121,16 @@
   let passwordUser = '';
   document.querySelectorAll('[data-account-action]').forEach(button => button.addEventListener('click', () => {
     const username = button.dataset.username;
-    if (button.dataset.accountAction === 'password') { passwordUser = username; $('passwordAccount').textContent = username; $('replacementPassword').value = ''; $('passwordDialog').showModal(); return; }
+    const accountName = button.dataset.accountName || username;
+    if (button.dataset.accountAction === 'status') {
+      const disabled = button.dataset.disabled !== 'true';
+      const message = disabled ? 'Disable “' + accountName + '”? Sign-in, browser sessions and API-token access will be blocked. Live connections close within 30 seconds. Data and roles are kept.' : 'Enable “' + accountName + '”? Sign-in and existing API tokens will work again. Old browser sessions remain signed out.';
+      if (confirm(message)) save(button, () => request('/admin_management/change_status', 'POST', {username, disabled}));
+      return;
+    }
+    if (button.dataset.accountAction === 'password') { passwordUser = username; $('passwordAccount').textContent = accountName; $('replacementPassword').value = ''; $('passwordDialog').showModal(); return; }
     const reset = button.dataset.accountAction === 'mfa';
-    if (confirm(reset ? 'Reset authenticator enrollment for “' + username + '”? Existing sessions will be invalidated.' : 'Delete “' + username + '” and their API tokens? This cannot be undone.')) save(button, () => request('/admin_management/' + (reset ? 'change_totp' : 'delete'), 'POST', {username}));
+    if (confirm(reset ? 'Reset authenticator enrollment for “' + accountName + '”? Existing sessions will be invalidated.' : 'Delete “' + accountName + '” and their API tokens? This cannot be undone.')) save(button, () => request('/admin_management/' + (reset ? 'change_totp' : 'delete'), 'POST', {username}));
   }));
   $('cancelPassword')?.addEventListener('click', () => $('passwordDialog').close());
   $('passwordForm')?.addEventListener('submit', event => {

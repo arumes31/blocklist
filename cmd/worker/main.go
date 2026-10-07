@@ -33,6 +33,9 @@ func main() {
 		zlog.Fatal().Err(err).Msg("Failed to bootstrap app")
 	}
 	defer a.Close()
+	// External-worker deployments need maintenance too; Redis locks coordinate
+	// retention and the existing cleanup jobs across worker/server replicas.
+	a.Scheduler.Start()
 
 	// Initialize Asynq Server
 	asynqServer := asynq.NewServer(

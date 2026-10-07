@@ -53,7 +53,8 @@ func (s *AuthService) CheckAuth(username, password, token string) bool {
 					return false
 				}
 			}
-			return true
+			owner, err := s.pg.GetAdmin(t.Username)
+			return err == nil && owner != nil && !owner.Disabled
 		}
 	}
 
@@ -63,7 +64,7 @@ func (s *AuthService) CheckAuth(username, password, token string) bool {
 	}
 
 	admin, err := s.pg.GetAdmin(username)
-	if err != nil || admin == nil || admin.AuthSource == "entra" {
+	if err != nil || admin == nil || admin.Disabled || admin.AuthSource == "entra" {
 		return false
 	}
 
@@ -88,7 +89,7 @@ func (s *AuthService) VerifyTOTP(username, token string) bool {
 		return false
 	}
 	admin, err := s.pg.GetAdmin(username)
-	if err != nil || admin == nil || admin.AuthSource == "entra" {
+	if err != nil || admin == nil || admin.Disabled || admin.AuthSource == "entra" {
 		return false
 	}
 	// Reject accounts with no enrolled TOTP secret: validating against an empty

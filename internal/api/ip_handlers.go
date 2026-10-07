@@ -407,18 +407,12 @@ func (h *APIHandler) JSONWhitelists(c *gin.Context) {
 }
 
 func (h *APIHandler) RawIPs(c *gin.Context) {
-	ips, err := h.redisRepo.GetBlockedIPs()
+	ips, err := h.redisRepo.GetBlockedIPKeys()
 	if err != nil {
 		c.String(http.StatusInternalServerError, "Error fetching IPs")
 		return
 	}
-	// RawIPs prints ips newline separated.
-	// GetBlockedIPs return map[string]IPEntry.
-	var list []string
-	for ip := range ips {
-		list = append(list, ip)
-	}
-	c.String(http.StatusOK, strings.Join(list, "\n"))
+	c.String(http.StatusOK, strings.Join(ips, "\n"))
 }
 
 func (h *APIHandler) RawWhitelists(c *gin.Context) {

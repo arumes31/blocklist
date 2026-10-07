@@ -20,6 +20,7 @@ type PostgresRepository struct {
 	db                 *sqlx.DB
 	readDb             *sqlx.DB
 	auditLogLimitPerIP int
+	logRetention       models.LogRetention
 }
 
 // Ping checks both database connections without querying application tables.
@@ -31,7 +32,24 @@ func (p *PostgresRepository) Ping(ctx context.Context) (error, error) {
 	return primaryErr, p.readDb.PingContext(ctx)
 }
 
-func NewPostgresRepository(url string, readUrl string, auditLogLimitPerIP int) (*PostgresRepository, error) {
+// NewPostgresRepository validates the optional immutable log policy before
+// connecting. Omission uses the maximum event/system retention windows.
+func NewPostgresRepository(
+	url string,
+	readUrl string,
+	auditLogLimitPerIP int,
+	retention ...models.LogRetention,
+) (*PostgresRepository, error) {
+	policy := models.DefaultLogRetention()
+	if len(retention) > 1 {
+		return nil, fmt.Errorf("expected at most one log retention policy")
+	}
+	if len(retention) == 1 {
+		policy = retention[0]
+	}
+	if err := policy.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid log retention: %w", err)
+	}
 	db, err := sqlx.Connect("pgx", url)
 	if err != nil {
 		return nil, err
@@ -53,7 +71,9 @@ func NewPostgresRepository(url string, readUrl string, auditLogLimitPerIP int) (
 		}
 	}
 
-	return &PostgresRepository{db: db, readDb: readDb, auditLogLimitPerIP: auditLogLimitPerIP}, nil
+	return &PostgresRepository{
+		db: db, readDb: readDb, auditLogLimitPerIP: auditLogLimitPerIP, logRetention: policy,
+	}, nil
 }
 
 func (p *PostgresRepository) GetAdmin(username string) (*models.AdminAccount, error) {
@@ -94,7 +114,8 @@ func (p *PostgresRepository) EnsurePartitions(retentionMonths int) error {
 		}
 	}
 
-	// 2. Drop partitions older than retentionMonths
+	// 2. Webhook payload logs retain the legacy partition policy. Audit partitions
+	// mix event and system history, so only selective row cleanup may expire them.
 	var errs []error
 	if retentionMonths > 0 {
 		cutoff := now.AddDate(0, -retentionMonths, 0)
@@ -105,7 +126,7 @@ func (p *PostgresRepository) EnsurePartitions(retentionMonths int) error {
 			month := int(target.Month())
 			partitionName := fmt.Sprintf("y%dm%02d", year, month)
 
-			tables := []string{"audit_logs", "webhook_logs"}
+			tables := []string{"webhook_logs"}
 			for _, table := range tables {
 				fullName := fmt.Sprintf("%s_%s", table, partitionName)
 				// Check if partition exists before trying to drop (optional but cleaner)
@@ -144,8 +165,25 @@ func (p *PostgresRepository) UpdateAdminPassword(username, hash string) error {
 }
 
 func (p *PostgresRepository) UpdateAdminToken(username, token string) error {
-	_, err := p.db.Exec("UPDATE admins SET token = $1, session_version = session_version + 1 WHERE username = $2", token, username)
-	return err
+	// Administrators may clear enrollment on a disabled account, but an in-flight
+	// enrollment must not write a new secret after that account was disabled.
+	result, err := p.db.Exec(
+		`UPDATE admins SET token = $1, session_version = session_version + 1
+		WHERE username = $2 AND (NOT disabled OR $1 = '')`,
+		token,
+		username,
+	)
+	if err != nil {
+		return fmt.Errorf("updating account authenticator: %w", err)
+	}
+	count, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("checking authenticator update: %w", err)
+	}
+	if count != 1 {
+		return ErrIdentityDenied
+	}
+	return nil
 }
 
 func (p *PostgresRepository) UpdateAdminPermissions(username, permissions string) error {

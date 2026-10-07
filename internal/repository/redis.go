@@ -70,6 +70,31 @@ func (r *RedisRepository) GetBlockedIPs() (map[string]models.IPEntry, error) {
 	return ips, nil
 }
 
+// GetBlockedIPKeys returns the same entries as GetBlockedIPs without retaining
+// their decoded metadata. Keep the single HGETALL snapshot and full IPEntry
+// validation: HKEYS alone would expose records that GetBlockedIPs rejects.
+func (r *RedisRepository) GetBlockedIPKeys() ([]string, error) {
+	defer r.trackDuration("GetBlockedIPKeys", time.Now())
+	res, err := r.HGetAllRaw("ips")
+	if err != nil {
+		return nil, err
+	}
+	return blockedIPKeys(res), nil
+}
+
+func blockedIPKeys(records map[string]string) []string {
+	ips := make([]string, 0, len(records))
+	var entry models.IPEntry
+	for ip, data := range records {
+		// Reuse the decode target, but never carry fields between records.
+		entry = models.IPEntry{}
+		if err := sonic.UnmarshalString(data, &entry); err == nil {
+			ips = append(ips, ip)
+		}
+	}
+	return ips
+}
+
 func (r *RedisRepository) BlockIP(ip string, entry models.IPEntry) error {
 	defer r.trackDuration("BlockIP", time.Now())
 	data, err := sonic.Marshal(entry)

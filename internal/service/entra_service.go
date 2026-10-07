@@ -28,6 +28,13 @@ var entraUUID = regexp.MustCompile(`(?i)^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-
 
 var ErrEntraSignIn = errors.New("entra: sign-in could not be verified")
 
+// These failures are classified only after signature and identity validation.
+// They wrap ErrEntraSignIn so callers can still handle all sign-in denials alike.
+var (
+	ErrEntraAuthTimeMissing = fmt.Errorf("%w: missing authentication time", ErrEntraSignIn)
+	ErrEntraAuthTimeStale   = fmt.Errorf("%w: authentication time is not fresh", ErrEntraSignIn)
+)
+
 func ValidEntraID(value string) bool {
 	return entraUUID.MatchString(value)
 }
@@ -133,7 +140,11 @@ func (s *EntraService) Start(ctx context.Context, next, username string) (string
 	}
 	opts := []oauth2.AuthCodeOption{oidc.Nonce(nonce), oauth2.S256ChallengeOption(flow.Verifier), oauth2.SetAuthURLParam("response_mode", "query")}
 	if username != "" {
-		opts = append(opts, oauth2.SetAuthURLParam("prompt", "login"), oauth2.SetAuthURLParam("max_age", "0"))
+		opts = append(opts,
+			oauth2.SetAuthURLParam("prompt", "login"),
+			oauth2.SetAuthURLParam("max_age", "0"),
+			oauth2.SetAuthURLParam("claims", `{"id_token":{"auth_time":{"essential":true}}}`),
+		)
 	}
 	return s.oauth.AuthCodeURL(state, opts...), state, nil
 }
@@ -184,8 +195,13 @@ func (s *EntraService) Finish(ctx context.Context, state, cookie, code string) (
 	if !validIdentity || !validTime || len(claims.UPN) > 255 {
 		return nil, ErrEntraSignIn
 	}
-	if flow.Username != "" && (claims.AuthTime < flow.Started-60 || claims.AuthTime > time.Now().Unix()+60) {
-		return nil, ErrEntraSignIn
+	if flow.Username != "" {
+		if claims.AuthTime == 0 {
+			return nil, ErrEntraAuthTimeMissing
+		}
+		if claims.AuthTime < flow.Started-60 || claims.AuthTime > time.Now().Unix()+60 {
+			return nil, ErrEntraAuthTimeStale
+		}
 	}
 	role := s.MapRole(claims.Roles)
 	if role == "" {

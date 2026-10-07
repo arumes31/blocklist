@@ -176,6 +176,11 @@ func (m *MockRedisRepo) GetBlockedIPs() (map[string]models.IPEntry, error) {
 	return args.Get(0).(map[string]models.IPEntry), args.Error(1)
 }
 
+func (m *MockRedisRepo) GetBlockedIPKeys() ([]string, error) {
+	args := m.Called()
+	return args.Get(0).([]string), args.Error(1)
+}
+
 func (m *MockRedisRepo) IndexWebhookHit(ts time.Time) error {
 	args := m.Called(ts)
 	return args.Error(0)

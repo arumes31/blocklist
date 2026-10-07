@@ -126,3 +126,81 @@ test('block validation prevents an empty IP from creating a request', async () =
     assert.deepEqual(state.closed, []);
     assert.deepEqual(state.messages, [{text: 'Enter an IP', kind: 'danger'}]);
 });
+
+function statsHarness() {
+    const fields = Object.fromEntries(['stat-countries', 'stat-asns', 'stat-reasons'].map(id => [id, {innerHTML: 'previous entries'}]));
+    fields['health-dot'] = {style: {}, title: ''};
+    const requests = [];
+    const errors = [];
+    const state = {payload: {}, failure: null};
+    const context = vm.createContext({
+        document: {getElementById: id => fields[id]},
+        fetch: async url => {
+            requests.push(url);
+            if (url === '/health') return {ok: true, json: async () => ({status: 'UP'})};
+            assert.equal(url, '/api/v1/stats');
+            if (state.failure) throw state.failure;
+            return {ok: true, json: async () => state.payload};
+        },
+        updateLastBlockDisplay: () => {},
+        console: {error: (...args) => errors.push(args)},
+    });
+    vm.runInContext(handlerSource('function escapeHTML(str)', '// UI Event Listeners'), context);
+    vm.runInContext(handlerSource('let statsLoading = false;', 'setInterval('), context);
+    return {state, context, fields, requests, errors};
+}
+
+test('each stats refresh retains every top entry and the initial chip presentation', async () => {
+    const {state, context, fields, errors} = statsHarness();
+    for (const increment of [0, 1, 2]) {
+        state.payload = {
+            top_countries: Array.from({length: 10}, (_, i) => ({country: `C${i}`, count: 100 - i + increment})),
+            top_asns: Array.from({length: 10}, (_, i) => ({asn: 64000 + i, asn_org: `Network ${i}`, count: 100 - i + increment})),
+            top_reasons: Array.from({length: 10}, (_, i) => ({reason: `Long reason ${i}`, count: 100 - i + increment})),
+        };
+        await context.refreshStats();
+        assert.deepEqual(errors, []);
+        for (const id of ['stat-countries', 'stat-asns', 'stat-reasons']) {
+            const html = fields[id].innerHTML;
+            assert.equal((html.match(/title="/g) || []).length, 10, 'No client-only top-three limit');
+            assert.equal((html.match(/class="insight-chip"/g) || []).length, 10, id);
+            assert.equal((html.match(/class="insight-count"/g) || []).length, 10, id);
+            assert.ok(html.includes(`>${91 + increment}</span>`), 'The tenth entry updates too');
+            assert.doesNotMatch(html, /style=/, 'Use the same shared classes as initial rendering');
+        }
+    }
+});
+
+test('stats labels, tooltips and counts remain HTML escaped', async () => {
+    const {state, context, fields, errors} = statsHarness();
+    const hostile = '\"><img src=x onerror="alert(1)"> & \'text\'';
+    state.payload = {
+        top_countries: [{country: hostile, count: hostile}],
+        top_asns: [{asn: hostile, asn_org: hostile, count: hostile}],
+        top_reasons: [{reason: hostile, count: hostile}],
+    };
+    await context.refreshStats();
+    assert.deepEqual(errors, []);
+    for (const id of ['stat-countries', 'stat-asns', 'stat-reasons']) {
+        assert.doesNotMatch(fields[id].innerHTML, /<img|onerror="/);
+        assert.match(fields[id].innerHTML, /&quot;&gt;&lt;img/);
+        assert.match(fields[id].innerHTML, /&amp; &#039;text&#039;/);
+    }
+});
+
+test('stats preserve previous entries on absent fields or failure, clear empty lists, and recover', async () => {
+    const {state, context, fields, requests, errors} = statsHarness();
+    await context.refreshStats(false);
+    assert.deepEqual(requests, ['/health']);
+    await context.refreshStats();
+    for (const id of ['stat-countries', 'stat-asns', 'stat-reasons']) assert.equal(fields[id].innerHTML, 'previous entries');
+    state.failure = new Error('offline');
+    await context.refreshStats();
+    assert.equal(errors.length, 1);
+    for (const id of ['stat-countries', 'stat-asns', 'stat-reasons']) assert.equal(fields[id].innerHTML, 'previous entries');
+    state.failure = null;
+    state.payload = {top_countries: [], top_asns: [], top_reasons: []};
+    await context.refreshStats();
+    for (const id of ['stat-countries', 'stat-asns', 'stat-reasons']) assert.equal(fields[id].innerHTML, '');
+    assert.equal(fields['health-dot'].title, 'System Health: OK');
+});

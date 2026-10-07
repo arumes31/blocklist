@@ -59,6 +59,24 @@ remains required; this exception does not waive other findings.
 
 ## Publish main to latest
 
+### JavaScript in image builds
+
+Every Docker image build (including GitHub Actions and the disposable browser
+tests) runs `npm ci --ignore-scripts` and `npm run build:assets` in a separate,
+digest-pinned Node.js stage. The locked Terser version removes unnecessary
+whitespace/comments while preserving license notices, identifiers and classic
+script behavior. Already compact files are never replaced with larger output.
+Generated files keep their original URLs and are copied into the Go build before
+`go:embed`; Node.js and npm dependencies are not included in the runtime image.
+
+Tracked JavaScript is unchanged. For a local preview, run `npm ci --ignore-scripts`
+then `npm run build:assets`; output goes to ignored `.build/js/`. Syntax errors
+fail the build. Frontend tests cover minifier contracts and the browser suite
+checks that the built image actually serves the generated files. Inline scripts
+in Go HTML templates are not rewritten. See [Terser options](https://terser.org/docs/api-reference/).
+
+### Approval steps
+
 1. Open the completed candidate run in Actions. Review the exact commit and image
    digest in its job summary and ensure all prerequisite jobs passed.
 2. Choose **Review deployments → production → Approve and deploy**.
@@ -85,12 +103,39 @@ push will become a release.
 
 ## Rollback and cleanup
 
+### Log retention rollout
+
+Before deploying this image, review/export required historical logs. The new defaults
+are **3 calendar months for event logs** and **12 for system audit logs**. Configure
+`EVENT_LOG_RETENTION_MONTHS` (1–3) and `AUDIT_LOG_RETENTION_MONTHS` (1–12) consistently
+on all server and worker replicas. Invalid values fail startup; these settings need
+a process/container restart and are not editable in the UI. This feature adds no
+schema migration or index build.
+
+Old records disappear from the log explorers immediately and are **irreversibly
+deleted** in bounded background batches starting when the maintenance scheduler
+starts. Monitor category/deleted counts and timeout/failure messages during backlog
+cleanup; do not assume all expired rows are removed in the first cycle. Ensure an
+in-process or standalone worker is running. The old `LOG_RETENTION_MONTHS` now
+applies only to webhook-payload partitions, not the shared audit/event table.
+An image rollback or a longer retention setting cannot restore deleted history.
+An older image can also resume its old shared-partition deletion policy.
+See [retention configuration](../README.md#event-and-system-audit-retention).
+
+### Image rollback
+
 Before moving `latest`, the job copies its previous digest to `rollback` and
 records that digest in `publication.json` in the publication artifact. Retrying
 an already-published digest preserves the existing rollback target. Use the
 recorded `image@sha256:...` reference for a deterministic host rollback.
 **An image rollback does not undo database migrations**; check schema
 compatibility and keep a tested DB backup.
+
+Account-status migration `000018_account_status` keeps all existing accounts
+enabled. Once accounts are disabled, **older images do not enforce their disabled
+status**, even if this column remains in the database. Rolling back the migration
+also removes disabled status. Review these access implications before rollback;
+see [account status](../README.md#account-search-and-access-status).
 
 The package-cleanup workflow runs only from `main`, defaults to dry run, and
 protects production/test aliases, rollback, all candidate and release tags, and

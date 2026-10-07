@@ -145,6 +145,7 @@
             this.rings = [];
             this.hitPoints = [];
             this.selectedPoint = null;
+            this.groupSelected = false;
             this.region = 'global';
             this.layer = 'routes';
             this.center = {...REGIONS.global};
@@ -174,7 +175,7 @@
             canvas.style.touchAction = 'pan-y';
             canvas.setAttribute('role', 'group');
             canvas.setAttribute('aria-label', (this.originalAccessibility['aria-label'] || 'Threat map.') +
-                ' Drag to rotate. Dense origins are grouped by status with record counts. Use arrow keys to inspect every origin; Home and End select the first and last origin. Plus and minus zoom.');
+                ' Drag to rotate. Click a group count to zoom and list every member in IP activity. Use arrow keys to inspect every origin; Home and End select the first and last origin. Plus and minus zoom.');
             canvas.setAttribute('aria-keyshortcuts', 'ArrowRight ArrowLeft ArrowUp ArrowDown Home End Enter + -');
             this.selectionStatus = document.createElement('span');
             this.selectionStatus.id = 'threat-map-selection-' + (++sceneCount);
@@ -278,6 +279,7 @@
         setRegion(region) {
             if (!Object.prototype.hasOwnProperty.call(REGIONS, region) || this.disposed) return;
             this.region = region;
+            this.clearGroup();
             this.center = {...REGIONS[region]};
             if (this.selectedPoint && !inRegion(this.selectedPoint, region)) {
                 this.selectedPoint = null;
@@ -288,10 +290,20 @@
 
         zoomBy(factor) {
             if (!Number.isFinite(factor) || factor <= 0 || this.disposed) return;
-            this.zoom = Math.max(0.8, Math.min(12, this.zoom * factor));
+            this.zoom = Math.max(0.8, Math.min(128, this.zoom * factor));
             this.radius = this.baseRadius * this.zoom;
             this.holdRotation();
             this.invalidate();
+            this.options.onZoomChange?.();
+        }
+
+        getZoomState() {
+            return {value: this.zoom, min: 0.8, max: 128};
+        }
+
+        clearGroup() {
+            this.groupSelected = false;
+            this.holdRotation();
         }
 
         reset() {
@@ -302,11 +314,13 @@
             this.zoom = 1;
             this.radius = this.baseRadius;
             this.selectedPoint = null;
+            this.groupSelected = false;
             if (!this.error) this.selectionStatus.textContent = '';
             this.elapsed = 0;
             this.rotationTime = 0;
             this.rotationHeldUntil = 0;
             this.invalidate();
+            this.options.onZoomChange?.();
         }
 
         focusPoint(point) {
@@ -392,7 +406,7 @@
             const elapsed = Math.min(delta, 100);
             this.elapsed += elapsed / 1000;
             this.lastFrame = now;
-            if (!this.drag && !this.selectedPoint && this.region === 'global' && Date.now() >= this.rotationHeldUntil) {
+            if (!this.drag && !this.selectedPoint && !this.groupSelected && this.region === 'global' && Date.now() >= this.rotationHeldUntil) {
                 this.rotationTime += elapsed;
                 if (this.rotationTime >= ROTATION_INTERVAL_MS) {
                     // One degree per second at overview; zoom keeps screen movement gentle.
@@ -579,33 +593,33 @@
 
         markerPositions() {
             if (this.markerViewVersion === this.viewVersion && this.markerPointsVersion === this.pointsVersion) return this.markers;
-            const group = this.entries.length > 1000;
             // Bound raster work by available screen space, not by the full record count.
-            const cellSize = Math.max(32, Math.sqrt(this.width * this.height / 320));
+            // Small snapshots also group overlapping origins so none become unselectable.
+            const cellSize = this.entries.length > 1000 ? Math.max(32, Math.sqrt(this.width * this.height / 320)) : 24;
             const cells = new Map();
-            const markers = [];
             this.entries.forEach(entry => {
                 if (!inRegion(entry.point, this.region)) return;
                 const position = this.project(entry.vector);
                 if (position.z < 0.03 || position.x < -10 || position.x > this.width + 10 || position.y < -10 || position.y > this.height + 10) return;
-                if (!group) { markers.push({point: entry.point, ...position, count: 1}); return; }
                 const cellX = Math.floor(position.x / cellSize);
                 const cellY = Math.floor(position.y / cellSize);
                 const cellKey = cellX + ':' + cellY;
                 const key = cellKey + ':' + entry.point.kind;
                 const existing = cells.get(key);
-                if (existing) existing.count += 1;
-                else cells.set(key, {point: entry.point, ...position, count: 1, cellKey, cellX, cellY});
+                if (existing) {
+                    existing.count += 1;
+                    existing.members.push(entry.point);
+                    existing.x += (position.x - existing.x) / existing.count;
+                    existing.y += (position.y - existing.y) / existing.count;
+                } else cells.set(key, {point: entry.point, ...position, count: 1, members: [entry.point], cellKey});
             });
-            this.markers = group ? Array.from(cells.values()) : markers;
-            if (group) this.markers.forEach(marker => {
+            this.markers = Array.from(cells.values());
+            this.markers.forEach(marker => {
                 if (marker.count <= 1) return;
                 const otherKind = marker.point.kind === 'block' ? 'whitelist' : 'block';
                 const offset = cells.has(marker.cellKey + ':' + otherKind) ? (marker.point.kind === 'block' ? -12 : 12) : 0;
-                // Labels represent the grid cell, with separate rows for blocked/allowed
-                // counts. Selecting one still focuses its exact underlying coordinates.
-                marker.x = (marker.cellX + 0.5) * cellSize;
-                marker.y = (marker.cellY + 0.5) * cellSize + offset;
+                // Separate blocked/allowed count labels without changing record coordinates.
+                marker.y += offset;
             });
             this.markerViewVersion = this.viewVersion;
             this.markerPointsVersion = this.pointsVersion;
@@ -867,8 +881,21 @@
             this.canvas.style.cursor = 'grab';
             if (!moved) {
                 const entry = this.nearest(event);
-                if (entry) this.choosePoint(entry.point);
+                if (entry) this.activateMarker(entry);
             }
+        }
+
+        activateMarker(entry) {
+            // The selected-origin overlay must not hide an overlapping group's members.
+            const marker = entry.count > 1 ? entry : this.markerPositions().find(candidate =>
+                candidate.count > 1 && candidate.members.some(point => point.id === entry.point.id));
+            if (!marker) { this.choosePoint(entry.point); return; }
+            this.selectedPoint = null;
+            this.groupSelected = true;
+            this.center = {lon: marker.point.lon, lat: marker.point.lat};
+            this.zoomBy(2);
+            this.selectionStatus.textContent = `${marker.count} IPs in this group. Inspect each address in IP activity. GeoIP locations are approximate.`;
+            this.options.onCluster?.(marker.members.slice());
         }
 
         selectWithKeyboard(event) {

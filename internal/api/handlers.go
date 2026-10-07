@@ -37,7 +37,7 @@ type HandlerOptions struct {
 
 type APIHandler struct {
 	identityRepo          IdentityRepositoryProvider
-	entraService          *service.EntraService
+	entraService          entraFlowProvider
 	cfg                   *config.Config
 	redisRepo             RedisRepositoryProvider
 	pgRepo                PostgresRepositoryProvider
@@ -78,7 +78,6 @@ func NewAPIHandler(opts *HandlerOptions) *APIHandler {
 	}
 
 	h := &APIHandler{
-		entraService:          opts.EntraService,
 		cfg:                   opts.Config,
 		redisRepo:             opts.RedisRepo,
 		pgRepo:                opts.PgRepo,
@@ -91,6 +90,10 @@ func NewAPIHandler(opts *HandlerOptions) *APIHandler {
 		loginLimiter:          opts.LoginLimiter,
 		webhookLimiter:        opts.WebhookLimiter,
 		trustedProxies:        prefixes,
+	}
+	// Keep a disabled Entra service nil, rather than an interface with a nil pointer.
+	if opts.EntraService != nil {
+		h.entraService = opts.EntraService
 	}
 	if identity, ok := opts.PgRepo.(IdentityRepositoryProvider); ok {
 		h.identityRepo = identity
@@ -152,6 +155,7 @@ func (h *APIHandler) renderHTML(c *gin.Context, status int, name string, data gi
 	}
 	data["can_manage_roles"] = h.can(c, "manage_roles")
 	data["can_manage_admins"] = h.can(c, "manage_admins")
+	data["display_username"] = c.GetString("display_username")
 	c.HTML(status, name, data)
 }
 
@@ -210,7 +214,7 @@ func (h *APIHandler) WS(c *gin.Context) {
 		case <-pingTicker.C:
 			if h.pgRepo != nil {
 				account, err := h.pgRepo.GetAdmin(username)
-				if err != nil || account == nil || account.SessionVersion != version {
+				if err != nil || account == nil || account.Disabled || account.SessionVersion != version {
 					return
 				}
 				if username != h.cfg.GUIAdmin && (!models.HasPermission(account.Permissions, "view_ips") || !models.HasPermission(account.Permissions, "gui_read")) {
@@ -400,6 +404,7 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 		admin.Use(h.PermissionMiddleware("manage_admins"))
 		{
 			admin.POST("/change_role", h.SudoMiddleware(), h.ChangeAdminRole)
+			admin.POST("/change_status", h.SudoMiddleware(), h.ChangeAdminStatus)
 			admin.POST("/create", h.SudoMiddleware(), h.CreateAdmin)
 			admin.POST("/delete", h.SudoMiddleware(), h.DeleteAdmin)
 			admin.POST("/change_password", h.SudoMiddleware(), h.ChangeAdminPassword)

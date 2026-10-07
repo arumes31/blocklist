@@ -17,10 +17,19 @@ import (
 var roleKey = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,63}$`)
 
 func (h *APIHandler) can(c *gin.Context, permission string) bool {
-	if h.cfg != nil && h.cfg.GUIAdmin != "" && c.GetString("username") == h.cfg.GUIAdmin && !c.GetBool("token_auth") {
+	if h.isRecoverySession(c) {
 		return true
 	}
 	return models.HasPermission(c.GetString("permissions"), permission)
+}
+
+func (h *APIHandler) isRecoverySession(c *gin.Context) bool {
+	return h.cfg != nil && h.cfg.GUIAdmin != "" &&
+		c.GetString("username") == h.cfg.GUIAdmin && !c.GetBool("token_auth")
+}
+
+func (h *APIHandler) hasAccountAuthority(c *gin.Context, account models.AdminAccount) bool {
+	return h.isRecoverySession(c) || models.PermissionsCoverAccount(c.GetString("permissions"), account)
 }
 
 func (h *APIHandler) identityFailure(c *gin.Context, err error) {
@@ -29,6 +38,8 @@ func (h *APIHandler) identityFailure(c *gin.Context, err error) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Account or role no longer exists. Refresh and try again."})
 	case errors.Is(err, repository.ErrIdentityConflict):
 		c.JSON(http.StatusConflict, gin.H{"error": "This record changed or its name is already used. Refresh before saving."})
+	case errors.Is(err, repository.ErrIdentityDenied):
+		c.JSON(http.StatusForbidden, gin.H{"error": "This account change is not allowed. Refresh and check your access."})
 	case errors.Is(err, repository.ErrRoleInUse):
 		c.JSON(http.StatusConflict, gin.H{"error": "Assign this role's accounts to another role before deleting it."})
 	case errors.Is(err, repository.ErrRoleProtected):
@@ -48,7 +59,7 @@ func (h *APIHandler) canManageAccount(c *gin.Context, username string) bool {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Account not found."})
 		return false
 	}
-	if _, err := h.validatePermissionSubset(models.WorkspacePermissions(*admin), c.GetString("permissions")); err != nil {
+	if !h.hasAccountAuthority(c, *admin) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "You cannot manage an account with permissions you do not hold."})
 		return false
 	}

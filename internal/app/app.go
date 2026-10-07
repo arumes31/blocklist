@@ -40,13 +40,17 @@ type App struct {
 }
 
 func Bootstrap(cfg *config.Config) (*App, error) {
+	retention := cfg.LogRetentionPolicy()
+	if err := retention.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid log retention configuration: %w", err)
+	}
 	// Initialize Repositories
 	redisRepo := repository.NewRedisRepository(cfg.RedisHost, cfg.RedisPort, cfg.RedisPassword, cfg.RedisDB)
 	if err := redisRepo.GetClient().Ping(context.Background()).Err(); err != nil {
 		return nil, fmt.Errorf("failed to connect to Redis: %w", err)
 	}
 
-	pgRepo, err := repository.NewPostgresRepository(cfg.PostgresURL, cfg.PostgresReadURL, cfg.AuditLogLimitPerIP)
+	pgRepo, err := repository.NewPostgresRepository(cfg.PostgresURL, cfg.PostgresReadURL, cfg.AuditLogLimitPerIP, retention)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to Postgres: %w", err)
 	}

@@ -25,6 +25,7 @@ import (
 	"github.com/oschwald/geoip2-golang"
 	"github.com/redis/go-redis/v9"
 	zlog "github.com/rs/zerolog/log"
+	"golang.org/x/sync/singleflight"
 )
 
 const MaxPageSize = 1000
@@ -44,6 +45,11 @@ type IPService struct {
 	fqdnCacheMu    sync.Mutex
 	ptrCache       map[netip.Addr]ptrResolution
 	ptrCacheMu     sync.Mutex
+	dnsResolver    exclusionDNSResolver
+	fqdnLookups    singleflight.Group
+	ptrLookups     singleflight.Group
+	nextFQDNPrune  time.Time // protected by fqdnCacheMu
+	nextPTRPrune   time.Time // protected by ptrCacheMu
 	statsMu        sync.Mutex
 	statsCached    *statsSnapshot
 	statsRefresh   *statsRefresh
@@ -192,19 +198,23 @@ func (s *IPService) syncBloomFilter() {
 	}
 	defer s.syncInProgress.Store(false)
 
-	s.bloomMu.Lock()
-	defer s.bloomMu.Unlock()
-
-	// Re-initialize if too many false positives expected?
-	// For now, just fill from Redis
 	if s.redisRepo != nil {
-		ips, err := s.redisRepo.GetBlockedIPs()
+		// Redis I/O and JSON validation must not hold the filter lock: otherwise
+		// a slow snapshot stalls unrelated block writes and block checks.
+		ips, err := s.redisRepo.GetBlockedIPKeys()
 		if err != nil {
 			zlog.Error().Err(err).Msg("IPService: Failed to fetch blocked IPs for Bloom Filter sync")
 			return
 		}
-		for ip := range ips {
-			s.bloomFilter.AddString(ip)
+		// Merge, never replace: blocks added concurrently must remain present.
+		// Small batches also let live writes progress during a large refresh.
+		const batchSize = 256
+		for start := 0; start < len(ips); start += batchSize {
+			s.bloomMu.Lock()
+			for _, ip := range ips[start:min(start+batchSize, len(ips))] {
+				s.bloomFilter.AddString(ip)
+			}
+			s.bloomMu.Unlock()
 		}
 		zlog.Info().Int("count", len(ips)).Msg("IPService: Synchronized Bloom Filter")
 	}
@@ -213,7 +223,9 @@ func (s *IPService) syncBloomFilter() {
 func (s *IPService) IsBlocked(ipStr string) bool {
 	// 1. Check Bloom Filter (fast positive check)
 	s.bloomMu.RLock()
-	if s.bloomFilter != nil && !s.bloomFilter.TestString(ipStr) {
+	// While a snapshot is loading, the filter may not include its records yet.
+	// Confirm against Redis instead of returning an unsafe negative result.
+	if !s.syncInProgress.Load() && s.bloomFilter != nil && !s.bloomFilter.TestString(ipStr) {
 		s.bloomMu.RUnlock()
 		return false // Definitely not blocked
 	}
@@ -434,7 +446,7 @@ func (s *IPService) matchWildcard(pattern string, ip netip.Addr) bool {
 func (s *IPService) resolveAndCache(host string) (map[netip.Addr]struct{}, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	ips, err := net.DefaultResolver.LookupNetIP(ctx, "ip", host)
+	ips, err := s.exclusionResolver().LookupNetIP(ctx, "ip", host)
 
 	addrs := make(map[netip.Addr]struct{}, len(ips))
 	for _, a := range ips {
@@ -446,7 +458,9 @@ func (s *IPService) resolveAndCache(host string) (map[netip.Addr]struct{}, error
 	}
 
 	s.fqdnCacheMu.Lock()
-	s.fqdnCache[host] = fqdnResolution{addrs: addrs, expires: time.Now().Add(ttl)}
+	now := time.Now()
+	s.pruneFQDNCacheLocked(now)
+	s.fqdnCache[host] = fqdnResolution{addrs: addrs, expires: now.Add(ttl)}
 	s.fqdnCacheMu.Unlock()
 	return addrs, err
 }
@@ -454,31 +468,39 @@ func (s *IPService) resolveAndCache(host string) (map[netip.Addr]struct{}, error
 // resolveFQDN returns the set of addresses host currently resolves to, using a
 // short-lived cache so block-time exclusion checks do not hit DNS on every call.
 func (s *IPService) resolveFQDN(host string) map[netip.Addr]struct{} {
-	s.fqdnCacheMu.Lock()
-	if cached, ok := s.fqdnCache[host]; ok && time.Now().Before(cached.expires) {
-		addrs := cached.addrs
-		s.fqdnCacheMu.Unlock()
+	if addrs, ok := s.cachedFQDN(host); ok {
 		return addrs
 	}
-	s.fqdnCacheMu.Unlock()
-
-	addrs, _ := s.resolveAndCache(host)
+	result, _, _ := s.fqdnLookups.Do(host, func() (any, error) {
+		// Another lookup may have filled the cache while we joined the group.
+		if addrs, ok := s.cachedFQDN(host); ok {
+			return addrs, nil
+		}
+		return s.resolveAndCache(host)
+	})
+	addrs, _ := result.(map[netip.Addr]struct{})
 	return addrs
 }
 
 // lookupPTR returns the lower-cased reverse-DNS names for ip, using a cache.
 func (s *IPService) lookupPTR(ip netip.Addr) []string {
-	s.ptrCacheMu.Lock()
-	if cached, ok := s.ptrCache[ip]; ok && time.Now().Before(cached.expires) {
-		names := cached.names
-		s.ptrCacheMu.Unlock()
+	if names, ok := s.cachedPTR(ip); ok {
 		return names
 	}
-	s.ptrCacheMu.Unlock()
+	result, _, _ := s.ptrLookups.Do(ip.String(), func() (any, error) {
+		if names, ok := s.cachedPTR(ip); ok {
+			return names, nil
+		}
+		return s.resolveAndCachePTR(ip), nil
+	})
+	names, _ := result.([]string)
+	return names
+}
 
+func (s *IPService) resolveAndCachePTR(ip netip.Addr) []string {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	raw, err := net.DefaultResolver.LookupAddr(ctx, ip.String())
+	raw, err := s.exclusionResolver().LookupAddr(ctx, ip.String())
 
 	names := make([]string, 0, len(raw))
 	for _, n := range raw {
@@ -490,7 +512,9 @@ func (s *IPService) lookupPTR(ip netip.Addr) []string {
 	}
 
 	s.ptrCacheMu.Lock()
-	s.ptrCache[ip] = ptrResolution{names: names, expires: time.Now().Add(ttl)}
+	now := time.Now()
+	s.prunePTRCacheLocked(now)
+	s.ptrCache[ip] = ptrResolution{names: names, expires: now.Add(ttl)}
 	s.ptrCacheMu.Unlock()
 	return names
 }
@@ -1428,6 +1452,7 @@ func (s *IPService) AddExcluded(ctx context.Context, value string, reason string
 		s.fqdnCacheMu.Lock()
 		delete(s.fqdnCache, value)
 		s.fqdnCacheMu.Unlock()
+		s.fqdnLookups.Forget(value)
 	}
 
 	if s.pgRepo != nil && username != "system" {

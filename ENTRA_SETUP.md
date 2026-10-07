@@ -14,6 +14,14 @@ Under **Authentication → Add a platform → Web**, register `https://blocklist
 
 Under **Certificates & secrets**, create a client secret. Store its **Value**, not its Secret ID, in a protected file outside Git. Mount it read-only at `/run/secrets/entra_client_secret`; the container's non-root user must be able to read it. Record its expiry and rotate it before expiry. This implementation supports a secret file, not certificate/federated credentials; Microsoft recommends those alternatives for production, which would require additional implementation here.
 
+Under **Token configuration → Add optional claim → ID**, add **`auth_time`**.
+This signed authentication timestamp is needed for identity verification before
+sensitive changes, such as assigning a role. Configure it on the **Blocklist app
+registration**, not on Microsoft Graph or an access token. No additional Graph
+permission is needed for this claim. Existing app roles, group assignments and
+auto-provisioning settings remain unchanged. See Microsoft's
+[optional-claim configuration](https://learn.microsoft.com/en-us/entra/identity-platform/optional-claims).
+
 ### 2. Define roles and assign groups
 
 In **App registrations → Blocklist → App roles → Create app role**, create these three enabled roles with **Allowed member types: Users/Groups**. Values are case-sensitive:
@@ -57,6 +65,10 @@ The three app-role names already have the defaults shown above; no extra mapping
 2. Test one user per role. Viewer must be read-only; Moderator must not manage accounts, roles, or API tokens. A user with no assigned app role must be denied.
 3. Change group membership, then sign out and sign in again to verify the new role. Allow for Entra assignment propagation. Keep local role override disabled for this check.
 4. Apply your MFA/Conditional Access policy to this enterprise application. Microsoft users authenticate through Entra, not Blocklist's local TOTP enrollment. Verify the local recovery account still works.
+5. As an Editor, try assigning a role to a disposable test account. If prompted,
+   choose **Verify identity** and complete Microsoft sign-in with the same account.
+   Return to Accounts and apply the role again; the original mutation is not
+   automatically replayed. Recent verification lasts five minutes.
 
 **Removal is not immediate deprovisioning.** Entra membership is checked at Microsoft sign-in, not continuously for existing Blocklist sessions or API tokens. Removing a group assignment does not instantly revoke those credentials. For urgent removal, also revoke the user's Blocklist tokens and remove/restrict their local account with your recovery administrator. Remove the Entra app-role assignment first: with auto-provisioning enabled, deleting only the Blocklist account allows it to be recreated at the next eligible sign-in.
 
@@ -92,7 +104,52 @@ Entra app roles map to these built-in role IDs. An explicitly selected **Keep lo
 
 Sensitive account/role actions require recent verification in a browser session; bearer tokens cannot perform them. An existing Microsoft SSO session without a recent `auth_time` does not grant elevated verification; the verification flow requests fresh authentication. The returned tenant/object identity must match the initiating account. Delegated account managers cannot alter accounts whose permissions exceed their own. Live WebSocket connections recheck access every 30 seconds and close when access is revoked.
 
+The configured recovery administrator (`GUI_ADMIN`, normally `admin`) retains all
+current workspace permissions independently of editable roles. It can manage
+legacy accounts even if their snapshots contain obsolete permission names, but
+still requires local TOTP verification for sensitive actions. Its own role and
+status remain protected. This authority does **not** expand its API-token scopes.
+For other account managers, only the retired `gui_write` and `webhook_access`
+labels on local, non-role-managed accounts are ignored in the target-account
+comparison. Current capabilities and legacy workspace aliases are still checked;
+unrecognized permission names fail closed. Stored snapshots are not rewritten.
+
+### Troubleshooting identity verification
+
+Normal Microsoft sign-in can succeed while sensitive-action verification fails:
+they have different freshness requirements. Verification sends `prompt=login`,
+`max_age=0`, and an explicit essential `auth_time` claim request. It still rejects
+missing or stale authentication evidence; a recent token issue time (`iat`) is
+not a substitute for recent user authentication.
+
+The system audit log distinguishes these verified-token failures without storing
+OAuth codes, tokens, or raw claims:
+
+- **`auth_time_missing`:** add the `auth_time` **ID token** optional claim as above,
+  save, then start a new **Verify identity** flow. Previously issued tokens do not
+  acquire the claim retroactively.
+- **`auth_time_not_fresh`:** start verification again, complete the fresh sign-in,
+  and check the application host's time synchronization and Entra sign-in policy
+  if it persists. Use the same bound Microsoft account.
+- **Generic sign-in failure:** also check the callback URL, client-secret expiry,
+  assigned app role, browser flow cookie and Entra sign-in logs. A callback is
+  single-use; refreshing an old callback cannot retry authentication.
+
+Historical generic audit entries alone cannot identify which check failed. Test
+the corrected flow in staging with your actual tenant and Conditional Access
+policy; local signed-token tests cannot verify those external settings.
+
 ## Storage and migration
+
+Accounts can be searched by name/UPN and filtered by sign-in source or status.
+**Disable** blocks local access to that account, including Entra sign-in, existing
+sessions and its API tokens. Auto-provisioning does not reactivate it. This does
+not disable the identity in Microsoft Entra itself. **Enable** restores access,
+but old browser sessions remain invalid. See [account status](README.md#account-search-and-access-status).
+
+Migration `000018_account_status` adds this flag with every existing account
+enabled. Older application images, or rolling back this migration, remove status
+enforcement and can restore access to disabled accounts.
 
 Migration `000017_identity_roles` adds roles and identity bindings. Existing account permission snapshots, passwords, MFA secrets, and logs are preserved. Legacy accounts keep their permissions until explicitly assigned a role. Built-in roles are editable but cannot be deleted; assigned custom roles must be reassigned before deletion. The recovery administrator remains configuration-managed to avoid lockout.
 

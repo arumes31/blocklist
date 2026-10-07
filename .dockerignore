@@ -53,8 +53,7 @@ node_modules/
 test-results/
 playwright-report/
 tests/
-package.json
-package-lock.json
+.build/
 playwright.config.cjs
 TESTING.md
 ENTRA_SETUP.md

@@ -1,4 +1,5 @@
 const {test, expect, unique} = require('./fixtures.cjs');
+const {randomUUID} = require('node:crypto');
 
 test('role create, permission count, discard, update, and delete persist', async ({page, api}) => {
   const name = unique('reviewer');
@@ -114,4 +115,42 @@ test('recovery account has no destructive controls', async ({page}) => {
   const row = page.locator('tbody tr').filter({has: page.getByText('ui-recovery', {exact: true})});
   await expect(row).toContainText('Protected');
   await expect(row.locator('button')).toHaveCount(0);
+});
+
+test('bound Entra accounts display UPN but role and delete actions keep the account key', async ({page, api}, info) => {
+  const username = unique('legacy-entra-binding');
+  const upn = unique('long.account.name.for.responsive.display') + '@example.invalid';
+  const created = await api.post('/admin_management/create', {data: {
+    username, auth_source: 'entra', entra_upn: upn, role: 'viewer',
+    entra_tenant_id: randomUUID(), entra_object_id: randomUUID(),
+  }});
+  expect(created.ok()).toBeTruthy();
+  await page.goto('/admin_management');
+  await page.mouse.move(page.viewportSize().width - 4, 4);
+  const row = page.locator('tbody tr').filter({has: page.locator('.account-name', {hasText: upn})});
+  await expect(row.locator('.account-name')).toHaveText(upn);
+  await expect(row.getByLabel('Role for ' + upn, {exact: true})).toHaveValue('viewer');
+  await expect(row.getByText(username, {exact: true})).toBeHidden();
+  await row.getByText('Identity binding', {exact: true}).click();
+  await expect(row.getByText(username, {exact: true})).toBeVisible();
+  await row.getByText('Identity binding', {exact: true}).click();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 2)).toBe(true);
+  expect(await row.locator('.account-name').evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+  await page.screenshot({path: info.outputPath('entra-account-upn.png'), fullPage: true});
+  await row.getByLabel('Role for ' + upn, {exact: true}).selectOption('moderator');
+  const roleRequest = page.waitForRequest(request => request.url().endsWith('/admin_management/change_role') && request.method() === 'POST');
+  await Promise.all([page.waitForEvent('load'), row.getByRole('button', {name: 'Apply', exact: true}).click()]);
+  expect((await roleRequest).postDataJSON().username).toBe(username);
+  await expect(row.getByLabel('Role for ' + upn, {exact: true})).toHaveValue('moderator');
+  const confirmation = page.waitForEvent('dialog');
+  const clickDelete = row.getByRole('button', {name: 'Delete', exact: true}).click();
+  const dialog = await confirmation;
+  const message = dialog.message();
+  const deleteRequest = page.waitForRequest(request => request.url().endsWith('/admin_management/delete') && request.method() === 'POST');
+  await dialog.accept();
+  await clickDelete;
+  expect(message).toContain(upn);
+  expect(message).not.toContain(username);
+  expect((await deleteRequest).postDataJSON()).toEqual({username});
+  await expect(row).toHaveCount(0);
 });

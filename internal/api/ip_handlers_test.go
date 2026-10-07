@@ -189,11 +189,8 @@ func TestAPIHandler_RawIPs(t *testing.T) {
 	h, rRepo, _, _, _ := setupTest()
 
 	// 1. Success case
-	ips := map[string]models.IPEntry{
-		"1.1.1.1": {},
-		"2.2.2.2": {},
-	}
-	rRepo.On("GetBlockedIPs").Return(ips, nil).Once()
+	ips := []string{"1.1.1.1", "2.2.2.2"}
+	rRepo.On("GetBlockedIPKeys").Return(ips, nil).Once()
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
@@ -209,7 +206,7 @@ func TestAPIHandler_RawIPs(t *testing.T) {
 	assert.Contains(t, body, "\n")
 
 	// 2. Error case
-	rRepo.On("GetBlockedIPs").Return(map[string]models.IPEntry{}, errors.New("redis error")).Once()
+	rRepo.On("GetBlockedIPKeys").Return([]string(nil), errors.New("redis error")).Once()
 
 	w2 := httptest.NewRecorder()
 	c2, _ := gin.CreateTestContext(w2)
@@ -219,6 +216,33 @@ func TestAPIHandler_RawIPs(t *testing.T) {
 
 	assert.Equal(t, http.StatusInternalServerError, w2.Code)
 	assert.Equal(t, "Error fetching IPs", w2.Body.String())
+	rRepo.AssertExpectations(t)
+}
+
+func TestAPIHandler_RawIPsWireFormat(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		ips  []string
+		body string
+	}{
+		{name: "empty"},
+		{name: "single", ips: []string{"192.0.2.1"}, body: "192.0.2.1"},
+		{name: "mixed_families", ips: []string{"192.0.2.1", "2001:db8::1"}, body: "192.0.2.1\n2001:db8::1"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h, repo, _, _, _ := setupTest()
+			repo.On("GetBlockedIPKeys").Return(tc.ips, nil).Once()
+			w := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(w)
+			c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/raw", nil)
+			h.RawIPs(c)
+			require.Equal(t, http.StatusOK, w.Code)
+			require.Equal(t, "text/plain; charset=utf-8", w.Header().Get("Content-Type"))
+			require.Equal(t, tc.body, w.Body.String())
+			repo.AssertExpectations(t)
+			repo.AssertNotCalled(t, "GetBlockedIPs")
+		})
+	}
 }
 
 func TestAPIHandler_JSONIPs(t *testing.T) {

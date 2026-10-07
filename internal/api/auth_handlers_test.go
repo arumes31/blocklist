@@ -27,6 +27,64 @@ func setupAuthTest() (*APIHandler, *MockAuthService, *MockPostgresRepo) {
 	return h, auth, pg
 }
 
+func TestAPIHandler_EntraDisplayNamePreservesIdentity(t *testing.T) {
+	const key = "entra:11111111-1111-1111-1111-111111111111:22222222-2222-2222-2222-222222222222"
+	for _, tc := range []struct {
+		name, source, upn, label string
+	}{
+		{name: "entra upn", source: "entra", upn: "person@example.test", label: "person@example.test"},
+		{name: "renamed upn", source: "entra", upn: "renamed@example.test", label: "renamed@example.test"},
+		{
+			name: "escaped upn", source: "entra", upn: `<script>alert("x")</script>@example.test`,
+			label: `<script>alert("x")</script>@example.test`,
+		},
+		{name: "missing upn", source: "entra", label: key},
+		{name: "local keeps username", source: "local", upn: "ignored@example.test", label: key},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h, _, pg, _, _ := setupTest()
+			h.identityRepo = identityTestRepository{}
+			account := models.AdminAccount{
+				Username: key, AuthSource: tc.source, EntraUPN: tc.upn,
+				Permissions: "gui_read,view_admins,manage_admins",
+			}
+			pg.On("GetAdmin", key).Return(&account, nil).Once()
+			pg.On("GetAllAdmins").Return([]models.AdminAccount{account}, nil).Once()
+			w := httptest.NewRecorder()
+			_, r := setupHTMLTest(w)
+			r.Use(sessions.Sessions("session", cookie.NewStore([]byte("synthetic-session-key"))))
+			r.Use(func(c *gin.Context) {
+				session := sessions.Default(c)
+				session.Set("logged_in", true)
+				session.Set("username", key)
+				session.Set("client_ip", "127.0.0.1")
+				// A cached label must not override the current database value.
+				session.Set("display_username", "stale@example.test")
+			})
+			r.GET("/admin_management", h.AuthMiddleware(), func(c *gin.Context) {
+				assert.Equal(t, key, c.GetString("username"))
+				assert.Equal(t, key, sessions.Default(c).Get("username"))
+				assert.Equal(t, account.Permissions, c.GetString("permissions"))
+				h.AdminManagement(c)
+			})
+			req := httptest.NewRequest(http.MethodGet, "/admin_management", nil)
+			req.RemoteAddr = "127.0.0.1:1234"
+			r.ServeHTTP(w, req)
+			assert.Equal(t, http.StatusOK, w.Code)
+			body := w.Body.String()
+			label := template.HTMLEscapeString(tc.label)
+			assert.Contains(t, body, `<strong title="`+label+`">`+label+`</strong>`)
+			assert.Contains(t, body, `<strong class="account-name">`+label+`</strong>`)
+			assert.Contains(t, body, `data-username="`+key+`"`)
+			assert.Contains(t, body, `data-account-name="`+label+`"`)
+			assert.Contains(t, body, `Role for `+label+`</label>`)
+			assert.NotContains(t, body, "stale@example.test")
+			assert.NotContains(t, body, `<script>alert("x")</script>`)
+			pg.AssertExpectations(t)
+		})
+	}
+}
+
 func TestLoginTemplatePreservesNextQueryComponent(t *testing.T) {
 	login, err := template.ParseFiles("../../cmd/server/templates/login.html")
 	if err != nil {
