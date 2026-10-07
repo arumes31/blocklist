@@ -181,6 +181,12 @@ test('dashboard country and ASN filters remain interactive after scheduled refre
   await expect(asn).toBeFocused();
   await expect(asn).toHaveAttribute('aria-pressed', 'true');
   await expect(country).toHaveAttribute('aria-pressed', 'true');
+  await page.locator('#filterInput').fill('ASN: 396982');
+  await filterRequest(() => page.clock.fastForward(400), {country: 'US', query: 'ASN: 396982'});
+  await expect(asn).toHaveAttribute('aria-pressed', 'true');
+  await filterRequest(() => asn.press('Space'), {country: 'US', query: ''});
+  await expect(page.locator('#filterInput')).toHaveValue('');
+  await filterRequest(() => asn.press('Enter'), {country: 'US', query: 'asn:396982'});
   await filterRequest(() => country.click(), {country: '', query: 'asn:396982'});
   await expect(country).toHaveAttribute('aria-pressed', 'false');
   await filterRequest(() => page.locator('#clearFilter').click(), {country: '', query: '', added_by: '', from: '', to: ''});
@@ -203,4 +209,47 @@ test('dashboard country and ASN filters remain interactive after scheduled refre
   }
   const result = await new AxeBuilder({page}).include('.insights').withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
   expect(result.violations, 'Populated rankings pass accessibility checks').toEqual([]);
+});
+
+test('dashboard insight refresh keeps keyboard focus in its list or returns it to search', async ({page}) => {
+  const now = new Date();
+  await page.clock.install({time: now});
+  await page.clock.pauseAt(new Date(now.getTime() + 1000));
+  const payload = {
+    top_countries: [{country: 'US', count: 3}, {country: 'AT', count: 2}],
+    top_asns: [{asn: 396982, count: 3}, {asn: 6393, count: 2}],
+    top_reasons: [{reason: 'Kept', count: 3}, {reason: 'Removed', count: 2}],
+  };
+  let fail = false;
+  await page.route('**/api/v1/stats', route => route.fulfill({
+    status: fail ? 503 : 200, json: fail ? {error: 'Controlled failure'} : payload,
+  }));
+  await page.goto('/dashboard');
+  await expect.poll(() => page.evaluate(() => statsLoading)).toBe(false);
+  await page.evaluate(() => refreshStats());
+  for (const [id, key] of [['stat-countries', 'top_countries'], ['stat-asns', 'top_asns'], ['stat-reasons', 'top_reasons']]) {
+    const chips = page.locator(`#${id} .insight-chip`);
+    await expect(chips).toHaveCount(2);
+    await chips.last().focus();
+    fail = true;
+    await page.evaluate(() => refreshStats());
+    await expect(chips.last()).toBeFocused();
+    fail = false;
+    const original = payload[key];
+    delete payload[key];
+    await page.evaluate(() => refreshStats());
+    await expect(chips.last()).toBeFocused();
+    payload[key] = original.slice(0, 1);
+    await page.evaluate(() => refreshStats());
+    await expect(chips).toHaveCount(1);
+    await expect(chips.first()).toBeFocused();
+    payload[key] = [];
+    await page.evaluate(() => refreshStats());
+    await expect(chips).toHaveCount(0);
+    await expect(page.locator('#filterInput')).toBeFocused();
+    payload[key] = original;
+    await page.evaluate(() => refreshStats());
+    await expect(chips).toHaveCount(2);
+    await expect(page.locator('#filterInput')).toBeFocused();
+  }
 });

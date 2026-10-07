@@ -28,7 +28,7 @@ func TestInsightFilters(t *testing.T) {
 					geo: &models.GeoData{Country: "AT", ASN: 396982},
 				},
 				{
-					ip: "192.0.2.2", reason: "isdb-*-scanner", actor: "bot",
+					ip: "192.0.2.2", reason: " \tisdb-*-scanner\n ", actor: "bot",
 					geo: &models.GeoData{Country: "DE", ASN: 396982},
 				},
 				{
@@ -63,8 +63,11 @@ func TestInsightFilters(t *testing.T) {
 			}{
 				{name: "exact ASN", query: "asn:396982", want: []string{"192.0.2.1", "192.0.2.2"}},
 				{name: "ASN case and whitespace", query: " ASN: 396982 ", want: []string{"192.0.2.1", "192.0.2.2"}},
+				{name: "ASN space before colon", query: " ASN \t: 396982 ", want: []string{"192.0.2.1", "192.0.2.2"}},
+				{name: "ASN leading zeros", query: "asn:00396982", want: []string{"192.0.2.1", "192.0.2.2"}},
 				{name: "maximum ASN", query: "asn:4294967295", want: []string{"2001:db8::1"}},
 				{name: "literal reason", query: "reason:ISDB-*-Scanner", want: []string{"192.0.2.1", "192.0.2.2"}},
+				{name: "reason case and whitespace", query: " REASON \t:  ISDB-*-Scanner \n", want: []string{"192.0.2.1", "192.0.2.2"}},
 				{name: "special characters", query: `reason:A:"B" & <test> / + *`, want: []string{"2001:db8::1"}},
 				{
 					name: "country actor dates combined", query: "asn:396982", country: "AT", actor: "operator",
@@ -117,6 +120,68 @@ func TestInsightFilters(t *testing.T) {
 					require.ElementsMatch(t, tc.want, exportedIPs, "exports and table must apply the same filters")
 				})
 			}
+		})
+	}
+}
+
+func TestInsightReasonRankings(t *testing.T) {
+	t.Parallel()
+	svc, mr := setupServiceTest(t)
+	t.Cleanup(mr.Close)
+	reasons := []string{
+		" ISDB-*-Scanner ", "isdb-*-scanner", "\tISDB-*-Scanner\n",
+		"ISDB-*-Scanner-extra", `A:"B" & <test> / + *`, ` a:"b" & <TEST> / + * `,
+		" Trim Me ", "", " \t\n",
+	}
+	for i, reason := range reasons {
+		require.NoError(t, svc.redisRepo.BlockIP(fmt.Sprintf("192.0.2.%d", i+1), models.IPEntry{Reason: reason}))
+	}
+	_, _, _, active, _, _, ranked, _, _, _, _, err := svc.Stats(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, len(reasons), active)
+	want := map[string]int{
+		"ISDB-*-Scanner": 3, "ISDB-*-Scanner-extra": 1, `A:"B" & <test> / + *`: 2, "Trim Me": 1,
+	}
+	got := make(map[string]int)
+	for _, rank := range ranked {
+		got[rank.Reason] = rank.Count
+		exported, exportErr := svc.ExportIPs(
+			t.Context(),
+			"reason:"+rank.Reason,
+			"",
+			"",
+			"",
+			"",
+		)
+		require.NoError(t, exportErr)
+		require.Len(t, exported, rank.Count, "a chip's count must equal its exact-filter results")
+	}
+	require.Len(t, ranked, len(want), "case/whitespace variants share one chip; blank reasons have no chip")
+	require.Equal(t, want, got, "keep stable, original-cased labels")
+	stored, err := svc.redisRepo.GetBlockedIPs()
+	require.NoError(t, err)
+	for i, reason := range reasons {
+		require.Equal(t, reason, stored[fmt.Sprintf("192.0.2.%d", i+1)].Reason, "do not rewrite stored reasons")
+	}
+
+	for _, tc := range []struct {
+		name  string
+		query string
+	}{
+		{name: "internal spacing", query: `reason:A: "B" & <test> / + *`},
+		{name: "reason prefix", query: "reason:ISDB-*-Scan"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			exported, err := svc.ExportIPs(
+				t.Context(),
+				tc.query,
+				"",
+				"",
+				"",
+				"",
+			)
+			require.NoError(t, err)
+			require.Empty(t, exported, "preserve internal spacing and exact, non-substring matching")
 		})
 	}
 }

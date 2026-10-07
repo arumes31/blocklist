@@ -859,7 +859,7 @@ func (s *IPService) computeStats(ctx context.Context) (hour int, day int, totalE
 		ASNOrg string
 		Count  int
 	})
-	reasonMap := make(map[string]int)
+	reasonMap := make(map[string]reasonStat)
 
 	for _, entry := range ips {
 		if entry.Geolocation != nil {
@@ -880,8 +880,15 @@ func (s *IPService) computeStats(ctx context.Context) (hour int, day int, totalE
 				}
 			}
 		}
-		if entry.Reason != "" {
-			reasonMap[entry.Reason]++
+		if reason := strings.TrimSpace(entry.Reason); reason != "" {
+			key := strings.ToLower(reason)
+			stat := reasonMap[key]
+			stat.Count++
+			// Keep a stable original-cased label regardless of Redis map iteration.
+			if stat.Reason == "" || reason < stat.Reason {
+				stat.Reason = reason
+			}
+			reasonMap[key] = stat
 		}
 	}
 
@@ -909,11 +916,8 @@ func (s *IPService) computeStats(ctx context.Context) (hour int, day int, totalE
 		topASN = topASN[:10]
 	}
 
-	for r, count := range reasonMap {
-		topReason = append(topReason, struct {
-			Reason string
-			Count  int
-		}{r, count})
+	for _, stat := range reasonMap {
+		topReason = append(topReason, stat)
 	}
 	sort.Slice(topReason, func(i, j int) bool { return topReason[i].Count > topReason[j].Count })
 	if len(topReason) > 10 {
@@ -1130,7 +1134,10 @@ func (s *IPService) prepareFilterOptions(query, country, addedBy, from, to strin
 		opts.toTime, _ = time.Parse(time.RFC3339, to)
 	}
 	opts.query = strings.ToLower(strings.TrimSpace(query))
-	if field, value, ok := strings.Cut(opts.query, ":"); ok && (field == "asn" || field == "reason") {
+	field, value, qualified := strings.Cut(opts.query, ":")
+	field = strings.TrimSpace(field)
+	insightField := field == "asn" || field == "reason"
+	if qualified && insightField {
 		opts.queryField = field
 		opts.query = strings.TrimSpace(value)
 		if field == "asn" {
@@ -1167,7 +1174,7 @@ func (s *IPService) matchesFilters(ip string, entry *models.IPEntry, opts *filte
 			return false
 		}
 	case opts.queryField == "reason":
-		if opts.query == "" || strings.ToLower(entry.Reason) != opts.query {
+		if opts.query == "" || strings.ToLower(strings.TrimSpace(entry.Reason)) != opts.query {
 			return false
 		}
 	case opts.query != "":

@@ -1161,6 +1161,7 @@
                 updateLastBlockDisplay();
 
                 const focusedInsight = document.activeElement?.closest('.insight-chip');
+                const focusedInsightList = focusedInsight?.parentElement;
                 if (Array.isArray(s.top_countries)) {
                     const wrap = document.getElementById('stat-countries');
                     wrap.innerHTML = s.top_countries.map(c => {
@@ -1204,10 +1205,11 @@
                 }
                 syncInsightFilters();
                 if (focusedInsight) {
-                    const replacement = Array.from(document.querySelectorAll('.insight-chip')).find(chip =>
+                    const chips = Array.from(focusedInsightList.querySelectorAll('.insight-chip'));
+                    const replacement = chips.find(chip =>
                         chip.dataset.insightFilter === focusedInsight.dataset.insightFilter &&
                         chip.dataset.insightValue === focusedInsight.dataset.insightValue);
-                    replacement?.focus({preventScroll: true});
+                    (replacement || chips[0] || document.getElementById('filterInput')).focus({preventScroll: true});
                 }
             } catch (err) {
                 console.error("refreshStats error:", err);
@@ -1288,13 +1290,27 @@
             await loadTablePage(0, true);
         }
 
+        function normalizeInsightQuery(query) {
+            const normalized = query.trim().toLowerCase();
+            const colon = normalized.indexOf(':');
+            if (colon < 0) return normalized;
+            const field = normalized.slice(0, colon).trim();
+            if (field !== 'asn' && field !== 'reason') return normalized;
+            const value = normalized.slice(colon + 1).trim();
+            if (field === 'asn' && /^\d+$/.test(value)) {
+                const asn = Number(value);
+                if (asn > 0 && asn <= 4294967295) return `asn:${asn}`;
+            }
+            return `${field}:${value}`;
+        }
+
         function syncInsightFilters() {
             const countries = (currentFilters.country || '').toLowerCase().split(',');
-            const query = (currentFilters.query || '').trim().toLowerCase();
+            const query = normalizeInsightQuery(currentFilters.query || '');
             document.querySelectorAll('.insight-chip').forEach(chip => {
                 const {insightFilter: field, insightValue: value} = chip.dataset;
                 const active = field === 'country' ? countries.includes(value.toLowerCase()) :
-                    query === `${field}:${value}`.trim().toLowerCase();
+                    query === normalizeInsightQuery(`${field}:${value}`);
                 chip.setAttribute('aria-pressed', String(active));
             });
         }
@@ -1312,7 +1328,7 @@
             } else if (field === 'asn' || field === 'reason') {
                 const input = document.getElementById('filterInput');
                 const query = `${field}:${value}`.trim();
-                input.value = input.value.trim().toLowerCase() === query.toLowerCase() ? '' : query;
+                input.value = normalizeInsightQuery(input.value) === normalizeInsightQuery(query) ? '' : query;
             } else {
                 return;
             }

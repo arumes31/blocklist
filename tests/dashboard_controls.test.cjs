@@ -235,7 +235,7 @@ function insightHarness() {
             context.syncInsightFilters();
         },
     });
-    vm.runInContext(handlerSource('function syncInsightFilters()', 'function clearFilters()'), context);
+    vm.runInContext(handlerSource('function normalizeInsightQuery(', 'function clearFilters()'), context);
     return {context, input, countries, chips, filters, searches, messages};
 }
 
@@ -290,3 +290,61 @@ test('ranking selection can be restored from saved or URL filters and cleared', 
     context.syncInsightFilters();
     assert.deepEqual(chips.map(chip => chip['aria-pressed']), ['false', 'false', 'false']);
 });
+
+for (const [field, value, query] of [
+    ['asn', '396982', 'ASN: 396982'],
+    ['asn', '396982', ' \tAsN \t: 00396982 \n'],
+    ['reason', 'ISDB-*-Scanner', ' REASON:  isdb-*-SCANNER '],
+    ['reason', 'ISDB-*-Scanner', '\tReason \t: ISDB-*-Scanner\n'],
+    ['reason', 'A:"B" & <test> / + *', ' REASON : a:"b" & <TEST> / + * '],
+]) {
+    test(`qualified insight filter normalizes and toggles off ${JSON.stringify(query)}`, async () => {
+        const state = insightHarness();
+        const chip = state.chips.find(chip => chip.dataset.insightFilter === field);
+        chip.dataset.insightValue = value;
+        state.filters.query = query;
+        state.input.value = query;
+        state.context.syncInsightFilters();
+        assert.equal(chip['aria-pressed'], 'true');
+        await state.context.applyInsightFilter(field, value);
+        assert.equal(state.input.value, '');
+        assert.equal(chip['aria-pressed'], 'false');
+        assert.equal(state.searches.length, 1);
+    });
+}
+
+test('insight comparison preserves literal reason spacing, punctuation and ordinary searches', async () => {
+    for (const query of ['ISDB-*-Scanner', 'reason:ISDB-*-Scanner-extra', 'reason:ISDB-*- Scanner', 'asn:3969820', '2001:db8::1']) {
+        const state = insightHarness();
+        state.filters.query = query;
+        state.input.value = query;
+        state.context.syncInsightFilters();
+        assert.ok(state.chips.every(chip => chip['aria-pressed'] === 'false'), query);
+        await state.context.applyInsightFilter('reason', 'ISDB-*-Scanner');
+        assert.equal(state.input.value, 'reason:ISDB-*-Scanner');
+    }
+});
+
+for (const kind of ['same chip', 'same list', 'empty list']) {
+    test(`stats refresh restores focused insight to ${kind}`, async () => {
+        const {state, context, errors} = statsHarness();
+        const focused = [];
+        const makeChip = value => ({
+            dataset: {insightFilter: 'reason', insightValue: value},
+            focus: options => { assert.equal(options.preventScroll, true); focused.push(value); },
+        });
+        const original = makeChip('Original');
+        const next = makeChip('Next');
+        const replacement = makeChip('Original');
+        const chips = kind === 'empty list' ? [] : kind === 'same chip' ? [next, replacement] : [next];
+        original.parentElement = {querySelectorAll: () => chips};
+        context.document.activeElement = {closest: () => original};
+        context.document.querySelectorAll = () => chips;
+        const getElement = context.document.getElementById;
+        context.document.getElementById = id => id === 'filterInput' ? {focus: () => focused.push('search')} : getElement(id);
+        state.payload = {top_reasons: chips.map(chip => ({reason: chip.dataset.insightValue, count: 1}))};
+        await context.refreshStats();
+        assert.deepEqual(errors, []);
+        assert.deepEqual(focused, [kind === 'empty list' ? 'search' : kind === 'same chip' ? 'Original' : 'Next']);
+    });
+}

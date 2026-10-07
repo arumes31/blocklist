@@ -76,8 +76,30 @@ with persistent bind mounts.
    ```
 
    If using a private override, add `-f <override-file>` after the base file in
-   both commands. For local-only use, bind the app port to `127.0.0.1` in that
-   override rather than exposing it to the network.
+   both commands. For local-only use, **replace**, rather than append to, the base
+   `5000:5000` port mapping. With **Docker Compose v2.24.4 or later**, use this in
+   that private override:
+
+   ```yaml
+   services:
+     app:
+       ports: !override
+         - "127.0.0.1:5000:5000"
+   ```
+
+   An ordinary `ports` list can retain the base all-interface binding alongside
+   the loopback entry. `!override` replaces the list completely; see
+   [Docker's merge rules](https://docs.docker.com/reference/compose-file/merge/#replace-value).
+   Before running `up`, inspect the resolved configuration with the same files:
+
+   ```sh
+   docker compose -f docker-compose.go.yml -f <override-file> config
+   ```
+
+   Confirm `services.app.ports` contains **only one binding**: `host_ip: 127.0.0.1`,
+   published port `5000`, target port `5000`. There must be no additional wildcard,
+   `0.0.0.0` or `::` binding. Upgrade older Compose versions before using this
+   example. The resolved configuration may include credentials; do not share it.
 5. Open `http://localhost:5000`, sign in with `GUIAdmin` (default `admin`) and the
    configured initial password, then enroll an authenticator. Database migrations
    run on server startup. Changing `GUIPassword` later does not reset an existing
