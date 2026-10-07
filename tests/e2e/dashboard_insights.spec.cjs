@@ -154,6 +154,12 @@ test('dashboard country and ASN filters remain interactive after scheduled refre
   await expect(page.locator('.insight-chip')).toHaveCount(30);
   const country = page.getByRole('button', {name: 'Filter by country US', exact: true});
   const asn = page.getByRole('button', {name: 'Filter by ASN 396982', exact: true});
+  /**
+   * Observe the matching IP-list response before triggering a filter interaction.
+   * @param {() => Promise<unknown>} action Interaction or clock advance to perform.
+   * @param {Object<string, string>} expected Required query values; absent means empty.
+   * @returns {Promise<URLSearchParams>} Parameters of the successful response.
+   */
   async function filterRequest(action, expected) {
     const response = page.waitForResponse(response => {
       const url = new URL(response.url());

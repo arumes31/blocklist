@@ -1109,6 +1109,13 @@
 
         // Periodic stats refresh
         let statsLoading = false;
+        /**
+         * Refresh health and optional rankings without overlapping requests.
+         * Missing ranking fields and failed fetches retain existing chips. If a
+         * focused chip is replaced, focus its match, a sibling, or the search input.
+         * @param {boolean} includeStats Whether to fetch stats after the health check.
+         * @returns {Promise<void>} Resolves after the refresh or handled failure.
+         */
         async function refreshStats(includeStats = true) {
             if (statsLoading) return;
             statsLoading = true;
@@ -1263,6 +1270,11 @@
             debounceTimeout = setTimeout(applyServerSearch, 350);
         }
 
+        /**
+         * Apply form filters immediately, cancelling any pending debounced search.
+         * Synchronize the URL and chips, clear row selections, and load page one.
+         * @returns {Promise<void>} Resolves when the first-page load completes.
+         */
         async function applyServerSearch() {
             clearTimeout(debounceTimeout);
             const countrySelect = document.getElementById('countryPopup');
@@ -1290,6 +1302,13 @@
             await loadTablePage(0, true);
         }
 
+        /**
+         * Build a comparison key for insight-chip toggles using service query rules.
+         * Normalize qualified field spacing and valid ASN digits; keep reason
+         * punctuation and internal whitespace literal, including additional colons.
+         * @param {string} query Search text or a qualified ASN/reason query.
+         * @returns {string} Trimmed, lower-case comparison key.
+         */
         function normalizeInsightQuery(query) {
             const normalized = query.trim().toLowerCase();
             const colon = normalized.indexOf(':');
@@ -1304,6 +1323,10 @@
             return `${field}:${value}`;
         }
 
+        /**
+         * Reflect current filters in each ranking button's accessible pressed state
+         * after searches or chip replacement, without issuing another request.
+         */
         function syncInsightFilters() {
             const countries = (currentFilters.country || '').toLowerCase().split(',');
             const query = normalizeInsightQuery(currentFilters.query || '');
@@ -1315,6 +1338,14 @@
             });
         }
 
+        /**
+         * Toggle a ranking's exact filter while preserving unrelated form filters.
+         * Countries replace the country selection; ASN/reason chips replace search.
+         * @param {string} field Supported field: country, asn, or reason.
+         * @param {string} value Literal value from the selected ranking chip.
+         * @returns {Promise<void>|undefined} Search completion, or nothing for an
+         * unsupported field or unavailable country (which leaves filters unchanged).
+         */
         function applyInsightFilter(field, value) {
             if (field === 'country') {
                 const checkboxes = Array.from(document.querySelectorAll('#countryList input[type="checkbox"]'));
@@ -1433,6 +1464,10 @@
             });
         }
 
+        /**
+         * Rebuild removable filter summaries from currentFilters and synchronize
+         * ranking-button states, escaping user-supplied values before rendering.
+         */
         function renderChips() {
             syncInsightFilters();
             const container = document.getElementById('filter-chips');

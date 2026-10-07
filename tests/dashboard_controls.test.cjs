@@ -127,6 +127,11 @@ test('block validation prevents an empty IP from creating a request', async () =
     assert.deepEqual(state.messages, [{text: 'Enter an IP', kind: 'danger'}]);
 });
 
+/**
+ * Execute the shipped stats renderer in a VM with controlled health/stats fetches.
+ * Returns mutable payload/failure state, DOM stubs, and request/error recordings
+ * so refresh behavior can be tested without a browser or live server.
+ */
 function statsHarness() {
     const fields = Object.fromEntries(['stat-countries', 'stat-asns', 'stat-reasons'].map(id => [id, {innerHTML: 'previous entries'}]));
     fields['health-dot'] = {style: {}, title: ''};
@@ -208,6 +213,11 @@ test('stats preserve previous entries on absent fields or failure, clear empty l
     assert.equal(fields['health-dot'].title, 'System Health: OK');
 });
 
+/**
+ * Execute the shipped insight-filter handlers against stubbed controls and chips.
+ * Returns the VM, mutable form state, and recorded searches/messages; its search
+ * stub synchronizes pressed states so tests can check filter preservation.
+ */
 function insightHarness() {
     const input = {value: ''};
     const countries = ['US', 'AT', 'DE'].map(value => ({value, checked: false}));

@@ -11,6 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestInsightFilters checks that indexed and fallback pagination agree with
+// exports for qualified queries, combined filters, and existing text/CIDR searches.
 func TestInsightFilters(t *testing.T) {
 	for _, indexed := range []bool{true, false} {
 		t.Run(fmt.Sprintf("indexed=%t", indexed), func(t *testing.T) {
@@ -124,6 +126,8 @@ func TestInsightFilters(t *testing.T) {
 	}
 }
 
+// TestInsightReasonRankings checks that normalized reason counts agree with exact
+// filtering while display labels stay stable and stored reasons remain unchanged.
 func TestInsightReasonRankings(t *testing.T) {
 	t.Parallel()
 	svc, mr := setupServiceTest(t)

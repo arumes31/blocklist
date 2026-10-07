@@ -127,6 +127,12 @@ test('bound Entra rows stay compact with accessible details and preserve account
   expect(created.ok()).toBeTruthy();
   await page.goto('/admin_management');
   await page.mouse.move(page.viewportSize().width - 4, 4);
+  /**
+   * Save a stable account-layout screenshot in this test's artifact directory.
+   * Move away from the sidebar and wait for its collapse/transitions first.
+   * @param {string} name Screenshot filename relative to the test output directory.
+   * @returns {Promise<void>} Resolves after the full-page screenshot is saved.
+   */
   async function capture(name) {
     await page.mouse.move(page.viewportSize().width - 4, 4);
     if (page.viewportSize().width >= 992) {

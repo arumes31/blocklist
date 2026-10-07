@@ -830,7 +830,9 @@ func (s *IPService) listIPsHashFallback(ctx context.Context, limit int, cursor s
 	return itemsOut, nextCursor, len(list), nil
 }
 
-// computeStats reads fresh counts and aggregates from Redis.
+// computeStats reads uncached counters and top-ten rankings from Redis. Reason
+// rankings group trimmed, case-insensitive values while retaining a stable display
+// label. A missing repository returns zero values; Redis failures are returned.
 func (s *IPService) computeStats(ctx context.Context) (hour int, day int, totalEver int, activeBlocks int, top []struct {
 	Country string
 	Count   int
@@ -1125,6 +1127,10 @@ type filterOptions struct {
 	toTime       time.Time
 }
 
+// prepareFilterOptions normalizes filters shared by pagination and exports.
+// Qualified asn: and reason: queries use exact matching; other queries retain
+// text and CIDR matching. Invalid dates leave their bounds unset, while invalid
+// or zero ASNs remain non-matching qualified queries.
 func (s *IPService) prepareFilterOptions(query, country, addedBy, from, to string) *filterOptions {
 	opts := &filterOptions{}
 	if from != "" {
@@ -1162,6 +1168,10 @@ func (s *IPService) prepareFilterOptions(query, country, addedBy, from, to strin
 	return opts
 }
 
+// matchesFilters applies all constraints from non-nil, prepared filter options
+// without modifying the entry. Exact reasons ignore case and surrounding space;
+// ordinary queries match text or CIDR. Nil entries never match, and entries with
+// unparseable timestamps are not rejected by date bounds.
 func (s *IPService) matchesFilters(ip string, entry *models.IPEntry, opts *filterOptions) bool {
 	if entry == nil {
 		return false
