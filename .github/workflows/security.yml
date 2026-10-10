@@ -33,7 +33,7 @@ jobs:
 
       # Do not use -no-fail: findings must fail this check, even when SARIF uploads.
       - name: Run gosec
-        run: go run github.com/securego/gosec/v2/cmd/gosec@v2.29.0 -fmt=sarif -out=gosec.sarif ./...
+        run: go run github.com/securego/gosec/v2/cmd/gosec@7b1b5cebe007d62fb58eacb90fc571112939ec30 -fmt=sarif -out=gosec.sarif ./...
 
       - name: Publish gosec findings to code scanning
         # Dependabot push tokens cannot upload SARIF; PR uploads remain supported.
