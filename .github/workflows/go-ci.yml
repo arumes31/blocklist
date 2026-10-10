@@ -107,7 +107,7 @@ jobs:
       uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
       with:
         # v2.13.0 is built with Go 1.27 and can analyze this module's target.
-        version: v2.13.0
+        version: v2.14.0
         args: --build-tags integration --timeout=5m
 
   workflow-lint:
