@@ -1,5 +1,5 @@
 # Stage 1: Minify embedded JavaScript without modifying tracked source files.
-FROM node:24.21.0-alpine3.23@sha256:9ec4a2e289874ed0d722e1772ec2de45d2801541db8612f3638b26f128c69ac2 AS assets
+FROM node:26.12.0-alpine3.23@sha256:2ae3a23c9c5d2129398f4844c7c43400c061faf6973852f0fa837323bff9a5a8 AS assets
 
 WORKDIR /app
 COPY package.json package-lock.json ./
