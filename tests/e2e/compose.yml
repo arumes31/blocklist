@@ -58,6 +58,7 @@ services:
       ENABLE_OUTBOUND_WEBHOOKS: 'false'
       ENTRA_ENABLED: 'false'
       COOKIE_SECURE: 'false'
+      ALLOW_BASIC_AUTH: 'true'
       RATE_LIMIT: '100000'
       RATE_LIMIT_LOGIN: '10000'
       RATE_LIMIT_WEBHOOK: '100000'

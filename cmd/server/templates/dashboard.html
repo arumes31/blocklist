@@ -20,7 +20,7 @@
 
     <header class="header-container">
         <div class="page-heading"><h1>Dashboard</h1><p class="page-description">Monitor activity and manage your IP blocklist.</p></div>
-        <div class="page-actions"><button onclick="openModal('blockModal')" class="btn btn-danger btn-enforce">Block IP</button></div>
+        <div class="page-actions"><button data-on-click="openModal" data-arg0="blockModal" class="btn btn-danger btn-enforce">Block IP</button></div>
     </header>
 
     <main class="main-content " id="main-content">
@@ -80,554 +80,554 @@
         <div class="search-container">
             <div class="filter-grid">
                 <input aria-label="Quick Search (IP, Reason...)" type="text" id="filterInput" class="filter-input" style="flex: 2; min-width: 200px;"
-                    placeholder="Quick Search (IP, Reason...)" title="Search IP, text or CIDR. Exact filters: asn:396982 or reason:Scanner" oninput="debouncedFilterTable()">
+                    placeholder="Quick Search (IP, Reason...)" title="Search IP, text or CIDR. Exact filters: asn:396982 or reason:Scanner" data-on-input="debouncedFilterTable">
 
                 <div class="country-dropdown">
                     <button type="button" class="filter-input"
                         style="width: 100%; text-align: left; display: flex; justify-content: space-between; align-items: center;"
-                        onclick="toggleCountryDropdown()">
+                        data-on-click="toggleCountryDropdown">
                         <span id="countryLabel">All Countries</span>
                         <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg>
                     </button>
                     <div class="country-popup" id="countryPopup">
                         <input aria-label="Search countries..." type="text" id="countrySearch" class="country-search" placeholder="Search countries..."
-                            oninput="filterCountryList()">
+                            data-on-input="filterCountryList">
                         <div class="country-list" id="countryList">
                             <label class="country-option"><input type="checkbox" value="AF"
-                                    onchange="applyServerSearch()"> Afghanistan</label>
+                                    data-on-change="applyServerSearch"> Afghanistan</label>
                             <label class="country-option"><input type="checkbox" value="AX"
-                                    onchange="applyServerSearch()"> Åland Islands</label>
+                                    data-on-change="applyServerSearch"> Åland Islands</label>
                             <label class="country-option"><input type="checkbox" value="AL"
-                                    onchange="applyServerSearch()"> Albania</label>
+                                    data-on-change="applyServerSearch"> Albania</label>
                             <label class="country-option"><input type="checkbox" value="DZ"
-                                    onchange="applyServerSearch()"> Algeria</label>
+                                    data-on-change="applyServerSearch"> Algeria</label>
                             <label class="country-option"><input type="checkbox" value="AS"
-                                    onchange="applyServerSearch()"> American Samoa</label>
+                                    data-on-change="applyServerSearch"> American Samoa</label>
                             <label class="country-option"><input type="checkbox" value="AD"
-                                    onchange="applyServerSearch()"> Andorra</label>
+                                    data-on-change="applyServerSearch"> Andorra</label>
                             <label class="country-option"><input type="checkbox" value="AO"
-                                    onchange="applyServerSearch()"> Angola</label>
+                                    data-on-change="applyServerSearch"> Angola</label>
                             <label class="country-option"><input type="checkbox" value="AI"
-                                    onchange="applyServerSearch()"> Anguilla</label>
+                                    data-on-change="applyServerSearch"> Anguilla</label>
                             <label class="country-option"><input type="checkbox" value="AQ"
-                                    onchange="applyServerSearch()"> Antarctica</label>
+                                    data-on-change="applyServerSearch"> Antarctica</label>
                             <label class="country-option"><input type="checkbox" value="AG"
-                                    onchange="applyServerSearch()"> Antigua and Barbuda</label>
+                                    data-on-change="applyServerSearch"> Antigua and Barbuda</label>
                             <label class="country-option"><input type="checkbox" value="AR"
-                                    onchange="applyServerSearch()"> Argentina</label>
+                                    data-on-change="applyServerSearch"> Argentina</label>
                             <label class="country-option"><input type="checkbox" value="AM"
-                                    onchange="applyServerSearch()"> Armenia</label>
+                                    data-on-change="applyServerSearch"> Armenia</label>
                             <label class="country-option"><input type="checkbox" value="AW"
-                                    onchange="applyServerSearch()"> Aruba</label>
+                                    data-on-change="applyServerSearch"> Aruba</label>
                             <label class="country-option"><input type="checkbox" value="AU"
-                                    onchange="applyServerSearch()"> Australia</label>
+                                    data-on-change="applyServerSearch"> Australia</label>
                             <label class="country-option"><input type="checkbox" value="AT"
-                                    onchange="applyServerSearch()"> Austria</label>
+                                    data-on-change="applyServerSearch"> Austria</label>
                             <label class="country-option"><input type="checkbox" value="AZ"
-                                    onchange="applyServerSearch()"> Azerbaijan</label>
+                                    data-on-change="applyServerSearch"> Azerbaijan</label>
                             <label class="country-option"><input type="checkbox" value="BS"
-                                    onchange="applyServerSearch()"> Bahamas</label>
+                                    data-on-change="applyServerSearch"> Bahamas</label>
                             <label class="country-option"><input type="checkbox" value="BH"
-                                    onchange="applyServerSearch()"> Bahrain</label>
+                                    data-on-change="applyServerSearch"> Bahrain</label>
                             <label class="country-option"><input type="checkbox" value="BD"
-                                    onchange="applyServerSearch()"> Bangladesh</label>
+                                    data-on-change="applyServerSearch"> Bangladesh</label>
                             <label class="country-option"><input type="checkbox" value="BB"
-                                    onchange="applyServerSearch()"> Barbados</label>
+                                    data-on-change="applyServerSearch"> Barbados</label>
                             <label class="country-option"><input type="checkbox" value="BY"
-                                    onchange="applyServerSearch()"> Belarus</label>
+                                    data-on-change="applyServerSearch"> Belarus</label>
                             <label class="country-option"><input type="checkbox" value="BE"
-                                    onchange="applyServerSearch()"> Belgium</label>
+                                    data-on-change="applyServerSearch"> Belgium</label>
                             <label class="country-option"><input type="checkbox" value="BZ"
-                                    onchange="applyServerSearch()"> Belize</label>
+                                    data-on-change="applyServerSearch"> Belize</label>
                             <label class="country-option"><input type="checkbox" value="BJ"
-                                    onchange="applyServerSearch()"> Benin</label>
+                                    data-on-change="applyServerSearch"> Benin</label>
                             <label class="country-option"><input type="checkbox" value="BM"
-                                    onchange="applyServerSearch()"> Bermuda</label>
+                                    data-on-change="applyServerSearch"> Bermuda</label>
                             <label class="country-option"><input type="checkbox" value="BT"
-                                    onchange="applyServerSearch()"> Bhutan</label>
+                                    data-on-change="applyServerSearch"> Bhutan</label>
                             <label class="country-option"><input type="checkbox" value="BO"
-                                    onchange="applyServerSearch()"> Bolivia</label>
+                                    data-on-change="applyServerSearch"> Bolivia</label>
                             <label class="country-option"><input type="checkbox" value="BQ"
-                                    onchange="applyServerSearch()"> Bonaire, Sint Eustatius and Saba</label>
+                                    data-on-change="applyServerSearch"> Bonaire, Sint Eustatius and Saba</label>
                             <label class="country-option"><input type="checkbox" value="BA"
-                                    onchange="applyServerSearch()"> Bosnia and Herzegovina</label>
+                                    data-on-change="applyServerSearch"> Bosnia and Herzegovina</label>
                             <label class="country-option"><input type="checkbox" value="BW"
-                                    onchange="applyServerSearch()"> Botswana</label>
+                                    data-on-change="applyServerSearch"> Botswana</label>
                             <label class="country-option"><input type="checkbox" value="BV"
-                                    onchange="applyServerSearch()"> Bouvet Island</label>
+                                    data-on-change="applyServerSearch"> Bouvet Island</label>
                             <label class="country-option"><input type="checkbox" value="BR"
-                                    onchange="applyServerSearch()"> Brazil</label>
+                                    data-on-change="applyServerSearch"> Brazil</label>
                             <label class="country-option"><input type="checkbox" value="IO"
-                                    onchange="applyServerSearch()"> British Indian Ocean Territory</label>
+                                    data-on-change="applyServerSearch"> British Indian Ocean Territory</label>
                             <label class="country-option"><input type="checkbox" value="BN"
-                                    onchange="applyServerSearch()"> Brunei Darussalam</label>
+                                    data-on-change="applyServerSearch"> Brunei Darussalam</label>
                             <label class="country-option"><input type="checkbox" value="BG"
-                                    onchange="applyServerSearch()"> Bulgaria</label>
+                                    data-on-change="applyServerSearch"> Bulgaria</label>
                             <label class="country-option"><input type="checkbox" value="BF"
-                                    onchange="applyServerSearch()"> Burkina Faso</label>
+                                    data-on-change="applyServerSearch"> Burkina Faso</label>
                             <label class="country-option"><input type="checkbox" value="BI"
-                                    onchange="applyServerSearch()"> Burundi</label>
+                                    data-on-change="applyServerSearch"> Burundi</label>
                             <label class="country-option"><input type="checkbox" value="CV"
-                                    onchange="applyServerSearch()"> Cabo Verde</label>
+                                    data-on-change="applyServerSearch"> Cabo Verde</label>
                             <label class="country-option"><input type="checkbox" value="KH"
-                                    onchange="applyServerSearch()"> Cambodia</label>
+                                    data-on-change="applyServerSearch"> Cambodia</label>
                             <label class="country-option"><input type="checkbox" value="CM"
-                                    onchange="applyServerSearch()"> Cameroon</label>
+                                    data-on-change="applyServerSearch"> Cameroon</label>
                             <label class="country-option"><input type="checkbox" value="CA"
-                                    onchange="applyServerSearch()"> Canada</label>
+                                    data-on-change="applyServerSearch"> Canada</label>
                             <label class="country-option"><input type="checkbox" value="KY"
-                                    onchange="applyServerSearch()"> Cayman Islands</label>
+                                    data-on-change="applyServerSearch"> Cayman Islands</label>
                             <label class="country-option"><input type="checkbox" value="CF"
-                                    onchange="applyServerSearch()"> Central African Republic</label>
+                                    data-on-change="applyServerSearch"> Central African Republic</label>
                             <label class="country-option"><input type="checkbox" value="TD"
-                                    onchange="applyServerSearch()"> Chad</label>
+                                    data-on-change="applyServerSearch"> Chad</label>
                             <label class="country-option"><input type="checkbox" value="CL"
-                                    onchange="applyServerSearch()"> Chile</label>
+                                    data-on-change="applyServerSearch"> Chile</label>
                             <label class="country-option"><input type="checkbox" value="CN"
-                                    onchange="applyServerSearch()"> China</label>
+                                    data-on-change="applyServerSearch"> China</label>
                             <label class="country-option"><input type="checkbox" value="CX"
-                                    onchange="applyServerSearch()"> Christmas Island</label>
+                                    data-on-change="applyServerSearch"> Christmas Island</label>
                             <label class="country-option"><input type="checkbox" value="CC"
-                                    onchange="applyServerSearch()"> Cocos (Keeling) Islands</label>
+                                    data-on-change="applyServerSearch"> Cocos (Keeling) Islands</label>
                             <label class="country-option"><input type="checkbox" value="CO"
-                                    onchange="applyServerSearch()"> Colombia</label>
+                                    data-on-change="applyServerSearch"> Colombia</label>
                             <label class="country-option"><input type="checkbox" value="KM"
-                                    onchange="applyServerSearch()"> Comoros</label>
+                                    data-on-change="applyServerSearch"> Comoros</label>
                             <label class="country-option"><input type="checkbox" value="CG"
-                                    onchange="applyServerSearch()"> Congo</label>
+                                    data-on-change="applyServerSearch"> Congo</label>
                             <label class="country-option"><input type="checkbox" value="CD"
-                                    onchange="applyServerSearch()"> Congo (Democratic Republic of the)</label>
+                                    data-on-change="applyServerSearch"> Congo (Democratic Republic of the)</label>
                             <label class="country-option"><input type="checkbox" value="CK"
-                                    onchange="applyServerSearch()"> Cook Islands</label>
+                                    data-on-change="applyServerSearch"> Cook Islands</label>
                             <label class="country-option"><input type="checkbox" value="CR"
-                                    onchange="applyServerSearch()"> Costa Rica</label>
+                                    data-on-change="applyServerSearch"> Costa Rica</label>
                             <label class="country-option"><input type="checkbox" value="CI"
-                                    onchange="applyServerSearch()"> Côte d'Ivoire</label>
+                                    data-on-change="applyServerSearch"> Côte d'Ivoire</label>
                             <label class="country-option"><input type="checkbox" value="HR"
-                                    onchange="applyServerSearch()"> Croatia</label>
+                                    data-on-change="applyServerSearch"> Croatia</label>
                             <label class="country-option"><input type="checkbox" value="CU"
-                                    onchange="applyServerSearch()"> Cuba</label>
+                                    data-on-change="applyServerSearch"> Cuba</label>
                             <label class="country-option"><input type="checkbox" value="CW"
-                                    onchange="applyServerSearch()"> Curaçao</label>
+                                    data-on-change="applyServerSearch"> Curaçao</label>
                             <label class="country-option"><input type="checkbox" value="CY"
-                                    onchange="applyServerSearch()"> Cyprus</label>
+                                    data-on-change="applyServerSearch"> Cyprus</label>
                             <label class="country-option"><input type="checkbox" value="CZ"
-                                    onchange="applyServerSearch()"> Czechia</label>
+                                    data-on-change="applyServerSearch"> Czechia</label>
                             <label class="country-option"><input type="checkbox" value="DK"
-                                    onchange="applyServerSearch()"> Denmark</label>
+                                    data-on-change="applyServerSearch"> Denmark</label>
                             <label class="country-option"><input type="checkbox" value="DJ"
-                                    onchange="applyServerSearch()"> Djibouti</label>
+                                    data-on-change="applyServerSearch"> Djibouti</label>
                             <label class="country-option"><input type="checkbox" value="DM"
-                                    onchange="applyServerSearch()"> Dominica</label>
+                                    data-on-change="applyServerSearch"> Dominica</label>
                             <label class="country-option"><input type="checkbox" value="DO"
-                                    onchange="applyServerSearch()"> Dominican Republic</label>
+                                    data-on-change="applyServerSearch"> Dominican Republic</label>
                             <label class="country-option"><input type="checkbox" value="EC"
-                                    onchange="applyServerSearch()"> Ecuador</label>
+                                    data-on-change="applyServerSearch"> Ecuador</label>
                             <label class="country-option"><input type="checkbox" value="EG"
-                                    onchange="applyServerSearch()"> Egypt</label>
+                                    data-on-change="applyServerSearch"> Egypt</label>
                             <label class="country-option"><input type="checkbox" value="SV"
-                                    onchange="applyServerSearch()"> El Salvador</label>
+                                    data-on-change="applyServerSearch"> El Salvador</label>
                             <label class="country-option"><input type="checkbox" value="GQ"
-                                    onchange="applyServerSearch()"> Equatorial Guinea</label>
+                                    data-on-change="applyServerSearch"> Equatorial Guinea</label>
                             <label class="country-option"><input type="checkbox" value="ER"
-                                    onchange="applyServerSearch()"> Eritrea</label>
+                                    data-on-change="applyServerSearch"> Eritrea</label>
                             <label class="country-option"><input type="checkbox" value="EE"
-                                    onchange="applyServerSearch()"> Estonia</label>
+                                    data-on-change="applyServerSearch"> Estonia</label>
                             <label class="country-option"><input type="checkbox" value="SZ"
-                                    onchange="applyServerSearch()"> Eswatini</label>
+                                    data-on-change="applyServerSearch"> Eswatini</label>
                             <label class="country-option"><input type="checkbox" value="ET"
-                                    onchange="applyServerSearch()"> Ethiopia</label>
+                                    data-on-change="applyServerSearch"> Ethiopia</label>
                             <label class="country-option"><input type="checkbox" value="FK"
-                                    onchange="applyServerSearch()"> Falkland Islands (Malvinas)</label>
+                                    data-on-change="applyServerSearch"> Falkland Islands (Malvinas)</label>
                             <label class="country-option"><input type="checkbox" value="FO"
-                                    onchange="applyServerSearch()"> Faroe Islands</label>
+                                    data-on-change="applyServerSearch"> Faroe Islands</label>
                             <label class="country-option"><input type="checkbox" value="FJ"
-                                    onchange="applyServerSearch()"> Fiji</label>
+                                    data-on-change="applyServerSearch"> Fiji</label>
                             <label class="country-option"><input type="checkbox" value="FI"
-                                    onchange="applyServerSearch()"> Finland</label>
+                                    data-on-change="applyServerSearch"> Finland</label>
                             <label class="country-option"><input type="checkbox" value="FR"
-                                    onchange="applyServerSearch()"> France</label>
+                                    data-on-change="applyServerSearch"> France</label>
                             <label class="country-option"><input type="checkbox" value="GF"
-                                    onchange="applyServerSearch()"> French Guiana</label>
+                                    data-on-change="applyServerSearch"> French Guiana</label>
                             <label class="country-option"><input type="checkbox" value="PF"
-                                    onchange="applyServerSearch()"> French Polynesia</label>
+                                    data-on-change="applyServerSearch"> French Polynesia</label>
                             <label class="country-option"><input type="checkbox" value="TF"
-                                    onchange="applyServerSearch()"> French Southern Territories</label>
+                                    data-on-change="applyServerSearch"> French Southern Territories</label>
                             <label class="country-option"><input type="checkbox" value="GA"
-                                    onchange="applyServerSearch()"> Gabon</label>
+                                    data-on-change="applyServerSearch"> Gabon</label>
                             <label class="country-option"><input type="checkbox" value="GM"
-                                    onchange="applyServerSearch()"> Gambia</label>
+                                    data-on-change="applyServerSearch"> Gambia</label>
                             <label class="country-option"><input type="checkbox" value="GE"
-                                    onchange="applyServerSearch()"> Georgia</label>
+                                    data-on-change="applyServerSearch"> Georgia</label>
                             <label class="country-option"><input type="checkbox" value="DE"
-                                    onchange="applyServerSearch()"> Germany</label>
+                                    data-on-change="applyServerSearch"> Germany</label>
                             <label class="country-option"><input type="checkbox" value="GH"
-                                    onchange="applyServerSearch()"> Ghana</label>
+                                    data-on-change="applyServerSearch"> Ghana</label>
                             <label class="country-option"><input type="checkbox" value="GI"
-                                    onchange="applyServerSearch()"> Gibraltar</label>
+                                    data-on-change="applyServerSearch"> Gibraltar</label>
                             <label class="country-option"><input type="checkbox" value="GR"
-                                    onchange="applyServerSearch()"> Greece</label>
+                                    data-on-change="applyServerSearch"> Greece</label>
                             <label class="country-option"><input type="checkbox" value="GL"
-                                    onchange="applyServerSearch()"> Greenland</label>
+                                    data-on-change="applyServerSearch"> Greenland</label>
                             <label class="country-option"><input type="checkbox" value="GD"
-                                    onchange="applyServerSearch()"> Grenada</label>
+                                    data-on-change="applyServerSearch"> Grenada</label>
                             <label class="country-option"><input type="checkbox" value="GP"
-                                    onchange="applyServerSearch()"> Guadeloupe</label>
+                                    data-on-change="applyServerSearch"> Guadeloupe</label>
                             <label class="country-option"><input type="checkbox" value="GU"
-                                    onchange="applyServerSearch()"> Guam</label>
+                                    data-on-change="applyServerSearch"> Guam</label>
                             <label class="country-option"><input type="checkbox" value="GT"
-                                    onchange="applyServerSearch()"> Guatemala</label>
+                                    data-on-change="applyServerSearch"> Guatemala</label>
                             <label class="country-option"><input type="checkbox" value="GG"
-                                    onchange="applyServerSearch()"> Guernsey</label>
+                                    data-on-change="applyServerSearch"> Guernsey</label>
                             <label class="country-option"><input type="checkbox" value="GN"
-                                    onchange="applyServerSearch()"> Guinea</label>
+                                    data-on-change="applyServerSearch"> Guinea</label>
                             <label class="country-option"><input type="checkbox" value="GW"
-                                    onchange="applyServerSearch()"> Guinea-Bissau</label>
+                                    data-on-change="applyServerSearch"> Guinea-Bissau</label>
                             <label class="country-option"><input type="checkbox" value="GY"
-                                    onchange="applyServerSearch()"> Guyana</label>
+                                    data-on-change="applyServerSearch"> Guyana</label>
                             <label class="country-option"><input type="checkbox" value="HT"
-                                    onchange="applyServerSearch()"> Haiti</label>
+                                    data-on-change="applyServerSearch"> Haiti</label>
                             <label class="country-option"><input type="checkbox" value="HM"
-                                    onchange="applyServerSearch()"> Heard Island and McDonald Islands</label>
+                                    data-on-change="applyServerSearch"> Heard Island and McDonald Islands</label>
                             <label class="country-option"><input type="checkbox" value="VA"
-                                    onchange="applyServerSearch()"> Holy See</label>
+                                    data-on-change="applyServerSearch"> Holy See</label>
                             <label class="country-option"><input type="checkbox" value="HN"
-                                    onchange="applyServerSearch()"> Honduras</label>
+                                    data-on-change="applyServerSearch"> Honduras</label>
                             <label class="country-option"><input type="checkbox" value="HK"
-                                    onchange="applyServerSearch()"> Hong Kong</label>
+                                    data-on-change="applyServerSearch"> Hong Kong</label>
                             <label class="country-option"><input type="checkbox" value="HU"
-                                    onchange="applyServerSearch()"> Hungary</label>
+                                    data-on-change="applyServerSearch"> Hungary</label>
                             <label class="country-option"><input type="checkbox" value="IS"
-                                    onchange="applyServerSearch()"> Iceland</label>
+                                    data-on-change="applyServerSearch"> Iceland</label>
                             <label class="country-option"><input type="checkbox" value="IN"
-                                    onchange="applyServerSearch()"> India</label>
+                                    data-on-change="applyServerSearch"> India</label>
                             <label class="country-option"><input type="checkbox" value="ID"
-                                    onchange="applyServerSearch()"> Indonesia</label>
+                                    data-on-change="applyServerSearch"> Indonesia</label>
                             <label class="country-option"><input type="checkbox" value="IR"
-                                    onchange="applyServerSearch()"> Iran (Islamic Republic of)</label>
+                                    data-on-change="applyServerSearch"> Iran (Islamic Republic of)</label>
                             <label class="country-option"><input type="checkbox" value="IQ"
-                                    onchange="applyServerSearch()"> Iraq</label>
+                                    data-on-change="applyServerSearch"> Iraq</label>
                             <label class="country-option"><input type="checkbox" value="IE"
-                                    onchange="applyServerSearch()"> Ireland</label>
+                                    data-on-change="applyServerSearch"> Ireland</label>
                             <label class="country-option"><input type="checkbox" value="IM"
-                                    onchange="applyServerSearch()"> Isle of Man</label>
+                                    data-on-change="applyServerSearch"> Isle of Man</label>
                             <label class="country-option"><input type="checkbox" value="IL"
-                                    onchange="applyServerSearch()"> Israel</label>
+                                    data-on-change="applyServerSearch"> Israel</label>
                             <label class="country-option"><input type="checkbox" value="IT"
-                                    onchange="applyServerSearch()"> Italy</label>
+                                    data-on-change="applyServerSearch"> Italy</label>
                             <label class="country-option"><input type="checkbox" value="JM"
-                                    onchange="applyServerSearch()"> Jamaica</label>
+                                    data-on-change="applyServerSearch"> Jamaica</label>
                             <label class="country-option"><input type="checkbox" value="JP"
-                                    onchange="applyServerSearch()"> Japan</label>
+                                    data-on-change="applyServerSearch"> Japan</label>
                             <label class="country-option"><input type="checkbox" value="JE"
-                                    onchange="applyServerSearch()"> Jersey</label>
+                                    data-on-change="applyServerSearch"> Jersey</label>
                             <label class="country-option"><input type="checkbox" value="JO"
-                                    onchange="applyServerSearch()"> Jordan</label>
+                                    data-on-change="applyServerSearch"> Jordan</label>
                             <label class="country-option"><input type="checkbox" value="KZ"
-                                    onchange="applyServerSearch()"> Kazakhstan</label>
+                                    data-on-change="applyServerSearch"> Kazakhstan</label>
                             <label class="country-option"><input type="checkbox" value="KE"
-                                    onchange="applyServerSearch()"> Kenya</label>
+                                    data-on-change="applyServerSearch"> Kenya</label>
                             <label class="country-option"><input type="checkbox" value="KI"
-                                    onchange="applyServerSearch()"> Kiribati</label>
+                                    data-on-change="applyServerSearch"> Kiribati</label>
                             <label class="country-option"><input type="checkbox" value="KP"
-                                    onchange="applyServerSearch()"> Korea (Democratic People's Republic of)</label>
+                                    data-on-change="applyServerSearch"> Korea (Democratic People's Republic of)</label>
                             <label class="country-option"><input type="checkbox" value="KR"
-                                    onchange="applyServerSearch()"> Korea (Republic of)</label>
+                                    data-on-change="applyServerSearch"> Korea (Republic of)</label>
                             <label class="country-option"><input type="checkbox" value="KW"
-                                    onchange="applyServerSearch()"> Kuwait</label>
+                                    data-on-change="applyServerSearch"> Kuwait</label>
                             <label class="country-option"><input type="checkbox" value="KG"
-                                    onchange="applyServerSearch()"> Kyrgyzstan</label>
+                                    data-on-change="applyServerSearch"> Kyrgyzstan</label>
                             <label class="country-option"><input type="checkbox" value="LA"
-                                    onchange="applyServerSearch()"> Lao People's Democratic Republic</label>
+                                    data-on-change="applyServerSearch"> Lao People's Democratic Republic</label>
                             <label class="country-option"><input type="checkbox" value="LV"
-                                    onchange="applyServerSearch()"> Latvia</label>
+                                    data-on-change="applyServerSearch"> Latvia</label>
                             <label class="country-option"><input type="checkbox" value="LB"
-                                    onchange="applyServerSearch()"> Lebanon</label>
+                                    data-on-change="applyServerSearch"> Lebanon</label>
                             <label class="country-option"><input type="checkbox" value="LS"
-                                    onchange="applyServerSearch()"> Lesotho</label>
+                                    data-on-change="applyServerSearch"> Lesotho</label>
                             <label class="country-option"><input type="checkbox" value="LR"
-                                    onchange="applyServerSearch()"> Liberia</label>
+                                    data-on-change="applyServerSearch"> Liberia</label>
                             <label class="country-option"><input type="checkbox" value="LY"
-                                    onchange="applyServerSearch()"> Libya</label>
+                                    data-on-change="applyServerSearch"> Libya</label>
                             <label class="country-option"><input type="checkbox" value="LI"
-                                    onchange="applyServerSearch()"> Liechtenstein</label>
+                                    data-on-change="applyServerSearch"> Liechtenstein</label>
                             <label class="country-option"><input type="checkbox" value="LT"
-                                    onchange="applyServerSearch()"> Lithuania</label>
+                                    data-on-change="applyServerSearch"> Lithuania</label>
                             <label class="country-option"><input type="checkbox" value="LU"
-                                    onchange="applyServerSearch()"> Luxembourg</label>
+                                    data-on-change="applyServerSearch"> Luxembourg</label>
                             <label class="country-option"><input type="checkbox" value="MO"
-                                    onchange="applyServerSearch()"> Macao</label>
+                                    data-on-change="applyServerSearch"> Macao</label>
                             <label class="country-option"><input type="checkbox" value="MG"
-                                    onchange="applyServerSearch()"> Madagascar</label>
+                                    data-on-change="applyServerSearch"> Madagascar</label>
                             <label class="country-option"><input type="checkbox" value="MW"
-                                    onchange="applyServerSearch()"> Malawi</label>
+                                    data-on-change="applyServerSearch"> Malawi</label>
                             <label class="country-option"><input type="checkbox" value="MY"
-                                    onchange="applyServerSearch()"> Malaysia</label>
+                                    data-on-change="applyServerSearch"> Malaysia</label>
                             <label class="country-option"><input type="checkbox" value="MV"
-                                    onchange="applyServerSearch()"> Maldives</label>
+                                    data-on-change="applyServerSearch"> Maldives</label>
                             <label class="country-option"><input type="checkbox" value="ML"
-                                    onchange="applyServerSearch()"> Mali</label>
+                                    data-on-change="applyServerSearch"> Mali</label>
                             <label class="country-option"><input type="checkbox" value="MT"
-                                    onchange="applyServerSearch()"> Malta</label>
+                                    data-on-change="applyServerSearch"> Malta</label>
                             <label class="country-option"><input type="checkbox" value="MH"
-                                    onchange="applyServerSearch()"> Marshall Islands</label>
+                                    data-on-change="applyServerSearch"> Marshall Islands</label>
                             <label class="country-option"><input type="checkbox" value="MQ"
-                                    onchange="applyServerSearch()"> Martinique</label>
+                                    data-on-change="applyServerSearch"> Martinique</label>
                             <label class="country-option"><input type="checkbox" value="MR"
-                                    onchange="applyServerSearch()"> Mauritania</label>
+                                    data-on-change="applyServerSearch"> Mauritania</label>
                             <label class="country-option"><input type="checkbox" value="MU"
-                                    onchange="applyServerSearch()"> Mauritius</label>
+                                    data-on-change="applyServerSearch"> Mauritius</label>
                             <label class="country-option"><input type="checkbox" value="YT"
-                                    onchange="applyServerSearch()"> Mayotte</label>
+                                    data-on-change="applyServerSearch"> Mayotte</label>
                             <label class="country-option"><input type="checkbox" value="MX"
-                                    onchange="applyServerSearch()"> Mexico</label>
+                                    data-on-change="applyServerSearch"> Mexico</label>
                             <label class="country-option"><input type="checkbox" value="FM"
-                                    onchange="applyServerSearch()"> Micronesia (Federated States of)</label>
+                                    data-on-change="applyServerSearch"> Micronesia (Federated States of)</label>
                             <label class="country-option"><input type="checkbox" value="MD"
-                                    onchange="applyServerSearch()"> Moldova (Republic of)</label>
+                                    data-on-change="applyServerSearch"> Moldova (Republic of)</label>
                             <label class="country-option"><input type="checkbox" value="MC"
-                                    onchange="applyServerSearch()"> Monaco</label>
+                                    data-on-change="applyServerSearch"> Monaco</label>
                             <label class="country-option"><input type="checkbox" value="MN"
-                                    onchange="applyServerSearch()"> Mongolia</label>
+                                    data-on-change="applyServerSearch"> Mongolia</label>
                             <label class="country-option"><input type="checkbox" value="ME"
-                                    onchange="applyServerSearch()"> Montenegro</label>
+                                    data-on-change="applyServerSearch"> Montenegro</label>
                             <label class="country-option"><input type="checkbox" value="MS"
-                                    onchange="applyServerSearch()"> Montserrat</label>
+                                    data-on-change="applyServerSearch"> Montserrat</label>
                             <label class="country-option"><input type="checkbox" value="MA"
-                                    onchange="applyServerSearch()"> Morocco</label>
+                                    data-on-change="applyServerSearch"> Morocco</label>
                             <label class="country-option"><input type="checkbox" value="MZ"
-                                    onchange="applyServerSearch()"> Mozambique</label>
+                                    data-on-change="applyServerSearch"> Mozambique</label>
                             <label class="country-option"><input type="checkbox" value="MM"
-                                    onchange="applyServerSearch()"> Myanmar</label>
+                                    data-on-change="applyServerSearch"> Myanmar</label>
                             <label class="country-option"><input type="checkbox" value="NA"
-                                    onchange="applyServerSearch()"> Namibia</label>
+                                    data-on-change="applyServerSearch"> Namibia</label>
                             <label class="country-option"><input type="checkbox" value="NR"
-                                    onchange="applyServerSearch()"> Nauru</label>
+                                    data-on-change="applyServerSearch"> Nauru</label>
                             <label class="country-option"><input type="checkbox" value="NP"
-                                    onchange="applyServerSearch()"> Nepal</label>
+                                    data-on-change="applyServerSearch"> Nepal</label>
                             <label class="country-option"><input type="checkbox" value="NL"
-                                    onchange="applyServerSearch()"> Netherlands</label>
+                                    data-on-change="applyServerSearch"> Netherlands</label>
                             <label class="country-option"><input type="checkbox" value="NC"
-                                    onchange="applyServerSearch()"> New Caledonia</label>
+                                    data-on-change="applyServerSearch"> New Caledonia</label>
                             <label class="country-option"><input type="checkbox" value="NZ"
-                                    onchange="applyServerSearch()"> New Zealand</label>
+                                    data-on-change="applyServerSearch"> New Zealand</label>
                             <label class="country-option"><input type="checkbox" value="NI"
-                                    onchange="applyServerSearch()"> Nicaragua</label>
+                                    data-on-change="applyServerSearch"> Nicaragua</label>
                             <label class="country-option"><input type="checkbox" value="NE"
-                                    onchange="applyServerSearch()"> Niger</label>
+                                    data-on-change="applyServerSearch"> Niger</label>
                             <label class="country-option"><input type="checkbox" value="NG"
-                                    onchange="applyServerSearch()"> Nigeria</label>
+                                    data-on-change="applyServerSearch"> Nigeria</label>
                             <label class="country-option"><input type="checkbox" value="NU"
-                                    onchange="applyServerSearch()"> Niue</label>
+                                    data-on-change="applyServerSearch"> Niue</label>
                             <label class="country-option"><input type="checkbox" value="NF"
-                                    onchange="applyServerSearch()"> Norfolk Island</label>
+                                    data-on-change="applyServerSearch"> Norfolk Island</label>
                             <label class="country-option"><input type="checkbox" value="MK"
-                                    onchange="applyServerSearch()"> North Macedonia</label>
+                                    data-on-change="applyServerSearch"> North Macedonia</label>
                             <label class="country-option"><input type="checkbox" value="MP"
-                                    onchange="applyServerSearch()"> Northern Mariana Islands</label>
+                                    data-on-change="applyServerSearch"> Northern Mariana Islands</label>
                             <label class="country-option"><input type="checkbox" value="NO"
-                                    onchange="applyServerSearch()"> Norway</label>
+                                    data-on-change="applyServerSearch"> Norway</label>
                             <label class="country-option"><input type="checkbox" value="OM"
-                                    onchange="applyServerSearch()"> Oman</label>
+                                    data-on-change="applyServerSearch"> Oman</label>
                             <label class="country-option"><input type="checkbox" value="PK"
-                                    onchange="applyServerSearch()"> Pakistan</label>
+                                    data-on-change="applyServerSearch"> Pakistan</label>
                             <label class="country-option"><input type="checkbox" value="PW"
-                                    onchange="applyServerSearch()"> Palau</label>
+                                    data-on-change="applyServerSearch"> Palau</label>
                             <label class="country-option"><input type="checkbox" value="PS"
-                                    onchange="applyServerSearch()"> Palestine, State of</label>
+                                    data-on-change="applyServerSearch"> Palestine, State of</label>
                             <label class="country-option"><input type="checkbox" value="PA"
-                                    onchange="applyServerSearch()"> Panama</label>
+                                    data-on-change="applyServerSearch"> Panama</label>
                             <label class="country-option"><input type="checkbox" value="PG"
-                                    onchange="applyServerSearch()"> Papua New Guinea</label>
+                                    data-on-change="applyServerSearch"> Papua New Guinea</label>
                             <label class="country-option"><input type="checkbox" value="PY"
-                                    onchange="applyServerSearch()"> Paraguay</label>
+                                    data-on-change="applyServerSearch"> Paraguay</label>
                             <label class="country-option"><input type="checkbox" value="PE"
-                                    onchange="applyServerSearch()"> Peru</label>
+                                    data-on-change="applyServerSearch"> Peru</label>
                             <label class="country-option"><input type="checkbox" value="PH"
-                                    onchange="applyServerSearch()"> Philippines</label>
+                                    data-on-change="applyServerSearch"> Philippines</label>
                             <label class="country-option"><input type="checkbox" value="PN"
-                                    onchange="applyServerSearch()"> Pitcairn</label>
+                                    data-on-change="applyServerSearch"> Pitcairn</label>
                             <label class="country-option"><input type="checkbox" value="PL"
-                                    onchange="applyServerSearch()"> Poland</label>
+                                    data-on-change="applyServerSearch"> Poland</label>
                             <label class="country-option"><input type="checkbox" value="PT"
-                                    onchange="applyServerSearch()"> Portugal</label>
+                                    data-on-change="applyServerSearch"> Portugal</label>
                             <label class="country-option"><input type="checkbox" value="PR"
-                                    onchange="applyServerSearch()"> Puerto Rico</label>
+                                    data-on-change="applyServerSearch"> Puerto Rico</label>
                             <label class="country-option"><input type="checkbox" value="QA"
-                                    onchange="applyServerSearch()"> Qatar</label>
+                                    data-on-change="applyServerSearch"> Qatar</label>
                             <label class="country-option"><input type="checkbox" value="RE"
-                                    onchange="applyServerSearch()"> Réunion</label>
+                                    data-on-change="applyServerSearch"> Réunion</label>
                             <label class="country-option"><input type="checkbox" value="RO"
-                                    onchange="applyServerSearch()"> Romania</label>
+                                    data-on-change="applyServerSearch"> Romania</label>
                             <label class="country-option"><input type="checkbox" value="RU"
-                                    onchange="applyServerSearch()"> Russian Federation</label>
+                                    data-on-change="applyServerSearch"> Russian Federation</label>
                             <label class="country-option"><input type="checkbox" value="RW"
-                                    onchange="applyServerSearch()"> Rwanda</label>
+                                    data-on-change="applyServerSearch"> Rwanda</label>
                             <label class="country-option"><input type="checkbox" value="BL"
-                                    onchange="applyServerSearch()"> Saint Barthélemy</label>
+                                    data-on-change="applyServerSearch"> Saint Barthélemy</label>
                             <label class="country-option"><input type="checkbox" value="SH"
-                                    onchange="applyServerSearch()"> Saint Helena, Ascension and Tristan da Cunha</label>
+                                    data-on-change="applyServerSearch"> Saint Helena, Ascension and Tristan da Cunha</label>
                             <label class="country-option"><input type="checkbox" value="KN"
-                                    onchange="applyServerSearch()"> Saint Kitts and Nevis</label>
+                                    data-on-change="applyServerSearch"> Saint Kitts and Nevis</label>
                             <label class="country-option"><input type="checkbox" value="LC"
-                                    onchange="applyServerSearch()"> Saint Lucia</label>
+                                    data-on-change="applyServerSearch"> Saint Lucia</label>
                             <label class="country-option"><input type="checkbox" value="MF"
-                                    onchange="applyServerSearch()"> Saint Martin (French part)</label>
+                                    data-on-change="applyServerSearch"> Saint Martin (French part)</label>
                             <label class="country-option"><input type="checkbox" value="PM"
-                                    onchange="applyServerSearch()"> Saint Pierre and Miquelon</label>
+                                    data-on-change="applyServerSearch"> Saint Pierre and Miquelon</label>
                             <label class="country-option"><input type="checkbox" value="VC"
-                                    onchange="applyServerSearch()"> Saint Vincent and the Grenadines</label>
+                                    data-on-change="applyServerSearch"> Saint Vincent and the Grenadines</label>
                             <label class="country-option"><input type="checkbox" value="WS"
-                                    onchange="applyServerSearch()"> Samoa</label>
+                                    data-on-change="applyServerSearch"> Samoa</label>
                             <label class="country-option"><input type="checkbox" value="SM"
-                                    onchange="applyServerSearch()"> San Marino</label>
+                                    data-on-change="applyServerSearch"> San Marino</label>
                             <label class="country-option"><input type="checkbox" value="ST"
-                                    onchange="applyServerSearch()"> Sao Tome and Principe</option>
+                                    data-on-change="applyServerSearch"> Sao Tome and Principe</option>
                                 <label class="country-option"><input type="checkbox" value="SA"
-                                        onchange="applyServerSearch()"> Saudi Arabia</label>
+                                        data-on-change="applyServerSearch"> Saudi Arabia</label>
                                 <label class="country-option"><input type="checkbox" value="SN"
-                                        onchange="applyServerSearch()"> Senegal</label>
+                                        data-on-change="applyServerSearch"> Senegal</label>
                                 <label class="country-option"><input type="checkbox" value="RS"
-                                        onchange="applyServerSearch()"> Serbia</label>
+                                        data-on-change="applyServerSearch"> Serbia</label>
                                 <label class="country-option"><input type="checkbox" value="SC"
-                                        onchange="applyServerSearch()"> Seychelles</label>
+                                        data-on-change="applyServerSearch"> Seychelles</label>
                                 <label class="country-option"><input type="checkbox" value="SL"
-                                        onchange="applyServerSearch()"> Sierra Leone</label>
+                                        data-on-change="applyServerSearch"> Sierra Leone</label>
                                 <label class="country-option"><input type="checkbox" value="SG"
-                                        onchange="applyServerSearch()"> Singapore</label>
+                                        data-on-change="applyServerSearch"> Singapore</label>
                                 <label class="country-option"><input type="checkbox" value="SX"
-                                        onchange="applyServerSearch()"> Sint Maarten (Dutch part)</label>
+                                        data-on-change="applyServerSearch"> Sint Maarten (Dutch part)</label>
                                 <label class="country-option"><input type="checkbox" value="SK"
-                                        onchange="applyServerSearch()"> Slovakia</label>
+                                        data-on-change="applyServerSearch"> Slovakia</label>
                                 <label class="country-option"><input type="checkbox" value="SI"
-                                        onchange="applyServerSearch()"> Slovenia</label>
+                                        data-on-change="applyServerSearch"> Slovenia</label>
                                 <label class="country-option"><input type="checkbox" value="SB"
-                                        onchange="applyServerSearch()"> Solomon Islands</label>
+                                        data-on-change="applyServerSearch"> Solomon Islands</label>
                                 <label class="country-option"><input type="checkbox" value="SO"
-                                        onchange="applyServerSearch()"> Somalia</label>
+                                        data-on-change="applyServerSearch"> Somalia</label>
                                 <label class="country-option"><input type="checkbox" value="ZA"
-                                        onchange="applyServerSearch()"> South Africa</label>
+                                        data-on-change="applyServerSearch"> South Africa</label>
                                 <label class="country-option"><input type="checkbox" value="GS"
-                                        onchange="applyServerSearch()"> South Georgia and the South Sandwich
+                                        data-on-change="applyServerSearch"> South Georgia and the South Sandwich
                                     Islands</label>
                                 <label class="country-option"><input type="checkbox" value="SS"
-                                        onchange="applyServerSearch()"> South Sudan</label>
+                                        data-on-change="applyServerSearch"> South Sudan</label>
                                 <label class="country-option"><input type="checkbox" value="ES"
-                                        onchange="applyServerSearch()"> Spain</label>
+                                        data-on-change="applyServerSearch"> Spain</label>
                                 <label class="country-option"><input type="checkbox" value="LK"
-                                        onchange="applyServerSearch()"> Sri Lanka</label>
+                                        data-on-change="applyServerSearch"> Sri Lanka</label>
                                 <label class="country-option"><input type="checkbox" value="SD"
-                                        onchange="applyServerSearch()"> Sudan</label>
+                                        data-on-change="applyServerSearch"> Sudan</label>
                                 <label class="country-option"><input type="checkbox" value="SR"
-                                        onchange="applyServerSearch()"> Suriname</label>
+                                        data-on-change="applyServerSearch"> Suriname</label>
                                 <label class="country-option"><input type="checkbox" value="SJ"
-                                        onchange="applyServerSearch()"> Svalbard and Jan Mayen</label>
+                                        data-on-change="applyServerSearch"> Svalbard and Jan Mayen</label>
                                 <label class="country-option"><input type="checkbox" value="SE"
-                                        onchange="applyServerSearch()"> Sweden</label>
+                                        data-on-change="applyServerSearch"> Sweden</label>
                                 <label class="country-option"><input type="checkbox" value="CH"
-                                        onchange="applyServerSearch()"> Switzerland</label>
+                                        data-on-change="applyServerSearch"> Switzerland</label>
                                 <label class="country-option"><input type="checkbox" value="SY"
-                                        onchange="applyServerSearch()"> Syrian Arab Republic</label>
+                                        data-on-change="applyServerSearch"> Syrian Arab Republic</label>
                                 <label class="country-option"><input type="checkbox" value="TW"
-                                        onchange="applyServerSearch()"> Taiwan, Province of China</label>
+                                        data-on-change="applyServerSearch"> Taiwan, Province of China</label>
                                 <label class="country-option"><input type="checkbox" value="TJ"
-                                        onchange="applyServerSearch()"> Tajikistan</label>
+                                        data-on-change="applyServerSearch"> Tajikistan</label>
                                 <label class="country-option"><input type="checkbox" value="TZ"
-                                        onchange="applyServerSearch()"> Tanzania, United Republic of</label>
+                                        data-on-change="applyServerSearch"> Tanzania, United Republic of</label>
                                 <label class="country-option"><input type="checkbox" value="TH"
-                                        onchange="applyServerSearch()"> Thailand</label>
+                                        data-on-change="applyServerSearch"> Thailand</label>
                                 <label class="country-option"><input type="checkbox" value="TL"
-                                        onchange="applyServerSearch()"> Timor-Leste</label>
+                                        data-on-change="applyServerSearch"> Timor-Leste</label>
                                 <label class="country-option"><input type="checkbox" value="TG"
-                                        onchange="applyServerSearch()"> Togo</label>
+                                        data-on-change="applyServerSearch"> Togo</label>
                                 <label class="country-option"><input type="checkbox" value="TK"
-                                        onchange="applyServerSearch()"> Tokelau</label>
+                                        data-on-change="applyServerSearch"> Tokelau</label>
                                 <label class="country-option"><input type="checkbox" value="TO"
-                                        onchange="applyServerSearch()"> Tonga</label>
+                                        data-on-change="applyServerSearch"> Tonga</label>
                                 <label class="country-option"><input type="checkbox" value="TT"
-                                        onchange="applyServerSearch()"> Trinidad and Tobago</label>
+                                        data-on-change="applyServerSearch"> Trinidad and Tobago</label>
                                 <label class="country-option"><input type="checkbox" value="TN"
-                                        onchange="applyServerSearch()"> Tunisia</label>
+                                        data-on-change="applyServerSearch"> Tunisia</label>
                                 <label class="country-option"><input type="checkbox" value="TR"
-                                        onchange="applyServerSearch()"> Turkey</label>
+                                        data-on-change="applyServerSearch"> Turkey</label>
                                 <label class="country-option"><input type="checkbox" value="TM"
-                                        onchange="applyServerSearch()"> Turkmenistan</label>
+                                        data-on-change="applyServerSearch"> Turkmenistan</label>
                                 <label class="country-option"><input type="checkbox" value="TC"
-                                        onchange="applyServerSearch()"> Turks and Caicos Islands</label>
+                                        data-on-change="applyServerSearch"> Turks and Caicos Islands</label>
                                 <label class="country-option"><input type="checkbox" value="TV"
-                                        onchange="applyServerSearch()"> Tuvalu</label>
+                                        data-on-change="applyServerSearch"> Tuvalu</label>
                                 <label class="country-option"><input type="checkbox" value="UG"
-                                        onchange="applyServerSearch()"> Uganda</label>
+                                        data-on-change="applyServerSearch"> Uganda</label>
                                 <label class="country-option"><input type="checkbox" value="UA"
-                                        onchange="applyServerSearch()"> Ukraine</label>
+                                        data-on-change="applyServerSearch"> Ukraine</label>
                                 <label class="country-option"><input type="checkbox" value="AE"
-                                        onchange="applyServerSearch()"> United Arab Emirates</label>
+                                        data-on-change="applyServerSearch"> United Arab Emirates</label>
                                 <label class="country-option"><input type="checkbox" value="GB"
-                                        onchange="applyServerSearch()"> United Kingdom of Great Britain and Northern
+                                        data-on-change="applyServerSearch"> United Kingdom of Great Britain and Northern
                                     Ireland</label>
                                 <label class="country-option"><input type="checkbox" value="UM"
-                                        onchange="applyServerSearch()"> United States Minor Outlying Islands</label>
+                                        data-on-change="applyServerSearch"> United States Minor Outlying Islands</label>
                                 <label class="country-option"><input type="checkbox" value="US"
-                                        onchange="applyServerSearch()"> United States of America</label>
+                                        data-on-change="applyServerSearch"> United States of America</label>
                                 <label class="country-option"><input type="checkbox" value="UY"
-                                        onchange="applyServerSearch()"> Uruguay</label>
+                                        data-on-change="applyServerSearch"> Uruguay</label>
                                 <label class="country-option"><input type="checkbox" value="UZ"
-                                        onchange="applyServerSearch()"> Uzbekistan</label>
+                                        data-on-change="applyServerSearch"> Uzbekistan</label>
                                 <label class="country-option"><input type="checkbox" value="VU"
-                                        onchange="applyServerSearch()"> Vanuatu</label>
+                                        data-on-change="applyServerSearch"> Vanuatu</label>
                                 <label class="country-option"><input type="checkbox" value="VE"
-                                        onchange="applyServerSearch()"> Venezuela (Bolivarian Republic of)</label>
+                                        data-on-change="applyServerSearch"> Venezuela (Bolivarian Republic of)</label>
                                 <label class="country-option"><input type="checkbox" value="VN"
-                                        onchange="applyServerSearch()"> Viet Nam</label>
+                                        data-on-change="applyServerSearch"> Viet Nam</label>
                                 <label class="country-option"><input type="checkbox" value="VG"
-                                        onchange="applyServerSearch()"> Virgin Islands (British)</label>
+                                        data-on-change="applyServerSearch"> Virgin Islands (British)</label>
                                 <label class="country-option"><input type="checkbox" value="VI"
-                                        onchange="applyServerSearch()"> Virgin Islands (U.S.)</label>
+                                        data-on-change="applyServerSearch"> Virgin Islands (U.S.)</label>
                                 <label class="country-option"><input type="checkbox" value="WF"
-                                        onchange="applyServerSearch()"> Wallis and Futuna</label>
+                                        data-on-change="applyServerSearch"> Wallis and Futuna</label>
                                 <label class="country-option"><input type="checkbox" value="EH"
-                                        onchange="applyServerSearch()"> Western Sahara</label>
+                                        data-on-change="applyServerSearch"> Western Sahara</label>
                                 <label class="country-option"><input type="checkbox" value="YE"
-                                        onchange="applyServerSearch()"> Yemen</label>
+                                        data-on-change="applyServerSearch"> Yemen</label>
                                 <label class="country-option"><input type="checkbox" value="ZM"
-                                        onchange="applyServerSearch()"> Zambia</label>
+                                        data-on-change="applyServerSearch"> Zambia</label>
                                 <label class="country-option"><input type="checkbox" value="ZW"
-                                        onchange="applyServerSearch()"> Zimbabwe</label>
+                                        data-on-change="applyServerSearch"> Zimbabwe</label>
                         </div>
                     </div>
                 </div>
                 <input aria-label="Added By..." type="text" id="addedByFilter" class="filter-input" style="flex: 1; min-width: 120px;"
-                    placeholder="Added By..." oninput="debouncedFilterTable()">
+                    placeholder="Added By..." data-on-input="debouncedFilterTable">
                 <div class="filter-dates">
                 <label><span class="input-label">From date</span><input type="datetime-local" id="fromDateFilter" class="filter-input" style="flex: 1; min-width: 160px;"
-                    onchange="applyServerSearch()" title="From Date"></label>
+                    data-on-change="applyServerSearch" title="From Date"></label>
                 <label><span class="input-label">To date</span><input type="datetime-local" id="toDateFilter" class="filter-input" style="flex: 1; min-width: 160px;"
-                    onchange="applyServerSearch()" title="To Date"></label>
+                    data-on-change="applyServerSearch" title="To Date"></label>
                 <button id="clearFilter" class="btn btn-dark" style="height: 42px;"
                     title="Clear All Filters">Clear</button>
                 </div>
             </div>
             <div class="filter-utilities">
                 <div class="utility-export">
-                    <button onclick="exportData('csv')" class="btn btn-dark" style="height: 42px;"
+                    <button data-on-click="exportData" data-arg0="csv" class="btn btn-dark" style="height: 42px;"
                         title="Export CSV">CSV</button>
-                    <button onclick="exportData('ndjson')" class="btn btn-dark" style="height: 42px;"
+                    <button data-on-click="exportData" data-arg0="ndjson" class="btn btn-dark" style="height: 42px;"
                         title="Export NDJSON">JSON</button>
                 </div>
                 <select id="savedViews" aria-label="Saved views" class="filter-input" style="flex: 1; min-width: 150px;"
-                    onchange="loadView(this.value)">
+                    data-on-change="loadView" data-arg0="@value">
                     <option value="">Saved Views</option>
                     {{ range $i, $v := .views }}
                     <option value="{{ $v.Filters }}">{{ $v.Name }}</option>
                     {{ end }}
                 </select>
-                <button onclick="saveCurrentView()" class="btn btn-dark" style="height: 42px;"
+                <button data-on-click="saveCurrentView" class="btn btn-dark" style="height: 42px;"
                     {{ if not (or (eq .username .admin_username) (contains .permissions "manage_views")) }}hidden{{ end }} title="Save Current Filters as View">Save View</button>
 
                 <div class="country-dropdown" style="min-width: 180px;">
                     <button type="button" class="filter-input"
                         style="width: 100%; text-align: left; display: flex; justify-content: space-between; align-items: center;"
-                        onclick="toggleViewOptions()">
+                        data-on-click="toggleViewOptions">
                         <span>View Options</span>
                         <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="3" fill="var(--surface)"/><circle cx="15" cy="17" r="3" fill="var(--surface)"/></svg>
                     </button>
@@ -636,22 +636,22 @@
                             style="padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); margin-bottom: 5px; font-weight: bold; font-size: 0.8rem; color: var(--secondary-color);">
                             DENSITY</div>
                         <label class="country-option"><input type="radio" name="density" value="comfortable" checked
-                                onchange="setDensity('comfortable')"> Comfortable</label>
+                                data-on-change="setDensity" data-arg0="comfortable"> Comfortable</label>
                         <label class="country-option"><input type="radio" name="density" value="compact"
-                                onchange="setDensity('compact')"> Compact</label>
+                                data-on-change="setDensity" data-arg0="compact"> Compact</label>
 
                         <div
                             style="padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); margin: 10px 0 5px 0; font-weight: bold; font-size: 0.8rem; color: var(--secondary-color);">
                             COLUMNS</div>
-                        <label class="country-option"><input type="checkbox" checked onchange="toggleColumn('col-ts')">
+                        <label class="country-option"><input type="checkbox" checked data-on-change="toggleColumn" data-arg0="col-ts">
                             Date Added</label>
-                        <label class="country-option"><input type="checkbox" checked onchange="toggleColumn('col-exp')">
+                        <label class="country-option"><input type="checkbox" checked data-on-change="toggleColumn" data-arg0="col-exp">
                             Expires At</label>
                         <label class="country-option"><input type="checkbox" checked
-                                onchange="toggleColumn('col-score')"> Score</label>
-                        <label class="country-option"><input type="checkbox" checked onchange="toggleColumn('col-by')">
+                                data-on-change="toggleColumn" data-arg0="col-score"> Score</label>
+                        <label class="country-option"><input type="checkbox" checked data-on-change="toggleColumn" data-arg0="col-by">
                             Added By</label>
-                        <label class="country-option"><input type="checkbox" checked onchange="toggleColumn('col-geo')">
+                        <label class="country-option"><input type="checkbox" checked data-on-change="toggleColumn" data-arg0="col-geo">
                             Geo</label>
                     </div>
                 </div>
@@ -667,7 +667,7 @@
 <table id="ipTable">
                 <thead>
                     <tr>
-                        <th style="width: 40px;"><input type="checkbox" id="selectAll" aria-label="Select all IPs on this page" onclick="toggleSelectAll(this)">
+                        <th style="width: 40px;"><input type="checkbox" id="selectAll" aria-label="Select all IPs on this page" data-on-click="toggleSelectAll" data-arg0="@this">
                         </th>
                         <th class="col-ip">IP</th>
                         <th class="col-ts">Date Added</th>
@@ -697,8 +697,8 @@
         style="display: none; margin: 0 auto 1.5rem; width: fit-content; max-width: calc(100% - 2rem); flex-wrap: wrap; justify-content: center; background: rgba(20,20,20,0.95); border: 1px solid var(--border-red); border-radius: 12px; padding: 1rem 2rem; align-items: center; gap: 2rem;">
         <div style="font-weight: bold; color: #fff;"><span id="selectedCount">0</span> IPs Selected (max 500)</div>
         <div style="display: flex; gap: 1rem;">
-            <button class="btn btn-success" onclick="confirmBulkUnblock()">Unblock All</button>
-            <button class="btn btn-dark" onclick="clearSelection()">Cancel</button>
+            <button class="btn btn-success" data-on-click="confirmBulkUnblock">Unblock All</button>
+            <button class="btn btn-dark" data-on-click="clearSelection">Cancel</button>
         </div>
     </div>
 
@@ -713,11 +713,11 @@
                 <label for="blockReason">Reason</label>
                 <input type="text" id="blockReason" class="form-control" placeholder="e.g. Brute force">
                 <div class="reason-presets">
-                    <button type="button" class="reason-chip" onclick="setReason('Brute Force')">Brute Force</button>
-                    <button type="button" class="reason-chip" onclick="setReason('Scraping')">Scraping</button>
-                    <button type="button" class="reason-chip" onclick="setReason('DDoS')">DDoS</button>
-                    <button type="button" class="reason-chip" onclick="setReason('Vulnerability Scan')">Vulnerability Scan</button>
-                    <button type="button" class="reason-chip" onclick="setReason('Spam')">Spam</button>
+                    <button type="button" class="reason-chip" data-on-click="setReason" data-arg0="Brute Force">Brute Force</button>
+                    <button type="button" class="reason-chip" data-on-click="setReason" data-arg0="Scraping">Scraping</button>
+                    <button type="button" class="reason-chip" data-on-click="setReason" data-arg0="DDoS">DDoS</button>
+                    <button type="button" class="reason-chip" data-on-click="setReason" data-arg0="Vulnerability Scan">Vulnerability Scan</button>
+                    <button type="button" class="reason-chip" data-on-click="setReason" data-arg0="Spam">Spam</button>
                 </div>
             </div>
             <div class="form-group">
@@ -730,8 +730,8 @@
                 </label>
             </div>
             <div class="modal-footer">
-                <button onclick="confirmBlock()" class="btn btn-danger" style="flex: 1;">Block IP</button>
-                <button onclick="closeModal('blockModal')" class="btn btn-secondary btn-cancel">Cancel</button>
+                <button data-on-click="confirmBlock" class="btn btn-danger" style="flex: 1;">Block IP</button>
+                <button data-on-click="closeModal" data-arg0="blockModal" class="btn btn-secondary btn-cancel">Cancel</button>
             </div>
         </div>
     </div>

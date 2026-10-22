@@ -81,6 +81,9 @@ func main() {
 	authKey, blockKey := deriveSessionKeys(cfg.SecretKey)
 
 	// 2. Run Database Migrations
+	if cfg.PostgresURL == "" {
+		zlog.Fatal().Msg("POSTGRES_URL must be set.")
+	}
 	runMigrations(cfg.PostgresURL)
 
 	// 3. Bootstrap shared state
@@ -171,8 +174,8 @@ func deriveSessionKeys(secretKey string) (authKey, blockKey []byte) {
 	// authentication/encryption keys are HKDF-derived from it, so a known or
 	// low-entropy secret allows an attacker to forge valid session cookies
 	// (full authentication bypass). Fail closed instead of booting insecurely.
-	if secretKey == "" || secretKey == "change-me" {
-		zlog.Fatal().Msg("SECRET_KEY is unset or using the insecure default 'change-me'. Set a strong, random SECRET_KEY (32+ characters) before starting.")
+	if secretKey == "" || secretKey == "change-me" || isPlaceholderSecret(secretKey) {
+		zlog.Fatal().Msg("SECRET_KEY is unset or using a known placeholder value. Set a strong, random SECRET_KEY (32+ characters) before starting.")
 	}
 	if len(secretKey) < 16 {
 		zlog.Fatal().Msg("SECRET_KEY is too short. Use at least 16 characters (32+ recommended) of high-entropy randomness.")
@@ -196,6 +199,18 @@ func deriveSessionKeys(secretKey string) (authKey, blockKey []byte) {
 	}
 
 	return authKey, blockKey
+}
+
+// isPlaceholderSecret reports whether a secret is a documentation placeholder,
+// such as the value shipped in older example Compose files.
+func isPlaceholderSecret(secret string) bool {
+	upper := strings.ToUpper(secret)
+	for _, marker := range []string{"XXXXXXXX", "CHANGE_ME", "CHANGE-ME", "CHANGEME", "---SECRET_KEY"} {
+		if strings.Contains(upper, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 // runMigrations applies database schema changes using embedded migrations.
@@ -376,16 +391,10 @@ func setupRouter(cfg *config.Config, a *app.App, hub *api.Hub, authKey, blockKey
 }
 
 func setupTrustedProxies(r *gin.Engine, cfg *config.Config) {
-	// Configure Trusted Proxies to handle requests from Docker, Tailscale, and private networks.
-	// This is critical for correct IP detection behind reverse proxies.
-	trustedProxies := []string{"127.0.0.1", "172.16.0.0/12", "100.64.0.0/10", "10.0.0.0/8", "192.168.0.0/16"}
-	if cfg.TrustedProxies != "" {
-		p := strings.Split(cfg.TrustedProxies, ",")
-		for i := range p {
-			trustedProxies = append(trustedProxies, strings.TrimSpace(p[i]))
-		}
-	}
-	if err := r.SetTrustedProxies(trustedProxies); err != nil {
+	// Only loopback and the exact proxies named in TRUSTED_PROXIES may set the
+	// client IP via forwarding headers. Trusting whole private ranges would let
+	// any LAN, Docker or VPN client spoof its address.
+	if err := r.SetTrustedProxies(cfg.TrustedProxyList()); err != nil {
 		zlog.Error().Err(err).Msg("Failed to set trusted proxies")
 	}
 }
@@ -493,8 +502,9 @@ func securityHeadersMiddleware(cfg *config.Config) gin.HandlerFunc {
 			c.Header("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload")
 		}
 
-		// Content Security Policy (CSP)
-		csp := fmt.Sprintf("default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'nonce-%s'; script-src-attr 'self' 'unsafe-inline'; connect-src 'self' ws: wss:", nonce)
+		// Content Security Policy (CSP). Inline event handler attributes are
+		// forbidden; templates use data-on-* via static/js/event-actions.js.
+		csp := fmt.Sprintf("default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'nonce-%s'; script-src-attr 'none'; connect-src 'self' ws: wss:", nonce)
 		c.Header("Content-Security-Policy", csp)
 
 		c.Next()

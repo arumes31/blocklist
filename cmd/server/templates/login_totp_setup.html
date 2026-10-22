@@ -17,7 +17,7 @@
 
         <div class="secret-container">
             <span id="secret-key">{{ .secret }}</span>
-            <button class="btn-copy" onclick="copySecret()">COPY</button>
+            <button class="btn-copy" data-on-click="copySecret">COPY</button>
         </div>
 
         <form action="/login" method="POST">
@@ -32,6 +32,7 @@
         </form>
     </div>
 
+    <script src="/static/js/event-actions.js?v=csp-1"></script>
     <script nonce="{{ .nonce }}">
         function copySecret() {
             var secretText = document.getElementById("secret-code");

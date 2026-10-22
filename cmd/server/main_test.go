@@ -1,6 +1,7 @@
 package main
 
 import (
+	"blocklist/internal/config"
 	"bytes"
 	"net/http"
 	"net/http/httptest"
@@ -107,4 +108,23 @@ func TestCensorWriter_Write(t *testing.T) {
 			assert.Equal(t, tt.expected, buf.String())
 		})
 	}
+}
+
+func TestIsPlaceholderSecret(t *testing.T) {
+	for _, secret := range []string{"XXXXXXXX---SECRET_KEY----", "CHANGE_ME_please_change_me_now", "changeme-changeme-changeme"} {
+		assert.True(t, isPlaceholderSecret(secret), secret)
+	}
+	assert.False(t, isPlaceholderSecret("q8V2m9Zr7TnK4pXw1sYb6Hc3Lf5Jd0Ge"))
+}
+
+func TestSecurityHeadersForbidInlineEventHandlers(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.Use(securityHeadersMiddleware(&config.Config{}))
+	r.GET("/", func(c *gin.Context) { c.Status(http.StatusOK) })
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/", nil))
+	csp := w.Header().Get("Content-Security-Policy")
+	assert.Contains(t, csp, "script-src-attr 'none'")
+	assert.NotContains(t, csp, "'unsafe-inline'; connect-src")
 }

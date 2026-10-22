@@ -17,9 +17,11 @@ import (
 	"time"
 
 	"blocklist/internal/models"
+	"blocklist/internal/service"
 
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
+	gorillasessions "github.com/gorilla/sessions"
 	"github.com/pquerna/otp/totp"
 	zlog "github.com/rs/zerolog/log"
 	"github.com/skip2/go-qrcode"
@@ -101,9 +103,11 @@ func (h *APIHandler) AuthMiddleware() gin.HandlerFunc {
 			}
 		}
 
-		// Fallback to Basic Auth (Restricted to specific endpoints)
+		// Legacy Basic Auth fallback: opt-in (ALLOW_BASIC_AUTH) and restricted to
+		// the whitelist read endpoints. It bypasses TOTP, so BasicAuthLimiter
+		// throttles attempts before the bcrypt compare runs.
 		username, password, ok := c.Request.BasicAuth()
-		if ok && h.pgRepo != nil && (c.Request.URL.Path == "/api/v1/whitelists" || c.Request.URL.Path == "/api/v1/whitelists-raw") {
+		if ok && h.basicAuthAllowed(c) {
 			admin, err := h.pgRepo.GetAdmin(username)
 			if err == nil && admin != nil && admin.Disabled {
 				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
@@ -118,6 +122,9 @@ func (h *APIHandler) AuthMiddleware() gin.HandlerFunc {
 					return
 				}
 			}
+			zlog.Warn().Str("username", username).Str("ip", c.ClientIP()).Msg("Failed Basic authentication attempt")
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+			return
 		}
 
 		session := sessions.Default(c)
@@ -186,6 +193,26 @@ func (h *APIHandler) AuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
+		c.Next()
+	}
+}
+
+// basicAuthAllowed reports whether a Basic credential may be checked for this request.
+func (h *APIHandler) basicAuthAllowed(c *gin.Context) bool {
+	if h.cfg == nil || !h.cfg.AllowBasicAuth || h.pgRepo == nil {
+		return false
+	}
+	return c.Request.URL.Path == "/api/v1/whitelists" || c.Request.URL.Path == "/api/v1/whitelists-raw"
+}
+
+// BasicAuthLimiter applies the login rate limit to Basic credentials before
+// AuthMiddleware spends a bcrypt compare on them.
+func (h *APIHandler) BasicAuthLimiter() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if h.loginLimiter != nil && strings.HasPrefix(c.GetHeader("Authorization"), "Basic ") && h.basicAuthAllowed(c) {
+			h.loginLimiter(c) // calls c.Next() itself, or aborts with 429
+			return
+		}
 		c.Next()
 	}
 }
@@ -557,7 +584,7 @@ func (h *APIHandler) Login(c *gin.Context) {
 			return
 		}
 
-		if totp.Validate(totpCode, setupSecret) {
+		if h.validateTOTPOnce(username, totpCode, setupSecret) {
 			// Save the secret to the user
 			if err := h.pgRepo.UpdateAdminToken(username, setupSecret); err != nil {
 				zlog.Error().Err(err).Msg("Failed to complete authenticator enrollment")
@@ -602,9 +629,12 @@ func (h *APIHandler) Login(c *gin.Context) {
 			h.renderHTML(c, http.StatusUnauthorized, "login.html", gin.H{"error": "Sign-in could not be completed. Please restart sign-in."})
 			return
 		}
-		session.Delete("pending_auth_user")
-		session.Delete("pending_auth_verified")
-		session.Delete("pending_totp_secret")
+		// A fresh session identifier prevents fixation of a pre-login session.
+		if err := rotateSession(session); err != nil {
+			zlog.Error().Err(err).Msg("Failed to rotate session during login")
+			h.renderHTML(c, http.StatusUnauthorized, "login.html", gin.H{"error": "Sign-in could not be completed. Please restart sign-in."})
+			return
+		}
 		session.Set("logged_in", true)
 		session.Set("username", username)
 		session.Set("auth_source", "local")
@@ -637,6 +667,36 @@ func (h *APIHandler) Login(c *gin.Context) {
 		"username": username,
 		"step":     "totp",
 	})
+}
+
+// validateTOTPOnce checks a TOTP code and rejects reuse of an accepted time step.
+func (h *APIHandler) validateTOTPOnce(username, code, secret string) bool {
+	claimer, _ := h.redisRepo.(service.TOTPStepClaimer)
+	return service.ValidateTOTPOnce(claimer, username, code, secret)
+}
+
+// rotateSession deletes the current server-side session and clears its values,
+// so the next Save issues a new session identifier.
+func rotateSession(session sessions.Session) error {
+	rawSession, ok := session.(interface {
+		Session() *gorillasessions.Session
+	})
+	if !ok {
+		return fmt.Errorf("session store does not support rotation")
+	}
+	old := rawSession.Session()
+	options := *old.Options
+	expired := options
+	expired.MaxAge = -1
+	old.Options = &expired
+	session.Delete("session_rotation") // Mark the session dirty so Save deletes it.
+	if err := session.Save(); err != nil {
+		return err
+	}
+	old.ID = ""
+	old.Options = &options
+	session.Clear()
+	return nil
 }
 
 func (h *APIHandler) SudoMiddleware() gin.HandlerFunc {
@@ -701,7 +761,7 @@ func (h *APIHandler) VerifySudo(c *gin.Context) {
 	admin, _ := h.pgRepo.GetAdmin(username)
 	// admin.Token must be non-empty: an empty secret would accept the
 	// attacker-computable empty-key code, allowing sudo elevation without 2FA.
-	if admin != nil && !admin.Disabled && admin.Token != "" && totp.Validate(totpCode, admin.Token) {
+	if admin != nil && !admin.Disabled && admin.Token != "" && h.validateTOTPOnce(username, totpCode, admin.Token) {
 		session.Set("sudo_time", time.Now().Unix())
 		_ = session.Save()
 

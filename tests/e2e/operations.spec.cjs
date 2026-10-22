@@ -363,7 +363,7 @@ test('external-source add and remove are real, while Refresh never contacts an o
         const row = page.locator('tbody tr').filter({ has: page.getByText(name, { exact: true }) });
         await expect(row).toContainText(url);
         const remove = row.getByRole('button', { name: 'Remove', exact: true });
-        sourceID = (await remove.getAttribute('onclick')).match(/deleteExternalSource\(\s*(\d+)\s*\)/)[1];
+        sourceID = (await remove.getAttribute('data-arg0')).match(/^(\d+)$/)[1];
         let refreshes = 0;
         await page.route('**/api/v1/excluded/sources/refresh', async route => {
             expect(route.request().method()).toBe('POST');
