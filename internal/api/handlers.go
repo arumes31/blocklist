@@ -58,17 +58,7 @@ func NewAPIHandler(opts *HandlerOptions) *APIHandler {
 	if opts == nil {
 		opts = &HandlerOptions{}
 	}
-	trusted := []string{"127.0.0.1/32", "172.16.0.0/12", "100.64.0.0/10", "10.0.0.0/8", "192.168.0.0/16"}
-	if opts.Config != nil && opts.Config.TrustedProxies != "" {
-		p := strings.Split(opts.Config.TrustedProxies, ",")
-		for i := range p {
-			val := strings.TrimSpace(p[i])
-			if !strings.Contains(val, "/") {
-				val += "/32"
-			}
-			trusted = append(trusted, val)
-		}
-	}
+	trusted := opts.Config.TrustedProxyList()
 
 	var prefixes []netip.Prefix
 	for _, s := range trusted {
@@ -312,6 +302,7 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 	}
 
 	v1auth := v1.Group("/")
+	v1auth.Use(h.BasicAuthLimiter())
 	v1auth.Use(h.AuthMiddleware())
 	v1auth.Use(h.SessionCheckMiddleware())
 	{

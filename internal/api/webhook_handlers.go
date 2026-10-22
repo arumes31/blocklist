@@ -16,6 +16,26 @@ import (
 	zlog "github.com/rs/zerolog/log"
 )
 
+const (
+	// maxAPIBodyBytes bounds JSON bodies on token-authenticated write endpoints.
+	maxAPIBodyBytes = 64 << 10
+	// maxReasonLength matches the limit enforced by the admin handlers.
+	maxReasonLength = 2048
+	// maxBlockTTL caps temporary block durations; use persist for longer blocks.
+	maxBlockTTL = 365 * 24 * time.Hour
+)
+
+// boundedTTL converts a client TTL to a duration without overflowing.
+func boundedTTL(ttl int, unit time.Duration) time.Duration {
+	if ttl <= 0 {
+		return 0
+	}
+	if int64(ttl) > int64(maxBlockTTL/unit) {
+		return maxBlockTTL
+	}
+	return time.Duration(ttl) * unit
+}
+
 type webhookRequest struct {
 	IP      string `json:"ip"`
 	Reason  string `json:"reason"`
@@ -52,9 +72,14 @@ func (h *APIHandler) parseWebhookRequest(c *gin.Context) (string, webhookRequest
 	}
 
 	var data webhookRequest
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxAPIBodyBytes)
 	if err := c.ShouldBindJSON(&data); err != nil {
 		zlog.Error().Err(err).Msg("Webhook: failed to bind JSON")
 		c.JSON(http.StatusBadRequest, gin.H{"status": "invalid request"})
+		return "", webhookRequest{}, "", false
+	}
+	if len(data.Reason) > maxReasonLength {
+		c.JSON(http.StatusBadRequest, gin.H{"status": "reason too long"})
 		return "", webhookRequest{}, "", false
 	}
 
@@ -145,7 +170,7 @@ func (h *APIHandler) checkWebhookPermissions(c *gin.Context, username string, re
 func (h *APIHandler) handleWebhookBan(c *gin.Context, data webhookRequest, username string, clientIP string, sourceGeo *models.GeoData) {
 	duration := 24 * time.Hour
 	if data.TTL > 0 {
-		duration = time.Duration(data.TTL) * time.Second
+		duration = boundedTTL(data.TTL, time.Second)
 	}
 
 	entry, err := h.ipService.BlockIP(c.Request.Context(), data.IP, data.Reason, username, clientIP, data.Persist, duration)

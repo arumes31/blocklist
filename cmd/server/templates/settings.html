@@ -141,16 +141,16 @@ actionunban = curl -X POST -H "Authorization: Bearer YOUR_TOKEN" -H "Content-Typ
                         <div style="margin-top: 10px; display: flex; gap: 10px; flex-wrap: wrap;">
                             <button type="button" class="btn btn-dark"
                                 style="padding: 0.2rem 0.5rem; font-size: 0.75rem;"
-                                onclick="setTokenTemplate('fail2ban')">Fail2ban Template</button>
+                                data-on-click="setTokenTemplate" data-arg0="fail2ban">Fail2ban Template</button>
                             <button type="button" class="btn btn-dark"
                                 style="padding: 0.2rem 0.5rem; font-size: 0.75rem;"
-                                onclick="setTokenTemplate('fortigate')">Fortigate Template</button>
+                                data-on-click="setTokenTemplate" data-arg0="fortigate">Fortigate Template</button>
                             <button type="button" class="btn btn-dark"
                                 style="padding: 0.2rem 0.5rem; font-size: 0.75rem;"
-                                onclick="setTokenTemplate('webhook')">Webhook Template</button>
+                                data-on-click="setTokenTemplate" data-arg0="webhook">Webhook Template</button>
                             <button type="button" class="btn btn-dark"
                                 style="padding: 0.2rem 0.5rem; font-size: 0.75rem;"
-                                onclick="setTokenTemplate('auditor')">Auditor Template</button>
+                                data-on-click="setTokenTemplate" data-arg0="auditor">Auditor Template</button>
                         </div>
                     </div>
                 </form>
@@ -184,7 +184,7 @@ actionunban = curl -X POST -H "Authorization: Bearer YOUR_TOKEN" -H "Content-Typ
                                     {{ end }}
                                     <button class="btn btn-dark"
                                         style="padding: 0.1rem 0.4rem; font-size: 0.75rem; margin-left: 5px;"
-                                        {{ if not $.can_manage_tokens }}hidden{{ end }} onclick="editTokenPerms('{{ .ID }}', '{{ .Permissions }}')">Edit</button>
+                                        {{ if not $.can_manage_tokens }}hidden{{ end }} data-on-click="editTokenPerms" data-arg0="{{ .ID }}" data-arg1="{{ .Permissions }}">Edit</button>
                                 </div>
                                 <div class="perm-edit" id="perm-edit-{{ .ID }}" style="display: none;">
                                     <div
@@ -203,9 +203,9 @@ actionunban = curl -X POST -H "Authorization: Bearer YOUR_TOKEN" -H "Content-Typ
                                     <div style="display: flex; gap: 5px;">
                                         <button class="btn btn-danger"
                                             style="padding: 0.1rem 0.4rem; font-size: 0.75rem;"
-                                            onclick="saveTokenPerms('{{ .ID }}')">Save</button>
+                                            data-on-click="saveTokenPerms" data-arg0="{{ .ID }}">Save</button>
                                         <button class="btn btn-dark" style="padding: 0.1rem 0.4rem; font-size: 0.75rem;"
-                                            onclick="cancelEditTokenPerms('{{ .ID }}')">Cancel</button>
+                                            data-on-click="cancelEditTokenPerms" data-arg0="{{ .ID }}">Cancel</button>
                                     </div>
                                 </div>
                             </td>

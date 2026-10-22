@@ -19,8 +19,8 @@
             <div id="conflictWarnings" class="warning-list"></div>
             <p style="font-size: 0.9rem; color: var(--subtle);">Do you want to proceed and add this exclusion anyway?</p>
             <div style="display: flex; gap: 10px; margin-top: 1.5rem;">
-                <button class="btn btn-danger" style="flex: 1;" onclick="addExcluded(true)">Proceed</button>
-                <button class="btn btn-dark" style="flex: 1;" onclick="closeModal()">Cancel</button>
+                <button class="btn btn-danger" style="flex: 1;" data-on-click="addExcluded" data-arg0="true">Proceed</button>
+                <button class="btn btn-dark" style="flex: 1;" data-on-click="closeModal">Cancel</button>
             </div>
         </div>
     </div>
@@ -45,7 +45,7 @@
         <div class="table-card entry-panel form-row" {{ if not (or (eq .username .admin_username) (contains .permissions "manage_excluded") (contains .permissions "exclude_ips")) }}hidden{{ end }}>
             <input aria-label="IP, subnet, or FQDN" type="text" id="excludedValue" class="filter-input" style="flex: 1; max-width: 300px;" placeholder="IP, subnet, or FQDN">
             <input aria-label="Description / reason" type="text" id="excludedReason" class="filter-input" style="flex: 1; max-width: 400px;" placeholder="Description / reason">
-            <select id="expiryType" aria-label="Exclusion expiry" class="filter-input" style="max-width: 140px;" onchange="toggleExpiryInput()">
+            <select id="expiryType" aria-label="Exclusion expiry" class="filter-input" style="max-width: 140px;" data-on-change="toggleExpiryInput">
                 <option value="never">Never</option>
                 <option value="custom">Custom</option>
             </select>
@@ -56,11 +56,11 @@
                 Alert on attempt
             </label>
 
-            <button class="btn btn-danger" onclick="addExcluded()">Add to Excluded</button>
+            <button class="btn btn-danger" data-on-click="addExcluded">Add to Excluded</button>
         </div>
 
         <div style="margin-bottom: 1.5rem;">
-            <input aria-label="Search by value, type, added by, or reason..." type="text" id="filterInput" class="filter-input" style="width: 100%; box-sizing: border-box;" onkeyup="filterTable()" placeholder="Search by value, type, added by, or reason...">
+            <input aria-label="Search by value, type, added by, or reason..." type="text" id="filterInput" class="filter-input" style="width: 100%; box-sizing: border-box;" data-on-keyup="filterTable" placeholder="Search by value, type, added by, or reason...">
         </div>
 
         <div class="table-card">
@@ -107,7 +107,7 @@
                                 {{ end }}
                             </td>
                             <td>{{ $data.ExpiresIn }}</td>
-                            <td>{{ if or (eq $.username $.admin_username) (contains $.permissions "manage_excluded") }}<button class="btn-destructive btn btn-success" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;" onclick="removeExcluded('{{ $value }}')">Delete</button>{{ else }}Read only{{ end }}</td>
+                            <td>{{ if or (eq $.username $.admin_username) (contains $.permissions "manage_excluded") }}<button class="btn-destructive btn btn-success" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;" data-on-click="removeExcluded" data-arg0="{{ $value }}">Delete</button>{{ else }}Read only{{ end }}</td>
                         </tr>
                     {{ end }}
                     {{ range $subnet := .blocked_subnets }}
@@ -129,7 +129,7 @@
 
         <div style="margin-top: 4rem; margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center;">
             <h2 class="section-title" style="margin: 0; color: #fff;">External Dynamic Sources</h2>
-            {{ if or (eq .username .admin_username) (contains .permissions "manage_excluded") }}<button class="btn btn-dark" onclick="refreshExternalSources()">Refresh All Now</button>{{ end }}
+            {{ if or (eq .username .admin_username) (contains .permissions "manage_excluded") }}<button class="btn btn-dark" data-on-click="refreshExternalSources">Refresh All Now</button>{{ end }}
         </div>
         <p style="color: var(--secondary-color); font-size: 0.9rem; margin-bottom: 1.5rem;">
             Subscribe to third-party IP/CIDR lists (e.g. Microsoft 365, AWS) to keep them automatically protected.
@@ -144,7 +144,7 @@
                 <option value="microsoft_365">Microsoft 365 JSON</option>
                 <option value="json_cidr">JSON Array of CIDRs</option>
             </select>
-            <button class="btn btn-danger" onclick="addExternalSource()">Add Source</button>
+            <button class="btn btn-danger" data-on-click="addExternalSource">Add Source</button>
         </div>
 
         <div class="table-card">
@@ -178,7 +178,7 @@
                                     <span style="color: var(--subtle); font-size: 0.8rem;">Pending...</span>
                                 {{ end }}
                             </td>
-                            <td><button class="btn-destructive btn btn-dark" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;" {{ if not (or (eq $.username $.admin_username) (contains $.permissions "manage_excluded")) }}hidden{{ end }} onclick="deleteExternalSource({{ $src.ID }})">Remove</button></td>
+                            <td><button class="btn-destructive btn btn-dark" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;" {{ if not (or (eq $.username $.admin_username) (contains $.permissions "manage_excluded")) }}hidden{{ end }} data-on-click="deleteExternalSource" data-arg0="{{ $src.ID }}">Remove</button></td>
                         </tr>
                     {{ end }}
                 </tbody>

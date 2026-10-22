@@ -79,7 +79,8 @@ func (h *APIHandler) BlockIP(c *gin.Context) {
 		Reason  string `json:"reason"`
 		TTL     int    `json:"ttl"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil {
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxAPIBodyBytes)
+	if err := c.ShouldBindJSON(&req); err != nil || len(req.Reason) > maxReasonLength {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
 		return
 	}
@@ -89,10 +90,7 @@ func (h *APIHandler) BlockIP(c *gin.Context) {
 		return
 	}
 
-	duration := time.Duration(0)
-	if req.TTL > 0 {
-		duration = time.Duration(req.TTL) * time.Minute
-	}
+	duration := boundedTTL(req.TTL, time.Minute)
 
 	// Permission check?
 	// Assuming permission middleware already ran.
@@ -123,6 +121,7 @@ func (h *APIHandler) UnblockIP(c *gin.Context) {
 	var req struct {
 		IP string `json:"ip"`
 	}
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxAPIBodyBytes)
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
 		return
@@ -155,7 +154,8 @@ func (h *APIHandler) BulkBlock(c *gin.Context) {
 		Persist bool     `json:"persist"`
 		TTL     int      `json:"ttl"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil || len(req.IPs) == 0 {
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxAPIBodyBytes)
+	if err := c.ShouldBindJSON(&req); err != nil || len(req.IPs) == 0 || len(req.Reason) > maxReasonLength {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
 		return
 	}
@@ -164,10 +164,7 @@ func (h *APIHandler) BulkBlock(c *gin.Context) {
 		return
 	}
 
-	ttl := 0
-	if req.TTL > 0 {
-		ttl = req.TTL * 60
-	}
+	ttl := int(boundedTTL(req.TTL, time.Minute) / time.Second)
 
 	err := h.ipService.BulkBlock(c.Request.Context(), req.IPs, req.Reason, username.(string), c.ClientIP(), req.Persist, ttl)
 	if err != nil {
@@ -201,6 +198,7 @@ func (h *APIHandler) BulkUnblock(c *gin.Context) {
 	var req struct {
 		IPs []string `json:"ips"`
 	}
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxAPIBodyBytes)
 	if err := c.ShouldBindJSON(&req); err != nil || len(req.IPs) == 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
 		return
@@ -288,6 +286,7 @@ func (h *APIHandler) AddWhitelist(c *gin.Context) {
 		ExpiresAt string `json:"expires_at"`
 	}
 
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxAPIBodyBytes)
 	// Try JSON first
 	if c.ContentType() == "application/json" {
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -538,14 +537,23 @@ func (h *APIHandler) ExportIPs(c *gin.Context) {
 		}
 
 		_ = writer.Write([]string{
-			ip,
-			data.Timestamp,
-			data.Reason,
-			data.AddedBy,
-			countryCode,
-			city,
+			csvSafe(ip),
+			csvSafe(data.Timestamp),
+			csvSafe(data.Reason),
+			csvSafe(data.AddedBy),
+			csvSafe(countryCode),
+			csvSafe(city),
 			lat,
 			lon,
 		})
 	}
+}
+
+// csvSafe neutralises spreadsheet formulas (CSV injection) by prefixing cells
+// that start with a formula trigger character with a single quote.
+func csvSafe(value string) string {
+	if value != "" && strings.ContainsRune("=+-@\t\r", rune(value[0])) {
+		return "'" + value
+	}
+	return value
 }
