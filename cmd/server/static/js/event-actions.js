@@ -8,13 +8,13 @@
     'addExcluded', 'addExternalSource', 'addWhitelist', 'applyServerSearch', 'cancelEditTokenPerms',
     'clearSelection', 'closeModal', 'confirmBlock', 'confirmBulkUnblock', 'copySecret',
     'debouncedFilterTable', 'deleteExternalSource', 'editTokenPerms', 'exportData', 'filterCountryList',
-    'filterTable', 'loadView', 'navigate', 'openModal', 'refreshExternalSources', 'removeExcluded',
+    'filterTable', 'goToLogin', 'loadView', 'openModal', 'refreshExternalSources', 'removeExcluded',
     'removeWhitelist', 'saveCurrentView', 'saveTokenPerms', 'setDensity', 'setReason', 'setTokenTemplate',
     'toggleColumn', 'toggleCountryDropdown', 'toggleExpiryInput', 'toggleSelectAll', 'toggleViewOptions'
   ]);
   var builtins = {
-    navigate: function (path) {
-      if (typeof path === 'string' && path.charAt(0) === '/' && path.charAt(1) !== '/') window.location.href = path;
+    goToLogin: function () {
+      window.location.href = '/login';
     }
   };
 
