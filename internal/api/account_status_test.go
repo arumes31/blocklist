@@ -112,6 +112,7 @@ func TestDisabledAccountRejectsEveryAuthenticationPath(t *testing.T) {
 				pg.On("GetAPITokenByHash", mock.Anything).Return(&models.APIToken{Username: "member"}, nil)
 				req.Header.Set("Authorization", "Bearer synthetic-token")
 			case "basic":
+				h.cfg.AllowBasicAuth = true
 				req.URL.Path = "/api/v1/whitelists-raw"
 				req.SetBasicAuth("member", "synthetic-password")
 			case "session", "session check":

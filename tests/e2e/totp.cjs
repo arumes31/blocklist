@@ -21,4 +21,32 @@ function totp(secret, now = Date.now()) {
   return String((digest.readUInt32BE(offset) & 0x7fffffff) % 1000000).padStart(6, '0');
 }
 
-module.exports = {base32, totp};
+// The server rejects a code whose 30-second step was already accepted for the
+// account, so sign-ins and sudo refreshes must each use a new step. Steps are
+// recorded in the run's auth directory so global setup and workers agree.
+function stepFile() {
+  return process.env.E2E_AUTH_DIR ? require('node:path').join(process.env.E2E_AUTH_DIR, 'totp-steps.json') : '';
+}
+
+function usedSteps() {
+  try {
+    return JSON.parse(require('node:fs').readFileSync(stepFile(), 'utf8'));
+  } catch {
+    return {};
+  }
+}
+
+async function freshTotp(secret) {
+  const used = usedSteps();
+  const key = createHmac('sha256', 'e2e-step').update(secret).digest('hex');
+  let step = Math.floor(Date.now() / 30000);
+  while (used[key] !== undefined && step <= used[key]) {
+    await new Promise(resolve => setTimeout(resolve, (step + 1) * 30000 - Date.now() + 100));
+    step = Math.floor(Date.now() / 30000);
+  }
+  used[key] = step;
+  if (stepFile()) require('node:fs').writeFileSync(stepFile(), JSON.stringify(used));
+  return totp(secret, step * 30000);
+}
+
+module.exports = {base32, totp, freshTotp};

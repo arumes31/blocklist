@@ -11,7 +11,6 @@ import (
 
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
-	gorillasessions "github.com/gorilla/sessions"
 	zlog "github.com/rs/zerolog/log"
 )
 
@@ -97,27 +96,10 @@ func (h *APIHandler) EntraCallback(c *gin.Context) {
 		return
 	}
 	session := sessions.Default(c)
-	// Clear the old server-side session and request a fresh session identifier.
-	rawSession, ok := session.(interface {
-		Session() *gorillasessions.Session
-	})
-	if !ok {
+	if err := rotateSession(session); err != nil {
 		h.entraFailure(c)
 		return
 	}
-	old := rawSession.Session()
-	options := *old.Options
-	expired := options
-	expired.MaxAge = -1
-	old.Options = &expired
-	session.Delete("session_rotation") // Mark the session dirty so Save deletes it.
-	if err := session.Save(); err != nil {
-		h.entraFailure(c)
-		return
-	}
-	old.ID = ""
-	old.Options = &options
-	session.Clear()
 	session.Set("logged_in", true)
 	session.Set("username", admin.Username)
 	session.Set("auth_source", "entra")

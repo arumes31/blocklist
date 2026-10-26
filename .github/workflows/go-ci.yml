@@ -12,6 +12,10 @@ on:
 
 # Reusable calls must not cancel their caller or an approval-gated publication.
 
+concurrency:
+  group: go-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   integration:
     name: Database upgrade and API compatibility

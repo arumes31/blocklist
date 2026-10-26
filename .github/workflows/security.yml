@@ -14,6 +14,10 @@ permissions:
 
 # Reusable calls must not cancel their caller or an approval-gated publication.
 
+concurrency:
+  group: security-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   gosec:
     name: Go security analysis

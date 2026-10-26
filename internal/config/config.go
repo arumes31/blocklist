@@ -33,6 +33,7 @@ type Config struct {
 	GeoIPAccountID         string
 	GeoIPLicenseKey        string
 	TrustedProxies         string
+	AllowBasicAuth         bool
 	UseCloudflare          bool
 	Port                   string
 	MetricsAllowedIPs      string
@@ -74,8 +75,8 @@ func Load() *Config {
 		RedisPassword:          getEnv("REDIS_PASSWORD", ""),
 		RedisDB:                getEnvInt("REDIS_DB", 0),
 		RedisLimDB:             getEnvInt("REDIS_LIM_DB", 1),
-		PostgresURL:            getEnv("POSTGRES_URL", "postgres://postgres:password@localhost:5432/blocklist?sslmode=disable"),
-		PostgresReadURL:        getEnv("POSTGRES_READ_URL", getEnv("POSTGRES_URL", "postgres://postgres:password@localhost:5432/blocklist?sslmode=disable")),
+		PostgresURL:            getEnv("POSTGRES_URL", ""),
+		PostgresReadURL:        getEnv("POSTGRES_READ_URL", getEnv("POSTGRES_URL", "")),
 		GUIAdmin:               getEnv("GUIAdmin", "admin"),
 		GUIPassword:            getEnv("GUIPassword", ""),
 		GUIToken:               getEnv("GUIToken", ""),
@@ -84,6 +85,7 @@ func Load() *Config {
 		GeoIPAccountID:         getEnv("GEOIPUPDATE_ACCOUNT_ID", ""),
 		GeoIPLicenseKey:        getEnv("GEOIPUPDATE_LICENSE_KEY", ""),
 		TrustedProxies:         getEnv("TRUSTED_PROXIES", "127.0.0.1"),
+		AllowBasicAuth:         getEnvBool("ALLOW_BASIC_AUTH", false),
 		UseCloudflare:          getEnvBool("USE_CLOUDFLARE", false),
 		Port:                   getEnv("PORT", "5000"),
 		MetricsAllowedIPs:      getEnv("METRICS_ALLOWED_IPS", "127.0.0.1"),
@@ -98,7 +100,7 @@ func Load() *Config {
 			EventMonths: getRetentionMonths("EVENT_LOG_RETENTION_MONTHS", models.MaxEventLogRetentionMonths),
 			AuditMonths: getRetentionMonths("AUDIT_LOG_RETENTION_MONTHS", models.MaxAuditLogRetentionMonths),
 		},
-		CookieSecure:       getEnvBool("COOKIE_SECURE", false),
+		CookieSecure:       getEnvBool("COOKIE_SECURE", true),
 		SameSiteStrict:     getEnvBool("COOKIE_SAMESITE_STRICT", false),
 		ForceHTTPS:         getEnvBool("FORCE_HTTPS", false),
 		RunWorkerInProcess: getEnvBool("RUN_WORKER_IN_PROCESS", true),
@@ -119,6 +121,31 @@ func (c *Config) LogRetentionPolicy() models.LogRetention {
 		return models.DefaultLogRetention()
 	}
 	return *c.LogRetention
+}
+
+// TrustedProxyList returns the proxies whose X-Forwarded-For/X-Real-IP headers
+// are believed. Loopback is always trusted; TRUSTED_PROXIES replaces (rather
+// than extends) everything else so LAN/VPN clients cannot spoof their address.
+func (c *Config) TrustedProxyList() []string {
+	trusted := []string{"127.0.0.1/32", "::1/128"}
+	if c == nil {
+		return trusted
+	}
+	for _, val := range strings.Split(c.TrustedProxies, ",") {
+		val = strings.TrimSpace(val)
+		if val == "" || strings.EqualFold(val, "none") {
+			continue
+		}
+		if !strings.Contains(val, "/") {
+			if strings.Contains(val, ":") {
+				val += "/128"
+			} else {
+				val += "/32"
+			}
+		}
+		trusted = append(trusted, val)
+	}
+	return trusted
 }
 
 func getRetentionMonths(key string, fallback int) int {

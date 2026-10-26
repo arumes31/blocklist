@@ -61,7 +61,11 @@ with persistent bind mounts.
    credentials, development database settings and port `5000` published on the
    host; it is not a production-ready secret configuration.
 2. Set a strong, random `SECRET_KEY` of at least 32 characters, an initial
-   `GUIPassword`, and unique PostgreSQL/Redis credentials. Keep credentials aligned
+   `GUIPassword`, and unique PostgreSQL/Redis credentials. The Compose file
+   requires `SECRET_KEY`, `GUI_PASSWORD`, `POSTGRES_PASSWORD` and `REDIS_PASSWORD`
+   from the environment or an untracked `.env` file and refuses to start without
+   them. Cookies are `Secure` by default, so serve the app over HTTPS or set
+   `COOKIE_SECURE=false` for plain-HTTP local testing. Keep credentials aligned
    between the app and its dependencies, including the Redis health check. Store
    real values in a private, ignored Compose override or your deployment's secret
    manager, never in tracked files. A `.env` file alone does not replace hardcoded
@@ -353,8 +357,11 @@ deleting only the local record can allow recreation at the next eligible sign-in
 Use `/docs` for the interactive reference and `/openapi.json` for the schema.
 Protected endpoints accept an authorized browser session or appropriately scoped
 Bearer token, except sensitive actions that explicitly require browser verification.
-Basic authentication with local credentials is supported **only** for the two
-whitelist read endpoints; it is not a general API or Entra-password fallback.
+Legacy Basic authentication with local credentials is **disabled by default**.
+Setting `ALLOW_BASIC_AUTH=true` enables it **only** for the two whitelist read
+endpoints; it is not a general API or Entra-password fallback. Basic auth cannot
+check TOTP, so prefer a scoped Bearer token; enabled Basic attempts are subject to
+the login rate limit.
 
 | Endpoint | Purpose / access |
 | --- | --- |
@@ -381,6 +388,9 @@ Use `persist: true` for a persistent block. `selfwhitelist` uses the caller's
 source IP instead of an `ip` field. Source-IP restrictions and forwarded addresses
 depend on `TRUSTED_PROXIES` and, where applicable, `USE_CLOUDFLARE`; trust only the
 actual proxies in front of the application, never arbitrary client-supplied headers.
+Loopback is always trusted; `TRUSTED_PROXIES` replaces every other entry, and
+private, Docker or VPN ranges are no longer trusted implicitly. Behind a reverse
+proxy, set it to that proxy's exact address (for example its Docker network IP).
 
 ## Configuration
 
@@ -392,22 +402,23 @@ them. See [config.go](internal/config/config.go) for the complete list and
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `SECRET_KEY` | Stable, high-entropy session key; use 32+ random characters. Changing it invalidates sessions. | Must be set; insecure default is rejected |
+| `SECRET_KEY` | Stable, high-entropy session key; use 32+ random characters. Changing it invalidates sessions. | Must be set; insecure defaults and placeholders are rejected |
 | `PORT` | Listening port | `5000` |
 | `REDIS_HOST` | Redis server hostname | `localhost` |
 | `REDIS_PORT` | Redis server port | `6379` |
 | `REDIS_PASSWORD` | Redis password | (empty) |
 | `REDIS_DB` | Redis database for IP storage | `0` |
 | `REDIS_LIM_DB` | Redis database for rate limiting | `1` |
-| `POSTGRES_URL` | Primary PostgreSQL connection string; explicitly configure credentials and transport security | Local development fallback; not production-ready |
+| `POSTGRES_URL` | Primary PostgreSQL connection string; explicitly configure credentials and transport security | Must be set |
 | `POSTGRES_READ_URL` | Optional read connection; leave unchanged unless deliberately configuring a replica | Same as `POSTGRES_URL` |
 | `GUIAdmin` | Configuration-managed local recovery administrator | `admin` |
 | `GUIPassword` | Initial recovery password, required when seeding that account; not a password-reset setting | (empty) |
 | `DISABLE_GUIADMIN_LOGIN` | Disable the configured recovery account's normal login; keep recovery available unless deliberately retiring it | `false` |
-| `COOKIE_SECURE` | Send cookies only over HTTPS; enable for an HTTPS deployment | `false` |
+| `COOKIE_SECURE` | Send cookies only over HTTPS; set `false` only for plain-HTTP localhost testing | `true` |
 | `COOKIE_SAMESITE_STRICT` | Stricter cookie policy; validate cross-site Entra callbacks before enabling | `false` |
 | `FORCE_HTTPS` | HTTPS redirect setting; configure together with the reverse proxy | `false` |
-| `TRUSTED_PROXIES` | Trusted proxy addresses/CIDRs, comma-separated | `127.0.0.1` |
+| `TRUSTED_PROXIES` | Exact reverse-proxy addresses/CIDRs allowed to set forwarded client IPs, comma-separated; replaces the list (loopback is always trusted) | `127.0.0.1` |
+| `ALLOW_BASIC_AUTH` | Allow legacy Basic auth (no TOTP) for `/api/v1/whitelists` and `/api/v1/whitelists-raw` | `false` |
 | `USE_CLOUDFLARE` | Enable Cloudflare client-IP handling with a correctly restricted proxy path | `false` |
 | `METRICS_ALLOWED_IPS` | Comma-separated exact source-IP allowlist for `/metrics`; CIDRs are not supported here | `127.0.0.1` |
 | `RATE_LIMIT` / `RATE_PERIOD` | General request limit and period in seconds | `500` / `30` |

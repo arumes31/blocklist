@@ -394,6 +394,30 @@ func (r *RedisRepository) ReleaseLock(key string, token string) error {
 	return r.client.Eval(r.ctx, releaseLockScript, []string{key}, token).Err()
 }
 
+// claimTOTPStepScript atomically accepts a TOTP time step only if it is newer
+// than the last step accepted for the same account.
+var claimTOTPStepScript = redis.NewScript(`
+local last = tonumber(redis.call('GET', KEYS[1]) or '-1')
+if tonumber(ARGV[1]) <= last then
+	return 0
+end
+redis.call('SET', KEYS[1], ARGV[1], 'EX', ARGV[2])
+return 1
+`)
+
+// ClaimTOTPStep records step as the last accepted TOTP time step for username.
+// It returns false when the step (or a later one) was already used, so a code
+// cannot be replayed within its validity window.
+func (r *RedisRepository) ClaimTOTPStep(username string, step int64) (bool, error) {
+	defer r.trackDuration("ClaimTOTPStep", time.Now())
+	// The key outlives the +/-1 step skew window; older steps are invalid anyway.
+	res, err := claimTOTPStepScript.Run(r.ctx, r.client, []string{"totp_last_step:" + username}, step, 300).Int()
+	if err != nil {
+		return false, err
+	}
+	return res == 1, nil
+}
+
 func (r *RedisRepository) GetClient() *redis.Client {
 	return r.client
 }

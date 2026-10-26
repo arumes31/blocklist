@@ -146,7 +146,7 @@ func TestAPIHandler_UpgradeTokenCompatibility(t *testing.T) {
 	rRepo := repository.NewRedisRepository(host, portNumber, "", 0)
 	t.Cleanup(func() { require.NoError(t, rRepo.Close()) })
 	require.NoError(t, rRepo.WhitelistIP("203.0.113.7", models.WhitelistEntry{Reason: "legacy-allow"}))
-	cfg := &config.Config{GUIAdmin: "recovery-not-an-integration-owner"}
+	cfg := &config.Config{GUIAdmin: "recovery-not-an-integration-owner", AllowBasicAuth: true}
 	ipService := service.NewIPService(cfg, rRepo, pg)
 	pass := func(c *gin.Context) { c.Next() }
 	h := NewAPIHandler(&HandlerOptions{

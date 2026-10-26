@@ -70,3 +70,41 @@ func TestGetEnvBool(t *testing.T) {
 		t.Error("expected false for 'false'")
 	}
 }
+
+func TestTrustedProxyListReplacesPrivateRanges(t *testing.T) {
+	if got := (&Config{TrustedProxies: "127.0.0.1"}).TrustedProxyList(); len(got) != 3 || got[2] != "127.0.0.1/32" {
+		t.Errorf("unexpected default list %v", got)
+	}
+	got := (&Config{TrustedProxies: "10.1.2.3, 2001:db8::1, 192.0.2.0/24"}).TrustedProxyList()
+	want := []string{"127.0.0.1/32", "::1/128", "10.1.2.3/32", "2001:db8::1/128", "192.0.2.0/24"}
+	if len(got) != len(want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("got %v, want %v", got, want)
+		}
+	}
+	for _, prefix := range (&Config{TrustedProxies: "none"}).TrustedProxyList() {
+		if prefix == "10.0.0.0/8" || prefix == "192.168.0.0/16" || prefix == "172.16.0.0/12" {
+			t.Errorf("private range %s must not be trusted implicitly", prefix)
+		}
+	}
+}
+
+func TestSecureDefaults(t *testing.T) {
+	for _, key := range []string{"COOKIE_SECURE", "ALLOW_BASIC_AUTH", "POSTGRES_URL", "POSTGRES_READ_URL"} {
+		t.Setenv(key, "")
+		_ = os.Unsetenv(key)
+	}
+	cfg := Load()
+	if !cfg.CookieSecure {
+		t.Error("expected Secure cookies by default")
+	}
+	if cfg.AllowBasicAuth {
+		t.Error("expected Basic auth to be disabled by default")
+	}
+	if cfg.PostgresURL != "" || cfg.PostgresReadURL != "" {
+		t.Error("expected no credentialed default database URL")
+	}
+}

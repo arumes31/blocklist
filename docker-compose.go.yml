@@ -11,17 +11,26 @@ services:
       REDIS_PORT: 6379
       REDIS_DB: 0
       REDIS_LIM_DB: 1
-      POSTGRES_URL: "postgres://postgres:password@postgres:5432/blocklist?sslmode=disable"
-      LOGWEB: "true"
-      SECRET_KEY: "XXXXXXXX---SECRET_KEY----"
+      # Required secrets: export them or put them in an untracked .env file.
+      # Generate SECRET_KEY with e.g. `openssl rand -base64 48`.
+      POSTGRES_URL: "postgres://postgres:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/blocklist?sslmode=disable"
+      LOGWEB: "false"
+      SECRET_KEY: "${SECRET_KEY:?set SECRET_KEY to 32+ random characters}"
       BLOCKED_RANGES: "127.0.0.1/32, 0.0.0.0/32, 192.168.0.0/16, 10.0.0.0/8, 172.12.0.0/12"
       GUIAdmin: admin
-      GUIPassword: "XXXXXXXX---SECRET_PASSWORD----"
-      REDIS_PASSWORD: "CHANGE_ME_REDIS_PASS"
+      GUIPassword: "${GUI_PASSWORD:?set GUI_PASSWORD}"
+      REDIS_PASSWORD: "${REDIS_PASSWORD:?set REDIS_PASSWORD}"
       METRICS_ALLOWED_IPS: "127.0.0.1"
-      GEOIPUPDATE_ACCOUNT_ID: "XXXXXX"
-      GEOIPUPDATE_LICENSE_KEY: "XXXXXXXX---SECRET_LICENSEKEY----"
-      TRUSTED_PROXIES: "127.0.0.1,172.16.0.0/12,100.64.0.0/10"
+      GEOIPUPDATE_ACCOUNT_ID: "${GEOIPUPDATE_ACCOUNT_ID:-}"
+      GEOIPUPDATE_LICENSE_KEY: "${GEOIPUPDATE_LICENSE_KEY:-}"
+      # Only these addresses may set X-Forwarded-For (loopback is always trusted).
+      # Behind a reverse proxy, list its exact IP/CIDR, not whole private ranges.
+      TRUSTED_PROXIES: "${TRUSTED_PROXIES:-127.0.0.1}"
+      # Secure cookies need HTTPS; set COOKIE_SECURE=false only for plain-HTTP local testing.
+      COOKIE_SECURE: "${COOKIE_SECURE:-true}"
+      FORCE_HTTPS: "${FORCE_HTTPS:-false}"
+      # Legacy Basic auth for the whitelist read endpoints (no 2FA); prefer API tokens.
+      ALLOW_BASIC_AUTH: "${ALLOW_BASIC_AUTH:-false}"
       USE_CLOUDFLARE: "false"
       RATE_LIMIT: 500
       RATE_PERIOD: 30
@@ -47,21 +56,23 @@ services:
     restart: unless-stopped
 
   redis:
-    image: "redis:alpine"
-    command: ["redis-server", "--appendonly", "yes", "--requirepass", "CHANGE_ME_REDIS_PASS"]
+    image: "redis:8.10.1-alpine"
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:?set REDIS_PASSWORD}"]
+    environment:
+      REDISCLI_AUTH: "${REDIS_PASSWORD:?set REDIS_PASSWORD}"
     volumes:
       - ./redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "CHANGE_ME_REDIS_PASS", "ping"]
+      test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
     restart: unless-stopped
 
   postgres:
-    image: "postgres:16-alpine"
+    image: "postgres:16.10-alpine"
     environment:
-      POSTGRES_PASSWORD: password
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}"
       POSTGRES_DB: blocklist
     volumes:
       - ./postgres_data:/var/lib/postgresql/data

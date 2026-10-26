@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"time"
 
+	"github.com/pquerna/otp"
 	"github.com/pquerna/otp/totp"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -81,7 +82,7 @@ func (s *AuthService) CheckAuth(username, password, token string) bool {
 	if admin.Token == "" {
 		return false
 	}
-	return totp.Validate(token, admin.Token)
+	return s.validateTOTP(username, token, admin.Token)
 }
 
 func (s *AuthService) VerifyTOTP(username, token string) bool {
@@ -97,7 +98,42 @@ func (s *AuthService) VerifyTOTP(username, token string) bool {
 	if admin.Token == "" {
 		return false
 	}
-	return totp.Validate(token, admin.Token)
+	return s.validateTOTP(username, token, admin.Token)
+}
+
+// TOTPStepClaimer records the last TOTP time step accepted for an account.
+type TOTPStepClaimer interface {
+	ClaimTOTPStep(username string, step int64) (bool, error)
+}
+
+func (s *AuthService) validateTOTP(username, code, secret string) bool {
+	claimer, _ := s.redis.(TOTPStepClaimer)
+	return ValidateTOTPOnce(claimer, username, code, secret)
+}
+
+// ValidateTOTPOnce validates code against secret (one 30-second step of skew,
+// like totp.Validate) and, when a claimer is available, rejects any code whose
+// time step is not newer than the last one accepted for username. Errors from
+// the claimer fail closed.
+func ValidateTOTPOnce(claimer TOTPStepClaimer, username, code, secret string) bool {
+	if secret == "" {
+		return false
+	}
+	now := time.Now().UTC()
+	opts := totp.ValidateOpts{Period: 30, Skew: 0, Digits: otp.DigitsSix, Algorithm: otp.AlgorithmSHA1}
+	for _, offset := range []int64{0, -1, 1} {
+		at := now.Add(time.Duration(offset) * 30 * time.Second)
+		ok, err := totp.ValidateCustom(code, secret, at, opts)
+		if err != nil || !ok {
+			continue
+		}
+		if claimer == nil {
+			return true
+		}
+		claimed, err := claimer.ClaimTOTPStep(username, at.Unix()/30)
+		return err == nil && claimed
+	}
+	return false
 }
 
 func (s *AuthService) HashPassword(password string) (string, error) {
