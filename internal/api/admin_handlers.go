@@ -203,6 +203,11 @@ func (h *APIHandler) DeleteSavedView(c *gin.Context) {
 // For HTMX Polling (Improvement 4)
 func (h *APIHandler) DashboardTable(c *gin.Context) {
 	ips := h.getCombinedIPs()
+	labels := h.accountLabels.Snapshot(c.Request.Context())
+	for ip, entry := range ips {
+		entry.AddedBy = labels.Label(entry.AddedBy)
+		ips[ip] = entry
+	}
 	h.renderHTML(c, http.StatusOK, "dashboard_table.html", gin.H{
 		"ips": ips,
 	})
@@ -718,6 +723,10 @@ func (h *APIHandler) Settings(c *gin.Context) {
 	var allTokens []models.APIToken
 	if hasGlobalTokensPerm || h.can(c, "view_api_tokens") {
 		allTokens, _ = h.pgRepo.GetAllAPITokens()
+		labels := h.accountLabels.Snapshot(c.Request.Context())
+		for i := range allTokens {
+			allTokens[i].Username = labels.Label(allTokens[i].Username)
+		}
 	}
 
 	// Get base URL from request
@@ -776,6 +785,11 @@ func (h *APIHandler) logExplorer(c *gin.Context, category string) {
 	if err != nil {
 		c.String(http.StatusInternalServerError, "failed to fetch audit logs")
 		return
+	}
+	labels := h.accountLabels.Snapshot(c.Request.Context())
+	for i := range logs {
+		logs[i].Actor = labels.Label(logs[i].Actor)
+		logs[i].Target = labels.Label(logs[i].Target)
 	}
 
 	totalPages := (total + limit - 1) / limit

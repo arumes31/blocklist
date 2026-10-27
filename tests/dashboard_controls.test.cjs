@@ -173,6 +173,10 @@ test('each stats refresh retains every top entry and the initial chip presentati
             assert.equal((html.match(/<button type="button"/g) || []).length, 10, 'Native keyboard controls');
             assert.equal((html.match(/data-insight-value="/g) || []).length, 10, 'Refreshed chips keep their filter value');
             assert.equal((html.match(/class="insight-count"/g) || []).length, 10, id);
+            const count = 91 + increment;
+            const label = id === 'stat-countries' ? 'Filter by country C9' :
+                id === 'stat-asns' ? 'Filter by ASN 64009' : 'Filter by reason Long reason 9';
+            assert.ok(html.includes(`aria-label="${label}: ${count}"`), 'Accessible name includes the visible ranking and count');
             assert.ok(html.includes(`>${91 + increment}</span>`), 'The tenth entry updates too');
             assert.doesNotMatch(html, /style=/, 'Use the same shared classes as initial rendering');
         }

@@ -65,7 +65,7 @@ test('dashboard reason rankings filter real records exactly and survive refresh,
     const initial = await chipContents(chips);
     expect(initial.map(chip => chip.title).sort()).toEqual([...seededReasons].sort());
     await expectUnclipped(page);
-    const exactReason = page.getByRole('button', {name: `Filter by reason ${seededReasons[0]}`, exact: true});
+    const exactReason = page.getByRole('button', {name: `Filter by reason ${seededReasons[0]}: 1`, exact: true});
     await exactReason.locator('.insight-count').click();
     await expect(page.locator('#filterInput')).toHaveValue(`reason:${seededReasons[0]}`);
     await expect(page.locator('#ipTableBody .ip-details-link')).toHaveText([ips[0]]);
@@ -152,8 +152,8 @@ test('dashboard country and ASN filters remain interactive after scheduled refre
   empty = false;
   await page.clock.fastForward(15000);
   await expect(page.locator('.insight-chip')).toHaveCount(30);
-  const country = page.getByRole('button', {name: 'Filter by country US', exact: true});
-  const asn = page.getByRole('button', {name: 'Filter by ASN 396982', exact: true});
+  const country = page.getByRole('button', {name: /^Filter by country US: \d+$/});
+  const asn = page.getByRole('button', {name: /^Filter by ASN 396982: \d+$/});
   /**
    * Observe the matching IP-list response before triggering a filter interaction.
    * @param {() => Promise<unknown>} action Interaction or clock advance to perform.

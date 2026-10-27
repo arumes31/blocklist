@@ -34,6 +34,7 @@ type App struct {
 	WebhookService        *service.WebhookService
 	MailService           *service.MailService
 	ExternalSourceService *service.ExternalSourceService
+	AccountLabels         *service.AccountLabels
 	GeoUpdater            GeoUpdaterI
 	Scheduler             SchedulerI
 	RedisOpts             asynq.RedisClientOpt
@@ -70,10 +71,12 @@ func Bootstrap(cfg *config.Config) (*App, error) {
 	scheduler := service.NewSchedulerService(redisRepo, pgRepo, cfg)
 	mailService := service.NewMailService(cfg)
 	externalSourceService := service.NewExternalSourceService(pgRepo, ipService)
+	accountLabels := service.NewAccountLabels(pgRepo)
 
 	// Link dependencies
 	ipService.SetWebhookService(webhookService)
 	ipService.SetMailService(mailService)
+	ipService.SetAccountLabels(accountLabels)
 	scheduler.SetIPService(ipService)
 	scheduler.SetExternalSourceService(externalSourceService)
 
@@ -86,6 +89,7 @@ func Bootstrap(cfg *config.Config) (*App, error) {
 		WebhookService:        webhookService,
 		MailService:           mailService,
 		ExternalSourceService: externalSourceService,
+		AccountLabels:         accountLabels,
 		GeoUpdater:            geoUpdater,
 		Scheduler:             scheduler,
 		RedisOpts:             redisOpts,

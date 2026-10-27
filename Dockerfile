@@ -1,5 +1,5 @@
 # Stage 1: Minify embedded JavaScript without modifying tracked source files.
-FROM node:24.21.0-alpine3.23@sha256:9ec4a2e289874ed0d722e1772ec2de45d2801541db8612f3638b26f128c69ac2 AS assets
+FROM node:26.12.0-alpine3.23@sha256:2ae3a23c9c5d2129398f4844c7c43400c061faf6973852f0fa837323bff9a5a8 AS assets
 
 WORKDIR /app
 COPY package.json package-lock.json ./
@@ -9,7 +9,7 @@ COPY cmd/server/static/js ./cmd/server/static/js
 RUN npm run build:assets
 
 # Stage 2: Build
-FROM golang:1.27.3-alpine3.24@sha256:f2c872bcee949b7be9c490efd02b48a8a2fbf947cdf533f1c58525ec9d8170fd AS builder
+FROM golang:1.27.3-alpine3.24@sha256:b8c9b82affbbb82a020bbcf998dad2ba9516944ac7e883524642a481a9505e9c AS builder
 
 WORKDIR /app
 
@@ -30,7 +30,7 @@ COPY --from=assets /app/.build/js/ ./cmd/server/static/js/
 RUN CGO_ENABLED=0 GOOS=linux go build -o blocklist-server ./cmd/server/main.go
 
 # Stage 3: Final Image (no Node.js or npm dependencies)
-FROM alpine:3.24.2@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6
+FROM alpine:3.24.3@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a
 LABEL maintainer="arumes31 <https://github.com/arumes31>"
 LABEL org.opencontainers.image.source="https://github.com/arumes31"
 LABEL org.opencontainers.image.description="Hardened Blocklist API with GeoIP and RBAC"

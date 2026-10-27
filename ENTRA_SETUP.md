@@ -94,6 +94,8 @@ With automatic provisioning disabled, use **Accounts → Create account → Micr
 
 The selected workspace role follows the existing synchronization rules below: Microsoft's app role applies at sign-in unless **Keep local role override** is explicitly enabled. Accounts can be prepared before configuring Entra, but cannot sign in until the integration is configured. Existing explicitly bound accounts and API pre-provisioning with both tenant/object IDs remain supported. With automatic provisioning enabled, a matching pending invitation is used first; otherwise new account names use `entra:<tenant-id>:<object-id>`.
 
+That key is shown only under **Accounts → Identity binding**. Everywhere else (audit and event logs, Added By on blocks, whitelist and exclusions, IP history, exports, the live feed, API-token owners and excluded-block alerts) shows the account's latest sign-in name instead. Records still store the key, so a renamed or reused UPN never changes who a record belongs to. The latest name is kept after the account is deleted so its history stays readable; accounts deleted before this upgrade show their key. The audit-log actor filter and search accept either the sign-in name or the key.
+
 ## Roles and reauthentication
 
 - **Viewer:** reads the workspace and metadata, never passwords, MFA secrets, or raw API-token values; cannot modify records.

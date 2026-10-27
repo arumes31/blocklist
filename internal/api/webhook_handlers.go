@@ -180,10 +180,12 @@ func (h *APIHandler) handleWebhookBan(c *gin.Context, data webhookRequest, usern
 	}
 
 	metrics.MetricBlocksTotal.WithLabelValues("webhook").Inc()
-	if h.hub != nil {
+	if h.hub != nil && entry != nil {
+		shown := *entry
+		shown.AddedBy = h.accountLabels.Snapshot(c.Request.Context()).Label(shown.AddedBy)
 		h.hub.BroadcastEvent("block", map[string]interface{}{
 			"ip":         data.IP,
-			"data":       entry,
+			"data":       shown,
 			"source_geo": sourceGeo,
 		})
 	}
@@ -240,9 +242,11 @@ func (h *APIHandler) handleWebhookWhitelist(c *gin.Context, data webhookRequest,
 	}
 
 	if h.hub != nil {
+		shown := entry
+		shown.AddedBy = h.accountLabels.Snapshot(c.Request.Context()).Label(shown.AddedBy)
 		h.hub.BroadcastEvent("whitelist", map[string]interface{}{
 			"ip":         data.IP,
-			"data":       entry,
+			"data":       shown,
 			"source_geo": sourceGeo,
 		})
 	}

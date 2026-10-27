@@ -104,9 +104,11 @@ func (h *APIHandler) BlockIP(c *gin.Context) {
 
 	if h.hub != nil && entry != nil {
 		sourceGeo := h.ipService.GetGeoIP(c.ClientIP())
+		shown := *entry
+		shown.AddedBy = h.accountLabels.Snapshot(c.Request.Context()).Label(shown.AddedBy)
 		h.hub.BroadcastEvent("block", map[string]interface{}{
 			"ip":         ip,
-			"data":       entry,
+			"data":       shown,
 			"source_geo": sourceGeo,
 		})
 	}
@@ -246,8 +248,10 @@ func (h *APIHandler) Whitelist(c *gin.Context) {
 		ExpiresIn string `json:"expires_in"`
 	}
 
+	labels := h.accountLabels.Snapshot(c.Request.Context())
 	displayItems := make(map[string]displayEntry)
 	for ip, entry := range items {
+		entry.AddedBy = labels.Label(entry.AddedBy)
 		d := displayEntry{WhitelistEntry: entry}
 		if entry.ExpiresAt != "" {
 			exp, err := time.Parse(time.RFC3339, entry.ExpiresAt)
@@ -384,8 +388,10 @@ func (h *APIHandler) JSONWhitelists(c *gin.Context) {
 		ExpiresIn string                `json:"expires_in"`
 	}
 
+	labels := h.accountLabels.Snapshot(c.Request.Context())
 	var results []item
 	for k, v := range items {
+		v.AddedBy = labels.Label(v.AddedBy)
 		expIn := "NEVER"
 		if v.ExpiresAt != "" {
 			exp, err := time.Parse(time.RFC3339, v.ExpiresAt)
@@ -433,6 +439,11 @@ func (h *APIHandler) JSONIPs(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error fetching IPs"})
 		return
+	}
+	labels := h.accountLabels.Snapshot(c.Request.Context())
+	for ip, entry := range ips {
+		entry.AddedBy = labels.Label(entry.AddedBy)
+		ips[ip] = entry
 	}
 	c.JSON(http.StatusOK, ips)
 }
