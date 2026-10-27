@@ -186,6 +186,10 @@ func (s *EntraService) Finish(ctx context.Context, state, cookie, code string) (
 		Roles     []string `json:"roles"`
 		NotBefore int64    `json:"nbf"`
 		AuthTime  int64    `json:"auth_time"`
+		// acct (optional claim: 0 member, 1 guest) and idp (present when the
+		// user's home identity provider is not this tenant) mark external users.
+		Acct *int   `json:"acct"`
+		IdP  string `json:"idp"`
 	}
 	if err := verified.Claims(&claims); err != nil {
 		return nil, ErrEntraSignIn
@@ -207,9 +211,14 @@ func (s *EntraService) Finish(ctx context.Context, state, cookie, code string) (
 	if role == "" {
 		return nil, ErrEntraSignIn
 	}
+	external := (claims.Acct != nil && *claims.Acct == 1) ||
+		(claims.IdP != "" && !strings.Contains(strings.ToLower(claims.IdP), strings.ToLower(s.cfg.EntraTenantID)))
 	return &EntraResult{
-		Identity: models.EntraIdentity{TenantID: strings.ToLower(claims.TenantID), ObjectID: strings.ToLower(claims.ObjectID), UPN: claims.UPN, RoleID: role},
-		Next:     flow.Next, Username: flow.Username,
+		Identity: models.EntraIdentity{
+			TenantID: strings.ToLower(claims.TenantID), ObjectID: strings.ToLower(claims.ObjectID),
+			UPN: claims.UPN, RoleID: role, External: external,
+		},
+		Next: flow.Next, Username: flow.Username,
 		HasFreshAuth: claims.AuthTime >= flow.Started-60 && claims.AuthTime <= time.Now().Unix()+60,
 	}, nil
 }

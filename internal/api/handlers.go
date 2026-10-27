@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-contrib/sessions"
@@ -53,7 +54,17 @@ type APIHandler struct {
 	trustedProxies        []netip.Prefix
 	upgrader              websocket.Upgrader
 	webhookLimiter        gin.HandlerFunc
+
+	// rawFeed caches the public /api/v1/raw body so anonymous requests do not
+	// each trigger a full HGETALL on the shared Redis instance.
+	rawFeedMu   sync.Mutex
+	rawFeedBody string
+	rawFeedAt   time.Time
 }
+
+// wsMaxMessageBytes bounds inbound WebSocket messages. Clients never send
+// application data on /ws, so anything beyond control-sized frames is abuse.
+const wsMaxMessageBytes = 4096
 
 // NewAPIHandler creates a new instance of APIHandler with the necessary dependencies.
 func NewAPIHandler(opts *HandlerOptions) *APIHandler {
@@ -93,9 +104,11 @@ func NewAPIHandler(opts *HandlerOptions) *APIHandler {
 	}
 
 	h.upgrader = websocket.Upgrader{
-		ReadBufferSize:    1024,
-		WriteBufferSize:   1024,
-		EnableCompression: true,
+		ReadBufferSize:  1024,
+		WriteBufferSize: 1024,
+		// permessage-deflate stays off: gorilla's read limit counts wire bytes,
+		// so a compressed frame could still inflate without bound in memory.
+		EnableCompression: false,
 		CheckOrigin: func(r *http.Request) bool {
 			origin := r.Header.Get("Origin")
 			if origin == "" {
@@ -170,6 +183,7 @@ func (h *APIHandler) WS(c *gin.Context) {
 	// Wrap the connection so all writes (broadcasts from the Hub and the
 	// keep-alive pings below) serialize on a single per-connection mutex;
 	// gorilla/websocket does not allow concurrent writers.
+	conn.SetReadLimit(wsMaxMessageBytes)
 	client := &wsClient{conn: conn}
 	username, _ := session.Get("username").(string)
 	version, _ := session.Get("session_version").(int)
@@ -301,7 +315,13 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 	// API Versioning (Improvement 5)
 	v1 := r.Group("/api/v1")
 	{
-		v1.GET("/raw", h.RawIPs) // Public
+		// Public feed for edge firewalls: rate limited per client like other
+		// API reads and served from a short-lived snapshot (see RawIPs).
+		rawHandlers := []gin.HandlerFunc{}
+		if h.mainLimiter != nil {
+			rawHandlers = append(rawHandlers, h.mainLimiter)
+		}
+		v1.GET("/raw", append(rawHandlers, h.RawIPs)...)
 	}
 
 	v1auth := v1.Group("/")

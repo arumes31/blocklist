@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/netip"
 	"strconv"
 	"strings"
 	"time"
@@ -15,6 +16,47 @@ import (
 	"github.com/gin-gonic/gin"
 	zlog "github.com/rs/zerolog/log"
 )
+
+// validateFutureExpiry accepts an empty value (never expires) or an RFC3339
+// time in the future. A past expiry would make the entry lapse immediately, so
+// an "add" would act as a removal.
+func validateFutureExpiry(c *gin.Context, expiresAt string) bool {
+	if expiresAt == "" {
+		return true
+	}
+	exp, err := time.Parse(time.RFC3339, expiresAt)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid expires_at format (expected RFC3339)"})
+		return false
+	}
+	if !exp.After(time.Now()) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "expires_at must be in the future"})
+		return false
+	}
+	return true
+}
+
+// whitelistEntryExists reports whether ip (as given or in canonical form) is
+// already whitelisted. Lookup errors count as existing so create-only callers
+// fail closed.
+func (h *APIHandler) whitelistEntryExists(ip string) bool {
+	entries, err := h.redisRepo.GetWhitelistedIPs()
+	if err != nil {
+		return true
+	}
+	if _, ok := entries[ip]; ok {
+		return true
+	}
+	if p, err := netip.ParsePrefix(ip); err == nil {
+		_, ok := entries[p.Masked().String()]
+		return ok
+	}
+	if a, err := netip.ParseAddr(ip); err == nil {
+		_, ok := entries[a.Unmap().String()]
+		return ok
+	}
+	return false
+}
 
 func (h *APIHandler) isIPInCIDRs(ipStr string, cidrs string) bool {
 	if cidrs == "" {
@@ -328,12 +370,15 @@ func (h *APIHandler) AddWhitelist(c *gin.Context) {
 		return
 	}
 
-	// Validate expires_at if provided
-	if req.ExpiresAt != "" {
-		if _, err := time.Parse(time.RFC3339, req.ExpiresAt); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid expires_at format (expected RFC3339)"})
-			return
-		}
+	if !validateFutureExpiry(c, req.ExpiresAt) {
+		return
+	}
+
+	// whitelist_ips may only create entries; replacing one would let it shorten
+	// or expire an entry, which is removal reserved for manage_whitelist.
+	if !h.can(c, "manage_whitelist") && h.whitelistEntryExists(req.IP) {
+		c.JSON(http.StatusConflict, gin.H{"error": "IP is already whitelisted; changing it requires manage_whitelist"})
+		return
 	}
 
 	if err := h.ipService.WhitelistIP(c.Request.Context(), req.IP, note, username.(string), req.ExpiresAt); err != nil {
@@ -411,13 +456,35 @@ func (h *APIHandler) JSONWhitelists(c *gin.Context) {
 	c.JSON(http.StatusOK, results)
 }
 
+// rawFeedTTL is how long the public feed snapshot is reused. Edge firewalls poll
+// on the order of minutes, so a few seconds of staleness is invisible to them.
+const rawFeedTTL = 5 * time.Second
+
 func (h *APIHandler) RawIPs(c *gin.Context) {
-	ips, err := h.redisRepo.GetBlockedIPKeys()
+	body, err := h.rawFeed()
 	if err != nil {
 		c.String(http.StatusInternalServerError, "Error fetching IPs")
 		return
 	}
-	c.String(http.StatusOK, strings.Join(ips, "\n"))
+	c.String(http.StatusOK, body)
+}
+
+// rawFeed returns the cached feed body, rebuilding it at most once per TTL.
+// Holding the mutex while rebuilding collapses concurrent misses into one
+// Redis HGETALL instead of one per anonymous request.
+func (h *APIHandler) rawFeed() (string, error) {
+	h.rawFeedMu.Lock()
+	defer h.rawFeedMu.Unlock()
+	if !h.rawFeedAt.IsZero() && time.Since(h.rawFeedAt) < rawFeedTTL {
+		return h.rawFeedBody, nil
+	}
+	ips, err := h.redisRepo.GetBlockedIPKeys()
+	if err != nil {
+		return "", err
+	}
+	h.rawFeedBody = strings.Join(ips, "\n")
+	h.rawFeedAt = time.Now()
+	return h.rawFeedBody, nil
 }
 
 func (h *APIHandler) RawWhitelists(c *gin.Context) {

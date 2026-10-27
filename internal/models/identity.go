@@ -59,6 +59,9 @@ type EntraIdentity struct {
 	ObjectID string
 	UPN      string
 	RoleID   string
+	// External marks guest or otherwise home-tenant-external users, whose
+	// preferred_username is not controlled by this tenant.
+	External bool
 }
 
 // AdminStatusChange carries the authorized snapshot so concurrent permission or

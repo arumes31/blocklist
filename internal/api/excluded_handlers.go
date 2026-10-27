@@ -40,6 +40,30 @@ func isValidExclusionValue(input string) bool {
 	return fqdnPattern.MatchString(host)
 }
 
+// canonicalExclusionValue mirrors IPService.AddExcluded's canonicalization so
+// an existence check matches the key the service would write.
+func canonicalExclusionValue(value string) string {
+	value = strings.TrimSpace(value)
+	if p, err := netip.ParsePrefix(value); err == nil {
+		return p.Masked().String()
+	}
+	if a, err := netip.ParseAddr(value); err == nil {
+		return a.Unmap().String()
+	}
+	return strings.ToLower(strings.TrimSuffix(value, "."))
+}
+
+// exclusionExists reports whether value is already excluded. Lookup errors
+// count as existing so create-only callers fail closed.
+func (h *APIHandler) exclusionExists(value string) bool {
+	entries, err := h.redisRepo.GetExcludedEntries()
+	if err != nil {
+		return true
+	}
+	_, ok := entries[canonicalExclusionValue(value)]
+	return ok
+}
+
 // Excluded renders the excluded-list management page.
 func (h *APIHandler) Excluded(c *gin.Context) {
 	username, _ := c.Get("username")
@@ -175,11 +199,15 @@ func (h *APIHandler) AddExcluded(c *gin.Context) {
 		return
 	}
 
-	if req.ExpiresAt != "" {
-		if _, err := time.Parse(time.RFC3339, req.ExpiresAt); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid expires_at format (expected RFC3339)"})
-			return
-		}
+	if !validateFutureExpiry(c, req.ExpiresAt) {
+		return
+	}
+
+	// exclude_ips may only create entries; replacing one would let it shorten or
+	// expire an exclusion, which is removal reserved for manage_excluded.
+	if !h.can(c, "manage_excluded") && h.exclusionExists(value) {
+		c.JSON(http.StatusConflict, gin.H{"error": "Value is already excluded; changing it requires manage_excluded"})
+		return
 	}
 
 	// Conflict detection

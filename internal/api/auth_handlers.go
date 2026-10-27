@@ -425,6 +425,23 @@ func (h *APIHandler) generateQRWithLogoFromPath(url, logoPath string) ([]byte, e
 	return buf.Bytes(), nil
 }
 
+// pendingEnrollmentTTL bounds how long a verified password may wait for the
+// TOTP setup step.
+const pendingEnrollmentTTL = 10 * time.Minute
+
+// pendingEnrollmentCurrent reports whether the session's first-factor proof
+// was issued recently and against the account's current credential version.
+// A password, TOTP or status change bumps session_version and voids it.
+func pendingEnrollmentCurrent(session sessions.Session, admin *models.AdminAccount) bool {
+	version, okVersion := session.Get("pending_auth_version").(int)
+	issued, okTime := session.Get("pending_auth_time").(int64)
+	if !okVersion || !okTime || admin == nil || version != admin.SessionVersion {
+		return false
+	}
+	age := time.Since(time.Unix(issued, 0))
+	return age >= -time.Minute && age <= pendingEnrollmentTTL
+}
+
 // dummyBcryptHash is a valid cost-14 bcrypt hash of a fixed throwaway string.
 // It is compared against during failed logins for unknown usernames so the
 // timing matches a real (wrong-password) comparison, mitigating user enumeration.
@@ -493,6 +510,10 @@ func (h *APIHandler) VerifyFirstFactor(c *gin.Context) {
 		session.Set("pending_auth_user", username)
 		session.Set("pending_auth_verified", true)
 		session.Set("pending_totp_secret", key.Secret())
+		// Bind the password proof to this credential version and a short window
+		// so a password reset (or time) revokes an unfinished enrollment.
+		session.Set("pending_auth_version", admin.SessionVersion)
+		session.Set("pending_auth_time", time.Now().Unix())
 		if err := session.Save(); err != nil {
 			zlog.Error().Err(err).Msg("Failed to save session for TOTP setup")
 		}
@@ -584,6 +605,22 @@ func (h *APIHandler) Login(c *gin.Context) {
 			return
 		}
 
+		if !pendingEnrollmentCurrent(session, admin) {
+			zlog.Warn().Str("username", username).Msg("Stale TOTP enrollment proof rejected")
+			_ = h.pgRepo.LogAction(username, "LOGIN_FAILURE", c.ClientIP(), "Stale TOTP enrollment session")
+			session.Delete("pending_auth_user")
+			session.Delete("pending_auth_verified")
+			session.Delete("pending_totp_secret")
+			session.Delete("pending_auth_version")
+			session.Delete("pending_auth_time")
+			_ = session.Save()
+			h.renderHTML(c, http.StatusOK, "login.html", gin.H{
+				"error":    "Session expired or invalid setup attempt.",
+				"username": username,
+			})
+			return
+		}
+
 		if h.validateTOTPOnce(username, totpCode, setupSecret) {
 			// Save the secret to the user
 			if err := h.pgRepo.UpdateAdminToken(username, setupSecret); err != nil {
@@ -658,6 +695,8 @@ func (h *APIHandler) Login(c *gin.Context) {
 	session.Delete("pending_auth_user")
 	session.Delete("pending_auth_verified")
 	session.Delete("pending_totp_secret")
+	session.Delete("pending_auth_version")
+	session.Delete("pending_auth_time")
 	_ = session.Save()
 
 	_ = h.pgRepo.LogAction(username, "LOGIN_FAILURE", "REDACTED", "Invalid TOTP or Credentials")
@@ -816,7 +855,21 @@ func (h *APIHandler) validatePermissionSubset(requestedPerms, userPerms string) 
 	return strings.Join(validPerms, ","), nil
 }
 
+// rejectTokenIssuedByToken stops an API token from issuing or widening tokens.
+// Otherwise a token restricted by allowed_ips could mint an unrestricted
+// sibling for the same owner and escape its network binding.
+func rejectTokenIssuedByToken(c *gin.Context) bool {
+	if !c.GetBool("token_auth") {
+		return false
+	}
+	c.String(http.StatusForbidden, "API tokens cannot create or modify API tokens; sign in to the workspace")
+	return true
+}
+
 func (h *APIHandler) CreateAPIToken(c *gin.Context) {
+	if rejectTokenIssuedByToken(c) {
+		return
+	}
 	username := c.GetString("username")
 	role := c.GetString("role")
 	userPerms := c.GetString("permissions")
@@ -900,6 +953,9 @@ func (h *APIHandler) DeleteAPIToken(c *gin.Context) {
 }
 
 func (h *APIHandler) UpdateAPITokenPermissions(c *gin.Context) {
+	if rejectTokenIssuedByToken(c) {
+		return
+	}
 	username := c.GetString("username")
 	userPerms := c.GetString("permissions")
 	id, err := strconv.Atoi(c.Param("id"))

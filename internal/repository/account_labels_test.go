@@ -93,7 +93,7 @@ func TestAccountLabels(t *testing.T) {
 	require.Equal(t, 1, total, "search finds targets by sign-in name")
 	require.Equal(t, "ASSIGN_ROLE", logs[0].Action)
 
-	require.NoError(t, migration.Steps(-1))
+	require.NoError(t, migration.Migrate(18))
 	var exists bool
 	require.NoError(t, repo.db.GetContext(ctx, &exists, "SELECT to_regclass('account_labels') IS NOT NULL"))
 	require.False(t, exists)

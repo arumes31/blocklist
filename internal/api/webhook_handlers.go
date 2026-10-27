@@ -212,6 +212,13 @@ func (h *APIHandler) handleWebhookUnban(c *gin.Context, data webhookRequest, use
 }
 
 func (h *APIHandler) handleWebhookWhitelist(c *gin.Context, data webhookRequest, username string, clientIP string, sourceGeo *models.GeoData) {
+	// whitelist_ips is create-only: never replace an existing entry (for
+	// example turning a permanent entry into a 24h self-whitelist).
+	if !h.can(c, "manage_whitelist") && h.whitelistEntryExists(data.IP) {
+		c.JSON(http.StatusOK, gin.H{"status": "IP already whitelisted", "ip": data.IP})
+		return
+	}
+
 	now := time.Now().UTC()
 	timestamp := now.Format("2006-01-02 15:04:05 UTC")
 	addedBy := fmt.Sprintf("Webhook (%s:%s)", username, clientIP)
