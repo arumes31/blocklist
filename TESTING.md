@@ -158,6 +158,14 @@ test creates a bound account whose UPN differs from its key, checks the label an
 responsive wrapping, and verifies that role changes and deletion still submit
 the original key while the confirmation displays the UPN.
 
+Outside account management, automatically provisioned `entra:<tenant>:<object>`
+keys are shown by sign-in name. Service and HTTP tests cover keys embedded in
+composite values (`key (ip)`, `Webhook (key:ip)`), audit/event logs, whitelist,
+exclusions, dashboard records, exports, IP details, token owners and the live
+block event, while stored records keep the key. The integration-tagged
+repository test covers the upgrade backfill, renamed and deleted accounts, and
+actor/search filters that accept either form.
+
 The UPN display update passed 63 targeted browser tests (the desktop-only hover
 check is skipped on mobile), all 99 JavaScript unit tests, and API/model Go tests
 with race detection. Screenshot baselines were not changed. Full golangci-lint

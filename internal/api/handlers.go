@@ -30,6 +30,7 @@ type HandlerOptions struct {
 	Hub                   *Hub
 	WebhookService        *service.WebhookService
 	ExternalSourceService *service.ExternalSourceService
+	AccountLabels         *service.AccountLabels
 	MainLimiter           gin.HandlerFunc
 	LoginLimiter          gin.HandlerFunc
 	WebhookLimiter        gin.HandlerFunc
@@ -46,6 +47,7 @@ type APIHandler struct {
 	hub                   *Hub
 	webhookService        *service.WebhookService
 	externalSourceService *service.ExternalSourceService
+	accountLabels         *service.AccountLabels
 	mainLimiter           gin.HandlerFunc
 	loginLimiter          gin.HandlerFunc
 	trustedProxies        []netip.Prefix
@@ -76,6 +78,7 @@ func NewAPIHandler(opts *HandlerOptions) *APIHandler {
 		hub:                   opts.Hub,
 		webhookService:        opts.WebhookService,
 		externalSourceService: opts.ExternalSourceService,
+		accountLabels:         opts.AccountLabels,
 		mainLimiter:           opts.MainLimiter,
 		loginLimiter:          opts.LoginLimiter,
 		webhookLimiter:        opts.WebhookLimiter,

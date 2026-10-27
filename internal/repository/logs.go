@@ -25,17 +25,25 @@ func (p *PostgresRepository) ListLogs(ctx context.Context, filter models.LogFilt
 	}
 	args = append(args, cutoff)
 	clauses = append(clauses, " AND timestamp >= $2")
-	for _, item := range []struct{ column, value string }{
-		{column: "actor", value: filter.Actor}, {column: "action", value: filter.Action},
-	} {
-		if item.value != "" {
-			args = append(args, item.value)
-			clauses = append(clauses, fmt.Sprintf(" AND %s = $%d", item.column, len(args)))
-		}
+	// Entra accounts are shown by sign-in name, so filters accept that name as
+	// well as the stored account key.
+	if filter.Actor != "" {
+		args = append(args, filter.Actor)
+		clauses = append(clauses, fmt.Sprintf(
+			" AND (actor = $%d OR actor IN (SELECT username FROM account_labels WHERE lower(label) = lower($%d)))",
+			len(args), len(args),
+		))
+	}
+	if filter.Action != "" {
+		args = append(args, filter.Action)
+		clauses = append(clauses, fmt.Sprintf(" AND action = $%d", len(args)))
 	}
 	if filter.Query != "" {
 		args = append(args, "%"+filter.Query+"%")
-		clauses = append(clauses, fmt.Sprintf(" AND (target ILIKE $%d OR reason ILIKE $%d)", len(args), len(args)))
+		clauses = append(clauses, fmt.Sprintf(
+			" AND (target ILIKE $%d OR reason ILIKE $%d OR target IN (SELECT username FROM account_labels WHERE label ILIKE $%d))",
+			len(args), len(args), len(args),
+		))
 	}
 	where = strings.Join(clauses, "")
 	var total int

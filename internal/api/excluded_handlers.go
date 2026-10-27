@@ -69,8 +69,10 @@ func (h *APIHandler) Excluded(c *gin.Context) {
 		ExpiresIn string `json:"expires_in"`
 	}
 
+	labels := h.accountLabels.Snapshot(c.Request.Context())
 	displayItems := make(map[string]displayEntry)
 	for value, entry := range items {
+		entry.AddedBy = labels.Label(entry.AddedBy)
 		d := displayEntry{ExcludedEntry: entry}
 		if entry.ExpiresAt != "" {
 			exp, perr := time.Parse(time.RFC3339, entry.ExpiresAt)
@@ -254,8 +256,10 @@ func (h *APIHandler) JSONExcluded(c *gin.Context) {
 		ExpiresIn string               `json:"expires_in"`
 	}
 
+	labels := h.accountLabels.Snapshot(c.Request.Context())
 	results := make([]item, 0, len(items))
 	for k, v := range items {
+		v.AddedBy = labels.Label(v.AddedBy)
 		expIn := "NEVER"
 		if v.ExpiresAt != "" {
 			exp, perr := time.Parse(time.RFC3339, v.ExpiresAt)

@@ -381,6 +381,7 @@ func setupRouter(cfg *config.Config, a *app.App, hub *api.Hub, authKey, blockKey
 		Hub:                   hub,
 		WebhookService:        a.WebhookService,
 		ExternalSourceService: a.ExternalSourceService,
+		AccountLabels:         a.AccountLabels,
 		MainLimiter:           mainLimiter,
 		LoginLimiter:          loginLimiter,
 		WebhookLimiter:        webhookLimiter,

@@ -4,7 +4,7 @@
 <header class="header-container header"><div class="page-heading"><h1>{{ .log_title }}</h1><p class="page-description">{{ .log_description }}</p></div></header>
 <main class="main-content audit-content" id="main-content"><div class="table-card">
 <form method="GET" action="{{ .log_path }}" class="filter-bar">
-<input type="text" aria-label="Actor" name="actor" value="{{ .filters.actor }}" placeholder="Actor (username)" class="input">
+<input type="text" aria-label="Actor" name="actor" value="{{ .filters.actor }}" placeholder="Actor (email or username)" class="input">
 <select aria-label="Action" name="action" class="input"><option value="">All actions</option>{{ range .log_actions }}<option value="{{ . }}" {{ if eq $.filters.action . }}selected{{ end }}>{{ . }}</option>{{ end }}</select>
 <input type="search" aria-label="Search target or reason" name="query" value="{{ .filters.query }}" placeholder="Search target or reason" class="input"><button type="submit" class="btn btn-primary">Filter</button><a href="{{ .log_path }}" class="btn">Reset</a>
 </form>

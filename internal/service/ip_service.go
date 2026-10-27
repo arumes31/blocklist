@@ -35,6 +35,7 @@ type IPService struct {
 	pgRepo         *repository.PostgresRepository
 	webhookService *WebhookService
 	mailService    *MailService
+	accountLabels  *AccountLabels
 	blockedRanges  []netip.Prefix
 	geoipReader    *geoip2.Reader
 	asnReader      *geoip2.Reader
@@ -143,7 +144,14 @@ func (s *IPService) SetMailService(ms *MailService) {
 	s.mailService = ms
 }
 
+// SetAccountLabels shows Entra account keys by sign-in name in returned records,
+// searches and alerts. Stored records keep the key.
+func (s *IPService) SetAccountLabels(labels *AccountLabels) {
+	s.accountLabels = labels
+}
+
 func (s *IPService) triggerExcludedAlert(ctx context.Context, ip string, reason string, addedBy string, actorIP string, entry models.ExcludedEntry) {
+	addedBy = s.accountLabels.Snapshot(ctx).Label(addedBy)
 	// 1. Webhook Alert
 	if s.webhookService != nil {
 		payload := map[string]interface{}{
@@ -821,6 +829,7 @@ func (s *IPService) listIPsHashFallback(ctx context.Context, limit int, cursor s
 	}
 	itemsOut := make([]map[string]interface{}, 0, end-offset)
 	for _, p := range list[offset:end] {
+		p.e.AddedBy = opts.labels.Label(p.e.AddedBy)
 		itemsOut = append(itemsOut, map[string]interface{}{"ip": p.ip, "data": p.e})
 	}
 	nextCursor := ""
@@ -949,6 +958,7 @@ func (s *IPService) ExportIPs(ctx context.Context, query string, country string,
 	// Simple implementation: fetch up to 10k items.
 
 	opts := s.prepareFilterOptions(query, country, addedBy, from, to)
+	opts.labels = s.accountLabels.Snapshot(ctx)
 
 	// We use ZRange to get all members if possible, or iterate in batches
 	// Fetch up to 1,000,000 entries for export
@@ -997,6 +1007,7 @@ func (s *IPService) ExportIPs(ctx context.Context, query string, country string,
 			}
 
 			// Ensure we always store a pointer to IPEntry
+			entry.AddedBy = opts.labels.Label(entry.AddedBy)
 			items = append(items, map[string]interface{}{"ip": ips[j], "data": entry})
 		}
 	}
@@ -1125,6 +1136,7 @@ type filterOptions struct {
 	addedBy      string
 	fromTime     time.Time
 	toTime       time.Time
+	labels       *AccountLabelSet
 }
 
 // prepareFilterOptions normalizes filters shared by pagination and exports.
@@ -1189,10 +1201,11 @@ func (s *IPService) matchesFilters(ip string, entry *models.IPEntry, opts *filte
 		}
 	case opts.query != "":
 		matches := false
-		// Text match on fields
+		// Text match on fields; Added By matches its stored key or shown name.
 		if strings.Contains(strings.ToLower(ip), opts.query) ||
 			strings.Contains(strings.ToLower(entry.Reason), opts.query) ||
 			strings.Contains(strings.ToLower(entry.AddedBy), opts.query) ||
+			strings.Contains(strings.ToLower(opts.labels.Label(entry.AddedBy)), opts.query) ||
 			(entry.Geolocation != nil && strings.Contains(strings.ToLower(entry.Geolocation.Country), opts.query)) {
 			matches = true
 		}
@@ -1228,7 +1241,8 @@ func (s *IPService) matchesFilters(ip string, entry *models.IPEntry, opts *filte
 
 	// 3. AddedBy filter
 	if opts.addedBy != "" {
-		if !strings.EqualFold(entry.AddedBy, opts.addedBy) {
+		if !strings.EqualFold(entry.AddedBy, opts.addedBy) &&
+			!strings.EqualFold(opts.labels.Label(entry.AddedBy), opts.addedBy) {
 			return false
 		}
 	}
@@ -1258,6 +1272,7 @@ func (s *IPService) ListIPsPaginatedAdvanced(ctx context.Context, limit int, cur
 		limit = MaxPageSize
 	}
 	opts := s.prepareFilterOptions(query, country, addedBy, from, to)
+	opts.labels = s.accountLabels.Snapshot(ctx)
 	total, err := s.redisRepo.GetZSetCount()
 	if err != nil {
 		return nil, "", 0, err
@@ -1296,6 +1311,7 @@ func (s *IPService) ListIPsPaginatedAdvanced(ctx context.Context, limit int, cur
 			if len(items) == limit {
 				return items, lastMatch, total, nil
 			}
+			entries[i].AddedBy = opts.labels.Label(entries[i].AddedBy)
 			items = append(items, map[string]interface{}{"ip": ips[i], "data": entries[i]})
 			lastMatch = fmt.Sprintf("%v:%s", z.Score, ips[i])
 		}
@@ -1324,6 +1340,7 @@ func (s *IPService) exportFallback(ctx context.Context, opts *filterOptions) ([]
 			continue
 		}
 
+		entry.AddedBy = opts.labels.Label(entry.AddedBy)
 		items = append(items, map[string]interface{}{"ip": ip, "data": &entry})
 	}
 	// Sort by timestamp descending
@@ -1519,6 +1536,13 @@ func (s *IPService) GetIPDetails(ctx context.Context, ip string) (map[string]int
 	}
 	if history == nil {
 		history = []models.AuditLog{}
+	}
+	labels := s.accountLabels.Snapshot(ctx)
+	for i := range history {
+		history[i].Actor = labels.Label(history[i].Actor)
+	}
+	if entry != nil {
+		entry.AddedBy = labels.Label(entry.AddedBy)
 	}
 
 	res := map[string]interface{}{

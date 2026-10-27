@@ -321,6 +321,8 @@ With `ENTRA_AUTO_PROVISION=false`, create an Entra account in **Accounts** using
 the exact UPN and a role first. You do not enter tenant/object IDs per user:
 first sign-in binds the account to the verified, stable tenant/object identity.
 UPNs are display labels and can change; they do not replace internal account keys.
+Automatically provisioned keys (`entra:<tenant>:<object>`) appear only under
+Accounts → Identity binding; logs, records, exports and alerts show the sign-in name.
 Entra's role is reapplied at sign-in unless **Keep local role override** is checked.
 
 **Verification failures:** the Microsoft verification flow must return the same

@@ -308,6 +308,9 @@ func (p *PostgresRepository) SignInEntra(ctx context.Context, identity models.En
 	if err != nil || count != 1 {
 		return nil, ErrIdentityDenied
 	}
+	if err := saveAccountLabel(ctx, tx, admin.Username, identity.UPN); err != nil {
+		return nil, fmt.Errorf("recording entra sign-in name: %w", err)
+	}
 	if err := auditIdentity(ctx, tx, admin.Username, "ENTRA_LOGIN_SUCCESS", "REDACTED", "App role: "+identity.RoleID); err != nil {
 		return nil, fmt.Errorf("recording entra sign-in: %w", err)
 	}

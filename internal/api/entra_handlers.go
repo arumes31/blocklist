@@ -95,6 +95,8 @@ func (h *APIHandler) EntraCallback(c *gin.Context) {
 		h.entraFailure(c)
 		return
 	}
+	// Show a first or renamed sign-in by name without waiting for the label TTL.
+	h.accountLabels.Invalidate()
 	session := sessions.Default(c)
 	if err := rotateSession(session); err != nil {
 		h.entraFailure(c)
