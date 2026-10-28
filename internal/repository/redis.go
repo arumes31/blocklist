@@ -284,6 +284,16 @@ func (r *RedisRepository) WhitelistIP(ip string, entry models.WhitelistEntry) er
 	return r.client.HSet(r.ctx, "ips_webhook2_whitelist", ip, data).Err()
 }
 
+// WhitelistIPIfAbsent writes entry only when ip has no whitelist entry yet
+// (atomic HSETNX) and reports whether it was created.
+func (r *RedisRepository) WhitelistIPIfAbsent(ip string, entry models.WhitelistEntry) (bool, error) {
+	data, err := sonic.Marshal(entry)
+	if err != nil {
+		return false, err
+	}
+	return r.client.HSetNX(r.ctx, "ips_webhook2_whitelist", ip, data).Result()
+}
+
 func (r *RedisRepository) RemoveFromWhitelist(ip string) error {
 	return r.client.HDel(r.ctx, "ips_webhook2_whitelist", ip).Err()
 }
@@ -310,6 +320,16 @@ func (r *RedisRepository) AddExcluded(value string, entry models.ExcludedEntry) 
 		return err
 	}
 	return r.client.HSet(r.ctx, "ips_webhook2_excluded", value, data).Err()
+}
+
+// AddExcludedIfAbsent writes entry only when value has no exclusion yet
+// (atomic HSETNX) and reports whether it was created.
+func (r *RedisRepository) AddExcludedIfAbsent(value string, entry models.ExcludedEntry) (bool, error) {
+	data, err := sonic.Marshal(entry)
+	if err != nil {
+		return false, err
+	}
+	return r.client.HSetNX(r.ctx, "ips_webhook2_excluded", value, data).Result()
 }
 
 func (r *RedisRepository) RemoveExcluded(value string) error {

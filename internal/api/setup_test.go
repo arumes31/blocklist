@@ -56,6 +56,16 @@ func (m *MockIPService) WhitelistIP(ctx context.Context, ip string, reason strin
 	return args.Error(0)
 }
 
+func (m *MockIPService) WhitelistIPIfAbsent(ctx context.Context, ip string, reason string, username string, expiresAt string) (bool, error) {
+	args := m.Called(ctx, ip, reason, username, expiresAt)
+	return args.Bool(0), args.Error(1)
+}
+
+func (m *MockIPService) AddExcludedIfAbsent(ctx context.Context, value string, reason string, username string, expiresAt string, alertEnabled bool) (bool, error) {
+	args := m.Called(ctx, value, reason, username, expiresAt, alertEnabled)
+	return args.Bool(0), args.Error(1)
+}
+
 func (m *MockIPService) RemoveWhitelist(ctx context.Context, ip string, username string) error {
 	args := m.Called(ctx, ip, username)
 	return args.Error(0)
@@ -201,6 +211,11 @@ func (m *MockRedisRepo) WhitelistIP(ip string, entry models.WhitelistEntry) erro
 	return args.Error(0)
 }
 
+func (m *MockRedisRepo) WhitelistIPIfAbsent(ip string, entry models.WhitelistEntry) (bool, error) {
+	args := m.Called(ip, entry)
+	return args.Bool(0), args.Error(1)
+}
+
 func (m *MockRedisRepo) RemoveFromWhitelist(ip string) error {
 	args := m.Called(ip)
 	return args.Error(0)
@@ -312,6 +327,11 @@ func (m *MockPostgresRepo) UpdateAdminPassword(username, hash string) error {
 
 func (m *MockPostgresRepo) UpdateAdminToken(username, token string) error {
 	args := m.Called(username, token)
+	return args.Error(0)
+}
+
+func (m *MockPostgresRepo) EnrollAdminToken(username, token string, expectedVersion int) error {
+	args := m.Called(username, token, expectedVersion)
 	return args.Error(0)
 }
 

@@ -164,5 +164,5 @@ func TestEntraAccountRejectsPendingLocalEnrollment(t *testing.T) {
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	r.ServeHTTP(w, req)
 	require.Equal(t, http.StatusUnauthorized, w.Code)
-	pg.AssertNotCalled(t, "UpdateAdminToken", mock.Anything, mock.Anything)
+	pg.AssertNotCalled(t, "EnrollAdminToken", mock.Anything, mock.Anything, mock.Anything)
 }

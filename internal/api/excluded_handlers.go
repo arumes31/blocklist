@@ -175,11 +175,8 @@ func (h *APIHandler) AddExcluded(c *gin.Context) {
 		return
 	}
 
-	if req.ExpiresAt != "" {
-		if _, err := time.Parse(time.RFC3339, req.ExpiresAt); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid expires_at format (expected RFC3339)"})
-			return
-		}
+	if !validateFutureExpiry(c, req.ExpiresAt) {
+		return
 	}
 
 	// Conflict detection
@@ -194,9 +191,24 @@ func (h *APIHandler) AddExcluded(c *gin.Context) {
 		}
 	}
 
-	if err := h.ipService.AddExcluded(c.Request.Context(), value, reason, username, req.ExpiresAt, req.AlertEnabled); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to add to excluded list"})
-		return
+	// exclude_ips may only create entries; replacing one would let it shorten or
+	// expire an exclusion, which is removal reserved for manage_excluded. The
+	// create-only write is atomic so concurrent requests cannot race past it.
+	if h.can(c, "manage_excluded") {
+		if err := h.ipService.AddExcluded(c.Request.Context(), value, reason, username, req.ExpiresAt, req.AlertEnabled); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to add to excluded list"})
+			return
+		}
+	} else {
+		created, err := h.ipService.AddExcludedIfAbsent(c.Request.Context(), value, reason, username, req.ExpiresAt, req.AlertEnabled)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to add to excluded list"})
+			return
+		}
+		if !created {
+			c.JSON(http.StatusConflict, gin.H{"error": "Value is already excluded; changing it requires manage_excluded"})
+			return
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{"status": "success"})

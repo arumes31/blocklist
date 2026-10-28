@@ -251,7 +251,10 @@ func (p *PostgresRepository) SignInEntra(ctx context.Context, identity models.En
 	var admin models.AdminAccount
 	err = tx.GetContext(ctx, &admin, adminSelect+` WHERE a.auth_source = 'entra'
 		AND a.entra_tenant_id = $1 AND a.entra_object_id = $2 FOR UPDATE OF a`, identity.TenantID, identity.ObjectID)
-	if errors.Is(err, sql.ErrNoRows) && upnErr == nil {
+	// preferred_username is mutable and, for guests, set by another tenant, so
+	// external identities never claim UPN-only invitations. Pre-bound
+	// invitations (tenant + object ID) are the strong option for any user.
+	if errors.Is(err, sql.ErrNoRows) && upnErr == nil && !identity.External {
 		candidates := []models.AdminAccount{}
 		err = tx.SelectContext(
 			ctx,

@@ -164,6 +164,34 @@ func (p *PostgresRepository) UpdateAdminPassword(username, hash string) error {
 	return err
 }
 
+// ErrEnrollmentStale reports that first-login TOTP enrollment lost a race with
+// a credential change, an existing enrollment, or the account being disabled.
+var ErrEnrollmentStale = errors.New("enrollment no longer matches the account")
+
+// EnrollAdminToken stores a first-login TOTP secret only while the account is
+// enabled, still unenrolled and at the session_version the password proof was
+// issued for, so a concurrent reset or enrollment cannot be overwritten.
+func (p *PostgresRepository) EnrollAdminToken(username, token string, expectedVersion int) error {
+	result, err := p.db.Exec(
+		`UPDATE admins SET token = $1, session_version = session_version + 1
+		WHERE username = $2 AND token = '' AND session_version = $3 AND NOT disabled`,
+		token,
+		username,
+		expectedVersion,
+	)
+	if err != nil {
+		return err
+	}
+	count, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if count != 1 {
+		return ErrEnrollmentStale
+	}
+	return nil
+}
+
 func (p *PostgresRepository) UpdateAdminToken(username, token string) error {
 	// Administrators may clear enrollment on a disabled account, but an in-flight
 	// enrollment must not write a new secret after that account was disabled.

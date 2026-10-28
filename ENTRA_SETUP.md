@@ -14,7 +14,9 @@ Under **Authentication → Add a platform → Web**, register `https://blocklist
 
 Under **Certificates & secrets**, create a client secret. Store its **Value**, not its Secret ID, in a protected file outside Git. Mount it read-only at `/run/secrets/entra_client_secret`; the container's non-root user must be able to read it. Record its expiry and rotate it before expiry. This implementation supports a secret file, not certificate/federated credentials; Microsoft recommends those alternatives for production, which would require additional implementation here.
 
-Under **Token configuration → Add optional claim → ID**, add **`auth_time`**.
+Under **Token configuration → Add optional claim → ID**, add **`auth_time`** and **`acct`**.
+`acct` tells Blocklist whether the user is a tenant member (`0`) or a guest; a
+UPN-only invitation can only be claimed by a token that carries `acct=0`.
 This signed authentication timestamp is needed for identity verification before
 sensitive changes, such as assigning a role. Configure it on the **Blocklist app
 registration**, not on Microsoft Graph or an access token. No additional Graph
@@ -91,6 +93,8 @@ If login fails, check the exact redirect URI, secret value/file permissions/expi
 Add the variables to your container configuration and a read-only bind mount such as `./secrets/entra-client-secret:/run/secrets/entra_client_secret:ro`. Recreate the app container to load environment changes. Do not recreate or remove the database/Redis volumes. Settings shows whether the integration is configured; registration correctness can only be confirmed with a real Microsoft sign-in.
 
 With automatic provisioning disabled, use **Accounts → Create account → Microsoft Entra**, enter the exact **UPN** (Microsoft sign-in name), and select a role. There is no per-user tenant or object ID to enter. The account shows **Pending first sign-in** until a verified Microsoft login from the configured tenant, with a recognized app role, claims the matching unbound Entra account. Matching ignores UPN case and surrounding whitespace. The tenant/object pair is captured atomically and identifies the account for all later sign-ins, including UPN changes. Existing bound accounts never rebind by UPN, and local accounts are never linked by matching email. Duplicate invitations are rejected; review or remove stale invitations if a UPN changes or is reassigned before its first sign-in.
+
+A UPN-only invitation trusts Microsoft's `preferred_username` claim, which Microsoft documents as mutable. It is therefore claimed only by a token with the `acct` optional claim set to `0` (a tenant member) and no `idp` claim naming another tenant. Guests, external users, and tokens without `acct` never claim a UPN-only invitation; they sign in only through a pre-bound account or automatic provisioning. If invited users are denied at first sign-in, check that the `acct` ID-token optional claim is configured. Keep invitations short-lived, and do not reassign a UPN to another person while its invitation is pending. Where the strongest binding matters, pre-provision the account through the API with both tenant and object IDs.
 
 The selected workspace role follows the existing synchronization rules below: Microsoft's app role applies at sign-in unless **Keep local role override** is explicitly enabled. Accounts can be prepared before configuring Entra, but cannot sign in until the integration is configured. Existing explicitly bound accounts and API pre-provisioning with both tenant/object IDs remain supported. With automatic provisioning enabled, a matching pending invitation is used first; otherwise new account names use `entra:<tenant-id>:<object-id>`.
 

@@ -206,7 +206,7 @@ func TestAPIHandler_Login_RejectsCrossAccountTOTPEnrollment(t *testing.T) {
 	pg.On("GetAdmin", "victim").Return(&models.AdminAccount{
 		Username: "victim",
 	}, nil).Maybe()
-	pg.On("UpdateAdminToken", "victim", key.Secret()).Return(nil).Maybe()
+	pg.On("EnrollAdminToken", "victim", key.Secret(), mock.Anything).Return(nil).Maybe()
 	pg.On("LogAction", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 
 	w := httptest.NewRecorder()
@@ -232,7 +232,7 @@ func TestAPIHandler_Login_RejectsCrossAccountTOTPEnrollment(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Contains(t, w.Body.String(), "Session expired or invalid setup attempt")
-	pg.AssertNotCalled(t, "UpdateAdminToken", "victim", key.Secret())
+	pg.AssertNotCalled(t, "EnrollAdminToken", "victim", key.Secret(), mock.Anything)
 }
 
 // TestAPIHandler_VerifySudo_RejectsEmptyTOTPSecret is a regression test for the

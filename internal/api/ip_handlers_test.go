@@ -205,7 +205,8 @@ func TestAPIHandler_RawIPs(t *testing.T) {
 	// Verify it contains a newline if there are multiple IPs
 	assert.Contains(t, body, "\n")
 
-	// 2. Error case
+	// 2. Error case (expire the cached snapshot so the repository is queried)
+	h.rawFeedAt = time.Time{}
 	rRepo.On("GetBlockedIPKeys").Return([]string(nil), errors.New("redis error")).Once()
 
 	w2 := httptest.NewRecorder()

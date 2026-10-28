@@ -275,7 +275,8 @@ for the detailed setup and tenant-specific verification checklist.
    `https://blocklist.example.com/auth/entra/callback` exactly. Create a client
    secret and mount its **value** in a protected, read-only file readable by the
    container's non-root user; do not commit it.
-2. Under **Token configuration → Add optional claim → ID**, add **`auth_time`**.
+2. Under **Token configuration → Add optional claim → ID**, add **`auth_time`**
+   and **`acct`** (required for UPN-only invitations to be claimed).
    Blocklist requires this proof for sensitive-operation verification, including
    when Microsoft authentication uses a passkey. A successful ordinary sign-in
    does not prove that fresh verification is configured.
