@@ -1438,20 +1438,48 @@ func (s *IPService) UnblockIP(ctx context.Context, ip string, username string) e
 	return nil
 }
 
-// WhitelistIP adds an IP to the whitelist.
-func (s *IPService) WhitelistIP(ctx context.Context, ip string, reason string, username string, expiresAt string) error {
-	geo := s.GetGeoIP(ip)
-	entry := models.WhitelistEntry{
+// CanonicalWhitelistKey normalizes an IP or CIDR so equivalent spellings (for
+// example IPv6 zero compression or unmasked prefixes) share one whitelist key.
+func CanonicalWhitelistKey(ip string) string {
+	ip = strings.TrimSpace(ip)
+	if p, err := netip.ParsePrefix(ip); err == nil {
+		return p.Masked().String()
+	}
+	if a, err := netip.ParseAddr(ip); err == nil {
+		return a.Unmap().String()
+	}
+	return ip
+}
+
+func (s *IPService) whitelistEntry(ip, reason, username, expiresAt string) models.WhitelistEntry {
+	return models.WhitelistEntry{
 		Timestamp:   time.Now().UTC().Format("2006-01-02 15:04:05 UTC"),
-		Geolocation: geo,
+		Geolocation: s.GetGeoIP(ip),
 		AddedBy:     username,
 		Reason:      reason,
 		ExpiresAt:   expiresAt,
 	}
+}
+
+// WhitelistIP adds or replaces a whitelist entry.
+func (s *IPService) WhitelistIP(ctx context.Context, ip string, reason string, username string, expiresAt string) error {
+	ip = CanonicalWhitelistKey(ip)
+	entry := s.whitelistEntry(ip, reason, username, expiresAt)
 	if s.pgRepo != nil {
 		_ = s.pgRepo.LogAction(username, "WHITELIST", ip, reason)
 	}
 	return s.redisRepo.WhitelistIP(ip, entry)
+}
+
+// WhitelistIPIfAbsent is WhitelistIP for create-only callers: it atomically
+// refuses to replace an existing entry and reports whether one was created.
+func (s *IPService) WhitelistIPIfAbsent(ctx context.Context, ip string, reason string, username string, expiresAt string) (bool, error) {
+	ip = CanonicalWhitelistKey(ip)
+	created, err := s.redisRepo.WhitelistIPIfAbsent(ip, s.whitelistEntry(ip, reason, username, expiresAt))
+	if err == nil && created && s.pgRepo != nil {
+		_ = s.pgRepo.LogAction(username, "WHITELIST", ip, reason)
+	}
+	return created, err
 }
 
 // RemoveWhitelist removes an IP from the whitelist.
@@ -1466,16 +1494,35 @@ func (s *IPService) RemoveWhitelist(ctx context.Context, ip string, username str
 // auto-detected and the value canonicalized. expiresAt is optional (RFC3339);
 // an empty string means the exclusion never expires.
 func (s *IPService) AddExcluded(ctx context.Context, value string, reason string, username string, expiresAt string, alertEnabled bool) error {
-	if s.redisRepo == nil {
-		return fmt.Errorf("storage unavailable")
+	entry, err := s.prepareExcluded(value, reason, username, expiresAt, alertEnabled)
+	if err != nil {
+		return err
 	}
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return fmt.Errorf("value required")
+	if s.pgRepo != nil && username != "system" {
+		_ = s.pgRepo.LogAction(username, "EXCLUDE", entry.Value, reason)
 	}
+	return s.redisRepo.AddExcluded(entry.Value, entry)
+}
 
+// AddExcludedIfAbsent is AddExcluded for create-only callers: it atomically
+// refuses to replace an existing exclusion and reports whether one was created.
+func (s *IPService) AddExcludedIfAbsent(ctx context.Context, value string, reason string, username string, expiresAt string, alertEnabled bool) (bool, error) {
+	entry, err := s.prepareExcluded(value, reason, username, expiresAt, alertEnabled)
+	if err != nil {
+		return false, err
+	}
+	created, err := s.redisRepo.AddExcludedIfAbsent(entry.Value, entry)
+	if err == nil && created && s.pgRepo != nil && username != "system" {
+		_ = s.pgRepo.LogAction(username, "EXCLUDE", entry.Value, reason)
+	}
+	return created, err
+}
+
+// CanonicalExclusion returns the canonical stored form of an exclusion value
+// and its type, so lookups match regardless of input formatting.
+func CanonicalExclusion(value string) (string, string) {
+	value = strings.TrimSpace(value)
 	typ := classifyExclusionType(value)
-	// Canonicalize so lookups match regardless of input formatting.
 	switch typ {
 	case "cidr":
 		if p, err := netip.ParsePrefix(value); err == nil {
@@ -1490,17 +1537,17 @@ func (s *IPService) AddExcluded(ctx context.Context, value string, reason string
 	case "wildcard":
 		value = "*." + strings.ToLower(strings.TrimSuffix(strings.TrimPrefix(value, "*."), "."))
 	}
+	return value, typ
+}
 
-	entry := models.ExcludedEntry{
-		Timestamp:    time.Now().UTC().Format("2006-01-02 15:04:05 UTC"),
-		Value:        value,
-		Type:         typ,
-		AddedBy:      username,
-		Reason:       reason,
-		ExpiresAt:    expiresAt,
-		AlertEnabled: alertEnabled,
+func (s *IPService) prepareExcluded(value, reason, username, expiresAt string, alertEnabled bool) (models.ExcludedEntry, error) {
+	if s.redisRepo == nil {
+		return models.ExcludedEntry{}, fmt.Errorf("storage unavailable")
 	}
-
+	if strings.TrimSpace(value) == "" {
+		return models.ExcludedEntry{}, fmt.Errorf("value required")
+	}
+	value, typ := CanonicalExclusion(value)
 	if typ == "fqdn" {
 		// Drop any stale cached resolution so the new entry is honored promptly.
 		s.fqdnCacheMu.Lock()
@@ -1508,11 +1555,15 @@ func (s *IPService) AddExcluded(ctx context.Context, value string, reason string
 		s.fqdnCacheMu.Unlock()
 		s.fqdnLookups.Forget(value)
 	}
-
-	if s.pgRepo != nil && username != "system" {
-		_ = s.pgRepo.LogAction(username, "EXCLUDE", value, reason)
-	}
-	return s.redisRepo.AddExcluded(value, entry)
+	return models.ExcludedEntry{
+		Timestamp:    time.Now().UTC().Format("2006-01-02 15:04:05 UTC"),
+		Value:        value,
+		Type:         typ,
+		AddedBy:      username,
+		Reason:       reason,
+		ExpiresAt:    expiresAt,
+		AlertEnabled: alertEnabled,
+	}, nil
 }
 
 // RemoveExcluded removes a value from the excluded list.

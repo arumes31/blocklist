@@ -622,8 +622,9 @@ func (h *APIHandler) Login(c *gin.Context) {
 		}
 
 		if h.validateTOTPOnce(username, totpCode, setupSecret) {
-			// Save the secret to the user
-			if err := h.pgRepo.UpdateAdminToken(username, setupSecret); err != nil {
+			// Save the secret only if the account is still at the credential
+			// version the password proof was issued for (checked atomically).
+			if err := h.pgRepo.EnrollAdminToken(username, setupSecret, admin.SessionVersion); err != nil {
 				zlog.Error().Err(err).Msg("Failed to complete authenticator enrollment")
 				h.renderHTML(c, http.StatusUnauthorized, "login.html", gin.H{"error": "Sign-in could not be completed. Please restart sign-in."})
 				return

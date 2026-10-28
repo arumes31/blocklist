@@ -15,9 +15,11 @@ type IPServiceProvider interface {
 	BulkBlock(ctx context.Context, ips []string, reason string, addedBy string, actorIP string, persist bool, ttl int) error
 	BulkUnblock(ctx context.Context, ips []string, actor string) error
 	WhitelistIP(ctx context.Context, ip string, reason string, username string, expiresAt string) error
+	WhitelistIPIfAbsent(ctx context.Context, ip string, reason string, username string, expiresAt string) (bool, error)
 	RemoveWhitelist(ctx context.Context, ip string, username string) error
 	IsExcluded(ipStr string) bool
 	AddExcluded(ctx context.Context, value string, reason string, username string, expiresAt string, alertEnabled bool) error
+	AddExcludedIfAbsent(ctx context.Context, value string, reason string, username string, expiresAt string, alertEnabled bool) (bool, error)
 	RemoveExcluded(ctx context.Context, value string, username string) error
 	GetIPDetails(ctx context.Context, ip string) (map[string]interface{}, error)
 	ListIPsPaginatedAdvanced(ctx context.Context, limit int, cursor string, query string, country string, addedBy string, from string, to string) ([]map[string]interface{}, string, int, error)
@@ -59,6 +61,7 @@ type RedisRepositoryProvider interface {
 	ExecBlockAtomic(ip string, entry models.IPEntry, ts time.Time) error
 	ExecUnblockAtomic(ip string) error
 	WhitelistIP(ip string, entry models.WhitelistEntry) error
+	WhitelistIPIfAbsent(ip string, entry models.WhitelistEntry) (bool, error)
 	RemoveFromWhitelist(ip string) error
 	GetExcludedEntries() (map[string]models.ExcludedEntry, error)
 	AddExcluded(value string, entry models.ExcludedEntry) error
@@ -81,6 +84,7 @@ type PostgresRepositoryProvider interface {
 	LogAction(username, action, target, details string) error
 	UpdateAdminPassword(username, hash string) error
 	UpdateAdminToken(username, token string) error
+	EnrollAdminToken(username, token string, expectedVersion int) error
 	CreateOutboundWebhook(wh models.OutboundWebhook) error
 	DeleteOutboundWebhook(id int) error
 	GetActiveWebhooks() ([]models.OutboundWebhook, error)

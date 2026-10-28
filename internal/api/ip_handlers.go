@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"net/netip"
 	"strconv"
 	"strings"
 	"time"
@@ -34,28 +33,6 @@ func validateFutureExpiry(c *gin.Context, expiresAt string) bool {
 		return false
 	}
 	return true
-}
-
-// whitelistEntryExists reports whether ip (as given or in canonical form) is
-// already whitelisted. Lookup errors count as existing so create-only callers
-// fail closed.
-func (h *APIHandler) whitelistEntryExists(ip string) bool {
-	entries, err := h.redisRepo.GetWhitelistedIPs()
-	if err != nil {
-		return true
-	}
-	if _, ok := entries[ip]; ok {
-		return true
-	}
-	if p, err := netip.ParsePrefix(ip); err == nil {
-		_, ok := entries[p.Masked().String()]
-		return ok
-	}
-	if a, err := netip.ParseAddr(ip); err == nil {
-		_, ok := entries[a.Unmap().String()]
-		return ok
-	}
-	return false
 }
 
 func (h *APIHandler) isIPInCIDRs(ipStr string, cidrs string) bool {
@@ -375,15 +352,23 @@ func (h *APIHandler) AddWhitelist(c *gin.Context) {
 	}
 
 	// whitelist_ips may only create entries; replacing one would let it shorten
-	// or expire an entry, which is removal reserved for manage_whitelist.
-	if !h.can(c, "manage_whitelist") && h.whitelistEntryExists(req.IP) {
-		c.JSON(http.StatusConflict, gin.H{"error": "IP is already whitelisted; changing it requires manage_whitelist"})
-		return
-	}
-
-	if err := h.ipService.WhitelistIP(c.Request.Context(), req.IP, note, username.(string), req.ExpiresAt); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to whitelist IP"})
-		return
+	// or expire an entry, which is removal reserved for manage_whitelist. The
+	// create-only write is atomic so concurrent requests cannot race past it.
+	if h.can(c, "manage_whitelist") {
+		if err := h.ipService.WhitelistIP(c.Request.Context(), req.IP, note, username.(string), req.ExpiresAt); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to whitelist IP"})
+			return
+		}
+	} else {
+		created, err := h.ipService.WhitelistIPIfAbsent(c.Request.Context(), req.IP, note, username.(string), req.ExpiresAt)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to whitelist IP"})
+			return
+		}
+		if !created {
+			c.JSON(http.StatusConflict, gin.H{"error": "IP is already whitelisted; changing it requires manage_whitelist"})
+			return
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{"status": "success"})

@@ -11,6 +11,7 @@ import (
 	"blocklist/internal/metrics"
 	"blocklist/internal/models"
 	"blocklist/internal/security"
+	"blocklist/internal/service"
 
 	"github.com/gin-gonic/gin"
 	zlog "github.com/rs/zerolog/log"
@@ -212,13 +213,7 @@ func (h *APIHandler) handleWebhookUnban(c *gin.Context, data webhookRequest, use
 }
 
 func (h *APIHandler) handleWebhookWhitelist(c *gin.Context, data webhookRequest, username string, clientIP string, sourceGeo *models.GeoData) {
-	// whitelist_ips is create-only: never replace an existing entry (for
-	// example turning a permanent entry into a 24h self-whitelist).
-	if !h.can(c, "manage_whitelist") && h.whitelistEntryExists(data.IP) {
-		c.JSON(http.StatusOK, gin.H{"status": "IP already whitelisted", "ip": data.IP})
-		return
-	}
-
+	data.IP = service.CanonicalWhitelistKey(data.IP)
 	now := time.Now().UTC()
 	timestamp := now.Format("2006-01-02 15:04:05 UTC")
 	addedBy := fmt.Sprintf("Webhook (%s:%s)", username, clientIP)
@@ -238,9 +233,23 @@ func (h *APIHandler) handleWebhookWhitelist(c *gin.Context, data webhookRequest,
 		entry.ExpiresAt = now.Add(24 * time.Hour).Format(time.RFC3339)
 	}
 
-	if err := h.redisRepo.WhitelistIP(data.IP, entry); err != nil {
+	// whitelist_ips is create-only: never replace an existing entry (for
+	// example turning a permanent entry into a 24h self-whitelist). HSETNX
+	// makes the check and write one atomic step.
+	var err error
+	created := true
+	if h.can(c, "manage_whitelist") {
+		err = h.redisRepo.WhitelistIP(data.IP, entry)
+	} else {
+		created, err = h.redisRepo.WhitelistIPIfAbsent(data.IP, entry)
+	}
+	if err != nil {
 		zlog.Error().Err(err).Str("ip", data.IP).Str("by", addedBy).Msg("Webhook whitelist failed")
 		c.JSON(http.StatusInternalServerError, gin.H{"status": fmt.Sprintf("Whitelist failed: %v", err)})
+		return
+	}
+	if !created {
+		c.JSON(http.StatusOK, gin.H{"status": "IP already whitelisted", "ip": data.IP})
 		return
 	}
 

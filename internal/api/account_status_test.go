@@ -139,7 +139,7 @@ func TestDisabledAccountRejectsEveryAuthenticationPath(t *testing.T) {
 			}
 			r.ServeHTTP(w, req)
 			require.Equal(t, status, w.Code, w.Body.String())
-			pg.AssertNotCalled(t, "UpdateAdminToken", mock.Anything, mock.Anything)
+			pg.AssertNotCalled(t, "EnrollAdminToken", mock.Anything, mock.Anything, mock.Anything)
 			pg.AssertNotCalled(t, "UpdateTokenLastUsed", mock.Anything, mock.Anything)
 		})
 	}

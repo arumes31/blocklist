@@ -65,6 +65,27 @@ func TestRecreatedAccountStartsAboveDeletedSessionVersion(t *testing.T) {
 	require.Greater(t, legacy.SessionVersion, recreated.SessionVersion, "every creation path honours the floor")
 }
 
+// First-login enrollment must not overwrite a factor or survive a credential
+// change that happened after the password proof was issued.
+func TestEnrollAdminTokenIsConditional(t *testing.T) {
+	repo := auditFindingsRepository(t)
+	ctx := context.Background()
+	require.NoError(t, repo.CreateManagedAdmin(ctx, models.AdminAccount{Username: "carol", AuthSource: "local", Role: "viewer", PasswordHash: "synthetic-hash"}, "test"))
+	account, err := repo.GetAdmin("carol")
+	require.NoError(t, err)
+
+	require.NoError(t, repo.UpdateAdminPassword("carol", "rotated-hash"))
+	require.ErrorIs(t, repo.EnrollAdminToken("carol", "STALESECRET", account.SessionVersion), ErrEnrollmentStale)
+
+	current, err := repo.GetAdmin("carol")
+	require.NoError(t, err)
+	require.NoError(t, repo.EnrollAdminToken("carol", "FRESHSECRET", current.SessionVersion))
+	require.ErrorIs(t, repo.EnrollAdminToken("carol", "OTHERSECRET", current.SessionVersion+1), ErrEnrollmentStale, "an enrolled factor is never replaced")
+	enrolled, err := repo.GetAdmin("carol")
+	require.NoError(t, err)
+	require.Equal(t, "FRESHSECRET", enrolled.Token)
+}
+
 // Guest/external identities carry a preferred_username this tenant does not
 // control, so they must never claim a UPN-only invitation.
 func TestExternalIdentityCannotClaimUPNInvitation(t *testing.T) {

@@ -100,8 +100,18 @@ func TestEntraVerifiedFlow(t *testing.T) {
 		denied  bool
 		fresh   bool
 		wantErr error
+		member  bool
 	}{
 		{name: "verified SSO has no sudo"},
+		{name: "acct member claim marks a tenant member", mutate: func(c map[string]any) { c["acct"] = 0 }, member: true},
+		{name: "acct guest claim marks an external user", mutate: func(c map[string]any) { c["acct"] = 1 }},
+		{
+			name: "foreign idp marks an external user even with acct member",
+			mutate: func(c map[string]any) {
+				c["acct"] = 0
+				c["idp"] = "https://sts.windows.net/99999999-9999-9999-9999-999999999999/"
+			},
+		},
 		{name: "fresh authentication", mutate: func(c map[string]any) { c["auth_time"] = time.Now().Unix() }, fresh: true},
 		{name: "wrong audience", mutate: func(c map[string]any) { c["aud"] = "other" }, denied: true},
 		{name: "wrong issuer", mutate: func(c map[string]any) { c["iss"] = "https://invalid.example" }, denied: true},
@@ -183,6 +193,7 @@ func TestEntraVerifiedFlow(t *testing.T) {
 				require.Equal(t, "viewer", result.Identity.RoleID)
 				require.Equal(t, tc.fresh, result.HasFreshAuth)
 				require.Equal(t, "/roles", result.Next)
+				require.Equal(t, !tc.member, result.Identity.External, "only an explicit acct=0 counts as a member")
 			}
 			_, err = service.Finish(ctx, state, state, "code")
 			require.ErrorIs(t, err, ErrEntraSignIn)

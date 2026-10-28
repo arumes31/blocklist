@@ -40,30 +40,6 @@ func isValidExclusionValue(input string) bool {
 	return fqdnPattern.MatchString(host)
 }
 
-// canonicalExclusionValue mirrors IPService.AddExcluded's canonicalization so
-// an existence check matches the key the service would write.
-func canonicalExclusionValue(value string) string {
-	value = strings.TrimSpace(value)
-	if p, err := netip.ParsePrefix(value); err == nil {
-		return p.Masked().String()
-	}
-	if a, err := netip.ParseAddr(value); err == nil {
-		return a.Unmap().String()
-	}
-	return strings.ToLower(strings.TrimSuffix(value, "."))
-}
-
-// exclusionExists reports whether value is already excluded. Lookup errors
-// count as existing so create-only callers fail closed.
-func (h *APIHandler) exclusionExists(value string) bool {
-	entries, err := h.redisRepo.GetExcludedEntries()
-	if err != nil {
-		return true
-	}
-	_, ok := entries[canonicalExclusionValue(value)]
-	return ok
-}
-
 // Excluded renders the excluded-list management page.
 func (h *APIHandler) Excluded(c *gin.Context) {
 	username, _ := c.Get("username")
@@ -203,13 +179,6 @@ func (h *APIHandler) AddExcluded(c *gin.Context) {
 		return
 	}
 
-	// exclude_ips may only create entries; replacing one would let it shorten or
-	// expire an exclusion, which is removal reserved for manage_excluded.
-	if !h.can(c, "manage_excluded") && h.exclusionExists(value) {
-		c.JSON(http.StatusConflict, gin.H{"error": "Value is already excluded; changing it requires manage_excluded"})
-		return
-	}
-
 	// Conflict detection
 	if !req.Confirm {
 		warns := h.ipService.ExclusionConflicts(c.Request.Context(), value)
@@ -222,9 +191,24 @@ func (h *APIHandler) AddExcluded(c *gin.Context) {
 		}
 	}
 
-	if err := h.ipService.AddExcluded(c.Request.Context(), value, reason, username, req.ExpiresAt, req.AlertEnabled); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to add to excluded list"})
-		return
+	// exclude_ips may only create entries; replacing one would let it shorten or
+	// expire an exclusion, which is removal reserved for manage_excluded. The
+	// create-only write is atomic so concurrent requests cannot race past it.
+	if h.can(c, "manage_excluded") {
+		if err := h.ipService.AddExcluded(c.Request.Context(), value, reason, username, req.ExpiresAt, req.AlertEnabled); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to add to excluded list"})
+			return
+		}
+	} else {
+		created, err := h.ipService.AddExcludedIfAbsent(c.Request.Context(), value, reason, username, req.ExpiresAt, req.AlertEnabled)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to add to excluded list"})
+			return
+		}
+		if !created {
+			c.JSON(http.StatusConflict, gin.H{"error": "Value is already excluded; changing it requires manage_excluded"})
+			return
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{"status": "success"})

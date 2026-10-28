@@ -211,8 +211,11 @@ func (s *EntraService) Finish(ctx context.Context, state, cookie, code string) (
 	if role == "" {
 		return nil, ErrEntraSignIn
 	}
-	external := (claims.Acct != nil && *claims.Acct == 1) ||
-		(claims.IdP != "" && !strings.Contains(strings.ToLower(claims.IdP), strings.ToLower(s.cfg.EntraTenantID)))
+	// Fail closed: only an explicit acct=0 (tenant member) proves the user is
+	// not a guest, because acct is an optional claim that may be missing.
+	member := claims.Acct != nil && *claims.Acct == 0
+	foreignIdP := claims.IdP != "" && !strings.Contains(strings.ToLower(claims.IdP), strings.ToLower(s.cfg.EntraTenantID))
+	external := !member || foreignIdP
 	return &EntraResult{
 		Identity: models.EntraIdentity{
 			TenantID: strings.ToLower(claims.TenantID), ObjectID: strings.ToLower(claims.ObjectID),

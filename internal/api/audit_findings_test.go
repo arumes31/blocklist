@@ -2,6 +2,8 @@ package api
 
 import (
 	"bytes"
+	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -51,15 +53,25 @@ func TestWebSocket_RejectsOversizedClientMessages(t *testing.T) {
 	srv := httptest.NewServer(engine)
 	defer srv.Close()
 
-	conn, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(srv.URL, "http")+"/ws", nil)
+	conn, resp, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(srv.URL, "http")+"/ws", nil)
 	require.NoError(t, err)
+	if resp != nil && resp.Body != nil {
+		_ = resp.Body.Close()
+	}
 	defer func() { _ = conn.Close() }()
 
-	require.NoError(t, conn.WriteMessage(websocket.BinaryMessage, make([]byte, wsMaxMessageBytes*4)))
+	// The server may close (and reset) the socket as soon as the frame header
+	// exceeds the limit, so a write or read error are both acceptable; what
+	// must not happen is the connection staying open until the deadline.
+	writeErr := conn.WriteMessage(websocket.BinaryMessage, make([]byte, wsMaxMessageBytes+1))
 	_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
-	_, _, err = conn.ReadMessage()
-	require.Error(t, err)
-	assert.True(t, websocket.IsCloseError(err, websocket.CloseMessageTooBig), "server must close with 1009, got %v", err)
+	_, _, readErr := conn.ReadMessage()
+	require.Error(t, readErr)
+	var netErr net.Error
+	require.False(t, errors.As(readErr, &netErr) && netErr.Timeout(), "connection stayed open after an oversized message")
+	if writeErr == nil && websocket.IsUnexpectedCloseError(readErr) {
+		assert.True(t, websocket.IsCloseError(readErr, websocket.CloseMessageTooBig), "unexpected close code: %v", readErr)
+	}
 }
 
 func TestAPIHandler_RawIPsServesCachedSnapshot(t *testing.T) {
@@ -88,14 +100,14 @@ func createOnlyContext(body, permissions string) (*gin.Context, *httptest.Respon
 }
 
 func TestAPIHandler_AddWhitelistCreateOnlyCannotReplaceEntry(t *testing.T) {
-	h, repo, _, _, ipService := setupTest()
-	repo.On("GetWhitelistedIPs").Return(map[string]models.WhitelistEntry{"198.51.100.7": {Reason: "permanent"}}, nil)
+	h, _, _, _, ipService := setupTest()
 
+	ipService.On("WhitelistIPIfAbsent", mock.Anything, "198.51.100.7", "x", "moderator-user", "").Return(false, nil).Once()
 	c, w := createOnlyContext(`{"ip":"198.51.100.7","reason":"x"}`, "whitelist_ips")
 	h.AddWhitelist(c)
 	assert.Equal(t, http.StatusConflict, w.Code)
 
-	ipService.On("WhitelistIP", mock.Anything, "198.51.100.8", "x", "moderator-user", "").Return(nil).Once()
+	ipService.On("WhitelistIPIfAbsent", mock.Anything, "198.51.100.8", "x", "moderator-user", "").Return(true, nil).Once()
 	c, w = createOnlyContext(`{"ip":"198.51.100.8","reason":"x"}`, "whitelist_ips")
 	h.AddWhitelist(c)
 	assert.Equal(t, http.StatusOK, w.Code, "creating a new entry stays allowed")
@@ -116,12 +128,12 @@ func TestAPIHandler_AddWhitelistRejectsPastExpiry(t *testing.T) {
 }
 
 func TestAPIHandler_AddExcludedCreateOnlyCannotReplaceEntry(t *testing.T) {
-	h, repo, _, _, ipService := setupTest()
-	repo.On("GetExcludedEntries").Return(map[string]models.ExcludedEntry{"198.51.100.0/24": {Value: "198.51.100.0/24"}}, nil)
+	h, _, _, _, ipService := setupTest()
 
+	ipService.On("AddExcludedIfAbsent", mock.Anything, "198.51.100.9/24", "x", "moderator-user", "", false).Return(false, nil).Once()
 	c, w := createOnlyContext(`{"value":"198.51.100.9/24","reason":"x","confirm":true}`, "exclude_ips")
 	h.AddExcluded(c)
-	assert.Equal(t, http.StatusConflict, w.Code, "canonical form of an existing exclusion is refused")
+	assert.Equal(t, http.StatusConflict, w.Code, "an existing exclusion is refused for create-only callers")
 
 	c, w = createOnlyContext(`{"value":"203.0.113.0/24","reason":"x","expires_at":"2000-01-01T00:00:00Z","confirm":true}`, "manage_excluded")
 	h.AddExcluded(c)
@@ -130,8 +142,9 @@ func TestAPIHandler_AddExcludedCreateOnlyCannotReplaceEntry(t *testing.T) {
 }
 
 func TestAPIHandler_WebhookSelfWhitelistKeepsExistingEntry(t *testing.T) {
-	h, repo, _, _, _ := setupTest()
-	repo.On("GetWhitelistedIPs").Return(map[string]models.WhitelistEntry{"198.51.100.7": {Reason: "permanent"}}, nil)
+	h, repo, _, _, ipService := setupTest()
+	ipService.On("GetGeoIP", mock.Anything).Return(&models.GeoData{}).Maybe()
+	repo.On("WhitelistIPIfAbsent", "198.51.100.7", mock.Anything).Return(false, nil).Once()
 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
@@ -186,7 +199,7 @@ func TestAPIHandler_LoginRejectsStaleEnrollmentProof(t *testing.T) {
 			pg.On("GetAdmin", "member").Return(&models.AdminAccount{
 				Username: "member", AuthSource: "local", SessionVersion: 2, Permissions: "gui_read",
 			}, nil)
-			pg.On("UpdateAdminToken", "member", key.Secret()).Return(nil).Maybe()
+			pg.On("EnrollAdminToken", "member", key.Secret(), 2).Return(nil).Maybe()
 			pg.On("LogAction", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 
 			w := httptest.NewRecorder()
@@ -209,9 +222,9 @@ func TestAPIHandler_LoginRejectsStaleEnrollmentProof(t *testing.T) {
 			r.ServeHTTP(w, req)
 
 			if tc.accepted {
-				pg.AssertCalled(t, "UpdateAdminToken", "member", key.Secret())
+				pg.AssertCalled(t, "EnrollAdminToken", "member", key.Secret(), 2)
 			} else {
-				pg.AssertNotCalled(t, "UpdateAdminToken", mock.Anything, mock.Anything)
+				pg.AssertNotCalled(t, "EnrollAdminToken", mock.Anything, mock.Anything, mock.Anything)
 				assert.Contains(t, w.Body.String(), "Session expired or invalid setup attempt")
 			}
 		})
