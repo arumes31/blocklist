@@ -540,6 +540,9 @@ func (h *APIHandler) IPsPaginated(c *gin.Context) {
 
 func (h *APIHandler) ExportIPs(c *gin.Context) {
 	format := c.DefaultQuery("format", "csv")
+	if format != "ndjson" {
+		format = "csv" // the filename extension must match the body actually sent
+	}
 	q := strings.TrimSpace(c.Query("query"))
 	country := strings.TrimSpace(c.Query("country"))
 	addedBy := strings.TrimSpace(c.Query("added_by"))

@@ -11,6 +11,7 @@ blocklist-server
 # Local Data
 geoip_data/
 postgres_data/
+redis_data/
 *.log
 *.local.md
 

@@ -46,6 +46,7 @@ type Config struct {
 	LogRetentionMonths     int
 	LogRetention           *models.LogRetention
 	CookieSecure           bool
+	SessionIdleMinutes     int
 	SameSiteStrict         bool
 	ForceHTTPS             bool
 	RunWorkerInProcess     bool
@@ -100,7 +101,10 @@ func Load() *Config {
 			EventMonths: getRetentionMonths("EVENT_LOG_RETENTION_MONTHS", models.MaxEventLogRetentionMonths),
 			AuditMonths: getRetentionMonths("AUDIT_LOG_RETENTION_MONTHS", models.MaxAuditLogRetentionMonths),
 		},
-		CookieSecure:       getEnvBool("COOKIE_SECURE", true),
+		CookieSecure: getEnvBool("COOKIE_SECURE", true),
+		// Sessions end after this much inactivity (0 disables); the cookie's
+		// 7-day lifetime remains the absolute limit.
+		SessionIdleMinutes: getEnvInt("SESSION_IDLE_MINUTES", 720),
 		SameSiteStrict:     getEnvBool("COOKIE_SAMESITE_STRICT", false),
 		ForceHTTPS:         getEnvBool("FORCE_HTTPS", false),
 		RunWorkerInProcess: getEnvBool("RUN_WORKER_IN_PROCESS", true),

@@ -16,6 +16,15 @@ updates:
       docker-minor-patch:
         update-types: ["minor", "patch"]
 
+  # Keeps the digest-pinned Redis/PostgreSQL images in docker-compose.go.yml current.
+  - package-ecosystem: "docker-compose"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      compose-minor-patch:
+        update-types: ["minor", "patch"]
+
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:

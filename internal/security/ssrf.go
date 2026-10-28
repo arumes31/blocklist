@@ -30,6 +30,8 @@ var nonPublicRanges = []netip.Prefix{
 	netip.MustParsePrefix("2001::/23"),       // IETF protocol assignments
 	netip.MustParsePrefix("2001:db8::/32"),   // documentation
 	netip.MustParsePrefix("2002::/16"),       // deprecated 6to4
+	netip.MustParsePrefix("::/96"),           // deprecated IPv4-compatible IPv6
+	netip.MustParsePrefix("fec0::/10"),       // deprecated site-local
 }
 
 // IsInternalIP reports whether the IP belongs to private, loopback,
