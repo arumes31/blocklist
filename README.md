@@ -353,7 +353,10 @@ deleting only the local record can allow recreation at the next eligible sign-in
   can notify operators of attempted blocks against excluded resources.
 - **Outbound integrations:** persistent queued webhook delivery with retries and
   backoff. The `ENABLE_OUTBOUND_WEBHOOKS` master switch must be enabled as well as
-  configuring the integration.
+  configuring the integration. With a secret configured, each delivery carries
+  `X-Blocklist-Signature` (hex HMAC-SHA256 of the body) and the replay-resistant
+  `X-Blocklist-Signature-V2` (HMAC-SHA256 of `<X-Blocklist-Timestamp>.<body>`);
+  receivers should verify V2 and reject stale timestamps. Redirects are not followed.
 
 ## API endpoints
 
@@ -427,6 +430,7 @@ them. See [config.go](internal/config/config.go) for the complete list and
 | `RATE_LIMIT` / `RATE_PERIOD` | General request limit and period in seconds | `500` / `30` |
 | `RATE_LIMIT_LOGIN` / `RATE_LIMIT_WEBHOOK` | Login/webhook limits for the configured period | `10` / `100` |
 | `RUN_WORKER_IN_PROCESS` | Run maintenance and task workers in the server | `true` |
+| `SESSION_IDLE_MINUTES` | Sign out browser sessions after this many minutes without activity (`0` disables); the 7-day cookie lifetime still applies | `720` |
 | `LOGWEB` | Enable verbose web logging (debug level) | `false` |
 | `BLOCKED_RANGES` | Despite its name, these comma-separated CIDRs are protected from being blocked; this does not create whitelist records | (empty) |
 | `GEOIPUPDATE_ACCOUNT_ID` / `GEOIPUPDATE_LICENSE_KEY` | MaxMind download credentials for City/ASN databases | (empty) |

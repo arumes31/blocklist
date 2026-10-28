@@ -17,6 +17,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"strconv"
 
 	"github.com/hibiken/asynq"
 )
@@ -74,6 +75,11 @@ func NewWebhookTaskHandlerWithClient(repo WebhookRepository, client *http.Client
 		client = &http.Client{
 			Timeout:   10 * time.Second,
 			Transport: transport,
+			// Do not follow redirects: a 307/308 would re-send the signed body
+			// to a host the operator never configured.
+			CheckRedirect: func(*http.Request, []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
 		}
 	}
 	return &WebhookTaskHandler{
@@ -123,6 +129,16 @@ func (h *WebhookTaskHandler) ProcessTask(ctx context.Context, t *asynq.Task) err
 		mac.Write(p.Data)
 		signature := hex.EncodeToString(mac.Sum(nil))
 		req.Header.Set("X-Blocklist-Signature", signature)
+
+		// The v2 signature also covers a timestamp so receivers can reject
+		// replayed deliveries: HMAC(secret, "<timestamp>.<body>"). The body-only
+		// signature above stays for existing receivers.
+		timestamp := strconv.FormatInt(time.Now().Unix(), 10)
+		macV2 := hmac.New(sha256.New, []byte(webhook.Secret))
+		macV2.Write([]byte(timestamp + "."))
+		macV2.Write(p.Data)
+		req.Header.Set("X-Blocklist-Timestamp", timestamp)
+		req.Header.Set("X-Blocklist-Signature-V2", hex.EncodeToString(macV2.Sum(nil)))
 	}
 
 	resp, err := h.client.Do(req)

@@ -75,8 +75,8 @@ type AdminAccount struct {
 	EntraUPN          string  `json:"entra_upn" db:"entra_upn"`
 	EntraRoleOverride bool    `json:"entra_role_override" db:"entra_role_override"`
 	Username          string  `json:"username" db:"username"`
-	PasswordHash      string  `json:"password_hash" db:"password_hash"`
-	Token             string  `json:"token" db:"token"`
+	PasswordHash      string  `json:"-" db:"password_hash"` // never serialized
+	Token             string  `json:"-" db:"token"`         // TOTP secret; never serialized
 	Role              string  `json:"role" db:"role"`
 	Permissions       string  `json:"permissions" db:"permissions"`
 	SessionVersion    int     `json:"session_version" db:"session_version"`
@@ -108,7 +108,7 @@ type OutboundWebhook struct {
 	ID        int    `json:"id" db:"id"`
 	URL       string `json:"url" db:"url"`
 	Events    string `json:"events" db:"events"`
-	Secret    string `json:"secret" db:"secret"`
+	Secret    string `json:"-" db:"secret"` // HMAC key; never serialized
 	GeoFilter string `json:"geo_filter" db:"geo_filter"`
 	Active    bool   `json:"active" db:"active"`
 	CreatedAt string `json:"created_at" db:"created_at"`

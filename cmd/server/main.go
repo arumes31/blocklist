@@ -11,6 +11,7 @@ import (
 	"io"
 	"io/fs"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"os"
 	"os/signal"
@@ -30,6 +31,7 @@ import (
 	"blocklist/internal/app"
 	"blocklist/internal/config"
 	"blocklist/internal/models"
+	"blocklist/internal/security"
 	"blocklist/internal/service"
 	"blocklist/internal/tasks"
 
@@ -336,13 +338,14 @@ func setupRouter(cfg *config.Config, a *app.App, hub *api.Hub, authKey, blockKey
 	r := gin.New()
 	// OAuth authorization codes must never enter HTTP access logs.
 	r.Use(gin.LoggerWithConfig(gin.LoggerConfig{SkipPaths: []string{"/auth/entra/callback"}}), gin.Recovery())
+	r.Use(bodyLimitMiddleware(maxRequestBodyBytes))
 
 	// Configure Trusted Proxies
 	setupTrustedProxies(r, cfg)
 
 	// Force HTTPS (Improvement)
 	if cfg.ForceHTTPS {
-		r.Use(httpsRedirectMiddleware())
+		r.Use(httpsRedirectMiddleware(security.ParsePrefixes(cfg.TrustedProxyList())))
 	}
 
 	// Sessions
@@ -386,6 +389,11 @@ func setupRouter(cfg *config.Config, a *app.App, hub *api.Hub, authKey, blockKey
 		LoginLimiter:          loginLimiter,
 		WebhookLimiter:        webhookLimiter,
 	})
+	// Account and token authority checks need the identity repository; without
+	// it they would degrade to permissive fallbacks, so refuse to start.
+	if !handler.HasIdentityRepository() {
+		zlog.Fatal().Msg("PostgreSQL repository does not provide identity operations; refusing to start")
+	}
 	handler.RegisterRoutes(r)
 
 	return r
@@ -400,9 +408,22 @@ func setupTrustedProxies(r *gin.Engine, cfg *config.Config) {
 	}
 }
 
-func httpsRedirectMiddleware() gin.HandlerFunc {
+// maxRequestBodyBytes caps every request body. Handlers with tighter limits
+// still apply their own; this bounds the ones that bind without a limit.
+const maxRequestBodyBytes = 1 << 20
+
+func bodyLimitMiddleware(limit int64) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if c.Request.Header.Get("X-Forwarded-Proto") != "https" && c.Request.TLS == nil {
+		if c.Request.Body != nil {
+			c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, limit)
+		}
+		c.Next()
+	}
+}
+
+func httpsRedirectMiddleware(trusted []netip.Prefix) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if !security.IsHTTPS(c.Request, trusted) {
 			// Use 308 Permanent Redirect to preserve non-GET methods (compliance/robustness)
 			target := "https://" + c.Request.Host + c.Request.RequestURI
 			c.Redirect(http.StatusPermanentRedirect, target)
@@ -483,11 +504,15 @@ func setupTemplates(r *gin.Engine) {
 }
 
 func securityHeadersMiddleware(cfg *config.Config) gin.HandlerFunc {
+	trusted := security.ParsePrefixes(cfg.TrustedProxyList())
 	return func(c *gin.Context) {
-		// Generate Nonce
+		// Generate Nonce. A predictable nonce would void the CSP, so fail the
+		// request rather than serve one.
 		nonceBytes := make([]byte, 16)
 		if _, err := rand.Read(nonceBytes); err != nil {
 			zlog.Error().Err(err).Msg("Failed to generate nonce")
+			c.AbortWithStatus(http.StatusInternalServerError)
+			return
 		}
 		nonce := base64.StdEncoding.EncodeToString(nonceBytes)
 
@@ -499,7 +524,9 @@ func securityHeadersMiddleware(cfg *config.Config) gin.HandlerFunc {
 		c.Header("Referrer-Policy", "same-origin")
 
 		// Strict Transport Security (HSTS)
-		if cfg.UseCloudflare || c.Request.TLS != nil {
+		// Behind a TLS-terminating proxy, FORCE_HTTPS plus a trusted
+		// X-Forwarded-Proto is enough to know the client is on HTTPS.
+		if cfg.UseCloudflare || c.Request.TLS != nil || (cfg.ForceHTTPS && security.IsHTTPS(c.Request, trusted)) {
 			c.Header("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload")
 		}
 

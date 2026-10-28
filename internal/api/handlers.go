@@ -4,6 +4,7 @@ import (
 	"blocklist/internal/config"
 	"blocklist/internal/metrics"
 	"blocklist/internal/models"
+	"blocklist/internal/security"
 	"blocklist/internal/service"
 	"net"
 	"net/http"
@@ -120,21 +121,7 @@ func NewAPIHandler(opts *HandlerOptions) *APIHandler {
 			}
 
 			requestScheme := "http"
-			isTrusted := false
-			remoteIPStr, _, _ := net.SplitHostPort(r.RemoteAddr)
-			if remoteIPStr == "" {
-				remoteIPStr = r.RemoteAddr
-			}
-			if remoteIP, err := netip.ParseAddr(remoteIPStr); err == nil {
-				for _, p := range h.trustedProxies {
-					if p.Contains(remoteIP) {
-						isTrusted = true
-						break
-					}
-				}
-			}
-
-			if r.TLS != nil || (isTrusted && r.Header.Get("X-Forwarded-Proto") == "https") {
+			if security.IsHTTPS(r, h.trustedProxies) {
 				requestScheme = "https"
 			}
 			return u.Scheme == requestScheme && strings.EqualFold(u.Host, r.Host)
@@ -142,6 +129,12 @@ func NewAPIHandler(opts *HandlerOptions) *APIHandler {
 	}
 
 	return h
+}
+
+// HasIdentityRepository reports whether account/role authority checks are
+// backed by the identity repository rather than their permissive fallbacks.
+func (h *APIHandler) HasIdentityRepository() bool {
+	return h.identityRepo != nil
 }
 
 // renderHTML is a helper to render templates with common data like the CSP nonce.
@@ -306,6 +299,7 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 	}
 
 	r.GET("/logout", h.Logout)
+	r.POST("/logout", h.Logout)
 	r.GET("/auth/entra/login", h.loginLimiter, h.EntraLogin)
 	r.GET("/auth/entra/callback", h.loginLimiter, h.EntraCallback)
 	r.GET("/ws", h.AuthMiddleware(), h.SessionCheckMiddleware(), h.PermissionMiddleware("view_ips"), h.WS)

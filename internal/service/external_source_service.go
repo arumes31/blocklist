@@ -110,7 +110,17 @@ func (s *ExternalSourceService) RefreshSource(ctx context.Context, src models.Ex
 	reason := fmt.Sprintf("External Source: %s", src.Name)
 	expiresAt := time.Now().Add(24 * time.Hour).UTC().Format(time.RFC3339)
 	excluded := make([]string, 0, len(ips))
+	// Feed refreshes renew their own 24h entries but must never replace an
+	// operator's exclusion (which may be permanent) with an expiring one.
+	var existing map[string]models.ExcludedEntry
+	if s.ipService.redisRepo != nil {
+		existing, _ = s.ipService.redisRepo.GetExcludedEntries()
+	}
 	for _, ip := range ips {
+		canonical, _ := CanonicalExclusion(ip)
+		if current, ok := existing[canonical]; ok && current.AddedBy != "system" {
+			continue
+		}
 		if err := s.ipService.AddExcluded(ctx, ip, reason, "system", expiresAt, false); err != nil {
 			zlog.Warn().Err(err).Int("source_id", src.ID).Str("ip", ip).Msg("External source: failed to add excluded entry")
 			continue
@@ -163,14 +173,35 @@ func (s *ExternalSourceService) fetchAndParse(ctx context.Context, src models.Ex
 		return nil, fmt.Errorf("external source exceeds %d-byte limit", maxExternalSourceBytes)
 	}
 
+	var entries []string
 	switch src.SourceType {
 	case "microsoft_365":
-		return s.parseMicrosoft365(body)
+		entries, err = s.parseMicrosoft365(body)
 	case "json_cidr":
-		return s.parseJSONCIDR(body)
+		entries, err = s.parseJSONCIDR(body)
 	default:
-		return s.parsePlaintext(body)
+		entries, err = s.parsePlaintext(body)
 	}
+	if err != nil {
+		return nil, err
+	}
+	return onlyIPsAndPrefixes(entries), nil
+}
+
+// onlyIPsAndPrefixes keeps feed entries that are literal IPs or CIDR prefixes.
+// Feeds describe address ranges; anything else would be stored as an FQDN or
+// wildcard exclusion and resolved through DNS on every block decision.
+func onlyIPsAndPrefixes(entries []string) []string {
+	valid := entries[:0]
+	for _, entry := range entries {
+		entry = strings.TrimSpace(entry)
+		if _, err := netip.ParseAddr(entry); err == nil {
+			valid = append(valid, entry)
+		} else if _, err := netip.ParsePrefix(entry); err == nil {
+			valid = append(valid, entry)
+		}
+	}
+	return valid
 }
 
 func (s *ExternalSourceService) parseMicrosoft365(body []byte) ([]string, error) {

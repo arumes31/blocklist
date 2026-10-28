@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"blocklist/internal/models"
+	"blocklist/internal/security"
 	"blocklist/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -334,7 +335,9 @@ func (h *APIHandler) CreateAdmin(c *gin.Context) {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "The tenant ID must match this workspace's Entra tenant."})
 				return
 			}
-			admin.EntraTenantID, admin.EntraObjectID = &req.EntraTenantID, &req.EntraObjectID
+			// Sign-in compares against lowercased token claims, so store the same form.
+			tenantID, objectID := strings.ToLower(req.EntraTenantID), strings.ToLower(req.EntraObjectID)
+			admin.EntraTenantID, admin.EntraObjectID = &tenantID, &objectID
 		}
 		if err := h.identityRepo.CreateManagedAdmin(c.Request.Context(), admin, c.GetString("username")); err != nil {
 			h.identityFailure(c, err)
@@ -731,7 +734,7 @@ func (h *APIHandler) Settings(c *gin.Context) {
 
 	// Get base URL from request
 	scheme := "http"
-	if c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https" {
+	if security.IsHTTPS(c.Request, h.trustedProxies) {
 		scheme = "https"
 	}
 	baseURL := fmt.Sprintf("%s://%s", scheme, c.Request.Host)

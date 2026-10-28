@@ -3,7 +3,8 @@ version: 2
 
 before:
   hooks:
-    - go mod tidy
+    # Verify the committed module graph instead of rewriting it at release time.
+    - go mod verify
 
 builds:
   - env:

@@ -101,6 +101,11 @@ func (h *APIHandler) AuthMiddleware() gin.HandlerFunc {
 					return
 				}
 			}
+			// An unrecognised Bearer token never falls back to the session
+			// cookie: CSRF checks are skipped for Bearer requests, so a
+			// fallback would let a forged header ride an ambient session.
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
+			return
 		}
 
 		// Legacy Basic Auth fallback: opt-in (ALLOW_BASIC_AUTH) and restricted to
@@ -155,15 +160,15 @@ func (h *APIHandler) AuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		usernameSess := session.Get("username")
-		if usernameSess == nil {
+		usernameSess, ok := session.Get("username").(string)
+		if !ok || usernameSess == "" || h.sessionIdleExpired(session) {
 			session.Clear()
 			_ = session.Save()
 			c.Redirect(http.StatusFound, "/login")
 			c.Abort()
 			return
 		}
-		username = usernameSess.(string)
+		username = usernameSess
 
 		// Verify user still exists in database
 		admin, err := h.pgRepo.GetAdmin(username)
@@ -195,6 +200,27 @@ func (h *APIHandler) AuthMiddleware() gin.HandlerFunc {
 
 		c.Next()
 	}
+}
+
+// sessionIdleExpired reports whether the session has been unused for longer
+// than SESSION_IDLE_MINUTES, and otherwise records this request as activity.
+// The timestamp is rewritten at most once a minute to limit session writes.
+func (h *APIHandler) sessionIdleExpired(session sessions.Session) bool {
+	if h.cfg == nil || h.cfg.SessionIdleMinutes <= 0 {
+		return false
+	}
+	now := time.Now().Unix()
+	last, ok := session.Get("last_seen").(int64)
+	if ok && now-last > int64(h.cfg.SessionIdleMinutes)*60 {
+		return true
+	}
+	if !ok || now-last >= 60 {
+		session.Set("last_seen", now)
+		if err := session.Save(); err != nil {
+			zlog.Error().Err(err).Msg("Failed to record session activity")
+		}
+	}
+	return false
 }
 
 // basicAuthAllowed reports whether a Basic credential may be checked for this request.
@@ -786,7 +812,13 @@ func (h *APIHandler) ShowSudo(c *gin.Context) {
 
 func (h *APIHandler) VerifySudo(c *gin.Context) {
 	session := sessions.Default(c)
-	username := session.Get("username").(string)
+	username, ok := session.Get("username").(string)
+	if !ok || username == "" || c.GetBool("token_auth") {
+		// Sudo is a browser-session concept; API tokens and session-less
+		// callers cannot elevate.
+		c.AbortWithStatus(http.StatusForbidden)
+		return
+	}
 	totpCode := c.PostForm("totp")
 	next := c.PostForm("next")
 	if next == "" {
@@ -821,6 +853,12 @@ func (h *APIHandler) VerifySudo(c *gin.Context) {
 }
 
 func (h *APIHandler) Logout(c *gin.Context) {
+	// Sign-out stays a plain link, but a GET navigation started by another
+	// site (Sec-Fetch-Site: cross-site) must not end the user's session.
+	if c.Request.Method == http.MethodGet && c.GetHeader("Sec-Fetch-Site") == "cross-site" {
+		c.Redirect(http.StatusFound, "/dashboard")
+		return
+	}
 	session := sessions.Default(c)
 	session.Clear()
 	_ = session.Save()
@@ -893,8 +931,14 @@ func (h *APIHandler) CreateAPIToken(c *gin.Context) {
 	finalPerms := ""
 	if requestedPerms != "" {
 		if username == h.cfg.GUIAdmin && !c.GetBool("token_auth") {
-			// The recovery browser session has the full permission catalog.
-			finalPerms = requestedPerms
+			// The recovery browser session has the full permission catalog,
+			// but stored scopes must still be known permission keys.
+			normalized, err := models.NormalizePermissions(requestedPerms)
+			if err != nil {
+				c.String(http.StatusBadRequest, err.Error())
+				return
+			}
+			finalPerms = normalized
 		} else {
 			var err error
 			finalPerms, err = h.validatePermissionSubset(requestedPerms, userPerms)

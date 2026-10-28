@@ -30,6 +30,10 @@ import (
 
 const MaxPageSize = 1000
 
+// maxFilterScanPerPage bounds how many index entries one filtered page may
+// examine before returning a resume cursor.
+const maxFilterScanPerPage = 20000
+
 type IPService struct {
 	redisRepo      *repository.RedisRepository
 	pgRepo         *repository.PostgresRepository
@@ -283,20 +287,46 @@ func (s *IPService) ReloadReaders() {
 	}
 }
 
-func (s *IPService) isValidIPInternal(ipStr string, ip netip.Addr, whitelist map[string]models.WhitelistEntry, excluded map[string]models.ExcludedEntry) (bool, *models.ExcludedEntry) {
-	if whitelist != nil {
-		if entry, ok := whitelist[ipStr]; ok {
-			if entry.ExpiresAt != "" {
-				exp, err := time.Parse(time.RFC3339, entry.ExpiresAt)
-				if err == nil && time.Now().After(exp) {
-					_ = s.redisRepo.RemoveFromWhitelist(ipStr)
-				} else {
-					return false, nil
-				}
-			} else {
-				return false, nil
-			}
+// whitelisted reports whether ip has a live whitelist entry: an exact key (as
+// given or canonical) or a CIDR entry containing it. Expired entries found on
+// the way are removed lazily.
+func (s *IPService) whitelisted(ipStr string, ip netip.Addr, whitelist map[string]models.WhitelistEntry) bool {
+	if len(whitelist) == 0 {
+		return false
+	}
+	live := func(key string, entry models.WhitelistEntry) bool {
+		if entry.ExpiresAt == "" {
+			return true
 		}
+		exp, err := time.Parse(time.RFC3339, entry.ExpiresAt)
+		if err == nil && time.Now().After(exp) {
+			if s.redisRepo != nil {
+				_ = s.redisRepo.RemoveFromWhitelist(key)
+			}
+			return false
+		}
+		return true
+	}
+	for _, key := range []string{ipStr, ip.Unmap().String()} {
+		if entry, ok := whitelist[key]; ok && live(key, entry) {
+			return true
+		}
+	}
+	addr := ip.Unmap()
+	for key, entry := range whitelist {
+		if !strings.Contains(key, "/") {
+			continue
+		}
+		if prefix, err := netip.ParsePrefix(key); err == nil && prefix.Contains(addr) && live(key, entry) {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *IPService) isValidIPInternal(ipStr string, ip netip.Addr, whitelist map[string]models.WhitelistEntry, excluded map[string]models.ExcludedEntry) (bool, *models.ExcludedEntry) {
+	if s.whitelisted(ipStr, ip, whitelist) {
+		return false, nil
 	}
 
 	// Excluded list: IPs, subnets, or FQDNs that must never be blocked.
@@ -1287,11 +1317,18 @@ func (s *IPService) ListIPsPaginatedAdvanced(ctx context.Context, limit int, cur
 	}
 	items := make([]map[string]interface{}, 0, MaxPageSize)
 	lastMatch := ""
+	scanned := 0
 	for {
 		if err := ctx.Err(); err != nil {
 			return nil, "", total, err
 		}
+		// A filter that matches little would otherwise walk the whole index in
+		// one request; return what was found with a cursor to resume from.
+		if scanned >= maxFilterScanPerPage {
+			return items, cursor, total, nil
+		}
 		zs, next, err := s.redisRepo.ZPageByScoreDesc(fetchLimit, cursor)
+		scanned += len(zs)
 		if err != nil {
 			return nil, "", total, err
 		}
