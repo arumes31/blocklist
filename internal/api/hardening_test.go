@@ -72,6 +72,25 @@ func TestAuthMiddlewareExpiresIdleSessions(t *testing.T) {
 	}
 }
 
+func TestAuthMiddlewareEnforcesAbsoluteSessionLifetime(t *testing.T) {
+	h, _, pg, _, _ := setupTest()
+	h.cfg.SessionIdleMinutes = 10
+	pg.On("GetAdmin", "member").Return(&models.AdminAccount{Username: "member", Permissions: "gui_read"}, nil).Maybe()
+	r := sessionRouter(h, func(s sessions.Session) {
+		s.Set("logged_in", true)
+		s.Set("username", "member")
+		s.Set("client_ip", "192.0.2.1")
+		s.Set("last_seen", time.Now().Unix()) // active, so only the absolute limit applies
+		s.Set("login_time", time.Now().Add(-SessionMaxAge-time.Hour).UTC().Format(time.RFC3339))
+	}, h.AuthMiddleware(), func(c *gin.Context) { c.Status(http.StatusNoContent) })
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req.RemoteAddr = "192.0.2.1:1234"
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusFound, w.Code)
+	assert.Equal(t, "/login", w.Header().Get("Location"))
+}
+
 func TestLogoutIgnoresCrossSiteNavigation(t *testing.T) {
 	h, _, _, _, _ := setupTest()
 	r := sessionRouter(h, func(s sessions.Session) { s.Set("logged_in", true) }, h.Logout)

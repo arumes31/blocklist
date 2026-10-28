@@ -457,7 +457,7 @@ func setupSessions(r *gin.Engine, cfg *config.Config, authKey, blockKey []byte) 
 		HttpOnly: true,
 		Secure:   cookieSecure,
 		SameSite: sameSite,
-		MaxAge:   86400 * 7, // 1 week
+		MaxAge:   int(api.SessionMaxAge.Seconds()),
 	})
 	r.Use(sessions.Sessions("blocklist_session", store))
 }

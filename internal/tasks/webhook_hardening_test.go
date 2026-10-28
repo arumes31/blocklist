@@ -23,6 +23,24 @@ func TestWebhookDefaultClientDoesNotFollowRedirects(t *testing.T) {
 	assert.True(t, errors.Is(handler.client.CheckRedirect(nil, nil), http.ErrUseLastResponse))
 }
 
+func TestWebhookRedirectResponseIsNotADelivery(t *testing.T) {
+	repo := new(mockWebhookRepository)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Location", "https://example.com/hook")
+		w.WriteHeader(http.StatusPermanentRedirect)
+	}))
+	defer server.Close()
+	client := newTestClient(server)
+	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	handler := NewWebhookTaskHandlerWithClient(repo, client)
+	repo.On("GetWebhookByID", 8).Return(&models.OutboundWebhook{ID: 8, URL: "http://example.com/hook", Active: true}, nil)
+	repo.On("LogWebhookDelivery", mock.Anything).Return(nil)
+
+	task, err := NewWebhookDeliveryTask(8, "ip.blocked", []byte(`{}`))
+	require.NoError(t, err)
+	assert.Error(t, handler.ProcessTask(context.Background(), task), "an unfollowed 3xx must be retried, not dropped")
+}
+
 func TestWebhookSignatureV2CoversTimestamp(t *testing.T) {
 	repo := new(mockWebhookRepository)
 	secret := "test-secret"

@@ -164,7 +164,9 @@ func (h *WebhookTaskHandler) ProcessTask(ctx context.Context, t *asynq.Task) err
 
 	_ = h.repo.LogWebhookDelivery(logEntry)
 
-	if resp.StatusCode >= 400 {
+	// Only 2xx is a delivery. Redirects are not followed, so a 3xx means the
+	// event never reached a receiver and must be retried, not recorded as sent.
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("webhook returned status %d", resp.StatusCode)
 	}
 

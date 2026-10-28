@@ -202,10 +202,22 @@ func (h *APIHandler) AuthMiddleware() gin.HandlerFunc {
 	}
 }
 
-// sessionIdleExpired reports whether the session has been unused for longer
-// than SESSION_IDLE_MINUTES, and otherwise records this request as activity.
+// SessionMaxAge is the absolute lifetime of a browser session, counted from
+// sign-in no matter how active the session is.
+const SessionMaxAge = 7 * 24 * time.Hour
+
+// sessionIdleExpired reports whether the session is past SessionMaxAge since
+// sign-in or has been unused for longer than SESSION_IDLE_MINUTES, and
+// otherwise records this request as activity.
 // The timestamp is rewritten at most once a minute to limit session writes.
 func (h *APIHandler) sessionIdleExpired(session sessions.Session) bool {
+	// Activity saves refresh the cookie and store TTL, so the absolute lifetime
+	// is enforced from the immutable sign-in time instead.
+	if loginTime, ok := session.Get("login_time").(string); ok {
+		if signedIn, err := time.Parse(time.RFC3339, loginTime); err != nil || time.Since(signedIn) > SessionMaxAge {
+			return true
+		}
+	}
 	if h.cfg == nil || h.cfg.SessionIdleMinutes <= 0 {
 		return false
 	}
