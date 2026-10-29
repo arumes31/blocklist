@@ -5,7 +5,7 @@ go 1.27.3
 require (
 	github.com/alicebob/miniredis/v2 v2.40.0
 	github.com/bits-and-blooms/bloom/v3 v3.7.1
-	github.com/bytedance/sonic v1.15.4
+	github.com/bytedance/sonic v1.15.5
 	github.com/coreos/go-oidc/v3 v3.21.0
 	github.com/gin-contrib/sessions v1.1.2
 	github.com/gin-gonic/gin v1.12.0
@@ -41,7 +41,7 @@ require (
 	github.com/boj/redistore v1.4.2 // indirect
 	github.com/boombuler/barcode v1.1.0 // indirect
 	github.com/bytedance/gopkg v0.1.4 // indirect
-	github.com/bytedance/sonic/loader v0.5.2 // indirect
+	github.com/bytedance/sonic/loader v0.5.3 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cloudwego/base64x v0.1.7 // indirect
