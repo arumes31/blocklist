@@ -111,21 +111,17 @@ func (s *ExternalSourceService) RefreshSource(ctx context.Context, src models.Ex
 	expiresAt := time.Now().Add(24 * time.Hour).UTC().Format(time.RFC3339)
 	excluded := make([]string, 0, len(ips))
 	// Feed refreshes renew their own 24h entries but must never replace an
-	// operator's exclusion (which may be permanent) with an expiring one.
-	var existing map[string]models.ExcludedEntry
-	if s.ipService.redisRepo != nil {
-		existing, _ = s.ipService.redisRepo.GetExcludedEntries()
-	}
+	// operator's exclusion (which may be permanent) with an expiring one. The
+	// ownership check and the write happen atomically in Redis.
 	for _, ip := range ips {
-		canonical, _ := CanonicalExclusion(ip)
-		if current, ok := existing[canonical]; ok && current.AddedBy != "system" {
-			continue
-		}
-		if err := s.ipService.AddExcluded(ctx, ip, reason, "system", expiresAt, false); err != nil {
+		written, err := s.ipService.AddSystemExcluded(ctx, ip, reason, expiresAt)
+		if err != nil {
 			zlog.Warn().Err(err).Int("source_id", src.ID).Str("ip", ip).Msg("External source: failed to add excluded entry")
 			continue
 		}
-		excluded = append(excluded, ip)
+		if written {
+			excluded = append(excluded, ip)
+		}
 	}
 	// Only audit-log the entries that were actually persisted, so the log reflects
 	// the real exclusion state rather than the full input set.

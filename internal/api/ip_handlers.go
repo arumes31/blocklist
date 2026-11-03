@@ -3,14 +3,17 @@ package api
 import (
 	"encoding/csv"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
+	"net/netip"
 	"strconv"
 	"strings"
 	"time"
 
 	"blocklist/internal/models"
+	"blocklist/internal/service"
 
 	"github.com/gin-gonic/gin"
 	zlog "github.com/rs/zerolog/log"
@@ -115,6 +118,14 @@ func (h *APIHandler) BlockIP(c *gin.Context) {
 	// Assuming permission middleware already ran.
 
 	entry, err := h.ipService.BlockIP(c.Request.Context(), ip, req.Reason, username.(string), c.ClientIP(), req.Persist, duration)
+	switch {
+	case errors.Is(err, service.ErrBlockShortens):
+		c.JSON(http.StatusConflict, gin.H{"error": "This address is already blocked for longer. Unblock it first to shorten the block."})
+		return
+	case errors.Is(err, service.ErrInvalidBlockInput):
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid address or reason"})
+		return
+	}
 	if err != nil {
 		zlog.Error().Err(err).Msg("Failed to block IP")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to block IP"})
@@ -188,6 +199,10 @@ func (h *APIHandler) BulkBlock(c *gin.Context) {
 	ttl := int(boundedTTL(req.TTL, time.Minute) / time.Second)
 
 	err := h.ipService.BulkBlock(c.Request.Context(), req.IPs, req.Reason, username.(string), c.ClientIP(), req.Persist, ttl)
+	if errors.Is(err, service.ErrInvalidBlockInput) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid reason"})
+		return
+	}
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Bulk block failed"})
 		return
@@ -227,6 +242,14 @@ func (h *APIHandler) BulkUnblock(c *gin.Context) {
 	if len(req.IPs) > 500 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Too many IPs. Max 500 allowed per request."})
 		return
+	}
+
+	for _, ip := range req.IPs {
+		// Validate every member before any state changes.
+		if addr, err := netip.ParseAddr(ip); err != nil || addr.Zone() != "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid IP address"})
+			return
+		}
 	}
 
 	err := h.ipService.BulkUnblock(c.Request.Context(), req.IPs, username.(string))
@@ -467,9 +490,31 @@ func (h *APIHandler) rawFeed() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	h.rawFeedBody = strings.Join(ips, "\n")
+	h.rawFeedBody = strings.Join(feedAddresses(ips), "\n")
 	h.rawFeedAt = time.Now()
 	return h.rawFeedBody, nil
+}
+
+// feedAddresses emits one normalized line per stored key that parses as a
+// single zone-free IP address. Malformed keys (for example ones carrying a
+// zone with embedded line breaks) are dropped, so a stored key can never add
+// extra records to the feed.
+func feedAddresses(keys []string) []string {
+	out := make([]string, 0, len(keys))
+	seen := make(map[string]struct{}, len(keys))
+	for _, key := range keys {
+		addr, err := netip.ParseAddr(key)
+		if err != nil || addr.Zone() != "" {
+			continue
+		}
+		line := addr.String()
+		if _, dup := seen[line]; dup {
+			continue
+		}
+		seen[line] = struct{}{}
+		out = append(out, line)
+	}
+	return out
 }
 
 func (h *APIHandler) RawWhitelists(c *gin.Context) {

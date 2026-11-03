@@ -19,9 +19,8 @@ import (
 	"blocklist/internal/models"
 	"blocklist/internal/repository"
 	"sync"
-	"sync/atomic"
+	"unicode/utf8"
 
-	"github.com/bits-and-blooms/bloom/v3"
 	"github.com/oschwald/geoip2-golang"
 	"github.com/redis/go-redis/v9"
 	zlog "github.com/rs/zerolog/log"
@@ -43,9 +42,6 @@ type IPService struct {
 	blockedRanges  []netip.Prefix
 	geoipReader    *geoip2.Reader
 	asnReader      *geoip2.Reader
-	bloomFilter    *bloom.BloomFilter
-	bloomMu        sync.RWMutex
-	syncInProgress atomic.Bool
 	fqdnCache      map[string]fqdnResolution
 	fqdnCacheMu    sync.Mutex
 	ptrCache       map[netip.Addr]ptrResolution
@@ -132,11 +128,9 @@ func NewIPService(cfg *config.Config, rRepo *repository.RedisRepository, pgRepo 
 		blockedRanges: ranges,
 		geoipReader:   reader,
 		asnReader:     aReader,
-		bloomFilter:   bloom.NewWithEstimates(1000000, 0.01),
 		fqdnCache:     make(map[string]fqdnResolution),
 		ptrCache:      make(map[netip.Addr]ptrResolution),
 	}
-	svc.syncBloomFilter()
 	return svc
 }
 
@@ -170,7 +164,11 @@ func (s *IPService) triggerExcludedAlert(ctx context.Context, ip string, reason 
 			"timestamp":      time.Now().UTC().Format(time.RFC3339),
 		}
 		data, _ := sonic.Marshal(payload)
-		s.webhookService.Notify(ctx, "excluded_block_attempt", string(data))
+		country := ""
+		if geo := s.GetGeoIP(ip); geo != nil {
+			country = geo.Country
+		}
+		s.webhookService.Notify(ctx, "excluded_block_attempt", country, string(data))
 	}
 
 	// 2. Email Alert
@@ -204,61 +202,34 @@ func (s *IPService) triggerExcludedAlert(ctx context.Context, ip string, reason 
 		_ = s.mailService.SendAlert(subject, body)
 	}
 }
-func (s *IPService) syncBloomFilter() {
-	if !s.syncInProgress.CompareAndSwap(false, true) {
-		return // A sync is already concurrently running
-	}
-	defer s.syncInProgress.Store(false)
 
-	if s.redisRepo != nil {
-		// Redis I/O and JSON validation must not hold the filter lock: otherwise
-		// a slow snapshot stalls unrelated block writes and block checks.
-		ips, err := s.redisRepo.GetBlockedIPKeys()
-		if err != nil {
-			zlog.Error().Err(err).Msg("IPService: Failed to fetch blocked IPs for Bloom Filter sync")
-			return
-		}
-		// Merge, never replace: blocks added concurrently must remain present.
-		// Small batches also let live writes progress during a large refresh.
-		const batchSize = 256
-		for start := 0; start < len(ips); start += batchSize {
-			s.bloomMu.Lock()
-			for _, ip := range ips[start:min(start+batchSize, len(ips))] {
-				s.bloomFilter.AddString(ip)
-			}
-			s.bloomMu.Unlock()
-		}
-		zlog.Info().Int("count", len(ips)).Msg("IPService: Synchronized Bloom Filter")
-	}
-}
-
+// IsBlocked reports whether ipStr has a live block. Shared Redis state is
+// always consulted: another server process may have added the block, so no
+// process-local cache can prove an address is not blocked.
 func (s *IPService) IsBlocked(ipStr string) bool {
-	// 1. Check Bloom Filter (fast positive check)
-	s.bloomMu.RLock()
-	// While a snapshot is loading, the filter may not include its records yet.
-	// Confirm against Redis instead of returning an unsafe negative result.
-	if !s.syncInProgress.Load() && s.bloomFilter != nil && !s.bloomFilter.TestString(ipStr) {
-		s.bloomMu.RUnlock()
-		return false // Definitely not blocked
+	if s.redisRepo == nil {
+		return false
 	}
-	s.bloomMu.RUnlock()
-
-	// 2. Fallback to Redis for confirmation
-	if s.redisRepo != nil {
+	for attempt := 0; attempt < 3; attempt++ {
 		entry, err := s.redisRepo.GetIPEntry(ipStr)
-		if err == nil && entry != nil {
-			if entry.ExpiresAt != "" {
-				exp, err := time.Parse("2006-01-02 15:04:05 UTC", entry.ExpiresAt)
-				if err == nil && time.Now().UTC().After(exp) {
-					// Entry expired, remove it and treat as not blocked
-					_ = s.redisRepo.UnblockIP(ipStr)
-					return false
-				}
-			}
+		if err != nil || entry == nil {
+			return false
+		}
+		if entry.ExpiresAt == "" {
 			return true
 		}
+		exp, err := time.Parse("2006-01-02 15:04:05 UTC", entry.ExpiresAt)
+		if err != nil || !time.Now().UTC().After(exp) {
+			return true
+		}
+		// Remove only the expired record that was read; a renewal written in
+		// the meantime survives and is evaluated on the next pass.
+		result, err := s.redisRepo.RemoveIfUnchanged("ips", ipStr, entry.Timestamp, entry.ExpiresAt)
+		if err != nil || result != repository.RemoveChanged {
+			return false
+		}
 	}
-	return false
+	return true // The record keeps changing under us; fail closed.
 }
 
 func (s *IPService) ReloadReaders() {
@@ -301,7 +272,9 @@ func (s *IPService) whitelisted(ipStr string, ip netip.Addr, whitelist map[strin
 		exp, err := time.Parse(time.RFC3339, entry.ExpiresAt)
 		if err == nil && time.Now().After(exp) {
 			if s.redisRepo != nil {
-				_ = s.redisRepo.RemoveFromWhitelist(key)
+				// A renewal written since the snapshot is kept, but this
+				// decision still uses the snapshot; the next check sees it.
+				_, _ = s.redisRepo.RemoveIfUnchanged("ips_webhook2_whitelist", key, entry.Timestamp, entry.ExpiresAt)
 			}
 			return false
 		}
@@ -317,7 +290,7 @@ func (s *IPService) whitelisted(ipStr string, ip netip.Addr, whitelist map[strin
 		if !strings.Contains(key, "/") {
 			continue
 		}
-		if prefix, err := netip.ParsePrefix(key); err == nil && prefix.Contains(addr) && live(key, entry) {
+		if prefix, err := netip.ParsePrefix(key); err == nil && prefixContains(prefix, addr) && live(key, entry) {
 			return true
 		}
 	}
@@ -335,12 +308,61 @@ func (s *IPService) isValidIPInternal(ipStr string, ip netip.Addr, whitelist map
 	}
 
 	for _, prefix := range s.blockedRanges {
-		if prefix.Contains(ip) {
+		if prefixContains(prefix, ip) {
 			return false, nil
 		}
 	}
 
 	return true, nil
+}
+
+// prefixContains compares an address with a prefix in both address families,
+// so an IPv4-mapped IPv6 spelling of an address (or of a configured prefix)
+// cannot slip past a rule written in the other form.
+func prefixContains(prefix netip.Prefix, addr netip.Addr) bool {
+	addr = addr.Unmap()
+	if prefix.Contains(addr) {
+		return true
+	}
+	return addr.Is4() && prefix.Contains(netip.AddrFrom16(addr.As16()))
+}
+
+// canonicalPrefix stores IPv4-mapped prefixes that lie inside ::ffff:0:0/96 as
+// the equivalent IPv4 prefix, so stored rules use the same family as the
+// unmapped addresses they are compared with.
+func canonicalPrefix(prefix netip.Prefix) netip.Prefix {
+	prefix = prefix.Masked()
+	if prefix.Addr().Is4In6() && prefix.Bits() >= 96 {
+		return netip.PrefixFrom(prefix.Addr().Unmap(), prefix.Bits()-96).Masked()
+	}
+	return prefix
+}
+
+// ErrInvalidBlockInput reports an address or reason that cannot be enforced
+// and recorded faithfully.
+var ErrInvalidBlockInput = errors.New("invalid address or reason")
+
+// ErrBlockShortens reports that an existing block lasts longer than the
+// requested one. Shortening a block requires unblocking it first.
+var ErrBlockShortens = repository.ErrBlockShortens
+
+// canonicalBlockAddress parses an address for enforcement. Zones are rejected
+// (they are free text that would reach the public feed) and IPv4-mapped
+// addresses are stored as IPv4, matching how protection rules compare them.
+func canonicalBlockAddress(ipStr string) (netip.Addr, string, bool) {
+	addr, err := netip.ParseAddr(ipStr)
+	if err != nil || addr.Zone() != "" {
+		return netip.Addr{}, "", false
+	}
+	addr = addr.Unmap()
+	return addr, addr.String(), true
+}
+
+// validAuditText reports whether text can be stored in PostgreSQL TEXT
+// columns: valid UTF-8 without NUL characters. Rejecting it up front stops a
+// caller from making the audit insert fail while enforcement proceeds.
+func validAuditText(text string) bool {
+	return utf8.ValidString(text) && !strings.ContainsRune(text, 0)
 }
 
 func (s *IPService) IsValidIP(ipStr string) bool {
@@ -381,6 +403,7 @@ func classifyExclusionType(value string) string {
 // for timestamps. An empty or unparseable ExpiresAt is treated as not-expired:
 // for an exclusion (never-block) list, over-protecting is the safe direction.
 func (s *IPService) excludedExpired(value string, entry models.ExcludedEntry) bool {
+	// Removal is conditional on the snapshot so a renewal is never deleted.
 	if entry.ExpiresAt == "" {
 		return false
 	}
@@ -393,7 +416,7 @@ func (s *IPService) excludedExpired(value string, entry models.ExcludedEntry) bo
 	}
 	if time.Now().After(exp) {
 		if s.redisRepo != nil {
-			_ = s.redisRepo.RemoveExcluded(value)
+			_, _ = s.redisRepo.RemoveIfUnchanged("ips_webhook2_excluded", value, entry.Timestamp, entry.ExpiresAt)
 		}
 		return true
 	}
@@ -439,7 +462,7 @@ func (s *IPService) isExcludedMatch(ip netip.Addr, excluded map[string]models.Ex
 				matched = true
 			}
 		case "cidr":
-			if prefix, err := netip.ParsePrefix(value); err == nil && prefix.Contains(ip) {
+			if prefix, err := netip.ParsePrefix(value); err == nil && prefixContains(prefix, ip) {
 				matched = true
 			}
 		default: // "ip"
@@ -468,16 +491,32 @@ func (s *IPService) matchWildcard(pattern string, ip netip.Addr) bool {
 		return false
 	}
 	suffix := "." + base
+	// One DNS budget covers the whole reverse-and-forward chain, and only a
+	// few PTR candidates are confirmed, so a hostile PTR response cannot keep
+	// a blocking decision waiting on many sequential lookups.
+	deadline := time.Now().Add(wildcardMatchBudget)
+	checked := 0
 	for _, name := range s.lookupPTR(ip) {
 		if name != base && !strings.HasSuffix(name, suffix) {
 			continue
 		}
+		if checked >= maxWildcardCandidates || !time.Now().Before(deadline) {
+			return false
+		}
+		checked++
 		if _, ok := s.resolveFQDN(name)[ip]; ok {
 			return true
 		}
 	}
 	return false
 }
+
+const (
+	// maxWildcardCandidates bounds forward confirmations per wildcard decision.
+	maxWildcardCandidates = 4
+	// wildcardMatchBudget bounds the time one wildcard decision spends on DNS.
+	wildcardMatchBudget = 5 * time.Second
+)
 
 // resolveAndCache resolves host to its current address set, stores it in the
 // FQDN cache, and returns the set along with any resolution error.
@@ -709,8 +748,13 @@ func (s *IPService) RefreshExcludedFQDNs(ctx context.Context) {
 			entry.ResolvedIPs = ips
 		}
 
-		if err := s.redisRepo.AddExcluded(value, entry); err != nil {
+		// Write only the resolution fields, and only onto the record that was
+		// resolved: a deleted or edited exclusion must not be restored.
+		updated, err := s.redisRepo.UpdateExcludedResolution(value, entry)
+		if err != nil {
 			zlog.Error().Err(err).Str("fqdn", value).Msg("excluded: failed to persist resolution result")
+		} else if !updated {
+			zlog.Debug().Str("fqdn", value).Msg("excluded: entry changed during resolution; result discarded")
 		}
 	}
 }
@@ -1050,6 +1094,9 @@ func (s *IPService) BulkBlock(ctx context.Context, ips []string, reason string, 
 	if s.redisRepo == nil {
 		return nil
 	}
+	if !validAuditText(reason) {
+		return ErrInvalidBlockInput
+	}
 	now := time.Now().UTC()
 	timestamp := now.Format("2006-01-02 15:04:05 UTC")
 
@@ -1062,13 +1109,18 @@ func (s *IPService) BulkBlock(ctx context.Context, ips []string, reason string, 
 		expiresAt = now.Add(time.Duration(tVal) * time.Second).Format("2006-01-02 15:04:05 UTC")
 	}
 
-	// Deduplicate input IPs
+	// Canonicalize and deduplicate input IPs. Unparseable or zoned entries are
+	// skipped; only canonical addresses are stored and published.
 	uniqueIPs := make([]string, 0, len(ips))
 	seen := make(map[string]struct{})
 	for _, ip := range ips {
-		if _, ok := seen[ip]; !ok {
-			seen[ip] = struct{}{}
-			uniqueIPs = append(uniqueIPs, ip)
+		_, canonical, ok := canonicalBlockAddress(ip)
+		if !ok {
+			continue
+		}
+		if _, dup := seen[canonical]; !dup {
+			seen[canonical] = struct{}{}
+			uniqueIPs = append(uniqueIPs, canonical)
 		}
 	}
 
@@ -1118,22 +1170,44 @@ func (s *IPService) BulkBlock(ctx context.Context, ips []string, reason string, 
 	}
 
 	if persist && s.pgRepo != nil {
-		_ = s.pgRepo.BulkCreatePersistentBlocks(validIPs, validEntries)
-		_ = s.pgRepo.BulkLogAction(addedBy, "BLOCK_PERSISTENT", validIPs, reason)
-	} else if s.pgRepo != nil {
-		_ = s.pgRepo.BulkLogAction(addedBy, "BLOCK_EPHEMERAL", validIPs, reason)
-	}
-	err := s.redisRepo.ExecBulkBlockAtomic(validIPs, validEntries, now)
-	if err == nil {
-		s.bloomMu.Lock()
-		if s.bloomFilter != nil {
-			for _, ip := range validIPs {
-				s.bloomFilter.AddString(ip)
-			}
+		if err := s.pgRepo.BulkCreatePersistentBlocks(validIPs, validEntries); err != nil {
+			zlog.Error().Err(err).Int("count", len(validIPs)).Msg("BulkBlock: failed to store persistent blocks")
 		}
-		s.bloomMu.Unlock()
+		logAuditFailure(s.pgRepo.BulkLogAction(addedBy, "BLOCK_PERSISTENT", validIPs, reason), "BLOCK_PERSISTENT")
+	} else if s.pgRepo != nil {
+		logAuditFailure(s.pgRepo.BulkLogAction(addedBy, "BLOCK_EPHEMERAL", validIPs, reason), "BLOCK_EPHEMERAL")
 	}
-	return err
+	return s.redisRepo.ExecBulkBlockAtomic(validIPs, validEntries, now)
+}
+
+// logAuditFailure reports an audit insert that failed after input validation,
+// so a missing event-history record is visible to operators.
+func logAuditFailure(err error, action string) {
+	if err != nil {
+		zlog.Error().Err(err).Str("action", action).Msg("Failed to record enforcement event in the audit log")
+	}
+}
+
+// canonicalUnblockKeys returns the stored keys an unblock request may refer
+// to: the canonical address and, for older records, the spelling as given.
+func canonicalUnblockKeys(ips []string) []string {
+	keys := make([]string, 0, len(ips))
+	seen := make(map[string]struct{}, len(ips))
+	add := func(key string) {
+		if _, dup := seen[key]; !dup {
+			seen[key] = struct{}{}
+			keys = append(keys, key)
+		}
+	}
+	for _, ip := range ips {
+		addr, err := netip.ParseAddr(ip)
+		if err != nil || addr.Zone() != "" || !validAuditText(ip) {
+			continue
+		}
+		add(addr.Unmap().String())
+		add(ip)
+	}
+	return keys
 }
 
 // BulkUnblock unblocks multiple IPs at once.
@@ -1141,28 +1215,40 @@ func (s *IPService) BulkUnblock(ctx context.Context, ips []string, actor string)
 	if s.redisRepo == nil || len(ips) == 0 {
 		return nil
 	}
+	// Every member is validated before state changes, so one invalid value
+	// cannot make the audit insert fail after the unblock was applied.
+	keys := canonicalUnblockKeys(ips)
+	if len(keys) == 0 {
+		return ErrInvalidBlockInput
+	}
 
-	err := s.redisRepo.ExecBulkUnblockAtomic(ips)
+	err := s.redisRepo.ExecBulkUnblockAtomic(keys)
 	if err != nil {
 		return err
 	}
 
 	if s.pgRepo != nil {
-		_ = s.pgRepo.BulkDeletePersistentBlocks(ips)
-		_ = s.pgRepo.BulkLogAction(actor, "UNBLOCK", ips, "bulk action")
+		if err := s.pgRepo.BulkDeletePersistentBlocks(keys); err != nil {
+			zlog.Error().Err(err).Int("count", len(keys)).Msg("BulkUnblock: failed to delete persistent blocks")
+		}
+		logAuditFailure(s.pgRepo.BulkLogAction(actor, "UNBLOCK", keys, "bulk action"), "UNBLOCK")
 	}
-
-	// Full re-sync is needed for Bloom filter because it doesn't support removals
-	go s.syncBloomFilter()
 	return nil
 }
+
+// Country filter bounds: more distinct values than there are countries, or
+// longer than any country name, cannot match anything useful.
+const (
+	maxCountryFilters      = 300
+	maxCountryFilterLength = 64
+)
 
 type filterOptions struct {
 	query        string
 	queryField   string
 	queryASN     uint64
 	queryNetwork *net.IPNet
-	countryList  []string
+	countries    map[string]struct{}
 	addedBy      string
 	fromTime     time.Time
 	toTime       time.Time
@@ -1195,10 +1281,22 @@ func (s *IPService) prepareFilterOptions(query, country, addedBy, from, to strin
 		}
 	}
 	if country != "" {
+		// A set keeps membership constant-time per record; the bounds stop a
+		// huge query string from multiplying the cost of every scanned record.
+		opts.countries = make(map[string]struct{})
 		for _, c := range strings.Split(country, ",") {
-			if trimmed := strings.TrimSpace(c); trimmed != "" {
-				opts.countryList = append(opts.countryList, strings.ToLower(trimmed))
+			trimmed := strings.ToLower(strings.TrimSpace(c))
+			if trimmed == "" || len(trimmed) > maxCountryFilterLength {
+				continue
 			}
+			if len(opts.countries) >= maxCountryFilters {
+				break
+			}
+			opts.countries[trimmed] = struct{}{}
+		}
+		if len(opts.countries) == 0 {
+			// Only invalid values were given: match nothing rather than everything.
+			opts.countries[""] = struct{}{}
 		}
 	}
 	opts.addedBy = strings.ToLower(strings.TrimSpace(addedBy))
@@ -1253,18 +1351,11 @@ func (s *IPService) matchesFilters(ip string, entry *models.IPEntry, opts *filte
 	}
 
 	// 2. Country filter
-	if len(opts.countryList) > 0 {
-		match := false
-		if entry.Geolocation != nil {
-			cCode := strings.ToLower(entry.Geolocation.Country)
-			for _, c := range opts.countryList {
-				if cCode == c {
-					match = true
-					break
-				}
-			}
+	if len(opts.countries) > 0 {
+		if entry.Geolocation == nil {
+			return false
 		}
-		if !match {
+		if _, ok := opts.countries[strings.ToLower(entry.Geolocation.Country)]; !ok || entry.Geolocation.Country == "" {
 			return false
 		}
 	}
@@ -1396,10 +1487,14 @@ func (s *IPService) BlockIP(ctx context.Context, ip string, reason string, usern
 		return nil, nil
 	}
 
-	addr, err := netip.ParseAddr(ip)
-	if err != nil {
+	addr, canonical, ok := canonicalBlockAddress(ip)
+	if !ok {
 		return nil, fmt.Errorf("invalid IP format")
 	}
+	if !validAuditText(reason) {
+		return nil, ErrInvalidBlockInput
+	}
+	ip = canonical
 
 	whitelist, _ := s.redisRepo.GetWhitelistedIPs()
 	excluded, _ := s.redisRepo.GetExcludedEntries()
@@ -1436,25 +1531,35 @@ func (s *IPService) BlockIP(ctx context.Context, ip string, reason string, usern
 		ThreatScore: s.CalculateThreatScore(ip, reason),
 	}
 
-	if persist && s.pgRepo != nil {
-		_ = s.pgRepo.CreatePersistentBlock(ip, entry)
-		_ = s.pgRepo.LogAction(username, "BLOCK_PERSISTENT", ip, reason)
-	} else {
-		if s.pgRepo != nil {
-			_ = s.pgRepo.LogAction(username, "BLOCK_EPHEMERAL", ip, reason)
-		}
+	// A block may extend, but never shorten, an existing block: shortening is
+	// removal and needs unblock rights. The Redis script enforces this
+	// atomically; this early check avoids recording an event that is refused.
+	if current, err := s.redisRepo.GetIPEntry(ip); err == nil && current != nil && outlasts(current.ExpiresAt, expiresAt) {
+		return nil, ErrBlockShortens
 	}
 
-	err = s.redisRepo.ExecBlockAtomic(ip, entry, now)
-	if err == nil {
-		s.bloomMu.Lock()
-		if s.bloomFilter != nil {
-			s.bloomFilter.AddString(ip)
+	if persist && s.pgRepo != nil {
+		if err := s.pgRepo.CreatePersistentBlock(ip, entry); err != nil {
+			zlog.Error().Err(err).Str("ip", ip).Msg("BlockIP: failed to store persistent block")
 		}
-		s.bloomMu.Unlock()
-		return &entry, nil
+		logAuditFailure(s.pgRepo.LogAction(username, "BLOCK_PERSISTENT", ip, reason), "BLOCK_PERSISTENT")
+	} else if s.pgRepo != nil {
+		logAuditFailure(s.pgRepo.LogAction(username, "BLOCK_EPHEMERAL", ip, reason), "BLOCK_EPHEMERAL")
 	}
-	return nil, err
+
+	if err := s.redisRepo.ExecBlockAtomic(ip, entry, now); err != nil {
+		return nil, err
+	}
+	return &entry, nil
+}
+
+// outlasts reports whether a block expiring at current lasts longer than one
+// expiring at replacement ("" = permanent; fixed-width UTC layout).
+func outlasts(current, replacement string) bool {
+	if replacement == "" {
+		return false
+	}
+	return current == "" || current > replacement
 }
 
 // UnblockIP unblocks a single IP.
@@ -1462,15 +1567,25 @@ func (s *IPService) UnblockIP(ctx context.Context, ip string, username string) e
 	if s.redisRepo == nil {
 		return nil
 	}
-	// Atomic unblock from Redis
-	err := s.redisRepo.ExecUnblockAtomic(ip)
-	if err != nil {
-		return err
+	keys := canonicalUnblockKeys([]string{ip})
+	if len(keys) == 0 {
+		return ErrInvalidBlockInput
+	}
+	// Atomic unblock from Redis (canonical key and, for older records, the
+	// spelling as given).
+	for _, key := range keys {
+		if err := s.redisRepo.ExecUnblockAtomic(key); err != nil {
+			return err
+		}
 	}
 
 	if s.pgRepo != nil {
-		_ = s.pgRepo.DeletePersistentBlock(ip)
-		_ = s.pgRepo.LogAction(username, "UNBLOCK", ip, "")
+		for _, key := range keys {
+			if err := s.pgRepo.DeletePersistentBlock(key); err != nil {
+				zlog.Error().Err(err).Str("ip", key).Msg("UnblockIP: failed to delete persistent block")
+			}
+		}
+		logAuditFailure(s.pgRepo.LogAction(username, "UNBLOCK", keys[0], ""), "UNBLOCK")
 	}
 	return nil
 }
@@ -1480,7 +1595,7 @@ func (s *IPService) UnblockIP(ctx context.Context, ip string, username string) e
 func CanonicalWhitelistKey(ip string) string {
 	ip = strings.TrimSpace(ip)
 	if p, err := netip.ParsePrefix(ip); err == nil {
-		return p.Masked().String()
+		return canonicalPrefix(p).String()
 	}
 	if a, err := netip.ParseAddr(ip); err == nil {
 		return a.Unmap().String()
@@ -1541,6 +1656,16 @@ func (s *IPService) AddExcluded(ctx context.Context, value string, reason string
 	return s.redisRepo.AddExcluded(entry.Value, entry)
 }
 
+// AddSystemExcluded creates or renews a feed-owned exclusion. It never
+// replaces an operator's exclusion and reports whether it wrote the entry.
+func (s *IPService) AddSystemExcluded(ctx context.Context, value, reason, expiresAt string) (bool, error) {
+	entry, err := s.prepareExcluded(value, reason, "system", expiresAt, false)
+	if err != nil {
+		return false, err
+	}
+	return s.redisRepo.UpsertSystemExcluded(entry.Value, entry)
+}
+
 // AddExcludedIfAbsent is AddExcluded for create-only callers: it atomically
 // refuses to replace an existing exclusion and reports whether one was created.
 func (s *IPService) AddExcludedIfAbsent(ctx context.Context, value string, reason string, username string, expiresAt string, alertEnabled bool) (bool, error) {
@@ -1563,7 +1688,7 @@ func CanonicalExclusion(value string) (string, string) {
 	switch typ {
 	case "cidr":
 		if p, err := netip.ParsePrefix(value); err == nil {
-			value = p.Masked().String()
+			value = canonicalPrefix(p).String()
 		}
 	case "ip":
 		if a, err := netip.ParseAddr(value); err == nil {
@@ -1617,6 +1742,11 @@ func (s *IPService) RemoveExcluded(ctx context.Context, value string, username s
 
 // GetIPDetails retrieves current and historical details for an IP.
 func (s *IPService) GetIPDetails(ctx context.Context, ip string) (map[string]interface{}, error) {
+	// Only addresses have IP details; other targets (account names, roles)
+	// belong to the system audit log.
+	if addr, err := netip.ParseAddr(ip); err != nil || addr.Zone() != "" {
+		return nil, fmt.Errorf("invalid IP format")
+	}
 	entry, err := s.redisRepo.GetIPEntry(ip)
 	var history []models.AuditLog
 	if s.pgRepo != nil {

@@ -154,17 +154,16 @@ func (s *SchedulerService) CleanOldIPs(hashKey string) {
 		// No fallback: if ExpiresAt is empty, the entry never expires (e.g. permanent whitelists)
 
 		if !expireTime.IsZero() && now.After(expireTime) {
-			if hashKey == "ips" {
-				// Atomically remove from hash and ZSET
-				if err := s.redisRepo.ExecUnblockAtomic(ip); err != nil {
-					zlog.Error().Err(err).Str("ip", ip).Msg("Error during atomic unblock")
-				}
-			} else {
-				if err := s.redisRepo.HDel(hashKey, ip); err != nil {
-					zlog.Error().Err(err).Str("ip", ip).Str("hashKey", hashKey).Msg("Error deleting IP from hash")
-				}
+			// Remove only the expired record read above (and, for blocks, its
+			// time index entry); a renewal written since then is kept.
+			result, err := s.redisRepo.RemoveIfUnchanged(hashKey, ip, entry.Timestamp, entry.ExpiresAt)
+			if err != nil {
+				zlog.Error().Err(err).Str("ip", ip).Str("hashKey", hashKey).Msg("Error deleting expired entry")
+				continue
 			}
-			zlog.Info().Str("ip", ip).Str("hashKey", hashKey).Time("expiredAt", expireTime).Msg("Deleted expired IP")
+			if result == repository.RemoveDone {
+				zlog.Info().Str("ip", ip).Str("hashKey", hashKey).Time("expiredAt", expireTime).Msg("Deleted expired IP")
+			}
 		}
 	}
 }

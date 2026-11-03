@@ -1,6 +1,7 @@
 package api
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -175,6 +176,10 @@ func (h *APIHandler) handleWebhookBan(c *gin.Context, data webhookRequest, usern
 	}
 
 	entry, err := h.ipService.BlockIP(c.Request.Context(), data.IP, data.Reason, username, clientIP, data.Persist, duration)
+	if errors.Is(err, service.ErrBlockShortens) {
+		c.JSON(http.StatusConflict, gin.H{"status": "IP is already blocked for longer; unban it first to shorten the block", "ip": data.IP})
+		return
+	}
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"status": fmt.Sprintf("Block failed: %v", err)})
 		return
