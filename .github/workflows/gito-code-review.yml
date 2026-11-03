@@ -157,6 +157,7 @@ jobs:
             echo '::notice::Gito comment skipped: PR changed or closed during review.'
             exit 0
           fi
+          # shellcheck disable=SC2016 # backticks are Markdown, not command substitution
           printf '\n\n---\nGito advisory review of `%s` · [workflow run](%s). This review does not block merging.\n' \
             "$HEAD_SHA" "$RUN_URL" >> "$report"
           "$RUNNER_TEMP/gito-venv/bin/gito" --no-verbose --project-config "$RUNNER_TEMP/gito-config.toml" \
