@@ -288,6 +288,7 @@ func TestAPIHandler_Logout(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("GET", "/logout", nil)
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
 	r.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusFound, w.Code)

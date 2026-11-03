@@ -30,8 +30,11 @@ func (r *roleUIRepository) SaveRole(_ context.Context, role models.AccessRole, a
 	return r.writeErr
 }
 
-func (r *roleUIRepository) AssignAdminRole(_ context.Context, account models.AdminAccount, actor string) error {
-	r.assigned, r.actor = &account, actor
+func (r *roleUIRepository) AssignManagedAdminRole(_ context.Context, assignment models.RoleAssignment) error {
+	account := models.AdminAccount{
+		Username: assignment.Expected.Username, Role: assignment.RoleID, EntraRoleOverride: assignment.Override,
+	}
+	r.assigned, r.actor = &account, assignment.Actor
 	return r.writeErr
 }
 

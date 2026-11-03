@@ -24,6 +24,33 @@ import (
 func (h *APIHandler) Dashboard(c *gin.Context) {
 	username, _ := c.Get("username")
 
+	views, _ := h.pgRepo.GetSavedViews(username.(string))
+	permissions, _ := c.Get("permissions")
+	data := gin.H{
+		"admin_username": h.cfg.GUIAdmin,
+		"username":       username,
+		"permissions":    permissions,
+		"views":          views,
+	}
+
+	// The page requires view_ips; aggregate statistics additionally require
+	// view_stats, checked against the effective credential.
+	statsAllowed := h.can(c, "view_stats")
+	data["stats_allowed"] = statsAllowed
+	if !statsAllowed {
+		data["total_ips"] = "—"
+		data["stats"] = gin.H{
+			"hour": "—", "day": "—", "total": "—",
+			"top_countries": []map[string]interface{}{},
+			"top_asns":      []map[string]interface{}{},
+			"top_reasons":   []map[string]interface{}{},
+			"webhooks_hour": "—", "last_block_ts": 0, "blocks_minute": "—",
+			"whitelisted": "—", "excluded": "—",
+		}
+		h.renderHTML(c, http.StatusOK, "dashboard.html", data)
+		return
+	}
+
 	// Preload stats for initial render
 	hour, day, totalEver, activeBlocks, top, topASN, topReason, wh, lb, bm, whc, err := h.ipService.Stats(c.Request.Context())
 	if err != nil {
@@ -47,41 +74,30 @@ func (h *APIHandler) Dashboard(c *gin.Context) {
 		reasons = append(reasons, map[string]interface{}{"Reason": r.Reason, "Count": r.Count})
 	}
 
-	views, _ := h.pgRepo.GetSavedViews(username.(string))
-	permissions, _ := c.Get("permissions")
-	h.renderHTML(c, http.StatusOK, "dashboard.html", gin.H{
-		"total_ips":      activeBlocks, // Use value from Stats() for consistency
-		"admin_username": h.cfg.GUIAdmin,
-		"username":       username,
-		"permissions":    permissions,
-		"views":          views,
-		"stats": gin.H{
-			"hour":          hour,
-			"day":           day,
-			"total":         totalEver, // Persistent total bans
-			"top_countries": tops,
-			"top_asns":      asns,
-			"top_reasons":   reasons,
-			"webhooks_hour": wh,
-			"last_block_ts": lb,
-			"blocks_minute": bm,
-			"whitelisted":   whc,
-			"excluded":      h.ipService.GetExcludedCount(c.Request.Context()),
-		},
-	})
+	data["total_ips"] = activeBlocks // Use value from Stats() for consistency
+	data["stats"] = gin.H{
+		"hour":          hour,
+		"day":           day,
+		"total":         totalEver, // Persistent total bans
+		"top_countries": tops,
+		"top_asns":      asns,
+		"top_reasons":   reasons,
+		"webhooks_hour": wh,
+		"last_block_ts": lb,
+		"blocks_minute": bm,
+		"whitelisted":   whc,
+		"excluded":      h.ipService.GetExcludedCount(c.Request.Context()),
+	}
+	h.renderHTML(c, http.StatusOK, "dashboard.html", data)
 }
 
 func (h *APIHandler) ThreatMap(c *gin.Context) {
 	username, _ := c.Get("username")
 	_, hasPermissions := c.Get("permissions")
 	permissions := c.GetString("permissions")
-	statsAllowed := hasPermissions && username == h.cfg.GUIAdmin
-	for _, permission := range strings.Split(permissions, ",") {
-		if strings.TrimSpace(permission) == "view_stats" {
-			statsAllowed = true
-			break
-		}
-	}
+	// can() limits the recovery-administrator shortcut to browser sessions, so
+	// a restricted token owned by that account keeps its own scope.
+	statsAllowed := hasPermissions && h.can(c, "view_stats")
 
 	// The map requires view_ips; aggregate statistics additionally require view_stats.
 	// Null values distinguish restricted statistics from a real count of zero.
@@ -339,7 +355,7 @@ func (h *APIHandler) CreateAdmin(c *gin.Context) {
 			tenantID, objectID := strings.ToLower(req.EntraTenantID), strings.ToLower(req.EntraObjectID)
 			admin.EntraTenantID, admin.EntraObjectID = &tenantID, &objectID
 		}
-		if err := h.identityRepo.CreateManagedAdmin(c.Request.Context(), admin, c.GetString("username")); err != nil {
+		if err := h.identityRepo.CreateManagedAdminAtRevision(c.Request.Context(), admin, c.GetString("username"), role.Revision); err != nil {
 			h.identityFailure(c, err)
 			return
 		}
@@ -502,7 +518,16 @@ func (h *APIHandler) DeleteAdmin(c *gin.Context) {
 		c.JSON(400, gin.H{"error": "cannot delete main admin"})
 		return
 	}
-	if !h.canManageAccount(c, req.Username) {
+	target, allowed := h.canManageAccount(c, req.Username)
+	if !allowed {
+		return
+	}
+	if h.identityRepo != nil {
+		if err := h.identityRepo.DeleteManagedAdmin(c.Request.Context(), h.adminMutation(c, *target)); err != nil {
+			h.identityFailure(c, err)
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"status": "success"})
 		return
 	}
 
@@ -535,16 +560,12 @@ func (h *APIHandler) ChangeAdminPassword(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Password for GUIAdmin cannot be changed via UI"})
 		return
 	}
-	if !h.canManageAccount(c, req.Username) {
+	target, allowed := h.canManageAccount(c, req.Username)
+	if !allowed {
 		return
 	}
 	if h.identityRepo != nil {
-		admin, err := h.pgRepo.GetAdmin(req.Username)
-		if err != nil || admin == nil {
-			c.Status(http.StatusNotFound)
-			return
-		}
-		if admin.AuthSource == "entra" {
+		if target.AuthSource == "entra" {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Microsoft manages this account's password."})
 			return
 		}
@@ -557,6 +578,16 @@ func (h *APIHandler) ChangeAdminPassword(c *gin.Context) {
 	hash, err := h.authService.HashPassword(req.NewPassword)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Password could not be saved."})
+		return
+	}
+	if h.identityRepo != nil {
+		// The hash is slow; the repository rechecks authority over the same
+		// account snapshot under lock before writing it.
+		if err := h.identityRepo.ChangeManagedAdminPassword(c.Request.Context(), h.adminMutation(c, *target), hash); err != nil {
+			h.identityFailure(c, err)
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"status": "success"})
 		return
 	}
 	err = h.pgRepo.UpdateAdminPassword(req.Username, hash)
@@ -590,21 +621,23 @@ func (h *APIHandler) ChangeAdminTOTP(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "TOTP for GUIAdmin cannot be reset via UI"})
 		return
 	}
-	if !h.canManageAccount(c, req.Username) {
+	target, allowed := h.canManageAccount(c, req.Username)
+	if !allowed {
 		return
 	}
 
 	// Clear TOTP secret to force re-setup on next login.
 	if h.identityRepo != nil {
-		admin, err := h.pgRepo.GetAdmin(req.Username)
-		if err != nil || admin == nil {
-			c.Status(http.StatusNotFound)
-			return
-		}
-		if admin.AuthSource == "entra" {
+		if target.AuthSource == "entra" {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Microsoft manages this account's authentication."})
 			return
 		}
+		if err := h.identityRepo.ResetManagedAdminTOTP(c.Request.Context(), h.adminMutation(c, *target)); err != nil {
+			h.identityFailure(c, err)
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"status": "success"})
+		return
 	}
 	if err := h.pgRepo.UpdateAdminToken(req.Username, ""); err != nil {
 		zlog.Error().Err(err).Str("target", req.Username).Msg("Failed to clear admin TOTP")

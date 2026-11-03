@@ -64,6 +64,23 @@ type EntraIdentity struct {
 	External bool
 }
 
+// AdminMutation binds an account change to the target snapshot that passed
+// authorization, so the repository can reject the change when the target was
+// promoted, replaced or otherwise changed in the meantime.
+type AdminMutation struct {
+	Expected      AdminAccount
+	Actor         string
+	RecoveryAdmin string
+}
+
+// RoleAssignment assigns the role revision that passed authorization.
+type RoleAssignment struct {
+	AdminMutation
+	RoleID       string
+	RoleRevision int
+	Override     bool
+}
+
 // AdminStatusChange carries the authorized snapshot so concurrent permission or
 // identity changes can be rejected before access is changed.
 type AdminStatusChange struct {

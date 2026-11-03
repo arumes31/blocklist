@@ -95,7 +95,13 @@ func TestLogoutIgnoresCrossSiteNavigation(t *testing.T) {
 	h, _, _, _, _ := setupTest()
 	r := sessionRouter(h, func(s sessions.Session) { s.Set("logged_in", true) }, h.Logout)
 
-	for site, location := range map[string]string{"cross-site": "/dashboard", "same-origin": "/login", "": "/login"} {
+	for site, location := range map[string]string{
+		"cross-site":  "/dashboard",
+		"same-site":   "/dashboard", // a sibling origin must not sign users out
+		"same-origin": "/login",
+		"none":        "/login",
+		"":            "/dashboard", // no browser metadata and no same-host Referer
+	} {
 		req := httptest.NewRequest(http.MethodGet, "/test", nil)
 		if site != "" {
 			req.Header.Set("Sec-Fetch-Site", site)
@@ -103,6 +109,17 @@ func TestLogoutIgnoresCrossSiteNavigation(t *testing.T) {
 		w := httptest.NewRecorder()
 		r.ServeHTTP(w, req)
 		assert.Equal(t, location, w.Header().Get("Location"), "Sec-Fetch-Site %q", site)
+	}
+
+	for referer, location := range map[string]string{
+		"http://example.com/dashboard":         "/login",
+		"http://sibling.example.com/dashboard": "/dashboard",
+	} {
+		req := httptest.NewRequest(http.MethodGet, "http://example.com/test", nil)
+		req.Header.Set("Referer", referer)
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		assert.Equal(t, location, w.Header().Get("Location"), "Referer %q", referer)
 	}
 }
 

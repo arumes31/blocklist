@@ -132,7 +132,7 @@ test('block validation prevents an empty IP from creating a request', async () =
  * Returns mutable payload/failure state, DOM stubs, and request/error recordings
  * so refresh behavior can be tested without a browser or live server.
  */
-function statsHarness() {
+function statsHarness({statsAllowed = true} = {}) {
     const fields = Object.fromEntries(['stat-countries', 'stat-asns', 'stat-reasons'].map(id => [id, {innerHTML: 'previous entries'}]));
     fields['health-dot'] = {style: {}, title: ''};
     const requests = [];
@@ -149,12 +149,20 @@ function statsHarness() {
         },
         updateLastBlockDisplay: () => {},
         syncInsightFilters: () => {},
+        statsAllowed,
         console: {error: (...args) => errors.push(args)},
     });
     vm.runInContext(handlerSource('function escapeHTML(str)', '// UI Event Listeners'), context);
     vm.runInContext(handlerSource('let statsLoading = false;', 'setInterval('), context);
     return {state, context, fields, requests, errors};
 }
+
+test('stats refresh skips the statistics API without view_stats', async () => {
+    const {context, requests, errors} = statsHarness({statsAllowed: false});
+    await context.refreshStats();
+    assert.deepEqual(requests, ['/health']);
+    assert.deepEqual(errors, []);
+});
 
 test('each stats refresh retains every top entry and the initial chip presentation', async () => {
     const {state, context, fields, errors} = statsHarness();

@@ -31,7 +31,7 @@ func TestAPIHandler_ThreatMapBootstrap(t *testing.T) {
 	c, _ := setupHTMLTest(w)
 	c.Request = httptest.NewRequest(http.MethodGet, "/threat-map", nil)
 	c.Set("username", "analyst")
-	c.Set("permissions", "view_ips,view_stats")
+	c.Set("permissions", "view_ips,view_stats,view_event_logs")
 	h.ThreatMap(c)
 
 	require.Equal(t, http.StatusOK, w.Code)
@@ -68,8 +68,10 @@ func TestAPIHandler_ThreatMapStatsPermissions(t *testing.T) {
 		username    string
 		permissions string
 		missing     bool
+		token       bool
 		allowed     bool
 	}{
+		{name: "administrator token keeps its scope", username: "admin", permissions: "view_ips", token: true},
 		{name: "granular permission", username: "analyst", permissions: "view_ips, view_stats ", allowed: true},
 		{name: "system administrator", username: "admin", permissions: "view_ips", allowed: true},
 		{name: "map only", username: "analyst", permissions: "view_ips"},
@@ -95,6 +97,9 @@ func TestAPIHandler_ThreatMapStatsPermissions(t *testing.T) {
 			c.Set("username", tt.username)
 			if !tt.missing {
 				c.Set("permissions", tt.permissions)
+			}
+			if tt.token {
+				c.Set("token_auth", true)
 			}
 			h.ThreatMap(c)
 

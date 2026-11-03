@@ -147,7 +147,20 @@ func (p *PostgresRepository) DeleteRole(ctx context.Context, id, actor string, e
 	return tx.Commit()
 }
 
+// CreateManagedAdmin creates an account with the role's current definition.
+// Requests authorized against a role snapshot use CreateManagedAdminAtRevision.
 func (p *PostgresRepository) CreateManagedAdmin(ctx context.Context, admin models.AdminAccount, actor string) error {
+	return p.createManagedAdmin(ctx, admin, actor, nil)
+}
+
+// CreateManagedAdminAtRevision creates an account with the role revision that
+// passed authorization. The role stays share-locked until commit, so a
+// concurrent role expansion cannot be granted through this request.
+func (p *PostgresRepository) CreateManagedAdminAtRevision(ctx context.Context, admin models.AdminAccount, actor string, roleRevision int) error {
+	return p.createManagedAdmin(ctx, admin, actor, &roleRevision)
+}
+
+func (p *PostgresRepository) createManagedAdmin(ctx context.Context, admin models.AdminAccount, actor string, roleRevision *int) error {
 	if admin.AuthSource == "entra" && admin.EntraObjectID == nil {
 		upn, err := models.NormalizeEntraUPN(admin.EntraUPN)
 		if err != nil || admin.EntraTenantID != nil {
@@ -160,6 +173,11 @@ func (p *PostgresRepository) CreateManagedAdmin(ctx context.Context, admin model
 		return fmt.Errorf("starting account creation: %w", err)
 	}
 	defer rollbackIdentity(tx)
+	if roleRevision != nil {
+		if _, err := lockRoleRevision(ctx, tx, admin.Role, *roleRevision); err != nil {
+			return err
+		}
+	}
 	if admin.AuthSource == "entra" && admin.EntraUPN != "" {
 		if err := lockEntraUPN(ctx, tx, admin.EntraUPN); err != nil {
 			return err
@@ -202,26 +220,20 @@ func (p *PostgresRepository) CreateManagedAdmin(ctx context.Context, admin model
 	return tx.Commit()
 }
 
+// AssignAdminRole assigns a role's current definition without an authorization
+// snapshot. Request handlers use AssignManagedAdminRole.
 func (p *PostgresRepository) AssignAdminRole(ctx context.Context, admin models.AdminAccount, actor string) error {
 	tx, err := p.db.BeginTxx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("starting role assignment: %w", err)
 	}
 	defer rollbackIdentity(tx)
-	result, err := tx.ExecContext(ctx, `UPDATE admins a SET role_id = r.id, role = r.id,
+	if err := execOne(ctx, tx, `UPDATE admins a SET role_id = r.id, role = r.id,
 		permissions = r.permissions, entra_role_override = $3
 		FROM access_roles r WHERE a.username = $1 AND r.id = $2`,
 		admin.Username, admin.Role, admin.EntraRoleOverride,
-	)
-	if err != nil {
-		return fmt.Errorf("assigning role: %w", err)
-	}
-	count, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("checking role assignment: %w", err)
-	}
-	if count != 1 {
-		return sql.ErrNoRows
+	); err != nil {
+		return err
 	}
 	if err := auditIdentity(ctx, tx, actor, "ASSIGN_ROLE", admin.Username, "Role: "+admin.Role); err != nil {
 		return fmt.Errorf("recording role assignment: %w", err)
