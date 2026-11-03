@@ -441,6 +441,7 @@ them. See [config.go](internal/config/config.go) for the complete list and
 | `SMTP_PASS` | SMTP password | `""` |
 | `SMTP_FROM` | Sender address for alerts | `""` |
 | `SMTP_TO` | Recipient address for alerts | `""` |
+| `SMTP_TLS` | Alert mail transport security: `starttls` (required, certificate-verified), `implicit` (TLS from connect, e.g. port 465) or `none` (only for a trusted local relay) | `starttls` |
 | `AUDIT_LOG_LIMIT_PER_IP` | Maximum event entries per IP; does not prune system audit actions | `100` |
 | `EVENT_LOG_RETENTION_MONTHS` | Event-log age limit, integer from `1` to `3` calendar months | `3` |
 | `AUDIT_LOG_RETENTION_MONTHS` | System-audit-log age limit, integer from `1` to `12` calendar months | `12` |

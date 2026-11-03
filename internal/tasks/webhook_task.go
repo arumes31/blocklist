@@ -56,6 +56,16 @@ func NewWebhookDeliveryTask(webhookID int, event string, data []byte) (*asynq.Ta
 type WebhookTaskHandler struct {
 	repo   WebhookRepository
 	client *http.Client
+	// disabled mirrors ENABLE_OUTBOUND_WEBHOOKS=false: queued deliveries are
+	// dropped instead of sent, including retries.
+	disabled bool
+}
+
+// WithOutboundEnabled applies the ENABLE_OUTBOUND_WEBHOOKS master switch to
+// delivery. When it is off, pending and retried deliveries are discarded.
+func (h *WebhookTaskHandler) WithOutboundEnabled(enabled bool) *WebhookTaskHandler {
+	h.disabled = !enabled
+	return h
 }
 
 func NewWebhookTaskHandler(repo WebhookRepository) *WebhookTaskHandler {
@@ -92,6 +102,11 @@ func (h *WebhookTaskHandler) ProcessTask(ctx context.Context, t *asynq.Task) err
 	var p WebhookPayload
 	if err := json.Unmarshal(t.Payload(), &p); err != nil {
 		return fmt.Errorf("json.Unmarshal failed: %v: %w", err, asynq.SkipRetry)
+	}
+	if h.disabled {
+		// Outbound notifications were turned off after this task was queued.
+		// Discard it rather than retrying, so nothing is sent later either.
+		return nil
 	}
 
 	// Fetch webhook details fresh to ensure it's still active/valid and to avoid

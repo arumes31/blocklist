@@ -234,3 +234,23 @@ func TestWebhookTaskHandler_ProcessTask_SSRFBlocked(t *testing.T) {
 	assert.Contains(t, err.Error(), "unsafe webhook URL")
 	assert.ErrorIs(t, err, asynq.SkipRetry)
 }
+
+// Turning ENABLE_OUTBOUND_WEBHOOKS off must also stop deliveries that were
+// queued before the change; they are discarded, not sent or retried.
+func TestWebhookTaskHandler_ProcessTask_OutboundDisabled(t *testing.T) {
+	var hits int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits++
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	repo := new(mockWebhookRepository)
+	handler := NewWebhookTaskHandlerWithClient(repo, newTestClient(server)).WithOutboundEnabled(false)
+	task, err := NewWebhookDeliveryTask(7, "excluded_block_attempt", []byte(`{"ip":"192.0.2.1"}`))
+	require.NoError(t, err)
+
+	require.NoError(t, handler.ProcessTask(context.Background(), task))
+	assert.Zero(t, hits)
+	repo.AssertNotCalled(t, "GetWebhookByID", mock.Anything)
+}
