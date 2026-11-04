@@ -372,8 +372,8 @@ func (r *RedisRepository) UpdateExcludedResolution(value string, resolved models
 			return err
 		}
 		var current models.ExcludedEntry
-		if err := sonic.UnmarshalString(raw, &current); err != nil {
-			return nil
+		if sonic.UnmarshalString(raw, &current) != nil {
+			return nil // An unreadable record is not the one that was resolved.
 		}
 		samePolicy := current.Timestamp == resolved.Timestamp && current.Value == resolved.Value &&
 			current.Type == resolved.Type && current.AddedBy == resolved.AddedBy &&
