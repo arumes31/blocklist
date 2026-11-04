@@ -199,7 +199,7 @@ func TestWSSessionCurrentRereadsServerSession(t *testing.T) {
 
 	cookieFor := func(values map[interface{}]interface{}) *http.Cookie {
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
-		s, err := store.New(req, wsSessionName)
+		s, err := store.New(req, SessionCookieName)
 		require.NoError(t, err)
 		s.Values = values
 		w := httptest.NewRecorder()

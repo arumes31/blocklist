@@ -509,7 +509,7 @@ func setupSessions(r *gin.Engine, cfg *config.Config, authKey, blockKey []byte) 
 		SameSite: sameSite,
 		MaxAge:   int(api.SessionMaxAge.Seconds()),
 	})
-	r.Use(sessions.Sessions("blocklist_session", store))
+	r.Use(sessions.Sessions(api.SessionCookieName, store))
 	return store
 }
 

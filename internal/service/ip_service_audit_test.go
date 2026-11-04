@@ -205,3 +205,10 @@ func TestIPService_CountryFilterIsBoundedSet(t *testing.T) {
 	entry.Geolocation.Country = "US"
 	require.False(t, svc.matchesFilters("192.0.2.1", entry, opts))
 }
+
+func TestIPService_IsBlockedCanonicalizesLookup(t *testing.T) {
+	t.Parallel()
+	svc, repo, _ := newAuditTestService(t, nil)
+	require.NoError(t, repo.BlockIP("192.0.2.40", models.IPEntry{Reason: "canonical"}))
+	require.True(t, svc.IsBlocked("::ffff:192.0.2.40"))
+}

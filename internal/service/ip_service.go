@@ -210,6 +210,11 @@ func (s *IPService) IsBlocked(ipStr string) bool {
 	if s.redisRepo == nil {
 		return false
 	}
+	// Blocks are stored under the canonical address; unparseable input keeps
+	// the raw key so legacy records still resolve.
+	if _, canonical, ok := canonicalBlockAddress(ipStr); ok {
+		ipStr = canonical
+	}
 	for attempt := 0; attempt < 3; attempt++ {
 		entry, err := s.redisRepo.GetIPEntry(ipStr)
 		if err != nil || entry == nil {
@@ -1163,6 +1168,20 @@ func (s *IPService) BulkBlock(ctx context.Context, ips []string, reason string, 
 		}
 		validIPs = append(validIPs, ipStr)
 		validEntries = append(validEntries, entry)
+	}
+
+	// Drop addresses whose existing block lasts longer: the Redis script would
+	// refuse them, so they must not be recorded as blocked either.
+	if current, err := s.redisRepo.GetIPEntries(validIPs); err == nil && len(current) == len(validIPs) {
+		keptIPs, keptEntries := validIPs[:0], validEntries[:0]
+		for i, ip := range validIPs {
+			if current[i] != nil && outlasts(current[i].ExpiresAt, expiresAt) {
+				continue
+			}
+			keptIPs = append(keptIPs, ip)
+			keptEntries = append(keptEntries, validEntries[i])
+		}
+		validIPs, validEntries = keptIPs, keptEntries
 	}
 
 	if len(validIPs) == 0 {

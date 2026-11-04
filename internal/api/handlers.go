@@ -242,8 +242,9 @@ func (h *APIHandler) WS(c *gin.Context) {
 	}
 }
 
-// wsSessionName is the browser session cookie name configured in main.
-const wsSessionName = "blocklist_session"
+// SessionCookieName is the browser session cookie name. main registers the
+// session middleware under it, and WebSocket revalidation reloads it.
+const SessionCookieName = "blocklist_session"
 
 // wsSessionCurrent reloads the server-side session behind a WebSocket and
 // reports whether it is still the signed-in session that opened the socket:
@@ -260,7 +261,7 @@ func (h *APIHandler) wsSessionCurrent(r *http.Request, username string, version 
 	if h.sessionStore == nil {
 		return true
 	}
-	current, err := h.sessionStore.New(r, wsSessionName)
+	current, err := h.sessionStore.New(r, SessionCookieName)
 	if err != nil || current == nil || current.IsNew {
 		return false
 	}

@@ -52,11 +52,13 @@ func TestOpenAPI_NoBrowserOAuthSchemes(t *testing.T) {
 		Components struct {
 			SecuritySchemes map[string]struct {
 				Type string `json:"type"`
+				Ref  string `json:"$ref"`
 			} `json:"securitySchemes"`
 		} `json:"components"`
 	}
 	assert.NoError(t, json.Unmarshal(w.Body.Bytes(), &spec))
 	for name, scheme := range spec.Components.SecuritySchemes {
+		assert.Empty(t, scheme.Ref, "security scheme %s must be inline so its type is checked", name)
 		assert.NotContains(t, []string{"oauth2", "openIdConnect"}, scheme.Type, "security scheme %s", name)
 	}
 }

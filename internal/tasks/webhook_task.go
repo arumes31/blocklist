@@ -20,6 +20,7 @@ import (
 	"strconv"
 
 	"github.com/hibiken/asynq"
+	zlog "github.com/rs/zerolog/log"
 )
 
 const (
@@ -106,6 +107,8 @@ func (h *WebhookTaskHandler) ProcessTask(ctx context.Context, t *asynq.Task) err
 	if h.disabled {
 		// Outbound notifications were turned off after this task was queued.
 		// Discard it rather than retrying, so nothing is sent later either.
+		zlog.Warn().Int("webhook_id", p.WebhookID).Str("event", p.Event).
+			Msg("Outbound webhooks are disabled (ENABLE_OUTBOUND_WEBHOOKS); discarding queued webhook delivery")
 		return nil
 	}
 
