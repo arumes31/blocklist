@@ -11,6 +11,7 @@ import (
 	"image/draw"
 	"image/png"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -464,7 +465,7 @@ func (h *APIHandler) generateQRWithLogoFromPath(url, logoPath string) ([]byte, e
 }
 
 // pendingEnrollmentTTL bounds how long a verified password may wait for the
-// TOTP setup step.
+// TOTP step or the TOTP setup step.
 const pendingEnrollmentTTL = 10 * time.Minute
 
 // pendingEnrollmentCurrent reports whether the session's first-factor proof
@@ -478,6 +479,13 @@ func pendingEnrollmentCurrent(session sessions.Session, admin *models.AdminAccou
 	}
 	age := time.Since(time.Unix(issued, 0))
 	return age >= -time.Minute && age <= pendingEnrollmentTTL
+}
+
+// clearPendingAuth removes every staged sign-in value from the session.
+func clearPendingAuth(session sessions.Session) {
+	for _, key := range []string{"pending_auth_user", "pending_auth_verified", "pending_totp_secret", "pending_auth_version", "pending_auth_time"} {
+		session.Delete(key)
+	}
 }
 
 // dummyBcryptHash is a valid cost-14 bcrypt hash of a fixed throwaway string.
@@ -568,6 +576,10 @@ func (h *APIHandler) VerifyFirstFactor(c *gin.Context) {
 	session := sessions.Default(c)
 	session.Set("pending_auth_user", username)
 	session.Set("pending_auth_verified", true)
+	// Bind the password proof to this credential version and a short window
+	// so a password reset (or time) revokes an unfinished sign-in.
+	session.Set("pending_auth_version", admin.SessionVersion)
+	session.Set("pending_auth_time", time.Now().Unix())
 	if err := session.Save(); err != nil {
 		zlog.Error().Err(err).Msg("Failed to save session for TOTP step")
 	}
@@ -611,6 +623,11 @@ func (h *APIHandler) Login(c *gin.Context) {
 		isMultiStep = true
 	}
 
+	// expectedVersion is the credential version a staged sign-in was proven
+	// against; the final session must carry exactly that version. -1 means the
+	// request presented the password itself.
+	expectedVersion := -1
+
 	// If it's a setup attempt
 	if setupSecret != "" {
 		pendingUser, hasPendingUser := session.Get("pending_auth_user").(string)
@@ -627,6 +644,10 @@ func (h *APIHandler) Login(c *gin.Context) {
 		}
 
 		admin, _ := h.pgRepo.GetAdmin(username)
+		if admin != nil {
+			// Enrollment bumps session_version once.
+			expectedVersion = admin.SessionVersion + 1
+		}
 
 		// Prevent overwriting existing token via this flow
 		if admin == nil || admin.Disabled || admin.AuthSource == "entra" {
@@ -646,11 +667,7 @@ func (h *APIHandler) Login(c *gin.Context) {
 		if !pendingEnrollmentCurrent(session, admin) {
 			zlog.Warn().Str("username", username).Msg("Stale TOTP enrollment proof rejected")
 			_ = h.pgRepo.LogAction(username, "LOGIN_FAILURE", c.ClientIP(), "Stale TOTP enrollment session")
-			session.Delete("pending_auth_user")
-			session.Delete("pending_auth_verified")
-			session.Delete("pending_totp_secret")
-			session.Delete("pending_auth_version")
-			session.Delete("pending_auth_time")
+			clearPendingAuth(session)
 			_ = session.Save()
 			h.renderHTML(c, http.StatusOK, "login.html", gin.H{
 				"error":    "Session expired or invalid setup attempt.",
@@ -690,6 +707,20 @@ func (h *APIHandler) Login(c *gin.Context) {
 		// the (possibly lagging) replica and now fails-closed on an empty token.
 		authenticated = true
 	case isMultiStep:
+		// The saved password proof only counts for the credential version it
+		// was issued against and for a short time.
+		admin, _ := h.pgRepo.GetAdmin(username)
+		if admin == nil || admin.Disabled || admin.AuthSource == "entra" || !pendingEnrollmentCurrent(session, admin) {
+			zlog.Warn().Str("username", username).Msg("Stale first-factor proof rejected")
+			_ = h.pgRepo.LogAction(username, "LOGIN_FAILURE", c.ClientIP(), "Stale multi-step session")
+			clearPendingAuth(session)
+			_ = session.Save()
+			h.renderHTML(c, http.StatusOK, "login.html", gin.H{
+				"error": "Session expired or invalid login attempt. Please restart login.",
+			})
+			return
+		}
+		expectedVersion = admin.SessionVersion
 		authenticated = h.authService.VerifyTOTP(username, totpCode)
 	default:
 		authenticated = h.authService.CheckAuth(username, password, totpCode)
@@ -697,7 +728,7 @@ func (h *APIHandler) Login(c *gin.Context) {
 
 	if authenticated {
 		admin, err := h.pgRepo.GetAdmin(username)
-		if err != nil || admin == nil || admin.Disabled {
+		if err != nil || admin == nil || admin.Disabled || (expectedVersion >= 0 && admin.SessionVersion != expectedVersion) {
 			session.Clear()
 			if err := session.Save(); err != nil {
 				zlog.Error().Err(err).Msg("Failed to clear rejected sign-in session")
@@ -731,11 +762,7 @@ func (h *APIHandler) Login(c *gin.Context) {
 	}
 
 	// On failed login, clear pending state to be safe
-	session.Delete("pending_auth_user")
-	session.Delete("pending_auth_verified")
-	session.Delete("pending_totp_secret")
-	session.Delete("pending_auth_version")
-	session.Delete("pending_auth_time")
+	clearPendingAuth(session)
 	_ = session.Save()
 
 	_ = h.pgRepo.LogAction(username, "LOGIN_FAILURE", "REDACTED", "Invalid TOTP or Credentials")
@@ -865,9 +892,11 @@ func (h *APIHandler) VerifySudo(c *gin.Context) {
 }
 
 func (h *APIHandler) Logout(c *gin.Context) {
-	// Sign-out stays a plain link, but a GET navigation started by another
-	// site (Sec-Fetch-Site: cross-site) must not end the user's session.
-	if c.Request.Method == http.MethodGet && c.GetHeader("Sec-Fetch-Site") == "cross-site" {
+	// Sign-out stays a plain link, so a GET only ends the session when the
+	// browser reports that this origin (or the user directly) started it.
+	// Same-site sibling origins and other sites get a no-op redirect; POST
+	// /logout is covered by the CSRF origin check.
+	if c.Request.Method == http.MethodGet && !sameOriginNavigation(c) {
 		c.Redirect(http.StatusFound, "/dashboard")
 		return
 	}
@@ -875,6 +904,21 @@ func (h *APIHandler) Logout(c *gin.Context) {
 	session.Clear()
 	_ = session.Save()
 	c.Redirect(http.StatusFound, "/login")
+}
+
+// sameOriginNavigation reports whether a GET request was started by this
+// origin or directly by the user. Browsers set Sec-Fetch-Site themselves; a
+// client that omits it must present a same-host Referer instead.
+func sameOriginNavigation(c *gin.Context) bool {
+	switch c.GetHeader("Sec-Fetch-Site") {
+	case "same-origin", "none":
+		return true
+	case "":
+		ref, err := url.Parse(c.GetHeader("Referer"))
+		return err == nil && ref.Host != "" && ref.Host == c.Request.Host
+	default:
+		return false
+	}
 }
 
 func (h *APIHandler) validatePermissionSubset(requestedPerms, userPerms string) (string, error) {

@@ -25,7 +25,7 @@ func (r *managedAccountTestRepository) GetRole(_ context.Context, id string) (*m
 	return &models.AccessRole{ID: id, Permissions: "gui_read"}, nil
 }
 
-func (r *managedAccountTestRepository) CreateManagedAdmin(_ context.Context, admin models.AdminAccount, _ string) error {
+func (r *managedAccountTestRepository) CreateManagedAdminAtRevision(_ context.Context, admin models.AdminAccount, _ string, _ int) error {
 	r.created = &admin
 	return r.err
 }

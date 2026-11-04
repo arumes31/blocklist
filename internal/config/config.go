@@ -57,6 +57,10 @@ type Config struct {
 	SMTPPass               string
 	SMTPFrom               string
 	SMTPTo                 string
+	// SMTPTLS selects transport security for alert mail: "starttls" (default,
+	// required), "implicit" (TLS from the first byte, e.g. port 465) or
+	// "none" (explicit opt-out for a trusted local relay).
+	SMTPTLS string
 }
 
 func Load() *Config {
@@ -115,6 +119,7 @@ func Load() *Config {
 		SMTPPass:           getEnv("SMTP_PASS", ""),
 		SMTPFrom:           getEnv("SMTP_FROM", ""),
 		SMTPTo:             getEnv("SMTP_TO", ""),
+		SMTPTLS:            strings.ToLower(strings.TrimSpace(getEnv("SMTP_TLS", "starttls"))),
 	}
 }
 

@@ -17,6 +17,7 @@ import (
 
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
+	gorillasessions "github.com/gorilla/sessions"
 	"github.com/gorilla/websocket"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	zlog "github.com/rs/zerolog/log"
@@ -36,6 +37,9 @@ type HandlerOptions struct {
 	MainLimiter           gin.HandlerFunc
 	LoginLimiter          gin.HandlerFunc
 	WebhookLimiter        gin.HandlerFunc
+	// SessionStore lets long-lived WebSocket connections re-read the browser
+	// session that opened them, so logout and expiry close the socket.
+	SessionStore gorillasessions.Store
 }
 
 type APIHandler struct {
@@ -55,6 +59,7 @@ type APIHandler struct {
 	trustedProxies        []netip.Prefix
 	upgrader              websocket.Upgrader
 	webhookLimiter        gin.HandlerFunc
+	sessionStore          gorillasessions.Store
 
 	// rawFeed caches the public /api/v1/raw body so anonymous requests do not
 	// each trigger a full HGETALL on the shared Redis instance.
@@ -95,6 +100,7 @@ func NewAPIHandler(opts *HandlerOptions) *APIHandler {
 		loginLimiter:          opts.LoginLimiter,
 		webhookLimiter:        opts.WebhookLimiter,
 		trustedProxies:        prefixes,
+		sessionStore:          opts.SessionStore,
 	}
 	// Keep a disabled Entra service nil, rather than an interface with a nil pointer.
 	if opts.EntraService != nil {
@@ -180,6 +186,7 @@ func (h *APIHandler) WS(c *gin.Context) {
 	client := &wsClient{conn: conn}
 	username, _ := session.Get("username").(string)
 	version, _ := session.Get("session_version").(int)
+	loginTime, _ := session.Get("login_time").(string)
 	defer func() { _ = conn.Close() }()
 	h.hub.register <- client
 
@@ -212,6 +219,9 @@ func (h *APIHandler) WS(c *gin.Context) {
 	for {
 		select {
 		case <-pingTicker.C:
+			if !h.wsSessionCurrent(c.Request, username, version, loginTime) {
+				return
+			}
 			if h.pgRepo != nil {
 				account, err := h.pgRepo.GetAdmin(username)
 				if err != nil || account == nil || account.Disabled || account.SessionVersion != version {
@@ -232,6 +242,36 @@ func (h *APIHandler) WS(c *gin.Context) {
 	}
 }
 
+// SessionCookieName is the browser session cookie name. main registers the
+// session middleware under it, and WebSocket revalidation reloads it.
+const SessionCookieName = "blocklist_session"
+
+// wsSessionCurrent reloads the server-side session behind a WebSocket and
+// reports whether it is still the signed-in session that opened the socket:
+// not logged out, not past its absolute lifetime, and for the same account
+// and credential version. Without a configured store only the lifetime is
+// checked.
+func (h *APIHandler) wsSessionCurrent(r *http.Request, username string, version int, loginTime string) bool {
+	if loginTime != "" {
+		signedIn, err := time.Parse(time.RFC3339, loginTime)
+		if err != nil || time.Since(signedIn) > SessionMaxAge {
+			return false
+		}
+	}
+	if h.sessionStore == nil {
+		return true
+	}
+	current, err := h.sessionStore.New(r, SessionCookieName)
+	if err != nil || current == nil || current.IsNew {
+		return false
+	}
+	loggedIn, _ := current.Values["logged_in"].(bool)
+	currentUser, _ := current.Values["username"].(string)
+	currentVersion, _ := current.Values["session_version"].(int)
+	currentLogin, _ := current.Values["login_time"].(string)
+	return loggedIn && currentUser == username && currentVersion == version && currentLogin == loginTime
+}
+
 func (h *APIHandler) PrometheusMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
@@ -242,7 +282,19 @@ func (h *APIHandler) PrometheusMiddleware() gin.HandlerFunc {
 		c.Next()
 		duration := time.Since(start).Seconds()
 		status := strconv.Itoa(c.Writer.Status())
-		metrics.MetricHttpDuration.WithLabelValues(path, c.Request.Method, status).Observe(duration)
+		metrics.MetricHttpDuration.WithLabelValues(path, metricMethod(c.Request.Method), status).Observe(duration)
+	}
+}
+
+// metricMethod maps the client-chosen request method onto a fixed label set
+// so arbitrary extension methods cannot create new histogram series.
+func metricMethod(method string) string {
+	switch method {
+	case http.MethodGet, http.MethodHead, http.MethodPost, http.MethodPut,
+		http.MethodPatch, http.MethodDelete, http.MethodOptions:
+		return method
+	default:
+		return "OTHER"
 	}
 }
 
@@ -358,10 +410,10 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 	auth.Use(h.SessionCheckMiddleware())
 	auth.Use(h.mainLimiter)
 	{
-		// Dashboard requires view_ips and view_stats
+		// Dashboard requires view_ips; its statistics additionally require view_stats
 		auth.GET("/dashboard", h.PermissionMiddleware("view_ips"), h.Dashboard)
 		auth.GET("/audit-logs", h.PermissionMiddleware("view_audit_logs"), h.AuditLogExplorer)
-		auth.GET("/event-logs", h.PermissionMiddleware("view_event_logs", "view_ips"), h.EventLogExplorer)
+		auth.GET("/event-logs", h.PermissionMiddleware("view_event_logs"), h.EventLogExplorer)
 		auth.GET("/roles", h.PermissionMiddleware("view_roles", "manage_roles"), h.RoleManagement)
 		auth.GET("/api/v1/roles", h.PermissionMiddleware("view_roles", "manage_roles"), h.ListRoles)
 		auth.POST("/api/v1/roles", h.PermissionMiddleware("manage_roles"), h.SudoMiddleware(), h.SaveRole)

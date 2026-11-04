@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"embed"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"html/template"
 	"io"
@@ -22,6 +23,7 @@ import (
 
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
+	"github.com/golang-migrate/migrate/v4/source"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
 	"github.com/rs/zerolog"
 	zlog "github.com/rs/zerolog/log"
@@ -86,7 +88,11 @@ func main() {
 	if cfg.PostgresURL == "" {
 		zlog.Fatal().Msg("POSTGRES_URL must be set.")
 	}
-	runMigrations(cfg.PostgresURL)
+	// Session identity and other protections live in the schema, so the
+	// server must not serve requests on a partially migrated database.
+	if err := runMigrations(cfg.PostgresURL); err != nil {
+		zlog.Fatal().Err(err).Msg("Database migrations failed; refusing to start")
+	}
 
 	// 3. Bootstrap shared state
 	a, err := app.Bootstrap(cfg)
@@ -215,30 +221,73 @@ func isPlaceholderSecret(secret string) bool {
 	return false
 }
 
-// runMigrations applies database schema changes using embedded migrations.
-func runMigrations(postgresURL string) {
+// runMigrations applies the embedded migrations and verifies that the
+// database ends at a clean version no older than the newest embedded one.
+func runMigrations(postgresURL string) error {
 	d, err := iofs.New(migrationsFS, "migrations")
 	if err != nil {
-		zlog.Fatal().Err(err).Msg("Failed to create iofs source")
+		return fmt.Errorf("opening embedded migrations: %w", err)
+	}
+	latest, err := latestMigration(d)
+	if err != nil {
+		return fmt.Errorf("reading embedded migrations: %w", err)
 	}
 	m, err := migrate.NewWithSourceInstance("iofs", d, postgresURL)
-	if err == nil {
-		version, dirty, err := m.Version()
-		if err != nil && err != migrate.ErrNilVersion {
-			zlog.Error().Err(err).Msg("Failed to get migration version")
-		} else {
-			zlog.Info().Uint("version", version).Bool("dirty", dirty).Msg("Current database version")
-		}
+	if err != nil {
+		return fmt.Errorf("initializing migrations: %w", err)
+	}
+	defer func() { _, _ = m.Close() }()
 
-		if err := m.Up(); err != nil && err != migrate.ErrNoChange {
-			zlog.Error().Err(err).Msg("Migration error")
-		} else if err == migrate.ErrNoChange {
-			zlog.Info().Msg("Database is up to date (no migrations needed)")
-		} else {
-			zlog.Info().Msg("Database migrations applied successfully")
+	version, dirty, err := m.Version()
+	if err != nil && !errors.Is(err, migrate.ErrNilVersion) {
+		return fmt.Errorf("reading database version: %w", err)
+	}
+	zlog.Info().Uint("version", version).Bool("dirty", dirty).Msg("Current database version")
+
+	upErr := m.Up()
+	switch {
+	case upErr == nil:
+		zlog.Info().Msg("Database migrations applied successfully")
+	case errors.Is(upErr, migrate.ErrNoChange):
+		zlog.Info().Msg("Database is up to date (no migrations needed)")
+	}
+
+	version, dirty, err = m.Version()
+	if err != nil {
+		return fmt.Errorf("reading migrated database version: %w", err)
+	}
+	if dirty {
+		return fmt.Errorf("database schema is dirty at version %d", version)
+	}
+	if version < latest {
+		if upErr != nil && !errors.Is(upErr, migrate.ErrNoChange) {
+			return fmt.Errorf("applying migrations: %w", upErr)
 		}
-	} else {
-		zlog.Error().Err(err).Msg("Failed to initialize migrations")
+		return fmt.Errorf("database schema version %d is older than required version %d", version, latest)
+	}
+	if upErr != nil && !errors.Is(upErr, migrate.ErrNoChange) {
+		// A clean schema newer than this build (for example after a rollback)
+		// already contains every migration this build needs.
+		zlog.Warn().Err(upErr).Uint("version", version).Uint("required", latest).Msg("Database schema is newer than this build")
+	}
+	return nil
+}
+
+// latestMigration returns the highest migration version in d.
+func latestMigration(d source.Driver) (uint, error) {
+	version, err := d.First()
+	if err != nil {
+		return 0, err
+	}
+	for {
+		next, err := d.Next(version)
+		if errors.Is(err, os.ErrNotExist) {
+			return version, nil
+		}
+		if err != nil {
+			return 0, err
+		}
+		version = next
 	}
 }
 
@@ -290,7 +339,7 @@ func initBackgroundWorkers(a *app.App, cfg *config.Config) (*asynq.Server, *asyn
 		)
 
 		asynqMux := asynq.NewServeMux()
-		asynqMux.Handle(tasks.TypeWebhookDelivery, tasks.NewWebhookTaskHandler(a.PgRepo))
+		asynqMux.Handle(tasks.TypeWebhookDelivery, tasks.NewWebhookTaskHandler(a.PgRepo).WithOutboundEnabled(cfg.EnableOutboundWebhooks))
 		asynqMux.Handle(tasks.TypeGeoIPUpdate, tasks.NewGeoIPTaskHandler(cfg, a.IPService))
 
 		go func() {
@@ -349,7 +398,7 @@ func setupRouter(cfg *config.Config, a *app.App, hub *api.Hub, authKey, blockKey
 	}
 
 	// Sessions
-	setupSessions(r, cfg, authKey, blockKey)
+	sessionStore := setupSessions(r, cfg, authKey, blockKey)
 
 	// Rate Limiting
 	mainLimiter, loginLimiter, webhookLimiter := setupRateLimiters(cfg)
@@ -388,6 +437,7 @@ func setupRouter(cfg *config.Config, a *app.App, hub *api.Hub, authKey, blockKey
 		MainLimiter:           mainLimiter,
 		LoginLimiter:          loginLimiter,
 		WebhookLimiter:        webhookLimiter,
+		SessionStore:          sessionStore,
 	})
 	// Account and token authority checks need the identity repository; without
 	// it they would degrade to permissive fallbacks, so refuse to start.
@@ -434,7 +484,7 @@ func httpsRedirectMiddleware(trusted []netip.Prefix) gin.HandlerFunc {
 	}
 }
 
-func setupSessions(r *gin.Engine, cfg *config.Config, authKey, blockKey []byte) {
+func setupSessions(r *gin.Engine, cfg *config.Config, authKey, blockKey []byte) redis.Store {
 	store, err := redis.NewStore(10, "tcp", fmt.Sprintf("%s:%d", cfg.RedisHost, cfg.RedisPort), "", cfg.RedisPassword, authKey, blockKey)
 	if err != nil {
 		zlog.Fatal().Err(err).Msg("Failed to create session store")
@@ -459,7 +509,8 @@ func setupSessions(r *gin.Engine, cfg *config.Config, authKey, blockKey []byte) 
 		SameSite: sameSite,
 		MaxAge:   int(api.SessionMaxAge.Seconds()),
 	})
-	r.Use(sessions.Sessions("blocklist_session", store))
+	r.Use(sessions.Sessions(api.SessionCookieName, store))
+	return store
 }
 
 func setupRateLimiters(cfg *config.Config) (main, login, webhook gin.HandlerFunc) {

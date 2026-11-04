@@ -36,3 +36,29 @@ func TestOpenAPI_Endpoint(t *testing.T) {
 	assert.Contains(t, paths, "/api/v1/ips")
 	assert.Contains(t, paths, "/api/v1/webhook")
 }
+
+// The vendored RapiDoc OAuth helper reuses a fixed PKCE verifier and trusts
+// any window message. Keep it unreachable: the served spec must not declare
+// OAuth2 or OpenID Connect schemes (Bearer tokens are entered directly).
+func TestOpenAPI_NoBrowserOAuthSchemes(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h, _, _, _, _ := setupTest()
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	h.OpenAPI(c)
+
+	var spec struct {
+		Components struct {
+			SecuritySchemes map[string]struct {
+				Type string `json:"type"`
+				Ref  string `json:"$ref"`
+			} `json:"securitySchemes"`
+		} `json:"components"`
+	}
+	assert.NoError(t, json.Unmarshal(w.Body.Bytes(), &spec))
+	for name, scheme := range spec.Components.SecuritySchemes {
+		assert.Empty(t, scheme.Ref, "security scheme %s must be inline so its type is checked", name)
+		assert.NotContains(t, []string{"oauth2", "openIdConnect"}, scheme.Type, "security scheme %s", name)
+	}
+}

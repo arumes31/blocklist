@@ -328,7 +328,6 @@ func TestIPService_ExcludedList(t *testing.T) {
 
 	t.Run("Conflicts", func(t *testing.T) {
 		_ = rRepo.BlockIP("1.2.3.4", models.IPEntry{Reason: "blocked"})
-		svc.syncBloomFilter()
 
 		warns := svc.ExclusionConflicts(ctx, "1.2.3.4")
 		found := false

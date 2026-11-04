@@ -6,6 +6,8 @@ import (
 	"fmt"
 
 	"blocklist/internal/models"
+
+	"github.com/jmoiron/sqlx"
 )
 
 // SetAdminDisabled changes access and invalidates sessions in the audit transaction.
@@ -20,65 +22,13 @@ func (p *PostgresRepository) SetAdminDisabled(ctx context.Context, change models
 	}
 	defer rollbackIdentity(tx)
 
-	// Lock actor and target in a stable order. Concurrent administrators cannot
-	// disable each other using authorizations obtained before either was disabled.
-	accounts := []models.AdminAccount{}
-	err = tx.SelectContext(
-		ctx,
-		&accounts,
-		`SELECT username, permissions, role_id, auth_source, session_version, disabled
-		FROM admins WHERE username IN ($1, $2) ORDER BY username FOR NO KEY UPDATE`,
-		change.Actor,
-		change.Expected.Username,
-	)
+	_, current, err := lockManagedAccount(ctx, tx, models.AdminMutation{
+		Expected: change.Expected, Actor: change.Actor, RecoveryAdmin: change.RecoveryAdmin,
+	})
 	if err != nil {
-		return fmt.Errorf("locking account status: %w", err)
+		return err
 	}
-	if len(accounts) != 2 {
-		return sql.ErrNoRows
-	}
-	var actor, current models.AdminAccount
-	for i := range accounts {
-		account := &accounts[i]
-		// As with individual permissions, a role edit does not bump session_version.
-		// Lock roles separately, allowing role-deletion foreign-key KEY SHARE checks.
-		if account.RoleID != nil {
-			if err := tx.GetContext(
-				ctx,
-				&account.Permissions,
-				"SELECT permissions FROM access_roles WHERE id = $1 FOR SHARE",
-				*account.RoleID,
-			); err != nil {
-				return fmt.Errorf("locking account status role: %w", err)
-			}
-		}
-		if account.Username == change.Actor {
-			actor = *account
-		} else {
-			current = *account
-		}
-	}
-	if actor.Disabled {
-		return ErrIdentityDenied
-	}
-	permissions := models.WorkspacePermissions(actor)
-	if actor.Username == change.RecoveryAdmin {
-		permissions = models.AllPermissions()
-	}
-	if !models.HasPermission(permissions, "manage_admins") {
-		return ErrIdentityDenied
-	}
-	if actor.Username != change.RecoveryAdmin && !models.PermissionsCoverAccount(permissions, current) {
-		return ErrIdentityDenied
-	}
-	expected := change.Expected
-	sameRole := current.RoleID == nil && expected.RoleID == nil
-	if current.RoleID != nil && expected.RoleID != nil {
-		sameRole = *current.RoleID == *expected.RoleID
-	}
-	changedAccess := !sameRole || current.Permissions != expected.Permissions
-	changedIdentity := current.SessionVersion != expected.SessionVersion || current.AuthSource != expected.AuthSource
-	if changedAccess || changedIdentity || current.Disabled != expected.Disabled {
+	if current.Disabled != change.Expected.Disabled {
 		return ErrIdentityConflict
 	}
 	if current.Disabled == change.Disabled {
@@ -118,4 +68,82 @@ func (p *PostgresRepository) SetAdminDisabled(ctx context.Context, change models
 		return fmt.Errorf("committing account status change: %w", err)
 	}
 	return nil
+}
+
+// lockManagedAccount locks the actor and the target account (and their roles)
+// for the rest of the transaction, rechecks that the actor may still manage
+// the target, and rejects the change when the target no longer matches the
+// snapshot that passed authorization in the handler.
+func lockManagedAccount(ctx context.Context, tx *sqlx.Tx, change models.AdminMutation) (actor, current models.AdminAccount, err error) {
+	// Lock actor and target in a stable order. Concurrent administrators cannot
+	// act on each other using authorizations obtained before either changed.
+	accounts := []models.AdminAccount{}
+	err = tx.SelectContext(
+		ctx,
+		&accounts,
+		`SELECT username, permissions, role_id, auth_source, session_version, disabled, entra_role_override
+		FROM admins WHERE username IN ($1, $2) ORDER BY username FOR NO KEY UPDATE`,
+		change.Actor,
+		change.Expected.Username,
+	)
+	if err != nil {
+		return models.AdminAccount{}, models.AdminAccount{}, fmt.Errorf("locking managed account: %w", err)
+	}
+	want := 2
+	if change.Actor == change.Expected.Username {
+		want = 1
+	}
+	if len(accounts) != want {
+		return models.AdminAccount{}, models.AdminAccount{}, sql.ErrNoRows
+	}
+	for i := range accounts {
+		account := &accounts[i]
+		// As with individual permissions, a role edit does not bump session_version.
+		// Lock roles separately, allowing role-deletion foreign-key KEY SHARE checks.
+		if account.RoleID != nil {
+			if err := tx.GetContext(
+				ctx,
+				&account.Permissions,
+				"SELECT permissions FROM access_roles WHERE id = $1 FOR SHARE",
+				*account.RoleID,
+			); err != nil {
+				return models.AdminAccount{}, models.AdminAccount{}, fmt.Errorf("locking managed account role: %w", err)
+			}
+		}
+		if account.Username == change.Actor {
+			actor = *account
+		}
+		if account.Username == change.Expected.Username {
+			current = *account
+		}
+	}
+	if actor.Disabled {
+		return models.AdminAccount{}, models.AdminAccount{}, ErrIdentityDenied
+	}
+	permissions := actorPermissions(actor, change.RecoveryAdmin)
+	if !models.HasPermission(permissions, "manage_admins") {
+		return models.AdminAccount{}, models.AdminAccount{}, ErrIdentityDenied
+	}
+	if actor.Username != change.RecoveryAdmin && !models.PermissionsCoverAccount(permissions, current) {
+		return models.AdminAccount{}, models.AdminAccount{}, ErrIdentityDenied
+	}
+	expected := change.Expected
+	sameRole := current.RoleID == nil && expected.RoleID == nil
+	if current.RoleID != nil && expected.RoleID != nil {
+		sameRole = *current.RoleID == *expected.RoleID
+	}
+	changedAccess := !sameRole || current.Permissions != expected.Permissions
+	changedIdentity := current.SessionVersion != expected.SessionVersion || current.AuthSource != expected.AuthSource
+	if changedAccess || changedIdentity || current.EntraRoleOverride != expected.EntraRoleOverride {
+		return models.AdminAccount{}, models.AdminAccount{}, ErrIdentityConflict
+	}
+	return actor, current, nil
+}
+
+// actorPermissions returns the effective permissions of a locked actor row.
+func actorPermissions(actor models.AdminAccount, recoveryAdmin string) string {
+	if actor.Username == recoveryAdmin {
+		return models.AllPermissions()
+	}
+	return models.WorkspacePermissions(actor)
 }

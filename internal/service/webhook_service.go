@@ -8,7 +8,6 @@ import (
 	zlog "github.com/rs/zerolog/log"
 
 	"blocklist/internal/config"
-	"blocklist/internal/models"
 	"blocklist/internal/repository"
 	"blocklist/internal/tasks"
 
@@ -34,7 +33,12 @@ func (s *WebhookService) Start(ctx context.Context) {
 	// No-op
 }
 
-func (s *WebhookService) Notify(ctx context.Context, event string, data interface{}) {
+// Notify enqueues event for every active receiver subscribed to it.
+// targetCountry is the ISO country code of the event's target address, or ""
+// when it is unknown. A receiver with a country filter only receives events
+// whose target country is known and listed; the decision never depends on the
+// shape of data.
+func (s *WebhookService) Notify(ctx context.Context, event string, targetCountry string, data interface{}) {
 	if s.cfg != nil && !s.cfg.EnableOutboundWebhooks {
 		return
 	}
@@ -63,36 +67,8 @@ func (s *WebhookService) Notify(ctx context.Context, event string, data interfac
 				break
 			}
 		}
-		if !matched {
+		if !matched || !geoFilterAllows(wh.GeoFilter, targetCountry) {
 			continue
-		}
-
-		// Geo Filter check
-		if wh.GeoFilter != "" {
-			if eventData, ok := data.(map[string]interface{}); ok {
-				var entry *models.IPEntry
-				switch e := eventData["data"].(type) {
-				case models.IPEntry:
-					entry = &e
-				case *models.IPEntry:
-					entry = e
-				}
-
-				if entry != nil && entry.Geolocation != nil {
-					country := strings.ToUpper(entry.Geolocation.Country)
-					filters := strings.Split(strings.ToUpper(wh.GeoFilter), ",")
-					match := false
-					for _, f := range filters {
-						if strings.TrimSpace(f) == country {
-							match = true
-							break
-						}
-					}
-					if !match {
-						continue
-					}
-				}
-			}
 		}
 
 		task, err := tasks.NewWebhookDeliveryTask(wh.ID, event, payload)
@@ -105,6 +81,25 @@ func (s *WebhookService) Notify(ctx context.Context, event string, data interfac
 			zlog.Error().Err(err).Int("webhook_id", wh.ID).Str("event", event).Msg("Error enqueuing webhook task")
 		}
 	}
+}
+
+// geoFilterAllows reports whether a receiver's comma-separated country filter
+// admits an event targeting country. An empty filter admits everything; a
+// configured filter withholds events whose country is unknown.
+func geoFilterAllows(filter, country string) bool {
+	if strings.TrimSpace(filter) == "" {
+		return true
+	}
+	country = strings.ToUpper(strings.TrimSpace(country))
+	if country == "" {
+		return false
+	}
+	for _, f := range strings.Split(strings.ToUpper(filter), ",") {
+		if strings.TrimSpace(f) == country {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *WebhookService) Close() {

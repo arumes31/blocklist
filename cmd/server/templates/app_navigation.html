@@ -11,7 +11,7 @@
         <a href="/threat-map" class="btn btn-dark nav-link nav-threat-map"{{ if eq .active_page "threat-map" }} aria-current="page"{{ end }}><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><path d="M3 12h18"/></svg>Threat Map</a>
         <a href="/whitelist" class="btn btn-dark nav-link nav-whitelist"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 8 3v6c0 4-4 7-8 9-4-2-8-5-8-9V6l8-3Z"/><path d="m8 12 3 3 5-6"/></svg>Whitelist</a>
         <a href="/excluded" class="btn btn-dark nav-link nav-excluded"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8 12h8"/></svg>Excluded</a>
-        {{ if or (eq .username .admin_username) (contains .permissions "view_event_logs") (contains .permissions "view_ips") }}
+        {{ if or (eq .username .admin_username) (contains .permissions "view_event_logs") }}
         <a href="/event-logs" class="btn btn-dark nav-link nav-event-logs"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l3-7 4 14 3-7h4"/></svg>Event logs</a>{{ end }}
         {{ if or (eq .username .admin_username) (contains .permissions "view_audit_logs") }}
         <a href="/audit-logs" class="btn btn-dark nav-link nav-audit-logs"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H5v18h14V8l-5-5Z"/><path d="M14 3v5h5M8 12h8M8 16h6"/></svg>System audit logs</a>{{ end }}

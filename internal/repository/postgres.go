@@ -298,15 +298,18 @@ func (p *PostgresRepository) DeleteSavedView(id int, username string) error {
 	return err
 }
 
+// GetActiveWebhooks and GetWebhookByID decide which receivers get alert data,
+// so they read the primary: a removed receiver must stop receiving at once,
+// not after a read replica catches up.
 func (p *PostgresRepository) GetActiveWebhooks() ([]models.OutboundWebhook, error) {
 	var webhooks []models.OutboundWebhook
-	err := p.readDb.Select(&webhooks, "SELECT id, url, events, secret, geo_filter, active, created_at FROM outbound_webhooks WHERE active = TRUE")
+	err := p.db.Select(&webhooks, "SELECT id, url, events, secret, geo_filter, active, created_at FROM outbound_webhooks WHERE active = TRUE")
 	return webhooks, err
 }
 
 func (p *PostgresRepository) GetWebhookByID(id int) (*models.OutboundWebhook, error) {
 	var webhook models.OutboundWebhook
-	err := p.readDb.Get(&webhook, "SELECT id, url, events, secret, geo_filter, active, created_at FROM outbound_webhooks WHERE id = $1 AND active = TRUE", id)
+	err := p.db.Get(&webhook, "SELECT id, url, events, secret, geo_filter, active, created_at FROM outbound_webhooks WHERE id = $1 AND active = TRUE", id)
 	if err != nil {
 		return nil, err
 	}
@@ -479,7 +482,10 @@ func (p *PostgresRepository) GetBlockTrend() ([]models.BlockTrend, error) {
 
 func (p *PostgresRepository) GetIPHistory(ip string) ([]models.AuditLog, error) {
 	var logs []models.AuditLog
-	err := p.readDb.Select(&logs, "SELECT id, timestamp, actor, action, target, reason FROM audit_logs WHERE target = $1 ORDER BY timestamp DESC", ip)
+	// Only enforcement events: authentication, account and configuration
+	// records stay behind view_audit_logs even when their target is an IP.
+	err := p.readDb.Select(&logs, `SELECT id, timestamp, actor, action, target, reason FROM audit_logs
+		WHERE target = $1 AND COALESCE(action = ANY($2::text[]), FALSE) ORDER BY timestamp DESC`, ip, models.EventActions)
 	return logs, err
 }
 

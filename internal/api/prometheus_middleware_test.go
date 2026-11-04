@@ -63,4 +63,21 @@ func TestAPIHandler_PrometheusMiddleware(t *testing.T) {
 		assert.Equal(t, http.StatusForbidden, w.Code)
 		assert.Equal(t, initialCount+1, testutil.CollectAndCount(metrics.MetricHttpDuration))
 	})
+
+	t.Run("extension methods share one label", func(t *testing.T) {
+		r := gin.New()
+		r.Use(h.PrometheusMiddleware())
+
+		send := func(method string) {
+			w := httptest.NewRecorder()
+			req, _ := http.NewRequest(method, "/method-cardinality", nil)
+			r.ServeHTTP(w, req)
+		}
+		send("FOO1")
+		initialCount := testutil.CollectAndCount(metrics.MetricHttpDuration)
+		for _, method := range []string{"FOO2", "BAR", "PROPFIND"} {
+			send(method)
+		}
+		assert.Equal(t, initialCount, testutil.CollectAndCount(metrics.MetricHttpDuration), "unknown methods must not add series")
+	})
 }

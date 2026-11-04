@@ -50,20 +50,28 @@ func (h *APIHandler) identityFailure(c *gin.Context, err error) {
 	}
 }
 
-func (h *APIHandler) canManageAccount(c *gin.Context, username string) bool {
+// canManageAccount authorizes the caller against the target's current state
+// and returns that snapshot. Mutations must pass it to the repository, which
+// rejects the change if the target changed after this check.
+func (h *APIHandler) canManageAccount(c *gin.Context, username string) (*models.AdminAccount, bool) {
 	if h.identityRepo == nil {
-		return true
+		return nil, true
 	}
 	admin, err := h.pgRepo.GetAdmin(username)
 	if err != nil || admin == nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Account not found."})
-		return false
+		return nil, false
 	}
 	if !h.hasAccountAuthority(c, *admin) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "You cannot manage an account with permissions you do not hold."})
-		return false
+		return nil, false
 	}
-	return true
+	return admin, true
+}
+
+// adminMutation binds a change to the authorized target snapshot.
+func (h *APIHandler) adminMutation(c *gin.Context, target models.AdminAccount) models.AdminMutation {
+	return models.AdminMutation{Expected: target, Actor: c.GetString("username"), RecoveryAdmin: h.cfg.GUIAdmin}
 }
 
 func (h *APIHandler) roleData(c *gin.Context) (gin.H, error) {
@@ -192,7 +200,8 @@ func (h *APIHandler) ChangeAdminRole(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "The recovery administrator's access is configuration-managed."})
 		return
 	}
-	if !h.canManageAccount(c, req.Username) {
+	target, allowed := h.canManageAccount(c, req.Username)
+	if !allowed {
 		return
 	}
 	role, err := h.identityRepo.GetRole(c.Request.Context(), req.Role)
@@ -204,8 +213,22 @@ func (h *APIHandler) ChangeAdminRole(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "You cannot assign a role with permissions you do not hold."})
 		return
 	}
-	admin := models.AdminAccount{Username: req.Username, Role: role.ID, EntraRoleOverride: req.Override}
-	if err := h.identityRepo.AssignAdminRole(c.Request.Context(), admin, c.GetString("username")); err != nil {
+	// Clearing an Entra override lets the next sign-in apply whichever role the
+	// directory maps, which this request cannot check. Only callers who may
+	// grant every permission may do that.
+	if target.AuthSource == "entra" && target.EntraRoleOverride && !req.Override && !h.isRecoverySession(c) {
+		if _, err := h.validatePermissionSubset(models.AllPermissions(), c.GetString("permissions")); err != nil {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Only an administrator holding every permission can return this account to its Microsoft Entra role."})
+			return
+		}
+	}
+	assignment := models.RoleAssignment{
+		AdminMutation: h.adminMutation(c, *target),
+		RoleID:        role.ID,
+		RoleRevision:  role.Revision,
+		Override:      req.Override,
+	}
+	if err := h.identityRepo.AssignManagedAdminRole(c.Request.Context(), assignment); err != nil {
 		h.identityFailure(c, err)
 		return
 	}

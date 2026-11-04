@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"github.com/bytedance/sonic"
 	"math"
@@ -332,6 +333,78 @@ func (r *RedisRepository) AddExcludedIfAbsent(value string, entry models.Exclude
 	return r.client.HSetNX(r.ctx, "ips_webhook2_excluded", value, data).Result()
 }
 
+// upsertSystemExcludedScript writes a feed-owned exclusion unless the current
+// record belongs to an operator, deciding and writing in one atomic step.
+var upsertSystemExcludedScript = redis.NewScript(`
+local cur = redis.call('HGET', KEYS[1], ARGV[1])
+if cur then
+  local ok, e = pcall(cjson.decode, cur)
+  if not ok or type(e) ~= 'table' or e['added_by'] ~= 'system' then return 0 end
+end
+redis.call('HSET', KEYS[1], ARGV[1], ARGV[2])
+return 1
+`)
+
+// UpsertSystemExcluded creates or renews a system-owned exclusion and reports
+// whether it was written. Operator-owned (or unreadable) records are kept.
+func (r *RedisRepository) UpsertSystemExcluded(value string, entry models.ExcludedEntry) (bool, error) {
+	data, err := sonic.Marshal(entry)
+	if err != nil {
+		return false, err
+	}
+	written, err := upsertSystemExcludedScript.Run(r.ctx, r.client, []string{"ips_webhook2_excluded"}, value, string(data)).Int()
+	return written == 1, err
+}
+
+// UpdateExcludedResolution stores the DNS resolution fields of resolved onto
+// the current exclusion record, but only while that record still has the
+// policy that was resolved. A record deleted or edited in the meantime is left
+// alone and false is returned.
+func (r *RedisRepository) UpdateExcludedResolution(value string, resolved models.ExcludedEntry) (bool, error) {
+	const key = "ips_webhook2_excluded"
+	updated := false
+	err := r.client.Watch(r.ctx, func(tx *redis.Tx) error {
+		raw, err := tx.HGet(r.ctx, key, value).Result()
+		if errors.Is(err, redis.Nil) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		var current models.ExcludedEntry
+		if sonic.UnmarshalString(raw, &current) != nil {
+			return nil //nolint:nilerr // An unreadable record is not the one that was resolved; keep it.
+		}
+		samePolicy := current.Timestamp == resolved.Timestamp && current.Value == resolved.Value &&
+			current.Type == resolved.Type && current.AddedBy == resolved.AddedBy &&
+			current.Reason == resolved.Reason && current.ExpiresAt == resolved.ExpiresAt &&
+			current.AlertEnabled == resolved.AlertEnabled
+		if !samePolicy {
+			return nil
+		}
+		current.ResolvedIPs = resolved.ResolvedIPs
+		current.ResolvedAt = resolved.ResolvedAt
+		current.ResolveError = resolved.ResolveError
+		data, err := sonic.Marshal(current)
+		if err != nil {
+			return err
+		}
+		_, err = tx.TxPipelined(r.ctx, func(pipe redis.Pipeliner) error {
+			pipe.HSet(r.ctx, key, value, data)
+			return nil
+		})
+		if err == nil {
+			updated = true
+		}
+		return err
+	}, key)
+	if errors.Is(err, redis.TxFailedErr) {
+		// The hash changed while we compared; drop this refresh result.
+		return false, nil
+	}
+	return updated, err
+}
+
 func (r *RedisRepository) RemoveExcluded(value string) error {
 	return r.client.HDel(r.ctx, "ips_webhook2_excluded", value).Err()
 }
@@ -442,15 +515,74 @@ func (r *RedisRepository) GetClient() *redis.Client {
 	return r.client
 }
 
-// Atomic block operation: writes hash and updates ZSET in one script
-var blockAtomicScript = `
+// keepsLongerBlock is shared Lua that reports whether the live block for ip
+// outlasts a replacement expiring at newExp (empty = permanent). expires_at uses
+// the fixed "2006-01-02 15:04:05 UTC" layout, so string order is time order.
+const keepsLongerBlock = `
+local function keepsLongerBlock(ip, newExp)
+  local existing = redis.call('HGET', 'ips', ip)
+  if not existing then return false end
+  local ok, cur = pcall(cjson.decode, existing)
+  if not ok or type(cur) ~= 'table' then return false end
+  local curExp = cur['expires_at']
+  if type(curExp) ~= 'string' then curExp = '' end
+  if newExp == '' then return false end
+  if curExp == '' then return true end
+  return curExp > newExp
+end
+`
+
+// Atomic block operation: writes hash and updates ZSET in one script. A block
+// never replaces one that lasts longer: shortening requires unblock rights.
+var blockAtomicScript = keepsLongerBlock + `
 local ip = ARGV[1]
 local entry = ARGV[2]
 local ts = tonumber(ARGV[3])
+if keepsLongerBlock(ip, ARGV[4]) then return 0 end
 redis.call('HSET','ips',ip,entry)
 redis.call('ZADD','ips_by_ts',ts,ip)
 return 1
 `
+
+// removeIfUnchangedScript deletes a hash field only while it still holds the
+// record that was found expired (same timestamp and expiry), so a renewal
+// written in between is never removed. KEYS[2], when given, is the time index.
+// Returns 1 when removed, 0 when absent and -1 when the record changed.
+var removeIfUnchangedScript = redis.NewScript(`
+local cur = redis.call('HGET', KEYS[1], ARGV[1])
+if not cur then return 0 end
+local ok, e = pcall(cjson.decode, cur)
+if not ok or type(e) ~= 'table' then return -1 end
+local ts = e['timestamp']
+if type(ts) ~= 'string' then ts = '' end
+local exp = e['expires_at']
+if type(exp) ~= 'string' then exp = '' end
+if ts ~= ARGV[2] or exp ~= ARGV[3] then return -1 end
+redis.call('HDEL', KEYS[1], ARGV[1])
+if #KEYS > 1 then redis.call('ZREM', KEYS[2], ARGV[1]) end
+return 1
+`)
+
+// RemoveResult reports the outcome of RemoveIfUnchanged.
+type RemoveResult int
+
+const (
+	RemoveChanged RemoveResult = -1 // a different record now occupies the field
+	RemoveAbsent  RemoveResult = 0
+	RemoveDone    RemoveResult = 1
+)
+
+// RemoveIfUnchanged deletes field from hashKey only if it still holds a record
+// with the given timestamp and expiry. Blocks are also removed from the time
+// index in the same script.
+func (r *RedisRepository) RemoveIfUnchanged(hashKey, field, timestamp, expiresAt string) (RemoveResult, error) {
+	keys := []string{hashKey}
+	if hashKey == "ips" {
+		keys = append(keys, "ips_by_ts")
+	}
+	res, err := removeIfUnchangedScript.Run(r.ctx, r.client, keys, field, timestamp, expiresAt).Int()
+	return RemoveResult(res), err
+}
 
 // Atomic unblock operation: removes from hash and ZSET in one script
 var unblockAtomicScript = `
@@ -462,27 +594,31 @@ end
 return removed
 `
 
-var bulkBlockAtomicScript = `
+var bulkBlockAtomicScript = keepsLongerBlock + `
 local hourBucket = ARGV[1]
 local dayBucket = ARGV[2]
 local ts = tonumber(ARGV[3])
-local count = (#ARGV - 3) / 2
+local newExp = ARGV[4]
+local count = (#ARGV - 4) / 2
 
+local applied = 0
 for i = 1, count do
-    local ip = ARGV[3 + (i-1)*2 + 1]
-    local entry = ARGV[3 + (i-1)*2 + 2]
-    
-    redis.call('HSET', 'ips', ip, entry)
-    redis.call('ZADD', 'ips_by_ts', ts, ip)
-    redis.call('HINCRBY', 'ips_ban_counts', ip, 1)
+    local ip = ARGV[4 + (i-1)*2 + 1]
+    local entry = ARGV[4 + (i-1)*2 + 2]
+    if not keepsLongerBlock(ip, newExp) then
+        redis.call('HSET', 'ips', ip, entry)
+        redis.call('ZADD', 'ips_by_ts', ts, ip)
+        redis.call('HINCRBY', 'ips_ban_counts', ip, 1)
+        applied = applied + 1
+    end
 end
 
-if count > 0 then
-    redis.call('INCRBY', hourBucket, count)
-    redis.call('INCRBY', dayBucket, count)
-    redis.call('INCRBY', 'stats:total_ever', count)
+if applied > 0 then
+    redis.call('INCRBY', hourBucket, applied)
+    redis.call('INCRBY', dayBucket, applied)
+    redis.call('INCRBY', 'stats:total_ever', applied)
 end
-return count
+return applied
 `
 
 var bulkUnblockAtomicScript = `
@@ -498,21 +634,31 @@ end
 return count
 `
 
-// ExecBlockAtomic executes atomic block writes (hash, zset) and increments persistent counters
+// ErrBlockShortens reports that a block was not written because the existing
+// block for that address lasts longer. Shortening a block requires unblocking.
+var ErrBlockShortens = errors.New("an existing block for this address lasts longer")
+
+// ExecBlockAtomic executes atomic block writes (hash, zset) and increments
+// persistent counters. It returns ErrBlockShortens, writing nothing, when the
+// existing block outlasts entry.
 func (r *RedisRepository) ExecBlockAtomic(ip string, entry models.IPEntry, now time.Time) error {
 	defer r.trackDuration("ExecBlockAtomic", time.Now())
 	data, err := sonic.Marshal(entry)
 	if err != nil {
 		return err
 	}
-	_, err = r.client.Eval(r.ctx, blockAtomicScript, []string{}, ip, string(data), fmt.Sprintf("%d", now.Unix())).Result()
-	if err == nil {
-		// Increment persistent counters
-		_ = r.IncrHourBucket(now, 1)
-		_ = r.IncrDayBucket(now, 1)
-		_ = r.client.HIncrBy(r.ctx, "ips_ban_counts", ip, 1)
+	applied, err := r.client.Eval(r.ctx, blockAtomicScript, []string{}, ip, string(data), fmt.Sprintf("%d", now.Unix()), entry.ExpiresAt).Int()
+	if err != nil {
+		return err
 	}
-	return err
+	if applied == 0 {
+		return ErrBlockShortens
+	}
+	// Increment persistent counters
+	_ = r.IncrHourBucket(now, 1)
+	_ = r.IncrDayBucket(now, 1)
+	_ = r.client.HIncrBy(r.ctx, "ips_ban_counts", ip, 1)
+	return nil
 }
 
 // ExecUnblockAtomic removes ip from hash and ZSET atomically; caller may adjust counters separately
@@ -522,7 +668,9 @@ func (r *RedisRepository) ExecUnblockAtomic(ip string) error {
 	return err
 }
 
-// ExecBulkBlockAtomic executes atomic block writes for multiple IPs using a single Lua script
+// ExecBulkBlockAtomic executes atomic block writes for multiple IPs using a
+// single Lua script. All entries share one expiry; an address whose existing
+// block lasts longer is left unchanged.
 func (r *RedisRepository) ExecBulkBlockAtomic(ips []string, entries []models.IPEntry, now time.Time) error {
 	defer r.trackDuration("ExecBulkBlockAtomic", time.Now())
 	if len(ips) != len(entries) {
@@ -536,18 +684,22 @@ func (r *RedisRepository) ExecBulkBlockAtomic(ips []string, entries []models.IPE
 	dayKey := fmt.Sprintf("stats:day:%s", now.UTC().Format("20060102"))
 	nowUnix := fmt.Sprintf("%d", now.Unix())
 
-	args := make([]interface{}, 3+len(ips)*2)
+	args := make([]interface{}, 4+len(ips)*2)
 	args[0] = hourKey
 	args[1] = dayKey
 	args[2] = nowUnix
+	args[3] = entries[0].ExpiresAt
 
 	for i, ip := range ips {
+		if entries[i].ExpiresAt != entries[0].ExpiresAt {
+			return fmt.Errorf("bulk block entries must share one expiry")
+		}
 		data, err := sonic.Marshal(entries[i])
 		if err != nil {
 			return err
 		}
-		args[3+i*2] = ip
-		args[3+i*2+1] = string(data)
+		args[4+i*2] = ip
+		args[4+i*2+1] = string(data)
 	}
 
 	return r.client.Eval(r.ctx, bulkBlockAtomicScript, []string{}, args...).Err()
