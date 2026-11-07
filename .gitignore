@@ -63,3 +63,6 @@ playwright-report/
 # Local release notes and generated publication record
 CI_RELEASE.md
 publication.json
+
+.stfolder/
+.stignore
