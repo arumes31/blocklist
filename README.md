@@ -246,9 +246,12 @@ administrator, or an account with permissions you do not hold.
   appear in **System audit logs**.
 
 Migration `000018_account_status` is additive and defaults every existing account
-to enabled. It runs on application startup when this version is deployed. An older
-application version does not enforce disabled status; rolling back the migration
-also removes that status. Treat either rollback as restoring account access.
+to enabled. Migration `000019_account_labels` adds persistent human-readable display names
+for provisioned Entra accounts across account deletion. Migration
+`000020_session_version_floor` tracks session versions for deleted accounts to prevent
+session revival if a username is ever recreated. They run on application startup when this
+version is deployed. An older application version does not enforce disabled status; rolling
+back the migration also removes that status. Treat either rollback as restoring account access.
 
 ### API-token compatibility
 
@@ -602,6 +605,10 @@ conservative package cleanup. Binary releases through GoReleaser remain separate
    `000017_identity_roles` adds roles and stable Entra identity bindings while
    preserving legacy accounts and permission snapshots. Migration
    `000018_account_status` adds disabled status with every existing account enabled.
+   Migration `000019_account_labels` persists human-readable display names for
+   provisioned Entra accounts across account deletion. Migration
+   `000020_session_version_floor` tracks session versions for deleted accounts to prevent
+   session revival if an account username is recreated.
    The server applies pending migrations at startup.
 3. Check [retention limits](#event-and-system-audit-retention) **before deployment**:
    defaults retain three months of event logs and twelve months of system audit
