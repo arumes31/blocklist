@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# Local pre-push hook to prevent broken commits from wasting CI runner minutes.
+set -e
+
+echo "==> Running local pre-push checks..."
+
+# 1. Check Go code formatting and static analysis if available
+if command -v golangci-lint >/dev/null 2>&1; then
+    echo "--> Running golangci-lint..."
+    golangci-lint run --timeout=3m
+elif [ -f "$HOME/go/bin/golangci-lint" ]; then
+    echo "--> Running $HOME/go/bin/golangci-lint..."
+    "$HOME/go/bin/golangci-lint" run --timeout=3m
+fi
+
+# 2. Run fast unit tests if Go is available
+if command -v go >/dev/null 2>&1; then
+    echo "--> Running fast unit tests (go test -short)..."
+    go test -short ./...
+fi
+
+# 3. Run frontend unit tests if npm is available
+if command -v npm >/dev/null 2>&1; then
+    echo "--> Running frontend unit tests..."
+    npm test
+fi
+
+echo "==> All local pre-push checks passed successfully!"

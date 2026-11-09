@@ -6,7 +6,7 @@ permissions:
 on:
   workflow_call:
   push:
-    branches: ['**']
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
@@ -44,7 +44,7 @@ jobs:
       uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
       with:
         node-version: '24'
-        package-manager-cache: false
+        cache: npm
 
     - name: Install locked frontend build and test dependencies
       run: npm ci --ignore-scripts
@@ -69,10 +69,10 @@ jobs:
       run: go mod verify
 
     - name: Build
-      run: go build -v ./cmd/server
+      run: go build ./cmd/server
 
     - name: Test
-      run: go test -short -race -count=1 -v ./...
+      run: go test -short -race -count=1 ./...
 
   browser-tests:
     name: Desktop and mobile UI regression tests
@@ -117,15 +117,15 @@ jobs:
   workflow-lint:
     name: GitHub Actions lint
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       with:
         persist-credentials: false
 
-    - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
-      with:
-        go-version-file: go.mod
-
     - name: Validate workflow syntax, expressions, and shell scripts
-      run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -color
+      shell: bash
+      run: |
+        curl -sSLO https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz
+        tar -xzf actionlint_1.7.12_linux_amd64.tar.gz
+        ./actionlint -color

@@ -641,11 +641,12 @@ plan rather than treating a down migration as a routine rollback. See
 ## Contributing
 
 Keep behavior changes covered by focused tests and run the relevant
-[regression suites](TESTING.md). Keep shared UI changes consistent with
-[DESIGN.md](DESIGN.md), review screenshot changes instead of blindly replacing
-baselines, and update setup/upgrade documentation for configuration or migration
-changes. Report security issues using [SECURITY.md](SECURITY.md), not public
-reports containing credentials.
+[regression suites](TESTING.md). To enable fast local checks before pushing,
+configure Git to use the repo hooks: `git config core.hooksPath .githooks`.
+Keep shared UI changes consistent with [DESIGN.md](DESIGN.md), review screenshot
+changes instead of blindly replacing baselines, and update setup/upgrade
+documentation for configuration or migration changes. Report security issues
+using [SECURITY.md](SECURITY.md), not public reports containing credentials.
 
 ## License
 

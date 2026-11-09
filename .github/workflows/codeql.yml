@@ -2,8 +2,7 @@ name: "CodeQL"
 
 on:
   push:
-    # Dependabot has a read-only token on push; its PR still gets both analyses.
-    branches-ignore: ['dependabot/**']
+    branches: [main]
   pull_request:
   workflow_dispatch:
   schedule:

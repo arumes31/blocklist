@@ -2,16 +2,16 @@ name: Docker Build and Check
 
 on:
   push:
-    branches: ['**']
+    branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: read
 
-# Shared with package cleanup; do not interrupt registry writes.
+# Shared with package cleanup; do not interrupt registry writes on main.
 concurrency:
-  group: container-publication
-  cancel-in-progress: false
+  group: container-publication-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   quality:
@@ -27,7 +27,6 @@ jobs:
 
   candidate:
     name: Build and scan candidate
-    needs: [quality, security]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -96,7 +95,7 @@ jobs:
 
   staging:
     name: Exercise exact candidate image
-    needs: candidate
+    needs: [candidate, quality, security]
     if: needs.candidate.outputs.publish == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
