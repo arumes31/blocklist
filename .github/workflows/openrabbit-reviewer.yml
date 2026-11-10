@@ -2,8 +2,8 @@ name: OpenRabbit Reviewer
 
 on:
   pull_request:
-    # 'edited' (title/body changes) re-ran a full LLM review without any code change.
-    types: [opened, reopened, synchronize, ready_for_review]
+    # 'edited' only matters when the base branch changes; title/body edits are skipped below.
+    types: [opened, reopened, edited, synchronize, ready_for_review]
 
 permissions:
   contents: read
@@ -16,7 +16,9 @@ jobs:
   review:
     name: OpenRabbit (advisory)
     # Dependabot PRs have no access to the LLM secrets; drafts are reviewed once ready.
-    if: github.actor != 'dependabot[bot]' && !github.event.pull_request.draft
+    if: >-
+      github.event.pull_request.user.login != 'dependabot[bot]' && !github.event.pull_request.draft &&
+      (github.event.action != 'edited' || github.event.changes.base.ref.from != null)
     permissions:
       contents: read
       # Required only for posting COMMENT reviews and inline suggestions via the API.
