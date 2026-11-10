@@ -147,3 +147,22 @@ func TestWSSessionCurrentEnforcesIdleTimeout(t *testing.T) {
 	h.cfg.SessionIdleMinutes = 0
 	assert.True(t, h.wsSessionCurrent(requestWith(time.Now().Add(-31*time.Minute).Unix()), "admin", 1, loginTime), "idle expiry disabled")
 }
+
+// The HTMX add-webhook response must still contain the new row now that the
+// settings template gates the webhook section.
+func TestAPIHandler_AddOutboundWebhookReturnsRow(t *testing.T) {
+	h, _, pgRepo, _, _ := setupTest()
+	pgRepo.On("CreateOutboundWebhook", mock.Anything).Return(nil)
+
+	w := httptest.NewRecorder()
+	c, _ := setupHTMLTest(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/settings/webhooks",
+		bytes.NewBufferString("url=https://1.1.1.1/hook-row&events=block"))
+	c.Request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	c.Set("username", "editor")
+	c.Set("permissions", "gui_read,manage_webhooks")
+	h.AddOutboundWebhook(c)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), "https://1.1.1.1/hook-row")
+}

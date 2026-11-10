@@ -36,9 +36,13 @@ func ValidAuditText(text string) bool { return validAuditText(text) }
 // prefix shorter than the minimum for the caller. Single addresses, FQDNs and
 // wildcards are not prefixes and always pass.
 func CheckPolicyBreadth(value string, createOnly bool) error {
-	p, err := netip.ParsePrefix(strings.TrimSpace(value))
-	if err != nil {
+	value = strings.TrimSpace(value)
+	if !strings.Contains(value, "/") {
 		return nil
+	}
+	p, err := netip.ParsePrefix(value)
+	if err != nil {
+		return err
 	}
 	p = canonicalPrefix(p)
 	minV4, minV6 := MinPolicyPrefixV4, MinPolicyPrefixV6

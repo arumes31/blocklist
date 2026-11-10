@@ -313,7 +313,7 @@ func (h *APIHandler) AddOutboundWebhook(c *gin.Context) {
 	}
 
 	// Return table row for HTMX
-	h.renderHTML(c, http.StatusOK, "settings.html", gin.H{"webhooks": []models.OutboundWebhook{wh}})
+	h.renderHTML(c, http.StatusOK, "settings.html", gin.H{"webhooks": []models.OutboundWebhook{wh}, "show_webhooks": true, "can_manage_webhooks": true})
 }
 
 func (h *APIHandler) DeleteOutboundWebhook(c *gin.Context) {
