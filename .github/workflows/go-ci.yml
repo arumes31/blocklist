@@ -3,11 +3,9 @@ name: Go CI
 permissions:
   contents: read
 
+# Runs via docker-ci.yml (push to main, pull requests); manual runs stay available.
 on:
   workflow_call:
-  push:
-    branches: ['**']
-  pull_request:
   workflow_dispatch:
 
 # Reusable calls must not cancel their caller or an approval-gated publication.

@@ -1,17 +1,32 @@
 name: Docker Build and Check
 
+# Single entry point for code checks: Go CI and Security run as reusable jobs
+# here, so pushes and PR commits no longer trigger them two or three times.
 on:
   push:
-    branches: ['**']
+    branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - 'LICENSE'
+      - '.impeccable/**'
+      - '.jules/**'
+  pull_request:
+    paths-ignore:
+      - '**/*.md'
+      - 'LICENSE'
+      - '.impeccable/**'
+      - '.jules/**'
   workflow_dispatch:
 
 permissions:
   contents: read
 
-# Shared with package cleanup; do not interrupt registry writes.
+# main shares the group with package cleanup so registry writes are never
+# interrupted; PRs get their own group so they no longer queue behind (and get
+# cancelled by) every other branch, and superseded PR commits are cancelled.
 concurrency:
-  group: container-publication
-  cancel-in-progress: false
+  group: ${{ github.event_name == 'pull_request' && format('docker-ci-pr-{0}', github.event.pull_request.number) || 'container-publication' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   quality:
