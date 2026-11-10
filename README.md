@@ -354,6 +354,13 @@ deleting only the local record can allow recreation at the next eligible sign-in
   hours). Imported entries expire after 24 hours without refresh; a failed fetch
   does not immediately discard still-valid entries. Optional webhook/email alerts
   can notify operators of attempted blocks against excluded resources.
+- **Prefix limits:** whitelist and exclusion CIDRs (including external-source
+  entries) must be at least `/8` for IPv4 and `/16` for IPv6, so no entry can
+  switch off blocking for the whole address space. Accounts and tokens with only
+  the create-only `whitelist_ips` / `exclude_ips` permissions are limited to `/16`
+  (IPv4) and `/32` (IPv6); broader entries need `manage_whitelist` /
+  `manage_excluded`. Reasons containing NUL characters or invalid UTF-8 are
+  rejected because they cannot be recorded in the audit log.
 - **Outbound integrations:** persistent queued webhook delivery with retries and
   backoff. The `ENABLE_OUTBOUND_WEBHOOKS` master switch must be enabled as well as
   configuring the integration. With a secret configured, each delivery carries
@@ -433,7 +440,7 @@ them. See [config.go](internal/config/config.go) for the complete list and
 | `RATE_LIMIT` / `RATE_PERIOD` | General request limit and period in seconds | `500` / `30` |
 | `RATE_LIMIT_LOGIN` / `RATE_LIMIT_WEBHOOK` | Login/webhook limits for the configured period | `10` / `100` |
 | `RUN_WORKER_IN_PROCESS` | Run maintenance and task workers in the server | `true` |
-| `SESSION_IDLE_MINUTES` | Sign out browser sessions after this many minutes without activity (`0` disables); the 7-day cookie lifetime still applies | `720` |
+| `SESSION_IDLE_MINUTES` | Sign out browser sessions after this many minutes without activity (`0` disables), and close their live-update WebSockets at the same point; the 7-day cookie lifetime still applies | `720` |
 | `LOGWEB` | Enable verbose web logging (debug level) | `false` |
 | `BLOCKED_RANGES` | Despite its name, these comma-separated CIDRs are protected from being blocked; this does not create whitelist records | (empty) |
 | `GEOIPUPDATE_ACCOUNT_ID` / `GEOIPUPDATE_LICENSE_KEY` | MaxMind download credentials for City/ASN databases | (empty) |

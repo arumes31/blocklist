@@ -1635,20 +1635,29 @@ func (s *IPService) whitelistEntry(ip, reason, username, expiresAt string) model
 // WhitelistIP adds or replaces a whitelist entry.
 func (s *IPService) WhitelistIP(ctx context.Context, ip string, reason string, username string, expiresAt string) error {
 	ip = CanonicalWhitelistKey(ip)
-	entry := s.whitelistEntry(ip, reason, username, expiresAt)
-	if s.pgRepo != nil {
-		_ = s.pgRepo.LogAction(username, "WHITELIST", ip, reason)
+	if err := checkPolicyInput(ip, reason, false); err != nil {
+		return err
 	}
-	return s.redisRepo.WhitelistIP(ip, entry)
+	entry := s.whitelistEntry(ip, reason, username, expiresAt)
+	if err := s.redisRepo.WhitelistIP(ip, entry); err != nil {
+		return err
+	}
+	if s.pgRepo != nil {
+		logAuditFailure(s.pgRepo.LogAction(username, "WHITELIST", ip, reason), "WHITELIST")
+	}
+	return nil
 }
 
 // WhitelistIPIfAbsent is WhitelistIP for create-only callers: it atomically
 // refuses to replace an existing entry and reports whether one was created.
 func (s *IPService) WhitelistIPIfAbsent(ctx context.Context, ip string, reason string, username string, expiresAt string) (bool, error) {
 	ip = CanonicalWhitelistKey(ip)
+	if err := checkPolicyInput(ip, reason, true); err != nil {
+		return false, err
+	}
 	created, err := s.redisRepo.WhitelistIPIfAbsent(ip, s.whitelistEntry(ip, reason, username, expiresAt))
 	if err == nil && created && s.pgRepo != nil {
-		_ = s.pgRepo.LogAction(username, "WHITELIST", ip, reason)
+		logAuditFailure(s.pgRepo.LogAction(username, "WHITELIST", ip, reason), "WHITELIST")
 	}
 	return created, err
 }
@@ -1665,20 +1674,23 @@ func (s *IPService) RemoveWhitelist(ctx context.Context, ip string, username str
 // auto-detected and the value canonicalized. expiresAt is optional (RFC3339);
 // an empty string means the exclusion never expires.
 func (s *IPService) AddExcluded(ctx context.Context, value string, reason string, username string, expiresAt string, alertEnabled bool) error {
-	entry, err := s.prepareExcluded(value, reason, username, expiresAt, alertEnabled)
+	entry, err := s.prepareExcluded(value, reason, username, expiresAt, alertEnabled, false)
 	if err != nil {
 		return err
 	}
-	if s.pgRepo != nil && username != "system" {
-		_ = s.pgRepo.LogAction(username, "EXCLUDE", entry.Value, reason)
+	if err := s.redisRepo.AddExcluded(entry.Value, entry); err != nil {
+		return err
 	}
-	return s.redisRepo.AddExcluded(entry.Value, entry)
+	if s.pgRepo != nil && username != "system" {
+		logAuditFailure(s.pgRepo.LogAction(username, "EXCLUDE", entry.Value, reason), "EXCLUDE")
+	}
+	return nil
 }
 
 // AddSystemExcluded creates or renews a feed-owned exclusion. It never
 // replaces an operator's exclusion and reports whether it wrote the entry.
 func (s *IPService) AddSystemExcluded(ctx context.Context, value, reason, expiresAt string) (bool, error) {
-	entry, err := s.prepareExcluded(value, reason, "system", expiresAt, false)
+	entry, err := s.prepareExcluded(value, reason, "system", expiresAt, false, false)
 	if err != nil {
 		return false, err
 	}
@@ -1688,13 +1700,13 @@ func (s *IPService) AddSystemExcluded(ctx context.Context, value, reason, expire
 // AddExcludedIfAbsent is AddExcluded for create-only callers: it atomically
 // refuses to replace an existing exclusion and reports whether one was created.
 func (s *IPService) AddExcludedIfAbsent(ctx context.Context, value string, reason string, username string, expiresAt string, alertEnabled bool) (bool, error) {
-	entry, err := s.prepareExcluded(value, reason, username, expiresAt, alertEnabled)
+	entry, err := s.prepareExcluded(value, reason, username, expiresAt, alertEnabled, true)
 	if err != nil {
 		return false, err
 	}
 	created, err := s.redisRepo.AddExcludedIfAbsent(entry.Value, entry)
 	if err == nil && created && s.pgRepo != nil && username != "system" {
-		_ = s.pgRepo.LogAction(username, "EXCLUDE", entry.Value, reason)
+		logAuditFailure(s.pgRepo.LogAction(username, "EXCLUDE", entry.Value, reason), "EXCLUDE")
 	}
 	return created, err
 }
@@ -1721,7 +1733,7 @@ func CanonicalExclusion(value string) (string, string) {
 	return value, typ
 }
 
-func (s *IPService) prepareExcluded(value, reason, username, expiresAt string, alertEnabled bool) (models.ExcludedEntry, error) {
+func (s *IPService) prepareExcluded(value, reason, username, expiresAt string, alertEnabled, createOnly bool) (models.ExcludedEntry, error) {
 	if s.redisRepo == nil {
 		return models.ExcludedEntry{}, fmt.Errorf("storage unavailable")
 	}
@@ -1729,6 +1741,9 @@ func (s *IPService) prepareExcluded(value, reason, username, expiresAt string, a
 		return models.ExcludedEntry{}, fmt.Errorf("value required")
 	}
 	value, typ := CanonicalExclusion(value)
+	if err := checkPolicyInput(value, reason, createOnly); err != nil {
+		return models.ExcludedEntry{}, err
+	}
 	if typ == "fqdn" {
 		// Drop any stale cached resolution so the new entry is honored promptly.
 		s.fqdnCacheMu.Lock()
