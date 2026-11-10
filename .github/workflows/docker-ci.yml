@@ -5,17 +5,7 @@ name: Docker Build and Check
 on:
   push:
     branches: [main]
-    paths-ignore:
-      - '**/*.md'
-      - 'LICENSE'
-      - '.impeccable/**'
-      - '.jules/**'
   pull_request:
-    paths-ignore:
-      - '**/*.md'
-      - 'LICENSE'
-      - '.impeccable/**'
-      - '.jules/**'
   workflow_dispatch:
 
 permissions:

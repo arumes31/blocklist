@@ -9,7 +9,7 @@ other tools from reporting. They use GitHub-hosted runners and the automatic
 | Go CI | Frontend unit tests, isolated desktop/mobile interaction/accessibility/visual checks, build, unit/integration race tests, upgrade/token compatibility, module checksum verification, golangci-lint, actionlint | Via Docker Build and Check (push to `main`, pull requests), manual |
 | Security | gosec with code-scanning results, govulncheck, redacted Gitleaks history scan | Via Docker Build and Check (push to `main`, pull requests), weekly, manual |
 | Dependency Review | Reject newly introduced runtime/development dependencies with low-or-higher known vulnerabilities | Pull requests |
-| CodeQL | Go and JavaScript/TypeScript analysis | Push to `main`, all pull requests (docs-only changes skipped), weekly, manual |
+| CodeQL | Go and JavaScript/TypeScript analysis | Push to `main` (docs-only changes skipped), all pull requests, weekly, manual |
 | Daily Security Scan | Existing Trivy filesystem vulnerability scan | Pull requests, daily, manual |
 
 Dependabot updates cover Go modules, Docker images, GitHub Actions, and the npm

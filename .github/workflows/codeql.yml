@@ -9,12 +9,8 @@ on:
       - 'LICENSE'
       - '.impeccable/**'
       - '.jules/**'
+  # No PR path filter: SECURITY_CHECKS.md recommends requiring both CodeQL checks.
   pull_request:
-    paths-ignore:
-      - '**/*.md'
-      - 'LICENSE'
-      - '.impeccable/**'
-      - '.jules/**'
   workflow_dispatch:
   schedule:
     - cron: '30 1 * * 1' # Weekly scan at 01:30 on Monday
