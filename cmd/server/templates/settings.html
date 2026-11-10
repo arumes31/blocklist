@@ -22,6 +22,7 @@
         <p class="muted">Local sign-in remains available. Microsoft sign-in uses this workspace's tenant and the assigned Blocklist app role.</p>
         <dl class="entra-settings"><dt>App role mapping</dt><dd>Viewer · Moderator · Editor</dd><dt>Automatic account creation</dt><dd>{{ if .entra_auto_provision }}Enabled for assigned app roles{{ else }}Disabled — pre-provision accounts using their exact UPN{{ end }}</dd></dl>
         {{ if not .entra_ready }}<p class="field-help">To enable, configure <code>ENTRA_TENANT_ID</code>, <code>ENTRA_CLIENT_ID</code>, <code>ENTRA_CLIENT_SECRET_FILE</code>, <code>ENTRA_REDIRECT_URL</code>, and <code>ENTRA_ENABLED=true</code>. See <code>ENTRA_SETUP.md</code> in the repository. No client secret is stored in this screen.</p>{{ end }}</section>
+        {{ if .show_webhooks }}
         <div class="card">
             <h2 class="section-title">Outbound Webhooks</h2>
             <p style="color: var(--secondary-color);">Configure external services to be notified of block/unblock
@@ -88,6 +89,7 @@
                 <p class="table-empty"><strong>No records yet</strong>Records will appear here when they are added.</p>
             </div>
         </div>
+        {{ end }}
 
         <div class="card">
             <h2 class="section-title">Source Adapters</h2>

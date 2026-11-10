@@ -6,6 +6,7 @@ import (
 	"blocklist/internal/models"
 	"blocklist/internal/security"
 	"blocklist/internal/service"
+	"fmt"
 	"net"
 	"net/http"
 	"net/netip"
@@ -248,8 +249,8 @@ const SessionCookieName = "blocklist_session"
 
 // wsSessionCurrent reloads the server-side session behind a WebSocket and
 // reports whether it is still the signed-in session that opened the socket:
-// not logged out, not past its absolute lifetime, and for the same account
-// and credential version. Without a configured store only the lifetime is
+// not logged out, not past its absolute lifetime or idle timeout, and for the
+// same account and credential version. Without a configured store only the lifetime is
 // checked.
 func (h *APIHandler) wsSessionCurrent(r *http.Request, username string, version int, loginTime string) bool {
 	if loginTime != "" {
@@ -269,7 +270,18 @@ func (h *APIHandler) wsSessionCurrent(r *http.Request, username string, version 
 	currentUser, _ := current.Values["username"].(string)
 	currentVersion, _ := current.Values["session_version"].(int)
 	currentLogin, _ := current.Values["login_time"].(string)
-	return loggedIn && currentUser == username && currentVersion == version && currentLogin == loginTime
+	if !loggedIn || currentUser != username || currentVersion != version || currentLogin != loginTime {
+		return false
+	}
+	// An open socket is not activity: close it once the session has been idle
+	// for longer than SESSION_IDLE_MINUTES, as the HTTP path would.
+	if h.cfg != nil && h.cfg.SessionIdleMinutes > 0 {
+		if last, ok := current.Values["last_seen"].(int64); ok &&
+			time.Now().Unix()-last > int64(h.cfg.SessionIdleMinutes)*60 {
+			return false
+		}
+	}
+	return true
 }
 
 func (h *APIHandler) PrometheusMiddleware() gin.HandlerFunc {
@@ -333,6 +345,25 @@ func (h *APIHandler) validateIPOrCIDR(c *gin.Context, input string) bool {
 	}
 	c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid IP or CIDR"})
 	return false
+}
+
+// validatePolicyInput rejects an allowlist or exclusion request whose prefix
+// is broader than the caller may exempt, or whose reason cannot be recorded in
+// the audit log. createOnly is true for whitelist_ips/exclude_ips callers.
+func (h *APIHandler) validatePolicyInput(c *gin.Context, value, reason string, createOnly bool) bool {
+	if err := service.CheckPolicyBreadth(value, createOnly); err != nil {
+		minV4, minV6 := service.MinPolicyPrefixV4, service.MinPolicyPrefixV6
+		if createOnly {
+			minV4, minV6 = service.MinCreateOnlyPolicyPrefixV4, service.MinCreateOnlyPolicyPrefixV6
+		}
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("Prefix too broad: the minimum is /%d for IPv4 and /%d for IPv6", minV4, minV6)})
+		return false
+	}
+	if !service.ValidAuditText(reason) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Reason contains characters that cannot be recorded"})
+		return false
+	}
+	return true
 }
 
 // RegisterRoutes sets up all the API and UI routes for the application.

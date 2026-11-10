@@ -369,6 +369,9 @@ func (h *APIHandler) AddWhitelist(c *gin.Context) {
 	if !h.validateIPOrCIDR(c, req.IP) {
 		return
 	}
+	if !h.validatePolicyInput(c, req.IP, note, !h.can(c, "manage_whitelist")) {
+		return
+	}
 
 	if !validateFutureExpiry(c, req.ExpiresAt) {
 		return

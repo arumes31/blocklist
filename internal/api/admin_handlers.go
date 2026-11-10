@@ -744,7 +744,13 @@ func (h *APIHandler) Stats(c *gin.Context) {
 
 func (h *APIHandler) Settings(c *gin.Context) {
 	username, _ := c.Get("username")
-	webhooks, _ := h.pgRepo.GetActiveWebhooks()
+	// /settings is also open to manage_api_tokens alone; outbound webhook URLs
+	// often embed credentials, so only view_settings or manage_webhooks see them.
+	showWebhooks := h.can(c, "view_settings") || h.can(c, "manage_webhooks")
+	var webhooks []models.OutboundWebhook
+	if showWebhooks {
+		webhooks, _ = h.pgRepo.GetActiveWebhooks()
+	}
 	tokens, _ := h.pgRepo.GetAPITokens(username.(string))
 
 	userPerms, _ := c.Get("permissions")
@@ -782,6 +788,7 @@ func (h *APIHandler) Settings(c *gin.Context) {
 		"permissions":          userPerms,
 		"manage_global_tokens": hasGlobalTokensPerm,
 		"show_global_tokens":   hasGlobalTokensPerm || h.can(c, "view_api_tokens"),
+		"show_webhooks":        showWebhooks,
 		"can_manage_webhooks":  h.can(c, "manage_webhooks"),
 		"can_manage_tokens":    h.can(c, "manage_api_tokens"),
 		"entra_auto_provision": h.cfg.EntraAutoProvision,

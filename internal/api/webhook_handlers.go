@@ -106,6 +106,11 @@ func (h *APIHandler) validateAndAuthorizeWebhook(c *gin.Context, username string
 	if !h.validateIP(c, data.IP) {
 		return false
 	}
+	// A reason the audit log cannot store would let the change land unrecorded.
+	if !service.ValidAuditText(data.Reason) {
+		c.JSON(http.StatusBadRequest, gin.H{"status": "reason contains characters that cannot be recorded"})
+		return false
+	}
 
 	// Determine required permission and check access
 	requiredPerm, err := h.getRequiredPermissionForAction(data.Act)
@@ -259,7 +264,9 @@ func (h *APIHandler) handleWebhookWhitelist(c *gin.Context, data webhookRequest,
 	}
 
 	if h.pgRepo != nil {
-		_ = h.pgRepo.LogAction(addedBy, "WHITELIST", data.IP, entry.Reason)
+		if err := h.pgRepo.LogAction(addedBy, "WHITELIST", data.IP, entry.Reason); err != nil {
+			zlog.Error().Err(err).Str("ip", data.IP).Msg("Failed to record webhook whitelist in the audit log")
+		}
 	}
 
 	if h.hub != nil {
@@ -306,7 +313,7 @@ func (h *APIHandler) AddOutboundWebhook(c *gin.Context) {
 	}
 
 	// Return table row for HTMX
-	h.renderHTML(c, http.StatusOK, "settings.html", gin.H{"webhooks": []models.OutboundWebhook{wh}})
+	h.renderHTML(c, http.StatusOK, "settings.html", gin.H{"webhooks": []models.OutboundWebhook{wh}, "show_webhooks": true})
 }
 
 func (h *APIHandler) DeleteOutboundWebhook(c *gin.Context) {
