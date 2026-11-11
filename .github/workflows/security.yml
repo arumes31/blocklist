@@ -1,12 +1,12 @@
 name: Security
 
+# Runs via docker-ci.yml on every main push and PR commit. The schedule only
+# catches newly published advisories; Daily Security Scan (Trivy) covers
+# dependency CVEs daily, so this runs weekly.
 on:
   workflow_call:
-  push:
-    branches: ['**']
-  pull_request:
   schedule:
-    - cron: '17 3 * * *'
+    - cron: '17 3 * * 1'
   workflow_dispatch:
 
 permissions:

@@ -2,18 +2,24 @@ name: OpenRabbit Reviewer
 
 on:
   pull_request:
-    types: [opened, reopened, edited, synchronize]
+    # 'edited' only matters when the base branch changes; title/body edits are skipped below.
+    types: [opened, reopened, edited, synchronize, ready_for_review]
 
 permissions:
   contents: read
 
-concurrency:
-  group: openrabbit-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
 
 jobs:
   review:
     name: OpenRabbit (advisory)
+    # Job-level so a skipped title/body 'edited' run cannot cancel an active review.
+    concurrency:
+      group: openrabbit-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    # Dependabot PRs have no access to the LLM secrets; drafts are reviewed once ready.
+    if: >-
+      github.event.pull_request.user.login != 'dependabot[bot]' && !github.event.pull_request.draft &&
+      (github.event.action != 'edited' || github.event.changes.base.ref.from != null)
     permissions:
       contents: read
       # Required only for posting COMMENT reviews and inline suggestions via the API.

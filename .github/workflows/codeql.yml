@@ -2,8 +2,14 @@ name: "CodeQL"
 
 on:
   push:
-    # Dependabot has a read-only token on push; its PR still gets both analyses.
-    branches-ignore: ['dependabot/**']
+    # Branch pushes are covered by their pull_request run; only main needs push analysis.
+    branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - 'LICENSE'
+      - '.impeccable/**'
+      - '.jules/**'
+  # No PR path filter: SECURITY_CHECKS.md recommends requiring both CodeQL checks.
   pull_request:
   workflow_dispatch:
   schedule:
@@ -16,7 +22,7 @@ permissions:
 
 concurrency:
   group: codeql-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   analyze:
