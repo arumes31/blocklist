@@ -174,6 +174,9 @@ func (h *APIHandler) AddExcluded(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Reason required"})
 		return
 	}
+	if !h.validatePolicyInput(c, value, reason, !h.can(c, "manage_excluded")) {
+		return
+	}
 
 	if !validateFutureExpiry(c, req.ExpiresAt) {
 		return
