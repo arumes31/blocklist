@@ -30,7 +30,7 @@ COPY --from=assets /app/.build/js/ ./cmd/server/static/js/
 RUN CGO_ENABLED=0 GOOS=linux go build -o blocklist-server ./cmd/server/main.go
 
 # Stage 3: Final Image (no Node.js or npm dependencies)
-FROM alpine:3.24.3@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a
+FROM alpine:3.24.4@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf
 LABEL maintainer="arumes31 <https://github.com/arumes31>"
 LABEL org.opencontainers.image.source="https://github.com/arumes31"
 LABEL org.opencontainers.image.description="Hardened Blocklist API with GeoIP and RBAC"
