@@ -255,7 +255,8 @@ func (h *APIHandler) basicAuthAllowed(c *gin.Context) bool {
 // AuthMiddleware spends a bcrypt compare on them.
 func (h *APIHandler) BasicAuthLimiter() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if h.loginLimiter != nil && strings.HasPrefix(c.GetHeader("Authorization"), "Basic ") && h.basicAuthAllowed(c) {
+		// Same case-insensitive scheme match as AuthMiddleware, so "basic " cannot skip the limit.
+		if _, _, ok := c.Request.BasicAuth(); ok && h.loginLimiter != nil && h.basicAuthAllowed(c) {
 			h.loginLimiter(c) // calls c.Next() itself, or aborts with 429
 			return
 		}

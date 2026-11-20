@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/base64"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -85,6 +86,15 @@ func TestBasicAuthOptInIsRateLimitedBeforeBcrypt(t *testing.T) {
 		r.ServeHTTP(w, req)
 		require.Equal(t, tc.status, w.Code, tc.password)
 	}
+	pg.AssertNumberOfCalls(t, "GetAdmin", 2)
+
+	// A lowercase scheme is still parsed by BasicAuth, so it must be limited too.
+	limited = true
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/whitelists-raw", nil)
+	req.Header.Set("Authorization", "basic "+base64.StdEncoding.EncodeToString([]byte("member:synthetic-password")))
+	r.ServeHTTP(w, req)
+	require.Equal(t, http.StatusTooManyRequests, w.Code)
 	pg.AssertNumberOfCalls(t, "GetAdmin", 2)
 }
 
