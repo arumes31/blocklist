@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/base64"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -22,20 +23,33 @@ import (
 func basicAuthRouter(h *APIHandler) *gin.Engine {
 	r := gin.New()
 	r.Use(sessions.Sessions("session", cookie.NewStore([]byte("synthetic-basic-session-key"))))
-	r.GET("/api/v1/whitelists-raw", h.BasicAuthLimiter(), h.AuthMiddleware(), func(c *gin.Context) {
-		c.Status(http.StatusNoContent)
-	})
+	ok := func(c *gin.Context) { c.Status(http.StatusNoContent) }
+	r.GET("/api/v1/whitelists-raw", h.BasicAuthLimiter(), h.AuthMiddleware(), ok)
+	r.GET("/api/v1/whitelists", h.BasicAuthLimiter(), h.AuthMiddleware(), ok)
 	return r
 }
 
-func TestBasicAuthDisabledByDefault(t *testing.T) {
+func TestBasicAuthDefaultOnlyOnRawWhitelist(t *testing.T) {
 	h, _, pg, _, _ := setupTest()
-	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/whitelists-raw", nil)
-	req.SetBasicAuth("member", "synthetic-password")
-	basicAuthRouter(h).ServeHTTP(w, req)
-	require.Equal(t, http.StatusUnauthorized, w.Code)
-	pg.AssertNotCalled(t, "GetAdmin", "member")
+	require.False(t, h.cfg.AllowBasicAuth)
+	hash, err := bcrypt.GenerateFromPassword([]byte("synthetic-password"), bcrypt.MinCost)
+	require.NoError(t, err)
+	// A TOTP-enrolled local user still authenticates: firewalls cannot send TOTP.
+	pg.On("GetAdmin", "member").Return(&models.AdminAccount{
+		Username: "member", AuthSource: "local", PasswordHash: string(hash), Permissions: "view_ips", Token: "JBSWY3DPEHPK3PXP",
+	}, nil)
+	r := basicAuthRouter(h)
+	for path, want := range map[string]int{
+		"/api/v1/whitelists-raw": http.StatusNoContent,
+		"/api/v1/whitelists":     http.StatusUnauthorized,
+	} {
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req.SetBasicAuth("member", "synthetic-password")
+		r.ServeHTTP(w, req)
+		require.Equal(t, want, w.Code, path)
+	}
+	pg.AssertNumberOfCalls(t, "GetAdmin", 1)
 }
 
 func TestBasicAuthOptInIsRateLimitedBeforeBcrypt(t *testing.T) {
@@ -72,6 +86,15 @@ func TestBasicAuthOptInIsRateLimitedBeforeBcrypt(t *testing.T) {
 		r.ServeHTTP(w, req)
 		require.Equal(t, tc.status, w.Code, tc.password)
 	}
+	pg.AssertNumberOfCalls(t, "GetAdmin", 2)
+
+	// A lowercase scheme is still parsed by BasicAuth, so it must be limited too.
+	limited = true
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/whitelists-raw", nil)
+	req.Header.Set("Authorization", "basic "+base64.StdEncoding.EncodeToString([]byte("member:synthetic-password")))
+	r.ServeHTTP(w, req)
+	require.Equal(t, http.StatusTooManyRequests, w.Code)
 	pg.AssertNumberOfCalls(t, "GetAdmin", 2)
 }
 

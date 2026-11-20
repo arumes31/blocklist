@@ -373,9 +373,10 @@ deleting only the local record can allow recreation at the next eligible sign-in
 Use `/docs` for the interactive reference and `/openapi.json` for the schema.
 Protected endpoints accept an authorized browser session or appropriately scoped
 Bearer token, except sensitive actions that explicitly require browser verification.
-Legacy Basic authentication with local credentials is **disabled by default**.
-Setting `ALLOW_BASIC_AUTH=true` enables it **only** for the two whitelist read
-endpoints; it is not a general API or Entra-password fallback. Basic auth cannot
+Basic authentication with a local user is **always accepted** on
+`GET /api/v1/whitelists-raw`, without TOTP, because firewalls fetch that feed with
+a plain username and password. Setting `ALLOW_BASIC_AUTH=true` also enables it
+for `GET /api/v1/whitelists`; it is not a general API or Entra-password fallback. Basic auth cannot
 check TOTP, so prefer a scoped Bearer token; enabled Basic attempts are subject to
 the login rate limit.
 
@@ -434,7 +435,7 @@ them. See [config.go](internal/config/config.go) for the complete list and
 | `COOKIE_SAMESITE_STRICT` | Stricter cookie policy; validate cross-site Entra callbacks before enabling | `false` |
 | `FORCE_HTTPS` | HTTPS redirect setting; configure together with the reverse proxy | `false` |
 | `TRUSTED_PROXIES` | Exact reverse-proxy addresses/CIDRs allowed to set forwarded client IPs, comma-separated; replaces the list (loopback is always trusted) | `127.0.0.1` |
-| `ALLOW_BASIC_AUTH` | Allow legacy Basic auth (no TOTP) for `/api/v1/whitelists` and `/api/v1/whitelists-raw` | `false` |
+| `ALLOW_BASIC_AUTH` | Also allow Basic auth (no TOTP) for `/api/v1/whitelists`; `/api/v1/whitelists-raw` always accepts it | `false` |
 | `USE_CLOUDFLARE` | Enable Cloudflare client-IP handling with a correctly restricted proxy path | `false` |
 | `METRICS_ALLOWED_IPS` | Comma-separated exact source-IP allowlist for `/metrics`; CIDRs are not supported here | `127.0.0.1` |
 | `RATE_LIMIT` / `RATE_PERIOD` | General request limit and period in seconds | `500` / `30` |
