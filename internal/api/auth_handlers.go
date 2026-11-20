@@ -109,8 +109,8 @@ func (h *APIHandler) AuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		// Legacy Basic Auth fallback: opt-in (ALLOW_BASIC_AUTH) and restricted to
-		// the whitelist read endpoints. It bypasses TOTP, so BasicAuthLimiter
+		// Legacy Basic Auth fallback: always on for /whitelists-raw (firewall feeds),
+		// opt-in (ALLOW_BASIC_AUTH) for /whitelists. It bypasses TOTP, so BasicAuthLimiter
 		// throttles attempts before the bcrypt compare runs.
 		username, password, ok := c.Request.BasicAuth()
 		if ok && h.basicAuthAllowed(c) {
@@ -238,10 +238,17 @@ func (h *APIHandler) sessionIdleExpired(session sessions.Session) bool {
 
 // basicAuthAllowed reports whether a Basic credential may be checked for this request.
 func (h *APIHandler) basicAuthAllowed(c *gin.Context) bool {
-	if h.cfg == nil || !h.cfg.AllowBasicAuth || h.pgRepo == nil {
+	if h.pgRepo == nil {
 		return false
 	}
-	return c.Request.URL.Path == "/api/v1/whitelists" || c.Request.URL.Path == "/api/v1/whitelists-raw"
+	switch c.Request.URL.Path {
+	case "/api/v1/whitelists-raw":
+		// FortiGate external threat feeds can only send Basic credentials.
+		return true
+	case "/api/v1/whitelists":
+		return h.cfg != nil && h.cfg.AllowBasicAuth
+	}
+	return false
 }
 
 // BasicAuthLimiter applies the login rate limit to Basic credentials before
